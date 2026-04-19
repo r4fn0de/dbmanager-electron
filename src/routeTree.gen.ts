@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SecondRouteImport } from './routes/second'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DatabaseConnectionIdRouteImport } from './routes/database.$connectionId'
 
 const SecondRoute = SecondRouteImport.update({
   id: '/second',
@@ -22,31 +23,40 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DatabaseConnectionIdRoute = DatabaseConnectionIdRouteImport.update({
+  id: '/database/$connectionId',
+  path: '/database/$connectionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/second': typeof SecondRoute
+  '/database/$connectionId': typeof DatabaseConnectionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/second': typeof SecondRoute
+  '/database/$connectionId': typeof DatabaseConnectionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/second': typeof SecondRoute
+  '/database/$connectionId': typeof DatabaseConnectionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/second'
+  fullPaths: '/' | '/second' | '/database/$connectionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/second'
-  id: '__root__' | '/' | '/second'
+  to: '/' | '/second' | '/database/$connectionId'
+  id: '__root__' | '/' | '/second' | '/database/$connectionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SecondRoute: typeof SecondRoute
+  DatabaseConnectionIdRoute: typeof DatabaseConnectionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/database/$connectionId': {
+      id: '/database/$connectionId'
+      path: '/database/$connectionId'
+      fullPath: '/database/$connectionId'
+      preLoaderRoute: typeof DatabaseConnectionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SecondRoute: SecondRoute,
+  DatabaseConnectionIdRoute: DatabaseConnectionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
