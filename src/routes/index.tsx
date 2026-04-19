@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Database, HardDrive, Plus, Search, Server } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,13 +18,30 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { ConnectionForm } from "@/components/ConnectionForm";
+import {
+  CreateLocalDbDialog,
+  type CreateLocalDbInput,
+} from "@/components/CreateLocalDbDialog";
 import { useConnections } from "@/hooks/useConnections";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import type { Connection, ConnectionInput } from "@/ipc/db/types";
 
 function Home() {
-  const { connections, isLoading: isLoadingConnections } = useConnections();
-  const { databases: localDatabases } = useLocalDatabases();
+  const {
+    connections,
+    isLoading: isLoadingConnections,
+    saveConnection,
+    testConnection,
+  } = useConnections();
+  const { create: createLocalDb } = useLocalDatabases();
   const [searchQuery, setSearchQuery] = useState("");
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isLocalDbDialogOpen, setIsLocalDbDialogOpen] = useState(false);
+  const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [isCreatingLocalDb, setIsCreatingLocalDb] = useState(false);
   const navigate = useNavigate();
 
   const filteredConnections = useMemo(() => {
@@ -39,13 +57,87 @@ function Home() {
   }, [connections, searchQuery]);
 
   const handleAdd = () => {
-    // TODO: Abrir dialog de conexão
-    console.log("Add connection");
+    setEditingConnection(null);
+    setIsFormOpen(true);
   };
 
   const handleAddLocalDb = () => {
-    // TODO: Abrir dialog de local DB
-    console.log("Add local DB");
+    setIsLocalDbDialogOpen(true);
+  };
+
+  const handleCreateLocalDb = async (input: CreateLocalDbInput) => {
+    setIsCreatingLocalDb(true);
+    try {
+      const db = await createLocalDb({
+        name: input.name,
+        postgresVersion: input.postgresVersion,
+      });
+
+      const parsed = new URL(db.connection_string);
+      const database =
+        parsed.pathname.replace(/^\//, "") ||
+        db.database_name ||
+        input.databaseName ||
+        input.name;
+      const port = Number(parsed.port || "5432");
+      const username = decodeURIComponent(
+        parsed.username || db.username || input.username || "postgres",
+      );
+      const password = decodeURIComponent(parsed.password || "");
+
+      const localConnection: ConnectionInput = {
+        id: db.id,
+        name: db.name,
+        host: parsed.hostname || "localhost",
+        port,
+        database,
+        username,
+        password,
+        ssl_mode: "disable",
+        url: db.connection_string,
+        is_local: true,
+        connection_string: db.connection_string,
+        postgres_version: db.postgres_version ?? input.postgresVersion,
+        tag: input.tag,
+        color: input.color,
+        local_auto_start: db.auto_start,
+      };
+
+      await saveConnection(localConnection);
+      navigate({
+        to: "/database/$connectionId",
+        params: { connectionId: db.id },
+      });
+      setIsLocalDbDialogOpen(false);
+      toast.success("Local database created successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create local database");
+      throw error;
+    } finally {
+      setIsCreatingLocalDb(false);
+    }
+  };
+
+  const handleSave = async (connection: ConnectionInput) => {
+    setIsSaving(true);
+    try {
+      await saveConnection(connection);
+      setIsFormOpen(false);
+      toast.success("Connection saved successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save connection");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTest = async (connection: ConnectionInput): Promise<boolean> => {
+    setIsTesting(true);
+    try {
+      return await testConnection(connection);
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handleSelectConnection = (connection: { id: string }) => {
@@ -147,6 +239,23 @@ function Home() {
           )}
         </div>
       </div>
+
+      <ConnectionForm
+        connection={editingConnection}
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        onSave={handleSave}
+        onTest={handleTest}
+        isSaving={isSaving}
+        isTesting={isTesting}
+      />
+
+      <CreateLocalDbDialog
+        isOpen={isLocalDbDialogOpen}
+        onClose={() => setIsLocalDbDialogOpen(false)}
+        onCreate={handleCreateLocalDb}
+        isCreating={isCreatingLocalDb}
+      />
     </div>
   );
 }

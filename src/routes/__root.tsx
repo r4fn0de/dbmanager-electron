@@ -1,8 +1,6 @@
 import {
   createRootRoute,
-  HeadContent,
   Outlet,
-  Scripts,
   useRouter,
 } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "motion/react";
@@ -37,48 +35,24 @@ function AnimatedOutlet() {
 
 function Root() {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <HeadContent />
-      </head>
-      <body className="antialiased h-screen overflow-hidden">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <TooltipProvider>
-            <div className="h-screen flex flex-col overflow-hidden">
-              {/* Custom TitleBar - System Aware */}
-              <TitleBar />
-              {/* Content area - ajusta baseado na plataforma */}
-              <div className="flex-1 min-h-0 overflow-hidden relative bg-background/60">
-                <div className="page-frame">
-                  <AnimatedOutlet />
-                </div>
-              </div>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <TooltipProvider>
+        <div className="h-screen flex flex-col overflow-hidden antialiased">
+          {/* Custom TitleBar - System Aware */}
+          <TitleBar />
+          {/* Content area - ajusta baseado na plataforma */}
+          <div className="flex-1 min-h-0 overflow-hidden relative bg-background/60">
+            <div className="page-frame">
+              <AnimatedOutlet />
             </div>
-          </TooltipProvider>
-        </ThemeProvider>
-        <Toaster position="bottom-right" />
-        <Scripts />
-      </body>
-    </html>
+          </div>
+        </div>
+      </TooltipProvider>
+      <Toaster position="bottom-right" />
+    </ThemeProvider>
   );
 }
 
 export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      {
-        charSet: "utf-8",
-      },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1",
-      },
-      {
-        title: "DB Manager",
-      },
-    ],
-    links: [],
-  }),
-
   component: Root,
 });
