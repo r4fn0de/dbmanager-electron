@@ -53,14 +53,14 @@ export function TitleBar() {
   };
 
   const tabsSlot = (
-    <div className="min-w-0 flex-1 h-full flex items-end gap-1 pl-0 draglayer">
-      <div className="no-drag">
+    <div className="min-w-0 flex-1 h-full flex items-center gap-1 draglayer">
+      <div className="no-drag h-full flex items-center">
         <ConnectionTabs />
       </div>
       <button
         type="button"
         onClick={handleOpenConnections}
-        className="shrink-0 h-[28px] px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors mb-1 no-drag"
+        className="shrink-0 h-[28px] px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors no-drag"
         aria-label="Open connections"
         title="Open connections"
       >
@@ -72,11 +72,11 @@ export function TitleBar() {
   // macOS: native traffic lights area, with tabs and browser-style "+"
   if (platform === "macos") {
     return (
-      <div className="z-50 select-none draglayer">
-        <div className="h-9 bg-background/60 backdrop-blur-md flex items-center pr-3">
-          <div className="w-[80px] shrink-0 h-full" />
+      <div className="z-50 select-none">
+        <div className="h-10 bg-background/60 backdrop-blur-md flex items-center pr-3">
+          <div className="w-[82px] shrink-0 h-full draglayer" />
           {tabsSlot}
-          <div className="ml-auto flex items-center no-drag">
+          <div className="ml-auto flex items-center no-drag pl-2">
             <ThemeToggle />
           </div>
         </div>

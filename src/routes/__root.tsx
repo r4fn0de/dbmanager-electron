@@ -18,13 +18,13 @@ function AnimatedOutlet() {
   const currentPath = router.state.location.pathname;
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence mode="popLayout" initial={false}>
       <motion.div
         key={currentPath}
-        initial={{ opacity: 0, x: 10 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -10 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
+        initial={{ x: 20 }}
+        animate={{ x: 0 }}
+        exit={{ x: -20 }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
         className="h-full"
       >
         <Outlet />

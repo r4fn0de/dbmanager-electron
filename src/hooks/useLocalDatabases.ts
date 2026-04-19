@@ -22,6 +22,7 @@ interface UseLocalDatabasesReturn {
   remove: (id: string, options?: { refresh?: boolean }) => Promise<void>;
   start: (id: string) => Promise<void>;
   pause: (id: string) => Promise<void>;
+  getStatus: (id: string) => Promise<LocalDbInfo | null>;
 }
 
 function upsertDb(list: LocalDbInfo[], db: LocalDbInfo): LocalDbInfo[] {
@@ -122,6 +123,14 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     [refresh],
   );
 
+  const getStatus = useCallback(
+    async (id: string): Promise<LocalDbInfo | null> => {
+      const db = databases.find((d) => d.id === id);
+      return db ?? null;
+    },
+    [databases],
+  );
+
   return {
     databases,
     storage,
@@ -132,5 +141,6 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     remove,
     start,
     pause,
+    getStatus,
   };
 }

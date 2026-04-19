@@ -1,0 +1,76 @@
+{
+  "scripts": [
+    {
+      "name": "start",
+      "command": "pnpm start",
+      "mode": "service",
+      "category": "dev"
+    },
+    {
+      "name": "package",
+      "command": "pnpm package",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "make",
+      "command": "pnpm make",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "publish",
+      "command": "pnpm publish",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "check",
+      "command": "pnpm check",
+      "mode": "command",
+      "category": "typecheck"
+    },
+    {
+      "name": "fix",
+      "command": "pnpm fix",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "bump-ui",
+      "command": "pnpm bump-ui",
+      "mode": "command",
+      "category": "other"
+    },
+    {
+      "name": "test",
+      "command": "pnpm test",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:watch",
+      "command": "pnpm test:watch",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:unit",
+      "command": "pnpm test:unit",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:e2e",
+      "command": "pnpm test:e2e",
+      "mode": "command",
+      "category": "test"
+    },
+    {
+      "name": "test:all",
+      "command": "pnpm test:all",
+      "mode": "command",
+      "category": "test"
+    }
+  ]
+}
