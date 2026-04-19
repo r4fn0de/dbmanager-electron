@@ -43,9 +43,9 @@ import {
   testConnection as testPgConnection,
   executeQuery as executePgQuery,
   getDatabaseInfo as getPgDatabaseInfo,
-  getSchema,
-  getSchemaSummary,
-  getTableDetails,
+  getSchema as getPgSchema,
+  getSchemaSummary as getPgSchemaSummary,
+  getTableDetails as getPgTableDetails,
   listRows,
   buildConnectionString,
 } from "./pg-client";
@@ -154,7 +154,7 @@ export const getSchema = os
       ssl_mode: connection.ssl_mode,
       url: connection.url,
     });
-    return await getSchema(connStr);
+    return await getPgSchema(connStr);
   });
 
 export const getSchemaSummary = os
@@ -174,7 +174,7 @@ export const getSchemaSummary = os
       ssl_mode: connection.ssl_mode,
       url: connection.url,
     });
-    return await getSchemaSummary(connStr);
+    return await getPgSchemaSummary(connStr);
   });
 
 export const getTableDetails = os
@@ -194,7 +194,7 @@ export const getTableDetails = os
       ssl_mode: connection.ssl_mode,
       url: connection.url,
     });
-    return await getTableDetails(connStr, input.schema, input.table);
+    return await getPgTableDetails(connStr, input.schema, input.table);
   });
 
 export const tableListRows = os
