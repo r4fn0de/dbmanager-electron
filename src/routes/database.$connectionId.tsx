@@ -4,7 +4,6 @@ import {
   Copy,
   Database,
   FileSearch,
-  Layers,
   Lock,
   Pause,
   Play,
@@ -75,6 +74,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     tableListRows,
     tableSaveChanges,
     tableTruncate,
+    tableFkLookup,
   } = useConnections();
   const { start: startLocalDb, pause: pauseLocalDb, getStatus: getLocalDbStatus } = useLocalDatabases();
   const { tabs, setTabSection } = useConnectionTabsStore();
@@ -342,18 +342,20 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     <div className="h-full flex flex-col">
       <div className="border-x border-b rounded-lg flex-1 flex min-h-0 bg-background overflow-hidden">
         {/* Left Icon Sidebar */}
-        <aside className="w-11 min-h-0 bg-background border-x border-b rounded-l-lg py-3 px-2 flex flex-col items-center gap-1 shrink-0">
+        <aside className="w-11 min-h-0 bg-muted/40 border-r py-3 px-2 flex flex-col items-center gap-1 shrink-0">
           <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => navigate({ to: "/" })}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => navigate({ to: "/" })}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              }
+            />
             <TooltipContent side="right">Back</TooltipContent>
           </Tooltip>
 
@@ -361,55 +363,63 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
 
           <nav className="flex flex-col gap-0.5">
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-7 w-7 ${activeSection === "overview" ? "bg-muted" : ""}`}
-                  onClick={() => setActiveSection("overview")}
-                >
-                  <Database className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 ${activeSection === "overview" ? "bg-accent text-accent-foreground" : ""}`}
+                    onClick={() => setActiveSection("overview")}
+                  >
+                    <Database className="h-4 w-4" />
+                  </Button>
+                }
+              />
               <TooltipContent side="right">Overview</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-7 w-7 ${activeSection === "tables" ? "bg-muted" : ""}`}
-                  onClick={() => setActiveSection("tables")}
-                >
-                  <Table2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 ${activeSection === "tables" ? "bg-accent text-accent-foreground" : ""}`}
+                    onClick={() => setActiveSection("tables")}
+                  >
+                    <Table2 className="h-4 w-4" />
+                  </Button>
+                }
+              />
               <TooltipContent side="right">Tables</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-7 w-7 ${activeSection === "sql-editor" ? "bg-muted" : ""}`}
-                  onClick={() => setActiveSection("sql-editor")}
-                >
-                  <Terminal className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 ${activeSection === "sql-editor" ? "bg-accent text-accent-foreground" : ""}`}
+                    onClick={() => setActiveSection("sql-editor")}
+                  >
+                    <Terminal className="h-4 w-4" />
+                  </Button>
+                }
+              />
               <TooltipContent side="right">SQL Editor</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={`h-7 w-7 ${activeSection === "settings" ? "bg-muted" : ""}`}
-                  onClick={() => setActiveSection("settings")}
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 ${activeSection === "settings" ? "bg-accent text-accent-foreground" : ""}`}
+                    onClick={() => setActiveSection("settings")}
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                }
+              />
               <TooltipContent side="right">Settings</TooltipContent>
             </Tooltip>
           </nav>
@@ -418,30 +428,34 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
 
           <div className="flex flex-col gap-0.5">
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={handleRefresh}
-                  disabled={isRefreshing}
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                </Button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                  </Button>
+                }
+              />
               <TooltipContent side="right">Refresh</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={handleCopyConnection}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={handleCopyConnection}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                }
+              />
               <TooltipContent side="right">
                 {copyFeedback === "copied" ? "Copied!" : copyFeedback === "failed" ? "Copy failed" : "Copy Connection"}
               </TooltipContent>
@@ -455,21 +469,18 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
             <ResizablePanelGroup className="min-w-0 flex-1">
               {/* Tables Sidebar */}
               <ResizablePanel defaultSize={230} minSize={230} maxSize={350} className="min-w-0">
-                <aside className="h-full min-h-0 flex flex-col bg-sidebar">
+                <aside className="h-full min-h-0 flex flex-col bg-muted/30">
                   {/* Header */}
-                  <div className="px-3 pt-3 pb-2 space-y-2.5 shrink-0">
+                  <div className="px-3 pt-3 pb-2 space-y-2 shrink-0">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                          Tables
-                        </p>
-                      </div>
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                        Tables
+                      </p>
                       <div className="flex items-center gap-1.5">
                         {!isLoading && filteredTablesForSchema.length > 0 && (
-                          <Badge variant="secondary" className="font-mono text-[10px] h-5 px-1.5">
+                          <span className="font-mono text-[10px] text-muted-foreground">
                             {filteredTablesForSchema.length}
-                          </Badge>
+                          </span>
                         )}
                         {isLoading && (
                           <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
@@ -538,16 +549,9 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                         </div>
                       ) : filteredTablesForSchema.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                          <div className="rounded-full bg-muted/60 p-2.5 mb-3">
-                            <FileSearch className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                          <p className="text-xs font-medium text-muted-foreground">
+                          <FileSearch className="h-4 w-4 text-muted-foreground/50 mb-2" />
+                          <p className="text-xs text-muted-foreground">
                             {tableSearch ? "No matches found" : "No tables"}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                            {tableSearch
-                              ? "Try a different search term"
-                              : "This schema has no tables yet"}
                           </p>
                         </div>
                       ) : (
@@ -558,10 +562,10 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                               <button
                                 key={`${table.schema}.${table.name}`}
                                 onClick={() => setSelectedTableKey(`${table.schema}.${table.name}`)}
-                                className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-all duration-150 ${
+                                className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100 ${
                                   isActive
-                                    ? "bg-accent text-accent-foreground shadow-sm"
-                                    : "hover:bg-muted/60 text-foreground/80 hover:text-foreground"
+                                    ? "bg-accent text-accent-foreground"
+                                    : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
                                 }`}
                               >
                                 <Table2 className={`h-3.5 w-3.5 shrink-0 transition-colors ${
@@ -598,15 +602,10 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                     <TableDataEditor
                       connectionId={connectionId}
                       table={selectedTableDetails}
-                      listRows={({ schema, table, page, pageSize }) =>
-                        tableListRows({ tableRef: { connectionId, schema, table }, page, pageSize, sort: [], filters: [] })
-                      }
-                      saveChanges={({ schema, table, inserts, updates, deletes }) =>
-                        tableSaveChanges({ tableRef: { connectionId, schema, table }, inserts, updates, deletes })
-                      }
-                      truncate={({ schema, table }) =>
-                        tableTruncate({ connectionId, schema, table })
-                      }
+                      tableListRows={tableListRows}
+                      tableSaveChanges={tableSaveChanges}
+                      tableTruncate={tableTruncate}
+                      tableFkLookup={tableFkLookup}
                     />
                   ) : selectedTable ? (
                     <div className="flex-1 flex items-center justify-center p-8">

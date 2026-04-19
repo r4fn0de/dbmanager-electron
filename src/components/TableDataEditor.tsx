@@ -1,4 +1,9 @@
 import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
   ChevronLeft,
   ChevronRight,
   Columns3,
@@ -14,9 +19,25 @@ import {
   Undo2,
   Wand,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
-import { CellExpandPopover } from "./CellExpandPopover";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { CellExpandPopover } from "@/components/CellExpandPopover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -43,79 +64,272 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import type {
-  SchemaTableDetails,
-  TableRowsResponse,
+  FkLookupResponse,
+  ListRowsInput,
+  SaveChangesInput,
+  SaveChangesResponse,
   SchemaColumn,
-  TableForeignKeyMeta,
+  SchemaForeignKey,
+  SchemaTable,
+  TableFilter,
+  TableRef,
+  TableRowsResponse,
+  TableSort,
 } from "@/ipc/db/types";
 
 interface TableDataEditorProps {
   connectionId: string;
-  table: SchemaTableDetails;
-  listRows: (input: {
-    connectionId: string;
-    schema: string;
-    table: string;
+  table: SchemaTable;
+  tableListRows: (input: ListRowsInput) => Promise<TableRowsResponse>;
+  tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
+  tableTruncate: (tableRef: TableRef) => Promise<void>;
+  tableFkLookup: (input: {
+    tableRef: TableRef;
+    column: string;
+    query: string;
     page: number;
     pageSize: number;
-  }) => Promise<TableRowsResponse>;
-  saveChanges: (input: {
-    connectionId: string;
-    schema: string;
-    table: string;
-    inserts: Record<string, unknown>[];
-    updates: { primaryKey: Record<string, unknown>; changes: Record<string, unknown> }[];
-    deletes: { primaryKey: Record<string, unknown> }[];
-  }) => Promise<{ inserted: number; updated: number; deleted: number }>;
-  truncate: (input: { connectionId: string; schema: string; table: string }) => Promise<void>;
+  }) => Promise<FkLookupResponse>;
+  onOpenRelatedTable?: (schema: string, table: string) => void;
+  isSwitchingTable?: boolean;
+  /** Opcional: abre o dialog de criação de coluna. Se não passado, botão não aparece. */
+  onRequestAddColumn?: () => void;
+  onRequestDropColumn?: (columnName: string) => void;
+  onRequestRenameColumn?: (columnName: string) => void;
+  onRequestAlterColumnType?: (column: SchemaColumn) => void;
+  onRequestSetColumnDefault?: (column: SchemaColumn) => void;
+  onRequestSetColumnNullable?: (column: SchemaColumn) => void;
 }
 
 type RowRecord = Record<string, unknown>;
-type SortDirection = "asc" | "desc";
 
-interface SortSpec {
-  column: string;
-  direction: SortDirection;
+type RowUpdateDraft = {
+  primaryKey: RowRecord;
+  changes: RowRecord;
+};
+
+type DeleteDraft = {
+  rowKey: string;
+  primaryKey: RowRecord;
+  sqlPreview: string;
+};
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
 }
 
-interface UpdateDraft {
-  rowKey: string;
-  primaryKey: Record<string, unknown>;
-  changes: Record<string, unknown>;
+function quoteValue(value: unknown): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number")
+    return Number.isFinite(value) ? `${value}` : "NULL";
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (typeof value === "object") {
+    return `'${JSON.stringify(value).replaceAll("'", "''")}'::jsonb`;
+  }
+  return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-interface DeleteDraft {
-  rowKey: string;
-  primaryKey: Record<string, unknown>;
+function normalizeDisplay(value: unknown): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function parseByType(raw: string, column: SchemaColumn): unknown {
+  const trimmed = raw.trim();
+  // Sentinel vindo do popover expandido (botão "Set NULL") ou textarea vazia.
+  if (trimmed.length === 0 || trimmed.toUpperCase() === "NULL") return null;
+
+  const dataType = column.data_type.toLowerCase();
+
+  if (/(^|[^a-z])bool/.test(dataType)) {
+    if (trimmed.toLowerCase() === "true") return true;
+    if (trimmed.toLowerCase() === "false") return false;
+  }
+
+  // Inteiros: envia como number quando cabe em i64 com precisão; caso contrário
+  // mantém como string para evitar perda de precisão (Postgres aceita ambos).
+  if (/(^|[^a-z])(int|serial|smallint|bigint)/.test(dataType)) {
+    if (/^-?\d+$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (Number.isSafeInteger(n)) return n;
+      return trimmed; // bigint fora do range seguro -> mantém string
+    }
+  }
+
+  // Floats: number quando parseável.
+  if (/(double|real|float)/.test(dataType)) {
+    const asNumber = Number(trimmed);
+    if (Number.isFinite(asNumber)) return asNumber;
+  }
+
+  // Numeric/decimal: sempre mantém como string para preservar precisão.
+  if (/(numeric|decimal)/.test(dataType)) {
+    return trimmed;
+  }
+
+  if (dataType.includes("json")) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+
+  // Arrays PG (ex.: int[], text[]). Aceita ambas formas:
+  //   - JSON `[1,2,3]`        -> parse como JSON, backend emite literal PG array.
+  //   - Literal PG `{1,2,3}`  -> enviado como string; backend faz cast ao tipo do elemento.
+  const udt = column.udt_name?.toLowerCase() ?? "";
+  const isArrayColumn =
+    dataType === "array" || udt.startsWith("_") || dataType.endsWith("[]");
+  if (isArrayColumn) {
+    if (trimmed.startsWith("[")) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // JSON malformado cai no fallback string abaixo.
+      }
+    }
+    if (trimmed.startsWith("{")) {
+      // Literal PG. Mantém como string — backend trata ao montar o SQL.
+      return trimmed;
+    }
+  }
+
+  // Demais tipos (text, uuid, timestamp/timestamptz, date, time, bytea, inet, …)
+  // são enviados como string. O backend usa `typed_value_literal` e o Postgres
+  // faz o cast implícito para o tipo da coluna.
+  return raw;
+}
+
+function rowKeyFromPk(
+  pkColumns: string[],
+  row: RowRecord,
+  fallback: string,
+): string {
+  if (pkColumns.length === 0) return fallback;
+  const parts = pkColumns.map((column) => normalizeDisplay(row[column]));
+  return `pk:${parts.join("|")}`;
+}
+
+function getDefaultColumnWidth(column: SchemaColumn): number {
+  const name = column.name.toLowerCase();
+  const type = column.data_type.toLowerCase();
+  const udt = (column.udt_name ?? "").toLowerCase();
+
+  // Larguras compactas estilo Neon/Supabase - baseadas no conteúdo típico
+  if (/(^|_)id$/.test(name) || /(^|_)id_/.test(name)) return 140;
+  if (/(bool)/.test(type)) return 80;
+  if (/(timestamp|timestamptz)/.test(type)) return 170;
+  if (/(date)/.test(type)) return 100;
+  if (/(time)/.test(type)) return 90;
+  if (/(uuid)/.test(type)) return 220;
+  if (/(json|jsonb)/.test(type)) return 200;
+  if (/(int|serial|smallint)/.test(type)) return 90;
+  if (/(bigint)/.test(type)) return 120;
+  if (/(numeric|decimal)/.test(type)) return 120;
+  if (/(double|real|float)/.test(type)) return 110;
+  if (/(text|varchar|char)/.test(type)) return 150;
+  if (/(bytea)/.test(type)) return 180;
+  if (/(inet|cidr)/.test(type)) return 130;
+  if (/(macaddr)/.test(type)) return 110;
+  if (type === "array" || udt.startsWith("_") || type.endsWith("[]"))
+    return 180;
+  if (type === "user-defined" || type === "USER-DEFINED".toLowerCase())
+    return 140;
+
+  return 120;
 }
 
 export function TableDataEditor({
   connectionId,
   table,
-  listRows,
-  saveChanges,
-  truncate,
+  tableListRows,
+  tableSaveChanges,
+  tableTruncate,
+  tableFkLookup,
+  onOpenRelatedTable,
+  isSwitchingTable = false,
+  onRequestAddColumn,
+  onRequestDropColumn,
+  onRequestRenameColumn,
+  onRequestAlterColumnType,
+  onRequestSetColumnDefault,
+  onRequestSetColumnNullable,
 }: TableDataEditorProps) {
-  const [rowsResponse, setRowsResponse] = useState<TableRowsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const tableRef = useMemo<TableRef>(
+    () => ({ connectionId, schema: table.schema, table: table.name }),
+    [connectionId, table.name, table.schema],
+  );
+
+  const tableKey = `${connectionId}::${table.schema}.${table.name}`;
+
+  const queryClient = useQueryClient();
+
   const [isSaving, setIsSaving] = useState(false);
   const [isTruncating, setIsTruncating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(50);
-  const [sort, setSort] = useState<SortSpec[]>([]);
+  const defaultVisibleColumns = useMemo(
+    () => table.columns.map((column) => column.name),
+    [table.columns],
+  );
+  const defaultFilterColumn = table.columns[0]?.name ?? "";
+
+  type TableViewState = {
+    page: number;
+    pageSize: number;
+    sort: TableSort[];
+    filterColumn: string;
+    filterValue: string;
+    visibleColumns: string[];
+    columnWidths: Record<string, number>;
+  };
+
+  const viewStateByTableRef = useRef<Map<string, TableViewState>>(new Map());
+  const previousTableKeyRef = useRef<string>(tableKey);
+
+  const getInitialViewState = (): TableViewState => {
+    const saved = viewStateByTableRef.current.get(tableKey);
+    if (saved) return saved;
+    return {
+      page: 0,
+      pageSize: 50,
+      sort: [],
+      filterColumn: defaultFilterColumn,
+      filterValue: "",
+      visibleColumns: defaultVisibleColumns,
+      columnWidths: {},
+    };
+  };
+
+  const [page, setPage] = useState<number>(() => getInitialViewState().page);
+  const [pageSize, setPageSize] = useState<number>(
+    () => getInitialViewState().pageSize,
+  );
+  const [sort, setSort] = useState<TableSort[]>(
+    () => getInitialViewState().sort,
+  );
+  const [filterColumn, setFilterColumn] = useState<string>(
+    () => getInitialViewState().filterColumn,
+  );
+  const [filterValue, setFilterValue] = useState<string>(
+    () => getInitialViewState().filterValue,
+  );
+  const [showFilters, setShowFilters] = useState(false);
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(
+    () => getInitialViewState().visibleColumns,
+  );
+
+  const [draftInserts, setDraftInserts] = useState<RowRecord[]>([]);
+  const [draftUpdates, setDraftUpdates] = useState<
+    Record<string, RowUpdateDraft>
+  >({});
+  const [draftDeletes, setDraftDeletes] = useState<Record<string, DeleteDraft>>(
+    {},
+  );
 
   const [editingCell, setEditingCell] = useState<{
     rowKey: string;
@@ -124,133 +338,172 @@ export function TableDataEditor({
     insertIndex?: number;
   } | null>(null);
   const [editingValue, setEditingValue] = useState("");
+
+  const [fkOptions, setFkOptions] = useState<FkLookupResponse | null>(null);
+  const [isLoadingFk, setIsLoadingFk] = useState(false);
+
+  const [pendingTruncate, setPendingTruncate] = useState(false);
+  const [pendingBatchDelete, setPendingBatchDelete] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+
+  // Row selection
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const lastClickedRowRef = useRef<{ rowKey: string; index: number } | null>(
+    null,
+  );
+
+  // Column resizing
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const resizeRef = useRef<{
+    column: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  // Keyboard navigation – focused cell
   const [focusedCell, setFocusedCell] = useState<{
     rowKey: string;
     column: string;
   } | null>(null);
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterColumn, setFilterColumn] = useState<string>(table.columns[0]?.name ?? "");
-  const [filterValue, setFilterValue] = useState<string>("");
-  const suppressInlineEditorMouseUpRef = useRef(false);
 
-  // Draft states
-  const [draftInserts, setDraftInserts] = useState<RowRecord[]>([]);
-  const [draftUpdates, setDraftUpdates] = useState<Record<string, UpdateDraft>>({});
-  const [draftDeletes, setDraftDeletes] = useState<Record<string, DeleteDraft>>({});
+  const liveViewStateRef = useRef({
+    page,
+    pageSize,
+    sort,
+    filterColumn,
+    filterValue,
+    visibleColumns,
+    columnWidths,
+  });
+  liveViewStateRef.current = {
+    page,
+    pageSize,
+    sort,
+    filterColumn,
+    filterValue,
+    visibleColumns,
+    columnWidths,
+  };
 
-  // Editing state
+  if (previousTableKeyRef.current !== tableKey) {
+    viewStateByTableRef.current.set(
+      previousTableKeyRef.current,
+      liveViewStateRef.current,
+    );
 
-  // Selection state
-  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set());
-
-  // Dialog states
-  const [pendingBatchDelete, setPendingBatchDelete] = useState(false);
-  const [pendingTruncate, setPendingTruncate] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-
-  const columnMap = useMemo(() => {
-    const map = new Map<string, SchemaColumn>();
-    for (const col of table.columns) {
-      map.set(col.name, col);
+    const saved = viewStateByTableRef.current.get(tableKey);
+    if (saved) {
+      setPage(saved.page);
+      setPageSize(saved.pageSize);
+      setSort(saved.sort);
+      setFilterColumn(saved.filterColumn);
+      setFilterValue(saved.filterValue);
+      setVisibleColumns(saved.visibleColumns);
+      setColumnWidths(saved.columnWidths);
+    } else {
+      setPage(0);
+      setPageSize(50);
+      setSort([]);
+      setFilterColumn(defaultFilterColumn);
+      setFilterValue("");
+      setVisibleColumns(defaultVisibleColumns);
+      setColumnWidths({});
     }
-    return map;
-  }, [table.columns]);
 
-  const primaryKey = useMemo(() => rowsResponse?.primaryKey ?? [], [rowsResponse]);
-
-  const loadRows = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await listRows({
-        connectionId,
-        schema: table.schema,
-        table: table.name,
-        page: page + 1,
-        pageSize,
-      });
-      setRowsResponse(response);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load rows");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [connectionId, table.schema, table.name, page, pageSize, listRows]);
-
-  useEffect(() => {
-    loadRows();
-  }, [loadRows]);
-
-  // Reset page when table changes
-  useEffect(() => {
-    setPage(0);
     setDraftInserts([]);
     setDraftUpdates({});
     setDraftDeletes({});
+    setError(null);
     setSelectedRowKeys(new Set());
-    setVisibleColumns(table.columns.map((c) => c.name));
-  }, [table.schema, table.name, table.columns]);
+    setFocusedCell(null);
 
-  const resolveColumnWidth = useCallback(
-    (columnName: string): number => {
-      return columnWidths[columnName] ?? 150;
-    },
-    [columnWidths],
-  );
+    previousTableKeyRef.current = tableKey;
+  }
+
+  const deferredFilterValue = useDeferredValue(filterValue);
+
+  const serverFilters = useMemo<TableFilter[]>(() => {
+    if (!deferredFilterValue.trim() || !filterColumn) return [];
+    return [
+      {
+        column: filterColumn,
+        operator: "contains",
+        value: deferredFilterValue.trim(),
+      },
+    ];
+  }, [filterColumn, deferredFilterValue]);
+
+  const {
+    data: rowsResponse = null,
+    isFetching: isLoading,
+    error: rowsError,
+  } = useQuery({
+    queryKey: [
+      "table-rows",
+      connectionId,
+      table.schema,
+      table.name,
+      page,
+      pageSize,
+      sort,
+      serverFilters,
+    ],
+    queryFn: () =>
+      tableListRows({
+        tableRef,
+        page: page + 1,
+        pageSize,
+        sort,
+        filters: serverFilters,
+      }),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+  });
+
+  useEffect(() => {
+    if (!rowsError) {
+      setError(null);
+      return;
+    }
+    setError(
+      rowsError instanceof Error
+        ? rowsError.message
+        : "Failed to load table rows",
+    );
+  }, [rowsError]);
+
+  // Clear selection when page, sort, or filters change
+  useEffect(() => {
+    setSelectedRowKeys(new Set());
+  }, [page, sort, serverFilters]);
+
+  const primaryKey = rowsResponse?.primaryKey ?? [];
+  const foreignKeys = rowsResponse?.foreignKeys ?? [];
+  const foreignKeysByColumn = useMemo(() => {
+    const map = new Map<string, SchemaForeignKey>();
+    for (const fk of foreignKeys) {
+      map.set(fk.column_name, fk);
+    }
+    return map;
+  }, [foreignKeys]);
+
+  const rows = rowsResponse?.rows ?? [];
+  const isBlockingTableLoading = isLoading && !rowsResponse;
 
   const effectiveRows = useMemo(() => {
-    if (!rowsResponse?.rows) return [];
-    let rows = rowsResponse.rows.map((row, index) => ({
-      row,
-      rowKey: primaryKey.length > 0
-        ? primaryKey.map((k) => String(row[k] ?? "null")).join("|")
-        : `row-${index}`,
-      index,
-    }));
-
-    // Apply client-side filtering
-    if (filterValue.trim() && filterColumn) {
-      const searchStr = filterValue.trim().toLowerCase();
-      rows = rows.filter(({ row }) => {
-        const val = row[filterColumn];
-        if (val === null || val === undefined) return false;
-        return String(val).toLowerCase().includes(searchStr);
-      });
-    }
-
-    // Apply client-side sorting
-    if (sort.length > 0) {
-      const { column, direction } = sort[0];
-      rows = [...rows].sort((a, b) => {
-        const aVal = a.row[column];
-        const bVal = b.row[column];
-
-        if (aVal === null || aVal === undefined) return 1;
-        if (bVal === null || bVal === undefined) return -1;
-
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
-          return direction === 'asc' ? aVal - bVal : bVal - aVal;
-        }
-
-        const aStr = String(aVal);
-        const bStr = String(bVal);
-        const comparison = aStr.localeCompare(bStr);
-        return direction === 'asc' ? comparison : -comparison;
-      });
-    }
-
-    return rows;
-  }, [rowsResponse, primaryKey, sort, filterColumn, filterValue]);
+    return rows
+      .map((row, index) => {
+        const key = rowKeyFromPk(primaryKey, row, `row:${index}`);
+        return { row, rowKey: key, index };
+      })
+      .filter((entry) => !draftDeletes[entry.rowKey]);
+  }, [draftDeletes, primaryKey, rows]);
 
   const effectiveRowsRef = useRef(effectiveRows);
   effectiveRowsRef.current = effectiveRows;
-
-  const totalPages = useMemo(() => {
-    const total = rowsResponse?.totalEstimate ?? 0;
-    return Math.max(Math.ceil(total / pageSize), 1);
-  }, [pageSize, rowsResponse?.totalEstimate]);
 
   const dirtyCounts = useMemo(
     () => ({
@@ -258,77 +511,288 @@ export function TableDataEditor({
       updates: Object.keys(draftUpdates).length,
       deletes: Object.keys(draftDeletes).length,
     }),
-    [draftInserts, draftUpdates, draftDeletes]
+    [draftDeletes, draftInserts.length, draftUpdates],
   );
 
-  const hasDraftChanges = dirtyCounts.inserts + dirtyCounts.updates + dirtyCounts.deletes > 0;
+  const hasDraftChanges =
+    dirtyCounts.inserts + dirtyCounts.updates + dirtyCounts.deletes > 0;
 
-  const allVisibleRowKeys = useMemo(
-    () => new Set(effectiveRows.map((r) => r.rowKey)),
-    [effectiveRows]
-  );
-
-  const isAllSelected =
-    allVisibleRowKeys.size > 0 &&
-    [...allVisibleRowKeys].every((key) => selectedRowKeys.has(key));
-
-  const isSomeSelected =
-    !isAllSelected && [...allVisibleRowKeys].some((key) => selectedRowKeys.has(key));
-
-  const toggleSelectAll = useCallback(() => {
-    if (isAllSelected) {
-      setSelectedRowKeys(new Set());
-    } else {
-      setSelectedRowKeys(new Set(allVisibleRowKeys));
+  const columnMap = useMemo(() => {
+    const map: Record<string, SchemaColumn> = {};
+    for (const column of table.columns) {
+      map[column.name] = column;
     }
-  }, [isAllSelected, allVisibleRowKeys]);
-
-  const handleAddDraftRecord = useCallback(() => {
-    const newRecord: RowRecord = {};
-    table.columns.forEach((col) => {
-      newRecord[col.name] = null;
-    });
-    setDraftInserts((current) => [...current, newRecord]);
+    return map;
   }, [table.columns]);
 
-  const handleExport = useCallback((format: "csv" | "json") => {
-    const dataToExport = [...draftInserts, ...effectiveRows.map(({ row }) => row)];
-    const columnsToExport = visibleColumns;
+  const [ddlColumnName, setDdlColumnName] = useState(
+    table.columns[0]?.name ?? "",
+  );
 
-    if (format === "csv") {
-      const headers = columnsToExport.join(",");
-      const rows = dataToExport.map((row) =>
-        columnsToExport
-          .map((col) => {
-            const val = row[col];
-            if (val === null || val === undefined) return "";
-            const str = String(val);
-            if (str.includes(",") || str.includes("\n") || str.includes(`"`)) {
-              return `"${str.replace(/"/g, `""`)}"`;
-            }
-            return str;
-          })
-          .join(","),
-      );
-      const csv = [headers, ...rows].join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${table.name}_export.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else if (format === "json") {
-      const json = JSON.stringify(dataToExport, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${table.name}_export.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+  useEffect(() => {
+    if (table.columns.length === 0) {
+      setDdlColumnName("");
+      return;
     }
-  }, [draftInserts, effectiveRows, visibleColumns, table.name]);
+    if (!table.columns.some((c) => c.name === ddlColumnName)) {
+      setDdlColumnName(table.columns[0].name);
+    }
+  }, [ddlColumnName, table.columns]);
+
+  const defaultColumnWidths = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const column of table.columns) {
+      map[column.name] = getDefaultColumnWidth(column);
+    }
+    return map;
+  }, [table.columns]);
+
+  const resolveColumnWidth = useCallback(
+    (columnName: string) =>
+      columnWidths[columnName] ?? defaultColumnWidths[columnName] ?? 200,
+    [columnWidths, defaultColumnWidths],
+  );
+
+  const findFkForColumn = useCallback(
+    (column: string): SchemaForeignKey | undefined =>
+      foreignKeysByColumn.get(column),
+    [foreignKeysByColumn],
+  );
+
+  const loadFkOptions = useCallback(
+    async (columnName: string, query: string) => {
+      const fk = findFkForColumn(columnName);
+      if (!fk) {
+        setFkOptions(null);
+        return;
+      }
+
+      setIsLoadingFk(true);
+      try {
+        const response = await tableFkLookup({
+          tableRef,
+          column: columnName,
+          query,
+          page: 0,
+          pageSize: 8,
+        });
+        setFkOptions(response);
+      } catch {
+        setFkOptions(null);
+      } finally {
+        setIsLoadingFk(false);
+      }
+    },
+    [findFkForColumn, tableFkLookup, tableRef],
+  );
+
+  const beginEditExistingCell = useCallback(
+    (
+      rowKey: string,
+      row: RowRecord,
+      columnName: string,
+      options?: { selectAllOnFocus?: boolean },
+    ) => {
+      if (primaryKey.length === 0) return;
+
+      const draftedValue = draftUpdates[rowKey]?.changes[columnName];
+      const currentValue = draftedValue ?? row[columnName];
+      suppressInlineEditorMouseUpRef.current =
+        options?.selectAllOnFocus ?? true;
+      setEditingCell({ rowKey, column: columnName, source: "existing" });
+      setEditingValue(normalizeDisplay(currentValue));
+      void loadFkOptions(columnName, normalizeDisplay(currentValue));
+    },
+    [primaryKey, draftUpdates, loadFkOptions],
+  );
+
+  const beginEditInsertCell = (
+    insertIndex: number,
+    columnName: string,
+    options?: { selectAllOnFocus?: boolean },
+  ) => {
+    const value = draftInserts[insertIndex]?.[columnName];
+    suppressInlineEditorMouseUpRef.current = options?.selectAllOnFocus ?? true;
+    setEditingCell({
+      rowKey: `insert:${insertIndex}`,
+      column: columnName,
+      source: "insert",
+      insertIndex,
+    });
+    setEditingValue(normalizeDisplay(value ?? ""));
+    void loadFkOptions(columnName, normalizeDisplay(value ?? ""));
+  };
+
+  const cancelEditing = () => {
+    setEditingCell(null);
+    setEditingValue("");
+    setFkOptions(null);
+  };
+
+  const keepCaretNavigationInsideInlineInput = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    // Do not let arrow navigation leak to the table/container while editing.
+    if (
+      event.key !== "ArrowLeft" &&
+      event.key !== "ArrowRight" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "ArrowDown"
+    ) {
+      return;
+    }
+
+    event.stopPropagation();
+
+    const input = event.currentTarget;
+    const start = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? 0;
+    const hasSelection = start !== end;
+
+    if (event.key === "ArrowLeft" && !hasSelection && start === 0) {
+      event.preventDefault();
+    }
+
+    if (
+      event.key === "ArrowRight" &&
+      !hasSelection &&
+      end >= input.value.length
+    ) {
+      event.preventDefault();
+    }
+
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+    }
+  };
+
+  const persistEditing = (baseRow?: RowRecord) => {
+    if (!editingCell) return;
+    const column = columnMap[editingCell.column];
+    if (!column) return;
+    const parsed = parseByType(editingValue, column);
+
+    if (editingCell.source === "insert") {
+      const insertIndex = editingCell.insertIndex ?? 0;
+      setDraftInserts((current) => {
+        const next = [...current];
+        const row = { ...(next[insertIndex] ?? {}) };
+        row[editingCell.column] = parsed;
+        next[insertIndex] = row;
+        return next;
+      });
+      cancelEditing();
+      return;
+    }
+
+    if (!baseRow) return;
+
+    const originalValue = baseRow[editingCell.column];
+    const unchanged = JSON.stringify(originalValue) === JSON.stringify(parsed);
+
+    setDraftUpdates((current) => {
+      const next = { ...current };
+      const existing = next[editingCell.rowKey] ?? {
+        primaryKey: Object.fromEntries(
+          primaryKey.map((pk) => [pk, baseRow[pk]]),
+        ),
+        changes: {},
+      };
+
+      const changes = { ...existing.changes };
+      if (unchanged) {
+        delete changes[editingCell.column];
+      } else {
+        changes[editingCell.column] = parsed;
+      }
+
+      if (Object.keys(changes).length === 0) {
+        delete next[editingCell.rowKey];
+      } else {
+        next[editingCell.rowKey] = { ...existing, changes };
+      }
+
+      return next;
+    });
+
+    cancelEditing();
+  };
+
+  /**
+   * Aplica um valor editado no popover de expansão para uma linha existente.
+   *
+   * Difere de `persistEditing` por receber `rawText` + `baseRow` diretamente,
+   * sem depender do estado `editingCell`/`editingValue` usado pela edição inline.
+   */
+  const applyExpandedEditToRow = useCallback(
+    (
+      rowKey: string,
+      baseRow: RowRecord,
+      columnName: string,
+      rawText: string,
+    ) => {
+      if (primaryKey.length === 0) return;
+      const column = columnMap[columnName];
+      if (!column) return;
+
+      const parsed = parseByType(rawText, column);
+      const originalValue = baseRow[columnName];
+      const unchanged =
+        JSON.stringify(originalValue) === JSON.stringify(parsed);
+
+      setDraftUpdates((current) => {
+        const next = { ...current };
+        const existing = next[rowKey] ?? {
+          primaryKey: Object.fromEntries(
+            primaryKey.map((pk) => [pk, baseRow[pk]]),
+          ),
+          changes: {},
+        };
+
+        const changes = { ...existing.changes };
+        if (unchanged) {
+          delete changes[columnName];
+        } else {
+          changes[columnName] = parsed;
+        }
+
+        if (Object.keys(changes).length === 0) {
+          delete next[rowKey];
+        } else {
+          next[rowKey] = { ...existing, changes };
+        }
+
+        return next;
+      });
+    },
+    [columnMap, primaryKey],
+  );
+
+  /** Aplica um valor do popover em uma linha de insert em rascunho. */
+  const applyExpandedEditToInsert = useCallback(
+    (insertIndex: number, columnName: string, rawText: string) => {
+      const column = columnMap[columnName];
+      if (!column) return;
+      const parsed = parseByType(rawText, column);
+
+      setDraftInserts((current) => {
+        const next = [...current];
+        const row = { ...(next[insertIndex] ?? {}) };
+        row[columnName] = parsed;
+        next[insertIndex] = row;
+        return next;
+      });
+    },
+    [columnMap],
+  );
+
+  const handleAddDraftRecord = () => {
+    const row: RowRecord = {};
+    for (const column of table.columns) {
+      row[column.name] = null;
+    }
+    setDraftInserts((current) => [...current, row]);
+  };
 
   const discardDrafts = () => {
     setDraftInserts([]);
@@ -360,43 +824,114 @@ export function TableDataEditor({
         primaryKey: entry.primaryKey,
       }));
 
-      const result = await saveChanges({
-        connectionId,
-        schema: table.schema,
-        table: table.name,
-        inserts,
-        updates,
-        deletes,
-      });
-
+      await tableSaveChanges({ tableRef, inserts, updates, deletes });
       discardDrafts();
-      await loadRows();
-      toast.success(`Saved: ${result.inserted} inserted, ${result.updated} updated, ${result.deleted} deleted`);
+      await queryClient.invalidateQueries({
+        queryKey: ["table-rows", connectionId, table.schema, table.name],
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save changes");
-      toast.error(err instanceof Error ? err.message : "Failed to save changes");
     } finally {
       setIsSaving(false);
     }
   };
 
+  const truncateSqlPreview = `TRUNCATE TABLE ${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)};`;
+
   const runTruncate = async () => {
     setIsTruncating(true);
     setError(null);
     try {
-      await truncate({ connectionId, schema: table.schema, table: table.name });
+      await tableTruncate(tableRef);
       discardDrafts();
-      await loadRows();
+      await queryClient.invalidateQueries({
+        queryKey: ["table-rows", connectionId, table.schema, table.name],
+      });
       setPendingTruncate(false);
       setConfirmText("");
-      toast.success("Table truncated");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to truncate table");
-      toast.error(err instanceof Error ? err.message : "Failed to truncate table");
     } finally {
       setIsTruncating(false);
     }
   };
+
+  const totalPages = useMemo(() => {
+    const total = rowsResponse?.totalEstimate ?? 0;
+    return Math.max(Math.ceil(total / pageSize), 1);
+  }, [pageSize, rowsResponse?.totalEstimate]);
+
+  // ── Row selection ──────────────────────────────────────────────
+  const allVisibleRowKeys = useMemo(
+    () => new Set(effectiveRows.map((r) => r.rowKey)),
+    [effectiveRows],
+  );
+
+  const isAllSelected =
+    allVisibleRowKeys.size > 0 &&
+    [...allVisibleRowKeys].every((key) => selectedRowKeys.has(key));
+
+  const isSomeSelected =
+    !isAllSelected &&
+    [...allVisibleRowKeys].some((key) => selectedRowKeys.has(key));
+
+  const toggleSelectAll = useCallback(() => {
+    if (isAllSelected) {
+      setSelectedRowKeys(new Set());
+    } else {
+      setSelectedRowKeys(new Set(allVisibleRowKeys));
+    }
+  }, [isAllSelected, allVisibleRowKeys]);
+
+  const handleRowClick = useCallback(
+    (rowKey: string, index: number, event: React.MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        target.closest(
+          "input,textarea,select,button,a,[contenteditable='true']",
+        )
+      ) {
+        return;
+      }
+      if (event.shiftKey && lastClickedRowRef.current) {
+        const start = Math.min(lastClickedRowRef.current.index, index);
+        const end = Math.max(lastClickedRowRef.current.index, index);
+        const rangeKeys = effectiveRows
+          .slice(start, end + 1)
+          .map((r) => r.rowKey);
+        setSelectedRowKeys((prev) => {
+          const next = new Set(prev);
+          for (const key of rangeKeys) next.add(key);
+          return next;
+        });
+      } else if (event.metaKey || event.ctrlKey) {
+        setSelectedRowKeys((prev) => {
+          const next = new Set(prev);
+          if (next.has(rowKey)) next.delete(rowKey);
+          else next.add(rowKey);
+          return next;
+        });
+      } else {
+        setSelectedRowKeys((prev) => {
+          // Clique simples na mesma linha alterna entre selecionar/desmarcar.
+          if (prev.size === 1 && prev.has(rowKey)) return new Set();
+          return new Set([rowKey]);
+        });
+      }
+      lastClickedRowRef.current = { rowKey, index };
+    },
+    [effectiveRows],
+  );
+
+  const clearSelectionOnOutsideClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-row-selection-scope="row"]')) return;
+      if (!focusedCell) return;
+      setFocusedCell(null);
+    },
+    [focusedCell],
+  );
 
   const batchDeleteSelected = useCallback(() => {
     if (primaryKey.length === 0) return;
@@ -405,96 +940,73 @@ export function TableDataEditor({
       const entry = effectiveRows.find((r) => r.rowKey === rowKey);
       if (!entry) continue;
       const row = entry.row;
-      const pk = Object.fromEntries(primaryKey.map((column) => [column, row[column]]));
-      toDelete[rowKey] = { rowKey, primaryKey: pk };
+      const pk = Object.fromEntries(
+        primaryKey.map((column) => [column, row[column]]),
+      );
+      const whereSql = primaryKey
+        .map((column) => {
+          const value = pk[column];
+          return value === null || value === undefined
+            ? `${quoteIdentifier(column)} IS NULL`
+            : `${quoteIdentifier(column)} = ${quoteValue(value)}`;
+        })
+        .join(" AND ");
+      toDelete[rowKey] = {
+        rowKey,
+        primaryKey: pk,
+        sqlPreview: `DELETE FROM ${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)} WHERE ${whereSql};`,
+      };
     }
     setDraftDeletes((current) => ({ ...current, ...toDelete }));
     setSelectedRowKeys(new Set());
-  }, [primaryKey, selectedRowKeys, effectiveRows]);
+  }, [primaryKey, selectedRowKeys, effectiveRows, table.schema, table.name]);
 
-  const parseByType = (rawText: string, column: SchemaColumn): unknown => {
-    if (rawText.trim() === "" || rawText.toLowerCase() === "null") return null;
-    if (column.data_type === "integer" || column.data_type === "bigint" || column.data_type === "numeric" || column.data_type === "real" || column.data_type === "double precision") {
-      const num = Number(rawText);
-      return Number.isNaN(num) ? rawText : num;
-    }
-    if (column.data_type === "boolean") return rawText.toLowerCase() === "true";
-    return rawText;
-  };
+  // ── Column resizing ───────────────────────────────────────────
+  const columnWidthsRef = useRef(columnWidths);
+  columnWidthsRef.current = columnWidths;
+  const defaultColumnWidthsRef = useRef(defaultColumnWidths);
+  defaultColumnWidthsRef.current = defaultColumnWidths;
+  const suppressInlineEditorMouseUpRef = useRef(false);
 
-  const beginEditCell = (rowKey: string, row: RowRecord, columnName: string, options?: { selectAllOnFocus?: boolean }) => {
-    if (primaryKey.length === 0) return;
-    const draftedValue = draftUpdates[rowKey]?.changes[columnName];
-    const currentValue = draftedValue ?? row[columnName];
-    suppressInlineEditorMouseUpRef.current = options?.selectAllOnFocus ?? true;
-    setEditingCell({ rowKey, column: columnName, source: "existing" });
-    setEditingValue(normalizeDisplay(currentValue));
-  };
-
-  const beginEditInsertCell = (insertIndex: number, columnName: string, options?: { selectAllOnFocus?: boolean }) => {
-    const value = draftInserts[insertIndex]?.[columnName];
-    suppressInlineEditorMouseUpRef.current = options?.selectAllOnFocus ?? true;
-    setEditingCell({ rowKey: `insert:${insertIndex}`, column: columnName, source: "insert", insertIndex });
-    setEditingValue(normalizeDisplay(value ?? ""));
-  };
-
-  const cancelEditing = () => {
-    setEditingCell(null);
-    setEditingValue("");
-  };
-
-  const keepCaretNavigationInsideInlineInput = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
-    event.stopPropagation();
-    const input = event.currentTarget;
-    const start = input.selectionStart ?? 0;
-    const end = input.selectionEnd ?? 0;
-    const hasSelection = start !== end;
-    if (event.key === "ArrowLeft" && !hasSelection && start === 0) event.preventDefault();
-    if (event.key === "ArrowRight" && !hasSelection && end >= input.value.length) event.preventDefault();
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") event.preventDefault();
-  };
-
-  const persistEditing = (baseRow?: RowRecord) => {
-    if (!editingCell) return;
-    const column = columnMap.get(editingCell.column);
-    if (!column) { cancelEditing(); return; }
-    const parsed = parseByType(editingValue, column);
-
-    if (editingCell.source === "insert") {
-      const insertIndex = editingCell.insertIndex ?? 0;
-      setDraftInserts((current) => {
-        const next = [...current];
-        const row = { ...(next[insertIndex] ?? {}) };
-        row[editingCell.column] = parsed;
-        next[insertIndex] = row;
-        return next;
-      });
-      cancelEditing();
-      return;
-    }
-
-    if (!baseRow) { cancelEditing(); return; }
-
-    const originalValue = baseRow[editingCell.column];
-    const unchanged = JSON.stringify(originalValue) === JSON.stringify(parsed);
-
-    setDraftUpdates((current) => {
-      const next = { ...current };
-      const existing = next[editingCell.rowKey] ?? {
-        primaryKey: Object.fromEntries(primaryKey.map((pk) => [pk, baseRow[pk]])),
-        changes: {},
+  const handleResizeMouseDown = useCallback(
+    (column: string, event: React.MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const currentWidth =
+        columnWidthsRef.current[column] ??
+        defaultColumnWidthsRef.current[column] ??
+        200;
+      resizeRef.current = {
+        column,
+        startX: event.clientX,
+        startWidth: currentWidth,
       };
-      const changes = { ...existing.changes };
-      if (unchanged) { delete changes[editingCell.column]; } else { changes[editingCell.column] = parsed; }
-      if (Object.keys(changes).length === 0) { delete next[editingCell.rowKey]; } else { next[editingCell.rowKey] = { ...existing, changes }; }
-      return next;
-    });
+      const handleMouseMove = (e: MouseEvent) => {
+        const resizeState = resizeRef.current;
+        if (!resizeState) return;
+        const delta = e.clientX - resizeState.startX;
+        const newWidth = Math.max(60, resizeState.startWidth + delta);
+        setColumnWidths((prev) => ({
+          ...prev,
+          [resizeState.column]: newWidth,
+        }));
+      };
+      const handleMouseUp = () => {
+        resizeRef.current = null;
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [],
+  );
 
-    cancelEditing();
-  };
-
-  // Keyboard navigation
+  // ── Keyboard navigation ───────────────────────────────────────
   const allNavigableCells = useMemo(() => {
     const cells: Array<{ rowKey: string; column: string }> = [];
     for (const { rowKey } of effectiveRows) {
@@ -507,11 +1019,12 @@ export function TableDataEditor({
 
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      if (editingCell) return;
+      if (editingCell) return; // let the Input handle its own keys
       if (!focusedCell) return;
 
       const currentIdx = allNavigableCells.findIndex(
-        (c) => c.rowKey === focusedCell.rowKey && c.column === focusedCell.column,
+        (c) =>
+          c.rowKey === focusedCell.rowKey && c.column === focusedCell.column,
       );
       if (currentIdx === -1) return;
 
@@ -529,7 +1042,10 @@ export function TableDataEditor({
           break;
         case "ArrowDown":
           event.preventDefault();
-          nextIdx = Math.min(currentIdx + colsCount, allNavigableCells.length - 1);
+          nextIdx = Math.min(
+            currentIdx + colsCount,
+            allNavigableCells.length - 1,
+          );
           break;
         case "ArrowUp":
           event.preventDefault();
@@ -537,12 +1053,25 @@ export function TableDataEditor({
           break;
         case "Tab":
           event.preventDefault();
-          if (event.shiftKey) { nextIdx = Math.max(currentIdx - 1, 0); } else { nextIdx = Math.min(currentIdx + 1, allNavigableCells.length - 1); }
+          if (event.shiftKey) {
+            nextIdx = Math.max(currentIdx - 1, 0);
+          } else {
+            nextIdx = Math.min(currentIdx + 1, allNavigableCells.length - 1);
+          }
           break;
         case "Enter": {
           event.preventDefault();
-          const entry = effectiveRowsRef.current.find((r) => r.rowKey === focusedCell.rowKey);
-          if (entry) beginEditCell(focusedCell.rowKey, entry.row, focusedCell.column, { selectAllOnFocus: false });
+          // Enter on a focused cell starts editing
+          const entry = effectiveRowsRef.current.find(
+            (r) => r.rowKey === focusedCell.rowKey,
+          );
+          if (entry)
+            beginEditExistingCell(
+              focusedCell.rowKey,
+              entry.row,
+              focusedCell.column,
+              { selectAllOnFocus: false },
+            );
           return;
         }
         case "Escape":
@@ -556,31 +1085,84 @@ export function TableDataEditor({
       const next = allNavigableCells[nextIdx];
       if (next) setFocusedCell(next);
     },
-    [editingCell, focusedCell, allNavigableCells, visibleColumns.length, beginEditCell],
+    [
+      editingCell,
+      focusedCell,
+      allNavigableCells,
+      visibleColumns.length,
+      beginEditExistingCell,
+    ],
   );
 
-  const normalizeDisplay = (value: unknown): string => {
-    if (value === null || value === undefined) return "NULL";
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
-  };
+  // ── Export CSV / JSON ──────────────────────────────────────────
+  const exportData = useCallback(
+    (format: "csv" | "json") => {
+      const dataRows = effectiveRows.map(({ row }) => {
+        const obj: Record<string, unknown> = {};
+        for (const col of visibleColumns) {
+          obj[col] = row[col] ?? null;
+        }
+        return obj;
+      });
+
+      let content: string;
+      let mimeType: string;
+      let extension: string;
+
+      if (format === "json") {
+        content = JSON.stringify(dataRows, null, 2);
+        mimeType = "application/json";
+        extension = "json";
+      } else {
+        const csvEscape = (v: unknown): string => {
+          const s = normalizeDisplay(v);
+          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+            return `"${s.replaceAll('"', '""')}"`;
+          }
+          return s;
+        };
+        const header = visibleColumns.join(",");
+        const rows = dataRows.map((row) =>
+          visibleColumns.map((col) => csvEscape(row[col])).join(","),
+        );
+        content = [header, ...rows].join("\n");
+        mimeType = "text/csv";
+        extension = "csv";
+      }
+
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${table.schema}_${table.name}.${extension}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    [effectiveRows, visibleColumns, table.schema, table.name],
+  );
 
   return (
-    <div className="h-full flex flex-col min-h-0">
-      {/* Toolbar */}
+    <div
+      className="h-full flex flex-col min-h-0"
+      onClickCapture={clearSelectionOnOutsideClick}
+    >
       <div className="border-b px-3 py-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowFilters((v) => !v)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters((v) => !v)}
+          >
             <Filter className="h-3.5 w-3.5" />
             Filters
           </Button>
 
           <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="outline" size="sm">
-                <Columns3 className="h-3.5 w-3.5" />
-                Columns
-              </Button>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" size="sm" />}
+            >
+              <Columns3 className="h-3.5 w-3.5" />
+              Columns
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-48">
               {table.columns.map((column) => (
@@ -605,23 +1187,97 @@ export function TableDataEditor({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="outline" size="sm">
-                <Download className="h-3.5 w-3.5" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => handleExport("csv")}>Export as CSV</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport("json")}>Export as JSON</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {(onRequestDropColumn ||
+            onRequestRenameColumn ||
+            onRequestAlterColumnType ||
+            onRequestSetColumnDefault ||
+            onRequestSetColumnNullable) && (
+            <div className="flex items-center gap-2">
+              <Select
+                value={ddlColumnName}
+                onValueChange={(value) => {
+                  if (value) setDdlColumnName(value);
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs w-auto min-w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {table.columns.map((column) => (
+                    <SelectItem key={column.name} value={column.name}>
+                      {column.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button variant="outline" size="sm" />}
+                >
+                  <Wand className="h-3.5 w-3.5" />
+                  Column DDL
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem
+                    disabled={!ddlColumnName || !onRequestRenameColumn}
+                    onClick={() =>
+                      ddlColumnName && onRequestRenameColumn?.(ddlColumnName)
+                    }
+                  >
+                    Rename column
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!ddlColumnName || !onRequestAlterColumnType}
+                    onClick={() => {
+                      const column = columnMap[ddlColumnName];
+                      if (column) onRequestAlterColumnType?.(column);
+                    }}
+                  >
+                    Alter column type
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!ddlColumnName || !onRequestSetColumnDefault}
+                    onClick={() => {
+                      const column = columnMap[ddlColumnName];
+                      if (column) onRequestSetColumnDefault?.(column);
+                    }}
+                  >
+                    Set / Drop default
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!ddlColumnName || !onRequestSetColumnNullable}
+                    onClick={() => {
+                      const column = columnMap[ddlColumnName];
+                      if (column) onRequestSetColumnNullable?.(column);
+                    }}
+                  >
+                    Set / Drop NOT NULL
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!ddlColumnName || !onRequestDropColumn}
+                    onClick={() =>
+                      ddlColumnName && onRequestDropColumn?.(ddlColumnName)
+                    }
+                  >
+                    Drop column
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
 
           <Button variant="default" size="sm" onClick={handleAddDraftRecord}>
             <Plus className="h-3.5 w-3.5" />
             Add record
           </Button>
+
+          {onRequestAddColumn && (
+            <Button variant="outline" size="sm" onClick={onRequestAddColumn}>
+              <Plus className="h-3.5 w-3.5" />
+              Add column
+            </Button>
+          )}
 
           <Button
             variant="outline"
@@ -631,7 +1287,7 @@ export function TableDataEditor({
               setConfirmText("");
             }}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Wand className="h-3.5 w-3.5" />
             Truncate
           </Button>
 
@@ -646,26 +1302,57 @@ export function TableDataEditor({
               Delete ({selectedRowKeys.size})
             </Button>
           )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" size="sm" />}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export page
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => exportData("csv")}>
+                Export page as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportData("json")}>
+                Export page as JSON
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="flex items-center gap-2 text-xs">
-          <Badge variant="outline">{rowsResponse?.totalEstimate ?? 0} rows</Badge>
+          <Badge variant="outline">
+            {rowsResponse?.totalEstimate ?? 0} rows
+          </Badge>
           <Badge variant="outline">+{dirtyCounts.inserts}</Badge>
           <Badge variant="outline">~{dirtyCounts.updates}</Badge>
           <Badge variant="outline">-{dirtyCounts.deletes}</Badge>
-          {isLoading && (
+          {(isLoading || isSwitchingTable) && rowsResponse && (
             <Badge variant="secondary" className="gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Loading...
+              {isSwitchingTable ? "Loading..." : "Updating..."}
             </Badge>
           )}
-          <Button variant="outline" size="icon-sm" onClick={loadRows} disabled={isLoading}>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() =>
+              queryClient.invalidateQueries({
+                queryKey: [
+                  "table-rows",
+                  connectionId,
+                  table.schema,
+                  table.name,
+                ],
+              })
+            }
+          >
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
 
-      {/* Filters */}
       {showFilters && (
         <div className="border-b px-3 py-2 grid grid-cols-[220px_1fr] gap-2">
           <Select
@@ -690,8 +1377,8 @@ export function TableDataEditor({
           </Select>
           <Input
             value={filterValue}
-            onChange={(e) => {
-              setFilterValue(e.target.value);
+            onChange={(event) => {
+              setFilterValue(event.target.value);
               setPage(0);
             }}
             placeholder="Contains..."
@@ -699,24 +1386,27 @@ export function TableDataEditor({
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="px-3 py-2 text-xs text-destructive border-b">
           {error}
         </div>
       )}
 
-      {/* Table */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        {isLoading ? (
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {isBlockingTableLoading ? (
           <div className="h-full flex items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <Table className="min-h-full w-max table-fixed text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2" onKeyDown={handleTableKeyDown} tabIndex={0}>
-            <TableHeader className="sticky top-0 z-10 bg-muted/40 backdrop-blur-sm border-b-2 border-border">
+          <div className="h-full overflow-auto">
+            <Table
+              className="min-h-full w-max table-fixed text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
+              onKeyDown={handleTableKeyDown}
+              tabIndex={0}
+            >
+              <TableHeader className="sticky top-0 z-10 bg-muted/40 backdrop-blur-sm border-b-2 border-border">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="sticky left-0 z-5 w-12 min-w-12 border-r border-border bg-background px-2 py-1 text-center h-8">
+                <TableHead className="sticky left-0 z-[5] w-12 min-w-12 border-r border-border bg-background px-2 py-1 text-center h-8">
                   <div className="flex items-center justify-center">
                     {isAllSelected ? (
                       <Checkbox checked onCheckedChange={toggleSelectAll} />
@@ -731,13 +1421,17 @@ export function TableDataEditor({
                         </svg>
                       </button>
                     ) : (
-                      <Checkbox checked={false} onCheckedChange={toggleSelectAll} />
+                      <Checkbox
+                        checked={false}
+                        onCheckedChange={toggleSelectAll}
+                      />
                     )}
                   </div>
                 </TableHead>
                 {visibleColumns.map((columnName) => {
-                  const sorted = sort[0]?.column === columnName ? sort[0].direction : null;
-                  const column = columnMap.get(columnName);
+                  const sorted =
+                    sort[0]?.column === columnName ? sort[0].direction : null;
+                  const column = columnMap[columnName];
                   const width = resolveColumnWidth(columnName);
                   return (
                     <TableHead
@@ -770,33 +1464,10 @@ export function TableDataEditor({
                       {/* Resize handle */}
                       <div
                         className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-20"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const startX = e.clientX;
-                          const startWidth = resolveColumnWidth(columnName);
-
-                          const handleMouseMove = (moveEvent: MouseEvent) => {
-                            const deltaX = moveEvent.clientX - startX;
-                            const newWidth = Math.max(80, startWidth + deltaX);
-                            setColumnWidths((prev) => ({
-                              ...prev,
-                              [columnName]: newWidth,
-                            }));
-                          };
-
-                          const handleMouseUp = () => {
-                            document.removeEventListener("mousemove", handleMouseMove);
-                            document.removeEventListener("mouseup", handleMouseUp);
-                            document.body.style.cursor = "";
-                            document.body.style.userSelect = "";
-                          };
-
-                          document.addEventListener("mousemove", handleMouseMove);
-                          document.addEventListener("mouseup", handleMouseUp);
-                          document.body.style.cursor = "col-resize";
-                          document.body.style.userSelect = "none";
-                        }}
+                        onMouseDown={(e) =>
+                          handleResizeMouseDown(columnName, e)
+                        }
+                        onClick={(e) => e.stopPropagation()}
                       />
                     </TableHead>
                   );
@@ -804,10 +1475,12 @@ export function TableDataEditor({
               </TableRow>
             </TableHeader>
             <TableBody className="align-top">
-              {/* Draft inserts */}
               {draftInserts.map((row, insertIndex) => (
-                <TableRow key={`insert:${insertIndex}`} className="bg-emerald-500/5 hover:bg-emerald-500/10">
-                  <TableCell className="sticky left-0 z-1 w-12 min-w-12 border-r border-border bg-background px-2 py-0.5 text-center text-muted-foreground h-7">
+                <TableRow
+                  key={`insert:${insertIndex}`}
+                  className="bg-emerald-500/5 hover:bg-emerald-500/10"
+                >
+                  <TableCell className="sticky left-0 z-[1] w-12 min-w-12 border-r border-border bg-background px-2 py-0.5 text-center text-muted-foreground h-7">
                     N
                   </TableCell>
                   {visibleColumns.map((columnName) => {
@@ -816,17 +1489,18 @@ export function TableDataEditor({
                       editingCell.insertIndex === insertIndex &&
                       editingCell.column === columnName;
                     const value = row[columnName];
-                    const column = columnMap.get(columnName);
-                    const width = resolveColumnWidth(columnName);
                     const isFocusedInsert =
                       focusedCell?.rowKey === `insert:${insertIndex}` &&
                       focusedCell?.column === columnName;
+                    const width = resolveColumnWidth(columnName);
                     return (
                       <TableCell
                         key={`insert:${insertIndex}:${columnName}`}
                         className={`group/cell relative truncate font-mono align-middle border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocusedInsert ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
                         style={{ width, minWidth: width, maxWidth: width }}
-                        onDoubleClick={() => beginEditInsertCell(insertIndex, columnName)}
+                        onDoubleClick={() =>
+                          beginEditInsertCell(insertIndex, columnName)
+                        }
                         onClick={() =>
                           setFocusedCell({
                             rowKey: `insert:${insertIndex}`,
@@ -842,33 +1516,47 @@ export function TableDataEditor({
                             <Input
                               autoFocus
                               value={editingValue}
-                              onChange={(e) => setEditingValue(e.target.value)}
-                              onBlur={() => persistEditing()}
-                              onFocus={(e) => {
-                                if (suppressInlineEditorMouseUpRef.current) e.currentTarget.select();
+                              onChange={(event) => {
+                                setEditingValue(event.target.value);
+                                void loadFkOptions(
+                                  columnName,
+                                  event.target.value,
+                                );
                               }}
-                              onMouseUp={(e) => {
-                                if (!suppressInlineEditorMouseUpRef.current) return;
-                                e.preventDefault();
+                              onBlur={() => persistEditing()}
+                              onFocus={(event) => {
+                                if (!suppressInlineEditorMouseUpRef.current)
+                                  return;
+                                event.currentTarget.select();
+                              }}
+                              onMouseUp={(event) => {
+                                if (!suppressInlineEditorMouseUpRef.current)
+                                  return;
+                                event.preventDefault();
                                 suppressInlineEditorMouseUpRef.current = false;
                               }}
-                              onKeyDown={(e) => {
-                                keepCaretNavigationInsideInlineInput(e);
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
+                              onKeyDown={(event) => {
+                                keepCaretNavigationInsideInlineInput(event);
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
                                   persistEditing();
-                                  const colIdx = visibleColumns.indexOf(columnName);
-                                  if (colIdx >= 0 && colIdx < visibleColumns.length - 1) {
+                                  // Advance to next column in the same insert row
+                                  const colIdx =
+                                    visibleColumns.indexOf(columnName);
+                                  if (
+                                    colIdx >= 0 &&
+                                    colIdx < visibleColumns.length - 1
+                                  ) {
                                     setFocusedCell({
                                       rowKey: `insert:${insertIndex}`,
                                       column: visibleColumns[colIdx + 1],
                                     });
                                   }
                                 }
-                                if (e.key === "Escape") cancelEditing();
+                                if (event.key === "Escape") cancelEditing();
                               }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono text-xs! leading-4 shadow-none focus-visible:ring-0"
+                              onMouseDown={(event) => event.stopPropagation()}
+                              className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono !text-xs leading-4 md:!text-xs shadow-none focus-visible:ring-0"
                             />
                           </div>
                         ) : (
@@ -884,25 +1572,25 @@ export function TableDataEditor({
                             </span>
                             <CellExpandPopover
                               columnName={columnName}
-                              column={column}
+                              column={columnMap[columnName]}
                               initialValue={value}
-                              onSave={(rawText) => {
-                                if (!column) return;
-                                const parsed = parseByType(rawText, column);
-                                setDraftInserts((current) => {
-                                  const next = [...current];
-                                  next[insertIndex] = { ...next[insertIndex], [columnName]: parsed };
-                                  return next;
-                                });
-                              }}
+                              onSave={(rawText) =>
+                                applyExpandedEditToInsert(
+                                  insertIndex,
+                                  columnName,
+                                  rawText,
+                                )
+                              }
                               trigger={
                                 <button
                                   type="button"
                                   aria-label={`Expand ${columnName}`}
                                   title="Expand (open editor)"
-                                  onClick={(e) => e.stopPropagation()}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-popup-open:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onMouseDown={(event) =>
+                                    event.stopPropagation()
+                                  }
+                                  className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
                                 >
                                   <Expand className="h-3 w-3" />
                                 </button>
@@ -916,53 +1604,69 @@ export function TableDataEditor({
                 </TableRow>
               ))}
 
-              {/* Existing rows */}
-              {effectiveRows.map(({ row, rowKey }) => {
+              {effectiveRows.map(({ row, rowKey, index }) => {
                 const isSelected = selectedRowKeys.has(rowKey);
                 const isRowUpdated = !!draftUpdates[rowKey];
-                const isRowDeleted = !!draftDeletes[rowKey];
-
-                if (isRowDeleted) return null;
-
+                const selectionCellBackground = isSelected
+                  ? "bg-muted"
+                  : isRowUpdated
+                    ? "bg-background"
+                    : index % 2 === 1
+                      ? "bg-background"
+                      : "bg-background";
                 return (
                   <TableRow
                     key={rowKey}
-                    className={`${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : ""} hover:bg-muted/30`}
+                    data-row-selection-scope="row"
+                    className={`${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : index % 2 === 1 ? "bg-muted/30" : ""}`}
+                    onClick={(e) => handleRowClick(rowKey, index, e)}
                   >
-                    <TableCell className="sticky left-0 z-1 w-12 min-w-12 border-r border-border bg-background px-2 py-0.5 text-center h-7">
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => {
-                          setSelectedRowKeys((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(rowKey)) next.delete(rowKey);
-                            else next.add(rowKey);
-                            return next;
-                          });
-                        }}
-                      />
+                    <TableCell
+                      className={`sticky left-0 z-[1] w-12 min-w-12 border-r border-border px-2 ${selectionCellBackground}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => {
+                            setSelectedRowKeys((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(rowKey)) next.delete(rowKey);
+                              else next.add(rowKey);
+                              return next;
+                            });
+                          }}
+                        />
+                      </div>
                     </TableCell>
                     {visibleColumns.map((columnName) => {
-                      const draftValue = draftUpdates[rowKey]?.changes[columnName];
-                      const effectiveValue = draftValue !== undefined ? draftValue : row[columnName];
+                      const draftValue =
+                        draftUpdates[rowKey]?.changes[columnName];
+                      const effectiveValue = draftValue ?? row[columnName];
                       const isEditing =
-                        editingCell?.source === "existing" && editingCell?.rowKey === rowKey && editingCell?.column === columnName;
-                      const column = columnMap.get(columnName);
-                      const width = resolveColumnWidth(columnName);
+                        editingCell?.source === "existing" &&
+                        editingCell.rowKey === rowKey &&
+                        editingCell.column === columnName;
                       const isFocused =
-                        focusedCell?.rowKey === rowKey && focusedCell?.column === columnName;
+                        focusedCell?.rowKey === rowKey &&
+                        focusedCell?.column === columnName;
+                      const fk = findFkForColumn(columnName);
+                      const isNull =
+                        effectiveValue === null || effectiveValue === undefined;
+                      const width = resolveColumnWidth(columnName);
 
                       return (
                         <TableCell
                           key={`${rowKey}:${columnName}`}
-                          className={`group/cell relative truncate font-mono align-middle border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocused ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
+                          className={`group/cell relative font-mono align-middle truncate border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocused ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
                           style={{ width, minWidth: width, maxWidth: width }}
-                          onDoubleClick={() => beginEditCell(rowKey, row, columnName)}
-                          onClick={() => {
-                            setFocusedCell({
-                              rowKey,
-                              column: columnName,
-                            });
+                          title={normalizeDisplay(effectiveValue)}
+                          onDoubleClick={() =>
+                            beginEditExistingCell(rowKey, row, columnName)
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFocusedCell({ rowKey, column: columnName });
                           }}
                         >
                           {isEditing ? (
@@ -973,27 +1677,80 @@ export function TableDataEditor({
                               <Input
                                 autoFocus
                                 value={editingValue}
-                                onChange={(e) => setEditingValue(e.target.value)}
-                                onBlur={() => persistEditing(row)}
-                                onFocus={(e) => {
-                                  if (suppressInlineEditorMouseUpRef.current) e.currentTarget.select();
+                                onChange={(event) => {
+                                  setEditingValue(event.target.value);
+                                  void loadFkOptions(
+                                    columnName,
+                                    event.target.value,
+                                  );
                                 }}
-                                onMouseUp={(e) => {
-                                  if (!suppressInlineEditorMouseUpRef.current) return;
-                                  e.preventDefault();
+                                onBlur={() => persistEditing(row)}
+                                onFocus={(event) => {
+                                  if (!suppressInlineEditorMouseUpRef.current)
+                                    return;
+                                  event.currentTarget.select();
+                                }}
+                                onMouseUp={(event) => {
+                                  if (!suppressInlineEditorMouseUpRef.current)
+                                    return;
+                                  event.preventDefault();
                                   suppressInlineEditorMouseUpRef.current = false;
                                 }}
-                                onKeyDown={(e) => {
-                                  keepCaretNavigationInsideInlineInput(e);
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
+                                onKeyDown={(event) => {
+                                  keepCaretNavigationInsideInlineInput(event);
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
                                     persistEditing(row);
+                                    // Advance focus to next cell after saving
+                                    const cellIdx = allNavigableCells.findIndex(
+                                      (c) =>
+                                        c.rowKey === rowKey &&
+                                        c.column === columnName,
+                                    );
+                                    const next =
+                                      cellIdx >= 0 &&
+                                      cellIdx < allNavigableCells.length - 1
+                                        ? allNavigableCells[cellIdx + 1]
+                                        : null;
+                                    if (
+                                      next &&
+                                      effectiveRowsRef.current.some(
+                                        (r) => r.rowKey === next.rowKey,
+                                      )
+                                    ) {
+                                      setFocusedCell(next);
+                                    }
                                   }
-                                  if (e.key === "Escape") cancelEditing();
+                                  if (event.key === "Escape") cancelEditing();
                                 }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono text-xs! leading-4 shadow-none focus-visible:ring-0"
+                                onMouseDown={(event) => event.stopPropagation()}
+                                className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono !text-xs leading-4 md:!text-xs shadow-none focus-visible:ring-0"
                               />
+                              {fk && (
+                                <div className="absolute left-0 top-full z-30 mt-1 max-h-24 min-w-[220px] overflow-auto rounded-md border bg-background shadow-lg">
+                                  {isLoadingFk && (
+                                    <div className="p-1 text-[10px] text-muted-foreground">
+                                      Loading...
+                                    </div>
+                                  )}
+                                  {!isLoadingFk &&
+                                    fkOptions?.options.map((option, idx) => (
+                                      <button
+                                        key={`${idx}:${option.label}`}
+                                        type="button"
+                                        className="w-full text-left px-2 py-1 text-[10px] hover:bg-muted"
+                                        onMouseDown={(event) => {
+                                          event.preventDefault();
+                                          setEditingValue(
+                                            normalizeDisplay(option.value),
+                                          );
+                                        }}
+                                      >
+                                        {option.label}
+                                      </button>
+                                    ))}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <>
@@ -1001,48 +1758,53 @@ export function TableDataEditor({
                                 className={`block truncate whitespace-nowrap ${
                                   draftValue !== undefined
                                     ? "text-amber-700 dark:text-amber-400"
-                                    : effectiveValue === null
+                                    : isNull
                                       ? "italic text-muted-foreground/60"
                                       : ""
                                 }`}
                               >
                                 {normalizeDisplay(effectiveValue)}
+                                {fk ? (
+                                  <button
+                                    type="button"
+                                    className="ml-1 text-[10px] text-muted-foreground/60 underline-offset-2 hover:underline hover:text-muted-foreground"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onOpenRelatedTable?.(
+                                        fk.referenced_schema ?? table.schema,
+                                        fk.referenced_table,
+                                      );
+                                    }}
+                                  >
+                                    ({fk.referenced_table}.
+                                    {fk.referenced_column})
+                                  </button>
+                                ) : null}
                               </span>
+                              {/* Botão de expansão: aparece em hover ou com a célula focada. */}
                               <CellExpandPopover
                                 columnName={columnName}
-                                column={column}
+                                column={columnMap[columnName]}
                                 initialValue={effectiveValue}
-                                onSave={(rawText) => {
-                                  if (!column) return;
-                                  const parsed = parseByType(rawText, column);
-                                  const originalValue = row[columnName];
-                                  const unchanged =
-                                    JSON.stringify(originalValue) === JSON.stringify(parsed);
-
-                                  if (!unchanged) {
-                                    setDraftUpdates((current) => {
-                                      const next = { ...current };
-                                      const existing = next[rowKey] ?? {
-                                        primaryKey: Object.fromEntries(
-                                          primaryKey.map((pk) => [pk, row[pk]]),
-                                        ),
-                                        changes: {},
-                                      };
-                                      const changes = { ...existing.changes };
-                                      changes[columnName] = parsed;
-                                      next[rowKey] = { ...existing, changes };
-                                      return next;
-                                    });
-                                  }
-                                }}
+                                readOnly={primaryKey.length === 0}
+                                onSave={(rawText) =>
+                                  applyExpandedEditToRow(
+                                    rowKey,
+                                    row,
+                                    columnName,
+                                    rawText,
+                                  )
+                                }
                                 trigger={
                                   <button
                                     type="button"
                                     aria-label={`Expand ${columnName}`}
                                     title="Expand (open editor)"
-                                    onClick={(e) => e.stopPropagation()}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-popup-open:opacity-100 ${isFocused ? "opacity-100" : ""}`}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onMouseDown={(event) =>
+                                      event.stopPropagation()
+                                    }
+                                    className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocused ? "opacity-100" : ""}`}
                                   >
                                     <Expand className="h-3 w-3" />
                                   </button>
@@ -1058,21 +1820,21 @@ export function TableDataEditor({
               })}
 
               {effectiveRows.length === 0 && draftInserts.length === 0 && (
-                <TableRow>
+                <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={visibleColumns.length + 1}
-                    className="text-center py-8 text-muted-foreground border-r border-border"
+                    colSpan={Math.max(visibleColumns.length + 1, 1)}
+                    className="text-center py-8 text-muted-foreground/70 border-r-0"
                   >
                     No rows found on this page.
                   </TableCell>
                 </TableRow>
               )}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          </div>
         )}
       </div>
 
-      {/* Footer */}
       <div className="border-t px-3 py-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <Button
@@ -1094,7 +1856,9 @@ export function TableDataEditor({
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
-          <span className="text-xs text-muted-foreground ml-2">Rows per page</span>
+          <span className="text-xs text-muted-foreground ml-2">
+            Rows per page
+          </span>
           {[25, 50, 100].map((size) => (
             <Button
               key={size}
@@ -1136,20 +1900,23 @@ export function TableDataEditor({
         </div>
       </div>
 
-      {/* Batch Delete Dialog */}
-      <AlertDialog open={pendingBatchDelete} onOpenChange={setPendingBatchDelete}>
+      <AlertDialog
+        open={pendingBatchDelete}
+        onOpenChange={setPendingBatchDelete}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm batch delete</AlertDialogTitle>
             <AlertDialogDescription>
-              This will stage deletion of <strong>{selectedRowKeys.size} rows</strong>. Changes
-              are persisted only when you click <strong>Save Changes</strong>.
+              This will stage deletion of{" "}
+              <strong>{selectedRowKeys.size} rows</strong>. Changes are
+              persisted only when you click <strong>Save Changes</strong>.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
             <Input
               value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
+              onChange={(event) => setConfirmText(event.target.value)}
               placeholder={`Type ${table.name} to confirm`}
             />
           </div>
@@ -1169,7 +1936,6 @@ export function TableDataEditor({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Truncate Dialog */}
       <AlertDialog open={pendingTruncate} onOpenChange={setPendingTruncate}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1178,16 +1944,19 @@ export function TableDataEditor({
               This operation is immediate and removes all rows from the table.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
           <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">SQL preview</p>
             <pre className="text-[11px] bg-muted rounded-md p-2 overflow-auto">
-              TRUNCATE TABLE "{table.schema}"."{table.name}";
+              {truncateSqlPreview}
             </pre>
             <Input
               value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
+              onChange={(event) => setConfirmText(event.target.value)}
               placeholder={`Type ${table.name} to confirm`}
             />
           </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
@@ -1197,7 +1966,7 @@ export function TableDataEditor({
               {isTruncating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Trash2 className="h-3.5 w-3.5" />
+                <Database className="h-3.5 w-3.5" />
               )}
               Truncate
             </AlertDialogAction>

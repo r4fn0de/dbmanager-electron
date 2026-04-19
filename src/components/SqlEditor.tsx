@@ -11,8 +11,7 @@ import {
 import { useTheme } from "next-themes";
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
-import { QueryResults } from "./QueryResults";
+import { QueryResults } from "@/components/QueryResults";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +23,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Connection, QueryResult } from "@/ipc/db/types";
+import {
+  useSqlWorkspace,
+  type SqlExecutionLog,
+  type SqlHistoryEntry,
+  type SqlSavedQuery,
+} from "@/hooks/useSqlWorkspace";
+import "@/lib/monaco-loader";
+import type {
+  Connection,
+  QueryResult,
+} from "@/ipc/db/types";
 
 interface SqlEditorProps {
   connections: Connection[];
@@ -40,29 +49,6 @@ interface SqlEditorProps {
   } | null;
 }
 
-interface SqlDocument {
-  id: string | null;
-  title: string;
-  sql: string;
-  updatedAt: string;
-}
-
-interface SqlHistoryEntry {
-  id: string;
-  sql: string;
-  executedAt: string;
-  durationMs: number;
-  rowCount: number;
-  error: string | null;
-}
-
-interface SqlSavedQuery {
-  id: string;
-  title: string;
-  sql: string;
-  updatedAt: string;
-}
-
 const DEFAULT_SQL = `/*
 Try creating a sample table and querying it.
 */
@@ -71,11 +57,14 @@ SELECT now() as server_time;`;
 const MAX_HISTORY_PREVIEW = 140;
 const MAX_LOGS = 200;
 
-const STORAGE_KEY_HISTORY = "sql-history";
-const STORAGE_KEY_SAVED = "sql-saved-queries";
-const MAX_HISTORY = 50;
-
 type MonacoEditor = Parameters<OnMount>[0];
+
+interface SqlDocument {
+  id: string | null;
+  title: string;
+  sql: string;
+  updatedAt: string;
+}
 
 const MONACO_OPTIONS = {
   minimap: { enabled: false },
@@ -88,16 +77,18 @@ const MONACO_OPTIONS = {
   tabSize: 2,
 } as const;
 
+function previewSql(sql: string): string {
+  const normalized = sql.replace(/\s+/g, " ").trim();
+  if (normalized.length <= MAX_HISTORY_PREVIEW) return normalized;
+  return `${normalized.slice(0, MAX_HISTORY_PREVIEW)}...`;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
 
 function formatDuration(ms: number) {
   return `${Math.max(0, Math.round(ms))}ms`;
-}
-
-function newId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function newLogId(): string {
@@ -108,51 +99,6 @@ function newLogId(): string {
   );
 }
 
-interface SqlExecutionLog {
-  id: string;
-  level: "info" | "success" | "error";
-  message: string;
-  createdAt: string;
-  durationMs?: number;
-  rowCount?: number;
-}
-
-function loadHistory(): SqlHistoryEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(entries: SqlHistoryEntry[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(entries.slice(0, MAX_HISTORY)));
-  } catch {}
-}
-
-function loadSavedQueries(): SqlSavedQuery[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_SAVED);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSavedQueries(queries: SqlSavedQuery[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY_SAVED, JSON.stringify(queries));
-  } catch {}
-}
-
-function previewSql(sql: string): string {
-  const normalized = sql.replace(/\s+/g, " ").trim();
-  if (normalized.length <= 140) return normalized;
-  return `${normalized.slice(0, 140)}...`;
-}
-
 export function SqlEditor({
   connections,
   selectedConnection,
@@ -161,6 +107,15 @@ export function SqlEditor({
   showWorkspaceSidebar = true,
   loadRequest = null,
 }: SqlEditorProps) {
+  const {
+    savedQueries,
+    history,
+    saveQuery,
+    deleteQuery,
+    renameQuery,
+    appendHistory,
+  } = useSqlWorkspace(selectedConnection);
+
   const [doc, setDoc] = useState<SqlDocument>({
     id: null,
     title: "Untitled",
@@ -168,15 +123,17 @@ export function SqlEditor({
     updatedAt: nowIso(),
   });
 
-  const [activeSidebarTab, setActiveSidebarTab] = useState<"saved" | "history">("saved");
-  const [activeResultTab, setActiveResultTab] = useState<"result" | "logs">("result");
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"saved" | "history">(
+    "saved",
+  );
+  const [activeResultTab, setActiveResultTab] = useState<"result" | "logs">(
+    "result",
+  );
   const [searchText, setSearchText] = useState("");
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [lastResult, setLastResult] = useState<QueryResult | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
-  const [history, setHistory] = useState<SqlHistoryEntry[]>(loadHistory);
-  const [savedQueries, setSavedQueries] = useState<SqlSavedQuery[]>(loadSavedQueries);
   const [logs, setLogs] = useState<SqlExecutionLog[]>([]);
 
   const { resolvedTheme } = useTheme();
@@ -184,6 +141,7 @@ export function SqlEditor({
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<MonacoEditor | null>(null);
+  const executionAbort = useRef<AbortController | null>(null);
 
   const selectedConnectionMeta = useMemo(() => {
     const found = connections.find((conn) => conn.id === selectedConnection);
@@ -195,39 +153,49 @@ export function SqlEditor({
     };
   }, [connections, selectedConnection]);
 
-  // Load saved queries on mount
-  useEffect(() => {
-    setSavedQueries(loadSavedQueries());
-  }, []);
-
-  // Handle external load request
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run only when the load request key changes.
   useEffect(() => {
     if (!loadRequest) return;
     setDoc({
-      id: loadRequest.key.startsWith("saved:") ? loadRequest.key.replace("saved:", "") : null,
-      title: loadRequest.title,
+      id: null,
+      title: loadRequest.title || "Untitled",
       sql: loadRequest.sql,
       updatedAt: nowIso(),
     });
-    if (loadRequest.connectionId) {
+    if (
+      loadRequest.connectionId &&
+      loadRequest.connectionId !== selectedConnection
+    ) {
       onSelectConnection(loadRequest.connectionId);
     }
-  }, [loadRequest, onSelectConnection]);
+  }, [loadRequest?.key]);
+
+  useEffect(() => {
+    // Abort any in-flight execution on unmount.
+    return () => {
+      executionAbort.current?.abort();
+    };
+  }, []);
 
   const filteredSaved = useMemo(() => {
     const q = searchText.trim().toLowerCase();
     if (!q) return savedQueries;
+
     return savedQueries.filter(
-      (s) =>
-        s.title.toLowerCase().includes(q) || s.sql.toLowerCase().includes(q)
+      (entry) =>
+        entry.title.toLowerCase().includes(q) ||
+        entry.sql.toLowerCase().includes(q),
     );
   }, [savedQueries, searchText]);
 
   const filteredHistory = useMemo(() => {
     const q = searchText.trim().toLowerCase();
     if (!q) return history;
+
     return history.filter(
-      (h) => h.sql.toLowerCase().includes(q) || (h.error && h.error.toLowerCase().includes(q))
+      (entry) =>
+        entry.sqlPreview.toLowerCase().includes(q) ||
+        (entry.errorMessage ?? "").toLowerCase().includes(q),
     );
   }, [history, searchText]);
 
@@ -246,8 +214,72 @@ export function SqlEditor({
     [],
   );
 
-  const handleExecute = useCallback(async () => {
+  const setSql = useCallback((sql: string) => {
+    setDoc((current) => ({ ...current, sql, updatedAt: nowIso() }));
+  }, []);
+
+  const setTitle = useCallback((title: string) => {
+    setDoc((current) => ({ ...current, title, updatedAt: nowIso() }));
+  }, []);
+
+  const hydrateFromSaved = useCallback(
+    (query: SqlSavedQuery) => {
+      setDoc({
+        id: query.id,
+        title: query.title,
+        sql: query.sql,
+        updatedAt: query.updatedAt,
+      });
+      if (query.connectionId !== selectedConnection) {
+        onSelectConnection(query.connectionId);
+      }
+    },
+    [onSelectConnection, selectedConnection],
+  );
+
+  const hydrateFromHistory = useCallback(
+    (entry: SqlHistoryEntry) => {
+      setDoc((current) => ({
+        ...current,
+        id: null,
+        title: "Untitled",
+        sql: entry.executedSql,
+        updatedAt: nowIso(),
+      }));
+      if (entry.connectionId !== selectedConnection) {
+        onSelectConnection(entry.connectionId);
+      }
+    },
+    [onSelectConnection, selectedConnection],
+  );
+
+  const saveCurrentQuery = useCallback(async () => {
+    if (!selectedConnection) return;
+
+    const persisted = await saveQuery({
+      id: doc.id ?? undefined,
+      title: doc.title.trim() || "Untitled",
+      sql: doc.sql,
+      connectionId: selectedConnection,
+    });
+
+    if (persisted) {
+      setDoc((current) => ({
+        ...current,
+        id: persisted.id,
+        title: persisted.title,
+        updatedAt: persisted.updatedAt,
+      }));
+      appendLog({
+        level: "success",
+        message: `Saved query: ${persisted.title}`,
+      });
+    }
+  }, [appendLog, doc.id, doc.sql, doc.title, saveQuery, selectedConnection]);
+
+  const runSql = useCallback(async () => {
     if (!selectedConnection || !doc.sql.trim()) return;
+    if (executionAbort.current) return; // already running
 
     const editorInstance = editorRef.current;
     const selection = editorInstance?.getSelection();
@@ -259,143 +291,71 @@ export function SqlEditor({
     const sqlToRun = selectedText.length > 0 ? selectedText : doc.sql;
     if (!sqlToRun.trim()) return;
 
+    const controller = new AbortController();
+    executionAbort.current = controller;
+
     setIsExecuting(true);
     setLastError(null);
-    setLastResult(null);
     setActiveResultTab("result");
 
-    const start = performance.now();
+    const startedAt = performance.now();
     appendLog({ level: "info", message: "Running query..." });
 
     try {
       const result = await executeQuery(selectedConnection, sqlToRun);
-      const duration = performance.now() - start;
+      if (controller.signal.aborted) return;
+      const durationMs = performance.now() - startedAt;
 
       setLastResult(result);
-
-      // Add to history
-      const entry: SqlHistoryEntry = {
-        id: newId(),
-        sql: sqlToRun,
-        executedAt: nowIso(),
-        durationMs: Math.round(duration),
-        rowCount: result.row_count,
-        error: null,
-      };
-      setHistory((prev) => {
-        const next = [entry, ...prev];
-        saveHistory(next);
-        return next;
-      });
+      setLastError(null);
 
       appendLog({
         level: "success",
         message: `Query completed (${result.row_count} rows)`,
-        durationMs: duration,
+        durationMs,
         rowCount: result.row_count,
       });
 
-      toast.success(`Query executed in ${formatDuration(duration)}`);
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      const duration = performance.now() - start;
-      setLastError(error);
-
-      // Add failed execution to history
-      const entry: SqlHistoryEntry = {
-        id: newId(),
-        sql: sqlToRun,
-        executedAt: nowIso(),
-        durationMs: Math.round(duration),
-        rowCount: 0,
-        error,
-      };
-      setHistory((prev) => {
-        const next = [entry, ...prev];
-        saveHistory(next);
-        return next;
+      await appendHistory({
+        connectionId: selectedConnection,
+        sqlPreview: previewSql(sqlToRun),
+        executedSql: sqlToRun,
+        status: "success",
+        rowCount: result.row_count,
+        durationMs,
+        createdAt: nowIso(),
       });
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      const durationMs = performance.now() - startedAt;
+      const message = err instanceof Error ? err.message : "Unknown error";
 
+      setLastError(message);
       appendLog({
         level: "error",
-        message: error,
-        durationMs: duration,
+        message,
+        durationMs,
+      });
+
+      await appendHistory({
+        connectionId: selectedConnection,
+        sqlPreview: previewSql(sqlToRun),
+        executedSql: sqlToRun,
+        status: "error",
+        rowCount: 0,
+        durationMs,
+        createdAt: nowIso(),
+        errorMessage: message,
       });
 
       setActiveResultTab("logs");
-      toast.error(error);
     } finally {
+      if (executionAbort.current === controller) {
+        executionAbort.current = null;
+      }
       setIsExecuting(false);
     }
-  }, [selectedConnection, doc.sql, executeQuery, appendLog]);
-
-  const handleSave = useCallback(() => {
-    if (!doc.sql.trim()) return;
-
-    const title = doc.title?.trim() || "Untitled";
-    let nextSaved: SqlSavedQuery[];
-
-    if (doc.id) {
-      // Update existing
-      nextSaved = savedQueries.map((s) =>
-        s.id === doc.id
-          ? { ...s, sql: doc.sql, title, updatedAt: nowIso() }
-          : s
-      );
-    } else {
-      // Create new
-      const newSaved: SqlSavedQuery = {
-        id: newId(),
-        title,
-        sql: doc.sql,
-        updatedAt: nowIso(),
-      };
-      nextSaved = [newSaved, ...savedQueries];
-      setDoc((d) => ({ ...d, id: newSaved.id }));
-    }
-
-    setSavedQueries(nextSaved);
-    saveSavedQueries(nextSaved);
-    appendLog({
-      level: "success",
-      message: `Saved query: ${title}`,
-    });
-    toast.success("Query saved");
-  }, [doc, savedQueries, appendLog]);
-
-  const handleDeleteSaved = useCallback((id: string) => {
-    setSavedQueries((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-      saveSavedQueries(next);
-      return next;
-    });
-    if (doc.id === id) {
-      setDoc({ id: null, title: "Untitled", sql: doc.sql, updatedAt: nowIso() });
-    }
-  }, [doc.id, doc.sql]);
-
-  const handleLoadSaved = useCallback((saved: SqlSavedQuery) => {
-    setDoc({
-      id: saved.id,
-      title: saved.title,
-      sql: saved.sql,
-      updatedAt: saved.updatedAt,
-    });
-  }, []);
-
-  const handleLoadHistory = useCallback((entry: SqlHistoryEntry) => {
-    setDoc((d) => ({
-      ...d,
-      sql: entry.sql,
-      updatedAt: nowIso(),
-    }));
-  }, []);
-
-  const handleNew = useCallback(() => {
-    setDoc({ id: null, title: "Untitled", sql: "", updatedAt: nowIso() });
-    setLastResult(null);
-    setLastError(null);
-  }, []);
+  }, [appendHistory, appendLog, doc.sql, executeQuery, selectedConnection]);
 
   const handleEditorMount = useCallback<OnMount>((mounted) => {
     editorRef.current = mounted;
@@ -408,12 +368,12 @@ export function SqlEditor({
 
       if (event.key === "Enter") {
         event.preventDefault();
-        void handleExecute();
+        void runSql();
       }
 
       if (event.key.toLowerCase() === "s") {
         event.preventDefault();
-        void handleSave();
+        void saveCurrentQuery();
       }
 
       if (event.key.toLowerCase() === "k") {
@@ -421,10 +381,8 @@ export function SqlEditor({
         searchInputRef.current?.focus();
       }
     },
-    [handleExecute, handleSave],
+    [runSql, saveCurrentQuery],
   );
-
-  const hasContent = doc.sql.trim().length > 0;
 
   return (
     <section
@@ -483,7 +441,7 @@ export function SqlEditor({
                       <button
                         type="button"
                         className="w-full text-left"
-                        onClick={() => handleLoadSaved(entry)}
+                        onClick={() => hydrateFromSaved(entry)}
                       >
                         <p className="text-sm font-medium truncate">
                           {entry.title}
@@ -502,13 +460,7 @@ export function SqlEditor({
                               entry.title,
                             );
                             if (next?.trim()) {
-                              const updated = savedQueries.map((s) =>
-                                s.id === entry.id
-                                  ? { ...s, title: next.trim(), updatedAt: nowIso() }
-                                  : s,
-                              );
-                              setSavedQueries(updated);
-                              saveSavedQueries(updated);
+                              void renameQuery(entry.id, next.trim());
                             }
                           }}
                         >
@@ -517,7 +469,7 @@ export function SqlEditor({
                         <Button
                           variant="ghost"
                           size="icon-xs"
-                          onClick={() => handleDeleteSaved(entry.id)}
+                          onClick={() => void deleteQuery(entry.id)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -543,22 +495,24 @@ export function SqlEditor({
                       key={entry.id}
                       type="button"
                       className="w-full border rounded-md p-2 text-left hover:bg-muted/40"
-                      onClick={() => handleLoadHistory(entry)}
+                      onClick={() => hydrateFromHistory(entry)}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[11px] text-muted-foreground">
-                          {new Date(entry.executedAt).toLocaleString()}
+                          {new Date(entry.createdAt).toLocaleString()}
                         </p>
                         <Badge
                           variant={
-                            entry.error ? "destructive" : "outline"
+                            entry.status === "success"
+                              ? "outline"
+                              : "destructive"
                           }
                         >
-                          {entry.error ? "error" : "success"}
+                          {entry.status}
                         </Badge>
                       </div>
                       <p className="text-sm truncate mt-1">
-                        {previewSql(entry.sql)}
+                        {entry.sqlPreview}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
                         {formatDuration(entry.durationMs)} • {entry.rowCount}{" "}
@@ -583,16 +537,14 @@ export function SqlEditor({
             <Input
               className="w-[220px]"
               value={doc.title}
-              onChange={(event) =>
-                setDoc((d) => ({ ...d, title: event.target.value, updatedAt: nowIso() }))
-              }
+              onChange={(event) => setTitle(event.target.value)}
               placeholder="Untitled"
             />
 
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void handleSave()}
+              onClick={() => void saveCurrentQuery()}
             >
               <Save className="h-3.5 w-3.5" />
               Save
@@ -626,7 +578,7 @@ export function SqlEditor({
                 {selectedConnection ? "Ready" : "Disconnected"}
               </Badge>
               <Button
-                onClick={() => void handleExecute()}
+                onClick={() => void runSql()}
                 disabled={!selectedConnection || isExecuting || !doc.sql.trim()}
                 className="gap-2"
               >
@@ -647,9 +599,7 @@ export function SqlEditor({
                 defaultLanguage="sql"
                 value={doc.sql}
                 onMount={handleEditorMount}
-                onChange={(value) =>
-                  setDoc((d) => ({ ...d, sql: value || "", updatedAt: nowIso() }))
-                }
+                onChange={(value) => setSql(value || "")}
                 theme={monacoTheme}
                 options={MONACO_OPTIONS}
               />

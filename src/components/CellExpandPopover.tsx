@@ -3,6 +3,7 @@ import { AlertCircle, Check, Dices, Minus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import "@/lib/monaco-loader";
 import {
   Popover,
   PopoverContent,
@@ -960,7 +961,7 @@ export function CellExpandPopover({
               className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             />
             <p className="font-mono text-[10px] text-muted-foreground">
-              Network with /prefix (e.g. 10.0.0.0/8).
+              Network with required /prefix.
             </p>
           </div>
         );
@@ -978,9 +979,6 @@ export function CellExpandPopover({
               placeholder="AA:BB:CC:DD:EE:FF"
               className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             />
-            <p className="font-mono text-[10px] text-muted-foreground">
-              MAC address (AA:BB:CC:DD:EE:FF).
-            </p>
           </div>
         );
 
@@ -994,12 +992,12 @@ export function CellExpandPopover({
               onKeyDown={handleKeyDown}
               readOnly={readOnly}
               spellCheck={false}
-              placeholder="1 day 2 hours or P1DT2H"
+              placeholder="1 day 2 hours"
               className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             />
             <p className="font-mono text-[10px] text-muted-foreground">
-              ISO 8601 (e.g. <code>P1DT2H</code>) or textual (e.g.{" "}
-              <code>1 day 2 hours</code>).
+              Postgres interval, e.g. <code>1 day 2 hours</code>,{" "}
+              <code>-2 weeks</code>, or ISO <code>P1DT2H</code>.
             </p>
           </div>
         );
@@ -1014,12 +1012,14 @@ export function CellExpandPopover({
               onKeyDown={handleKeyDown}
               readOnly={readOnly}
               spellCheck={false}
-              placeholder="Enum value"
+              placeholder={column?.udt_name ?? "enum value"}
               className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             />
-            <p className="font-mono text-[10px] text-muted-foreground">
-              Enter an enum value. Backend will validate.
-            </p>
+            {column?.udt_name && (
+              <p className="font-mono text-[10px] text-muted-foreground">
+                Enum type: <code>{column.udt_name}</code>
+              </p>
+            )}
           </div>
         );
 
@@ -1034,6 +1034,7 @@ export function CellExpandPopover({
             readOnly={readOnly}
             spellCheck={false}
             className="h-[260px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            placeholder="empty string"
           />
         );
     }
@@ -1043,86 +1044,99 @@ export function CellExpandPopover({
   // Render
   // --------------------------------------------------------------------------
 
+  const statusText = readOnly
+    ? "Read-only (no primary key)"
+    : !hasChanges
+      ? "No changes"
+      : isNullDraft
+        ? "Will be set to NULL"
+        : "Unsaved changes";
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger>{trigger}</PopoverTrigger>
+      <PopoverTrigger render={trigger as React.ReactElement} />
       <PopoverContent
-        className="w-[400px] p-0"
-        align="start"
         side="bottom"
+        align="start"
+        sideOffset={4}
+        className="w-[min(560px,90vw)] gap-0 p-0"
       >
-        <div className="flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b px-3 py-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold">{columnName}</span>
-              {!nullable && (
-                <span className="text-[10px] text-muted-foreground">NOT NULL</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-mono text-xs font-medium">
+                {columnName}
+              </span>
+              {column?.data_type && (
+                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {column.data_type}
+                  {!nullable && (
+                    <span className="ml-1 text-destructive">NOT NULL</span>
+                  )}
+                </span>
               )}
             </div>
-            {!validation.ok && (
-              <div className="flex items-center gap-1 text-destructive">
-                <AlertCircle className="h-3.5 w-3.5" />
-                <span className="text-[10px]">{validation.message}</span>
-              </div>
-            )}
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Kbd>⌘</Kbd>
+              <Kbd>⏎</Kbd>
+              <span>to save</span>
+            </div>
           </div>
 
-          {/* Body */}
-          <div className="p-3">{body}</div>
+          <div className="px-3 pt-2">{body}</div>
 
-          {/* Footer */}
-          <div className="flex items-center justify-between border-t px-3 py-2 gap-2">
-            <div className="flex items-center gap-2">
-              {nullable && !readOnly && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={setToNull}
-                  className="h-7 text-xs"
-                >
-                  <Minus className="h-3 w-3 mr-1" />
-                  Set NULL
-                </Button>
-              )}
-              {hasChanges && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={cancel}
-                  className="h-7 text-xs"
-                >
-                  Cancel
-                </Button>
-              )}
+          {/* Mensagem de validação inline — só aparece quando há input + erro. */}
+          {!isNullDraft && !validation.ok && hasChanges && (
+            <div
+              role="alert"
+              className="mx-3 flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive"
+            >
+              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span className="font-mono leading-4">{validation.message}</span>
             </div>
+          )}
 
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Kbd>⌘</Kbd>
-                <Kbd>Enter</Kbd>
-              </div>
+          <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+            <span
+              className={`text-[10px] ${
+                !isNullDraft && !validation.ok && hasChanges
+                  ? "text-destructive"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {!isNullDraft && !validation.ok && hasChanges
+                ? "Fix the error to save"
+                : statusText}
+            </span>
+            <div className="flex items-center gap-1">
               <Button
                 type="button"
-                variant="default"
+                variant="ghost"
+                size="sm"
+                onClick={setToNull}
+                disabled={readOnly || !nullable || isNullDraft}
+                title={
+                  nullable ? "Set this value to NULL" : "Column is NOT NULL"
+                }
+              >
+                <Minus className="h-3.5 w-3.5" />
+                NULL
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={cancel}>
+                <X className="h-3.5 w-3.5" />
+                Cancel
+              </Button>
+              <Button
+                type="button"
                 size="sm"
                 onClick={commit}
                 disabled={!canSave}
-                className="h-7 text-xs"
+                title={
+                  !validation.ok && hasChanges ? validation.message : undefined
+                }
               >
-                {canSave ? (
-                  <>
-                    <Check className="h-3 w-3 mr-1" />
-                    Save
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-3 w-3 mr-1" />
-                    Save
-                  </>
-                )}
+                <Check className="h-3.5 w-3.5" />
+                Save
               </Button>
             </div>
           </div>

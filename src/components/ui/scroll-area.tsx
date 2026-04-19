@@ -8,15 +8,32 @@ function ScrollArea({
   children,
   ...props
 }: ScrollAreaPrimitive.Root.Props) {
+  const [isScrolling, setIsScrolling] = React.useState(false)
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>()
+
+  const handleScroll = React.useCallback(() => {
+    setIsScrolling(true)
+    clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => {
+      setIsScrolling(false)
+    }, 800)
+  }, [])
+
+  React.useEffect(() => {
+    return () => clearTimeout(timeoutRef.current)
+  }, [])
+
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative", className)}
+      data-scrolling={isScrolling || undefined}
+      className={cn("scroll-area-root relative", className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        onScroll={handleScroll}
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
@@ -44,7 +61,7 @@ function ScrollBar({
     >
       <ScrollAreaPrimitive.Thumb
         data-slot="scroll-area-thumb"
-        className="relative flex-1 rounded-full bg-border"
+        className="relative flex-1 rounded-full transition-[background-color] duration-300 bg-transparent"
       />
     </ScrollAreaPrimitive.Scrollbar>
   )
