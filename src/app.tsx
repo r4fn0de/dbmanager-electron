@@ -3,7 +3,6 @@ import { RouterProvider } from "@tanstack/react-router";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useTranslation } from "react-i18next";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { updateAppLanguage } from "./actions/language";
 import { syncWithLocalTheme } from "./actions/theme";
 import { router } from "./utils/routes";
@@ -32,9 +31,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <RouterProvider router={router} />
-      </TooltipProvider>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   );
 }

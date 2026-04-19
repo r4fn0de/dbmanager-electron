@@ -122,14 +122,43 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html, body, #root {
+    background: transparent !important;
+  }
   body {
-    @apply bg-background text-foreground overflow-hidden font-sans antialiased;
+    @apply text-foreground overflow-hidden font-sans antialiased;
   }
-  html {
-    @apply font-sans;
-  }
-
   .draglayer {
     -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@layer utilities {
+  /* Scrollbar hide utility for tabs etc. */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  .page-frame {
+    @apply h-full px-1 pb-1 pt-0;
+  }
+
+  /* Glassmorphism para elementos com blur */
+  .glass {
+    @apply bg-white/70 backdrop-blur-md;
+  }
+
+  .dark .glass {
+    @apply bg-black/50;
   }
 }

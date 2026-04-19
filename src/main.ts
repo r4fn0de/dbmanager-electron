@@ -13,20 +13,47 @@ import { getBasePath } from "./utils/path";
 function createWindow() {
   const basePath = getBasePath();
   const preload = path.join(basePath, "preload.js");
+
+  // Configurações específicas por plataforma - transparência com blur
+  const platformOptions: Electron.BrowserWindowConstructorOptions =
+    process.platform === "darwin"
+      ? {
+          // macOS: vibrancy com blur nativo
+          transparent: true,
+          vibrancy: "fullscreen-ui",
+          visualEffectState: "active", // mantém o blur mesmo quando a janela perde foco
+          backgroundColor: "#00000000",
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 14, y: 10 },
+        }
+      : process.platform === "win32"
+        ? {
+            // Windows: transparência com blur
+            transparent: true,
+            backgroundMaterial: "acrylic",
+            backgroundColor: "#00000000",
+            titleBarStyle: "hidden",
+          }
+        : {
+            // Linux: transparência básica
+            transparent: true,
+            backgroundColor: "#00000000",
+            titleBarStyle: "hidden",
+          };
+
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
     webPreferences: {
       devTools: inDevelopment,
       contextIsolation: true,
       nodeIntegration: true,
       nodeIntegrationInSubFrames: false,
-
       preload,
     },
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
-    trafficLightPosition:
-      process.platform === "darwin" ? { x: 5, y: 5 } : undefined,
+    ...platformOptions,
   });
   ipcContext.setMainWindow(mainWindow);
 
