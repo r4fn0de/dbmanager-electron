@@ -35,89 +35,192 @@ import {
   idSchema,
   createLocalDatabaseSchema,
 } from "./schemas";
-
-// TODO: Implement actual database logic
-// These are stubs that need to be implemented with actual database connectivity
+import {
+  loadConnections,
+  saveConnections,
+} from "./connection-store";
+import {
+  testConnection as testPgConnection,
+  executeQuery as executePgQuery,
+  getDatabaseInfo as getPgDatabaseInfo,
+  getSchema,
+  getSchemaSummary,
+  getTableDetails,
+  listRows,
+  buildConnectionString,
+} from "./pg-client";
+import { randomUUID } from "crypto";
 
 export const listConnections = os.handler(async (): Promise<Connection[]> => {
-  // TODO: Implement connection listing from storage
-  return [];
+  return await loadConnections();
 });
 
 export const saveConnection = os
   .input(connectionInputSchema)
   .handler(async ({ input }): Promise<void> => {
-    console.log("Save connection:", input);
+    const connections = await loadConnections();
+    const existingIndex = connections.findIndex((c) => c.id === input.id);
+
+    const connection: Connection = {
+      id: input.id || randomUUID(),
+      name: input.name,
+      host: input.host,
+      port: input.port,
+      database: input.database,
+      username: input.username,
+      password: input.password,
+      ssl_mode: input.ssl_mode,
+      url: input.url,
+      is_local: input.is_local,
+      connection_string: input.connection_string,
+      postgres_version: input.postgres_version,
+      tag: input.tag,
+      color: input.color,
+      local_auto_start: input.local_auto_start,
+    };
+
+    if (existingIndex >= 0) {
+      connections[existingIndex] = connection;
+    } else {
+      connections.push(connection);
+    }
+
+    await saveConnections(connections);
   });
 
 export const deleteConnection = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
-    console.log("Delete connection:", input.id);
+    const connections = await loadConnections();
+    const filtered = connections.filter((c) => c.id !== input.id);
+    await saveConnections(filtered);
   });
 
 export const testConnection = os
   .input(connectionInputSchema)
   .handler(async ({ input }): Promise<boolean> => {
-    console.log("Test connection:", input);
-    return true;
+    return await testPgConnection({
+      host: input.host,
+      port: input.port,
+      database: input.database,
+      username: input.username,
+      password: input.password,
+      ssl_mode: input.ssl_mode,
+      url: input.url,
+    });
   });
 
 export const getConnection = os
   .input(idSchema)
   .handler(async ({ input }): Promise<Connection | null> => {
-    console.log("Get connection:", input.id);
-    return null;
+    const connections = await loadConnections();
+    return connections.find((c) => c.id === input.id) || null;
   });
 
 export const executeQuery = os
   .input(executeQuerySchema)
   .handler(async ({ input }): Promise<QueryResult> => {
-    console.log("Execute query:", input.connectionId, input.sql);
-    return { columns: [], rows: [], row_count: 0 };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await executePgQuery(connStr, input.sql);
   });
 
 export const getSchema = os
   .input(idSchema)
   .handler(async ({ input }): Promise<DatabaseSchema> => {
-    console.log("Get schema:", input.id);
-    return { schemas: [], tables: [] };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.id);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await getSchema(connStr);
   });
 
 export const getSchemaSummary = os
   .input(idSchema)
   .handler(async ({ input }): Promise<SchemaSummary> => {
-    console.log("Get schema summary:", input.id);
-    return { schemas: [], tables: [] };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.id);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await getSchemaSummary(connStr);
   });
 
 export const getTableDetails = os
   .input(getTableDetailsSchema)
   .handler(async ({ input }): Promise<SchemaTableDetails> => {
-    console.log("Get table details:", input);
-    return {
-      name: input.table,
-      schema: input.schema,
-      has_rls: false,
-      columns: [],
-      indexes: [],
-      foreign_keys: [],
-      rls_policies: [],
-    };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await getTableDetails(connStr, input.schema, input.table);
   });
 
 export const tableListRows = os
   .input(listRowsInputSchema)
   .handler(async ({ input }): Promise<TableRowsResponse> => {
-    console.log("List rows:", input);
-    return {
-      columns: [],
-      rows: [],
-      primaryKey: [],
-      foreignKeys: [],
-      pageInfo: { page: input.page, pageSize: input.pageSize },
-      totalEstimate: 0,
-    };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.tableRef.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await listRows(
+      connStr,
+      input.tableRef.schema,
+      input.tableRef.table,
+      input.page,
+      input.pageSize,
+    );
   });
 
 export const tableSaveChanges = os
@@ -143,8 +246,21 @@ export const tableFkLookup = os
 export const getDatabaseInfo = os
   .input(idSchema)
   .handler(async ({ input }): Promise<DatabaseInfo> => {
-    console.log("Get database info:", input.id);
-    return { version: "", encoding: "", timezone: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.id);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await getPgDatabaseInfo(connStr);
   });
 
 // DDL Handlers
