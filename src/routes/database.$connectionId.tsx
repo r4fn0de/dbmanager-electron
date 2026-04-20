@@ -20,7 +20,7 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
-import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -59,6 +59,8 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type PanelImperativeHandle,
+  type Layout,
 } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -157,6 +159,27 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const [schemas, setSchemas] = useState<string[]>([]);
   const [initialSqlQuery, setInitialSqlQuery] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
+
+  // Persist sidebar width across sessions via localStorage
+  const savedLayout = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(`db-tables-layout:${connectionId}`);
+      return raw ? (JSON.parse(raw) as Layout) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [connectionId]);
+  const persistLayout = useCallback(
+    (layout: Layout) => {
+      try {
+        localStorage.setItem(`db-tables-layout:${connectionId}`, JSON.stringify(layout));
+      } catch { /* quota exceeded or private mode */ }
+    },
+    [connectionId],
+  );
+
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<null | "copied" | "failed">(null);
@@ -765,9 +788,42 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
         {/* Main Content Area */}
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {isTablesSection && (
-            <ResizablePanelGroup className="min-w-0 flex-1">
+            <ResizablePanelGroup
+              className="min-w-0 flex-1"
+              defaultLayout={savedLayout}
+              onLayoutChanged={persistLayout}
+            >
               {/* Tables Sidebar */}
-              <ResizablePanel defaultSize={230} minSize={230} maxSize={350} className="min-w-0">
+              <ResizablePanel
+                id="tables-sidebar"
+                defaultSize="25%"
+                minSize="15%"
+                maxSize="35%"
+                collapsible
+                collapsedSize="3%"
+                panelRef={sidebarPanelRef}
+                onResize={(size) => {
+                  const collapsed = size.asPercentage <= 3;
+                  if (collapsed !== isSidebarCollapsed) setIsSidebarCollapsed(collapsed);
+                }}
+                className="min-w-0"
+              >
+              {isSidebarCollapsed ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        className="flex h-full w-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => sidebarPanelRef.current?.expand()}
+                      >
+                        <Table2 className="h-4 w-4" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent side="right">Expand sidebar</TooltipContent>
+                </Tooltip>
+              ) : (
                 <aside className="h-full min-h-0 flex flex-col bg-muted/30">
                   {/* Header */}
                   <div className="px-3 pt-3 pb-2 space-y-2 shrink-0">
@@ -992,12 +1048,13 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                     </div>
                   </ScrollArea>
                 </aside>
+              )}
               </ResizablePanel>
 
-              <ResizableHandle />
+              <ResizableHandle withHandle />
 
               {/* Main Panel */}
-              <ResizablePanel defaultSize={75} className="min-w-0">
+              <ResizablePanel id="tables-main" minSize="30%" className="min-w-0">
                 <div className="h-full flex flex-col bg-background/60">
                   {(() => {
                     const detailsMatch =

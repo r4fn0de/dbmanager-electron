@@ -24,6 +24,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   type PanelImperativeHandle,
+  type Layout,
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -153,6 +154,46 @@ export function SqlEditor({
   const [searchText, setSearchText] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
+
+  // Persist sidebar width across sessions via localStorage
+  const savedSidebarLayout = useMemo(() => {
+    if (!selectedConnection) return undefined;
+    try {
+      const raw = localStorage.getItem(`sql-sidebar-layout:${selectedConnection}`);
+      return raw ? (JSON.parse(raw) as Layout) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [selectedConnection]);
+  const persistSidebarLayout = useCallback(
+    (layout: Layout) => {
+      if (!selectedConnection) return;
+      try {
+        localStorage.setItem(`sql-sidebar-layout:${selectedConnection}`, JSON.stringify(layout));
+      } catch { /* quota exceeded or private mode */ }
+    },
+    [selectedConnection],
+  );
+
+  // Persist editor/results vertical split across sessions
+  const savedEditorSplitLayout = useMemo(() => {
+    if (!selectedConnection) return undefined;
+    try {
+      const raw = localStorage.getItem(`sql-editor-split:${selectedConnection}`);
+      return raw ? (JSON.parse(raw) as Layout) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [selectedConnection]);
+  const persistEditorSplitLayout = useCallback(
+    (layout: Layout) => {
+      if (!selectedConnection) return;
+      try {
+        localStorage.setItem(`sql-editor-split:${selectedConnection}`, JSON.stringify(layout));
+      } catch { /* quota exceeded or private mode */ }
+    },
+    [selectedConnection],
+  );
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [lastResult, setLastResult] = useState<QueryResult | null>(null);
@@ -429,9 +470,14 @@ export function SqlEditor({
       aria-label="SQL editor workspace"
       onKeyDown={handleKeyDown}
     >
-      <ResizablePanelGroup className="h-full min-h-0">
+      <ResizablePanelGroup
+        className="h-full min-h-0"
+        defaultLayout={savedSidebarLayout}
+        onLayoutChanged={persistSidebarLayout}
+      >
         {showWorkspaceSidebar && (
           <ResizablePanel
+            id="sql-sidebar"
             defaultSize="22%"
             minSize="15%"
             maxSize="40%"
@@ -647,7 +693,7 @@ export function SqlEditor({
           </ResizablePanel>
         )}
         {showWorkspaceSidebar && <ResizableHandle withHandle />}
-        <ResizablePanel className="min-h-0">
+        <ResizablePanel id="sql-editor" className="min-h-0">
         <section className="h-full min-h-0 flex flex-col">
           {/* ── Editor toolbar (single row) ──────────────────── */}
           <div className="flex items-center gap-2 border-b px-3 py-1.5">
@@ -732,8 +778,13 @@ export function SqlEditor({
             </div>
           </div>
 
-          <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
-            <ResizablePanel defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
+          <ResizablePanelGroup
+            orientation="vertical"
+            className="flex-1 min-h-0"
+            defaultLayout={savedEditorSplitLayout}
+            onLayoutChanged={persistEditorSplitLayout}
+          >
+            <ResizablePanel id="sql-editor-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
               <div className="h-full min-h-0">
               <Editor
                 height="100%"
@@ -747,7 +798,7 @@ export function SqlEditor({
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
+            <ResizablePanel id="sql-results-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
             <Tabs
               value={activeResultTab}
               onValueChange={(value) =>

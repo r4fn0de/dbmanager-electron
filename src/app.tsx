@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useTranslation } from "react-i18next";
 import { updateAppLanguage } from "./actions/language";
-import { syncWithLocalTheme } from "./actions/theme";
 import { router } from "./utils/routes";
 import "./localization/i18n";
 
@@ -25,7 +24,6 @@ export default function App() {
   );
 
   useEffect(() => {
-    syncWithLocalTheme();
     updateAppLanguage(i18n);
   }, [i18n]);
 
