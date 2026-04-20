@@ -30,6 +30,7 @@ import {
   startLocalDatabase,
   stopLocalDatabase,
   deleteLocalDatabase,
+  findAvailablePort,
   exportSchemaDdl,
   exportTableData,
   executeBatchDdl,
@@ -75,6 +76,7 @@ export const db = {
   startLocalDatabase,
   stopLocalDatabase,
   deleteLocalDatabase,
+  findAvailablePort,
   // Clone to Local
   exportSchemaDdl,
   exportTableData,

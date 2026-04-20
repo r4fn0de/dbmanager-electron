@@ -621,6 +621,10 @@ export const deleteLocalDatabase = os
     await localDbManager.delete(input.id);
   });
 
+export const findAvailablePort = os.handler(async (): Promise<number> => {
+  return await localDbManager.findAvailablePort();
+});
+
 // Clone to Local Handlers
 export const exportSchemaDdl = os
   .input(idSchema)

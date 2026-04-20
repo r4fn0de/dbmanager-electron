@@ -132,6 +132,20 @@ export class LocalDbManager {
     });
   }
 
+  /** Find an available port starting from `startPort` */
+  async findAvailablePort(startPort: number = 5432, maxAttempts: number = 20): Promise<number> {
+    const usedPorts = new Set(
+      (await this.loadMetaList()).map((m) => m.port),
+    );
+    for (let port = startPort; port < startPort + maxAttempts; port++) {
+      if (usedPorts.has(port)) continue;
+      if (await this.isPortAvailable(port)) return port;
+    }
+    throw new Error(
+      `No available port found in range ${startPort}-${startPort + maxAttempts - 1}`,
+    );
+  }
+
   // ── Binary check ───────────────────────────────────────────
 
   /** Cached result of the binary availability check (won't change at runtime) */

@@ -113,12 +113,16 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
         });
 
         const password = LOCAL_DB_DEFAULT_PASSWORD;
+
+        // Find an available port automatically
+        const port = await ipc.client.db.findAvailablePort();
+
         const localDb = await ipc.client.db.createLocalDatabase({
           name: targetName,
           databaseName: "postgres",
           username: "postgres",
           password,
-          port: 5432,
+          port,
           postgresVersion: postgresVersion || "16.13.0",
           autoStart: true,
         });
