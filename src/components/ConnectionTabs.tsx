@@ -10,37 +10,11 @@ import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useConnections } from "@/hooks/useConnections";
-import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
+import {
+  detectConnectionProvider,
+  useConnectionTabsStore,
+} from "@/lib/stores/connection-tabs";
 import { cn } from "@/lib/utils";
-
-function resolveProviderHost(conn: Connection): string {
-  if (conn.url) {
-    try {
-      return new URL(conn.url).hostname.toLowerCase();
-    } catch {
-      // fall back to parsed host from backend when URL cannot be parsed.
-    }
-  }
-  return conn.host.toLowerCase();
-}
-
-function detectConnectionProvider(conn: Connection): ConnectionProvider {
-  const host = resolveProviderHost(conn);
-
-  if (host.includes("neon.tech")) {
-    return "neon";
-  }
-
-  if (
-    host.includes("supabase.co") ||
-    host.includes("supabase.com") ||
-    host.includes("supabase.in")
-  ) {
-    return "supabase";
-  }
-
-  return conn.url ? "url" : "direct";
-}
 
 export function ConnectionTabs() {
   const { tabs, activeTabId, removeTab, setActiveTab } =
@@ -57,14 +31,21 @@ export function ConnectionTabs() {
       ? (dbMatch.connectionId as string)
       : null;
 
-  // Sync active tab with current route
+  // Derive the effective active tab: if the URL shows a database page, that
+  // connection is active; otherwise (home page) no tab is visually active.
+  // This replaces an Effect that called setActiveTab — derived state should
+  // be calculated during render, not set via Effect.
+  const effectiveActiveId = currentConnectionId ?? activeTabId;
+
+  // Only sync the store's activeTabId when the user explicitly interacts
+  // (click tab, close tab) or when navigating from a database page to home.
+  // The navigation-to-home case needs an Effect because it's synchronizing
+  // with the router (external system).
   useEffect(() => {
-    if (currentConnectionId && currentConnectionId !== activeTabId) {
-      setActiveTab(currentConnectionId);
-    } else if (!currentConnectionId && activeTabId && pathname === "/") {
+    if (!currentConnectionId && pathname === "/" && activeTabId) {
       setActiveTab(null);
     }
-  }, [currentConnectionId, activeTabId, setActiveTab, pathname]);
+  }, [currentConnectionId, pathname, activeTabId, setActiveTab]);
 
   const handleTabClick = useCallback(
     (id: string) => {
@@ -86,7 +67,6 @@ export function ConnectionTabs() {
 
       removeTab(id);
 
-      // If we closed the active tab, navigate to the nearest sibling or home
       if (wasActive) {
         if (remaining.length > 0) {
           const nextIdx = Math.min(idx, remaining.length - 1);
@@ -107,7 +87,6 @@ export function ConnectionTabs() {
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, id: string) => {
-      // Middle-click to close
       if (e.button === 1) {
         e.preventDefault();
         handleClose(e, id);
@@ -146,13 +125,13 @@ export function ConnectionTabs() {
   );
 
   useEffect(() => {
-    if (!activeTabId) return;
-    tabRefs.current[activeTabId]?.scrollIntoView({
+    if (!effectiveActiveId) return;
+    tabRefs.current[effectiveActiveId]?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
       inline: "nearest",
     });
-  }, [activeTabId, tabs.length]);
+  }, [effectiveActiveId, tabs.length]);
 
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     const el = containerRef.current;
@@ -173,7 +152,7 @@ export function ConnectionTabs() {
       className="flex items-center h-full gap-1 overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2"
     >
       {tabs.map((tab) => {
-        const isActive = tab.id === activeTabId;
+        const isActive = tab.id === effectiveActiveId;
         const colorDot = tab.color || (tab.isLocal ? "#22c55e" : undefined);
 
         return (
@@ -199,7 +178,6 @@ export function ConnectionTabs() {
             style={{ overflow: "visible" }}
             title={tab.name}
           >
-            {/* Provider icon or color indicator */}
             {tab.provider === "neon" ? (
               <Neon className="h-3.5 w-3.5 shrink-0" />
             ) : tab.provider === "supabase" ? (
@@ -219,7 +197,6 @@ export function ConnectionTabs() {
 
             <span className="truncate max-w-[140px]">{tab.name}</span>
 
-            {/* Close button */}
             <button
               type="button"
               onClick={(e) => handleClose(e, tab.id)}
@@ -244,43 +221,35 @@ export function ConnectionTabs() {
 }
 
 /**
- * Hook that auto-adds a tab when navigating to a database page.
- * Must be used inside a component that has access to useConnections.
+ * Keeps tab data in sync with the latest connection info and removes
+ * stale tabs for deleted connections. Tab creation is handled directly
+ * at the navigation points (handleSelectConnection, database page mount)
+ * so this hook only does background maintenance.
  */
 export function useConnectionTabSync() {
-  const { tabs, addTab, updateTab } = useConnectionTabsStore();
-  const { connections, isLoading } = useConnections();
-  const matchRoute = useMatchRoute();
+  const { tabs, updateTab, removeTab } = useConnectionTabsStore();
+  const { connections, isLoading, refetch } = useConnections();
 
-  const dbMatch = matchRoute({ to: "/database/$connectionId", fuzzy: true });
-  const currentConnectionId =
-    dbMatch && typeof dbMatch === "object" && "connectionId" in dbMatch
-      ? (dbMatch.connectionId as string)
-      : null;
+  const connectionIds = useMemo(
+    () => new Set(connections.map((c) => c.id)),
+    [connections],
+  );
 
-  const knownTabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
-
-  // Add tab for the current route if it doesn't exist yet
+  // Sync existing tabs with fresh connection data and remove stale tabs.
+  // This is synchronizing with an external system (IPC backend) — valid Effect.
   useEffect(() => {
-    if (!currentConnectionId) return;
-    if (knownTabIds.has(currentConnectionId)) return;
+    if (isLoading) return;
 
-    const conn = connections.find((c) => c.id === currentConnectionId);
-    if (!conn && isLoading) return; // wait for connections to load
+    // Remove tabs for connections that no longer exist
+    if (connections.length > 0) {
+      for (const tab of tabs) {
+        if (!connectionIds.has(tab.id)) {
+          removeTab(tab.id);
+        }
+      }
+    }
 
-    addTab({
-      id: currentConnectionId,
-      name: conn?.name ?? currentConnectionId.slice(0, 8),
-      isLocal: conn?.is_local,
-      color: conn?.color,
-      provider: conn ? detectConnectionProvider(conn) : undefined,
-    });
-  }, [currentConnectionId, knownTabIds, connections, isLoading, addTab]);
-
-  // Sync existing tabs with fresh connection data (name, provider, color, isLocal)
-  useEffect(() => {
-    if (isLoading || connections.length === 0) return;
-
+    // Update existing tabs with fresh connection data
     for (const tab of tabs) {
       const conn = connections.find((c) => c.id === tab.id);
       if (!conn) continue;
@@ -301,5 +270,5 @@ export function useConnectionTabSync() {
         });
       }
     }
-  }, [connections, isLoading, tabs, updateTab]);
+  }, [connections, connectionIds, isLoading, tabs, updateTab, removeTab]);
 }

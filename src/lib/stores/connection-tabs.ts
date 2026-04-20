@@ -12,6 +12,8 @@ export interface ConnectionTab {
   color?: string;
   provider?: ConnectionProvider;
   lastSection?: SidebarSection;
+  lastSchema?: string;
+  lastTable?: string;
 }
 
 interface ConnectionTabsState {
@@ -24,7 +26,61 @@ interface ConnectionTabsState {
   renameTab: (id: string, name: string) => void;
   updateTab: (id: string, data: Partial<Omit<ConnectionTab, "id">>) => void;
   setTabSection: (id: string, section: SidebarSection) => void;
+  setTabNavState: (id: string, state: { section: SidebarSection; schema?: string; table?: string }) => void;
   clearTabs: () => void;
+}
+
+export function resolveProviderHost(conn: {
+  url?: string;
+  host: string;
+}): string {
+  if (conn.url) {
+    try {
+      return new URL(conn.url).hostname.toLowerCase();
+    } catch {
+      // fall back to parsed host from backend
+    }
+  }
+  return conn.host.toLowerCase();
+}
+
+export function detectConnectionProvider(conn: {
+  url?: string;
+  host: string;
+}): ConnectionProvider {
+  const host = resolveProviderHost(conn);
+
+  if (host.includes("neon.tech")) {
+    return "neon";
+  }
+
+  if (
+    host.includes("supabase.co") ||
+    host.includes("supabase.com") ||
+    host.includes("supabase.in")
+  ) {
+    return "supabase";
+  }
+
+  return conn.url ? "url" : "direct";
+}
+
+/** Build a ConnectionTab from a Connection-like object. */
+export function buildConnectionTab(conn: {
+  id: string;
+  name: string;
+  is_local?: boolean;
+  color?: string;
+  url?: string;
+  host: string;
+}): ConnectionTab {
+  return {
+    id: conn.id,
+    name: conn.name,
+    isLocal: conn.is_local,
+    color: conn.color,
+    provider: detectConnectionProvider(conn),
+  };
 }
 
 export const useConnectionTabsStore = create<ConnectionTabsState>()(
@@ -49,7 +105,6 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
           const idx = state.tabs.findIndex((t) => t.id === id);
           const next = state.tabs.filter((t) => t.id !== id);
 
-          // If closing the active tab, focus the nearest sibling
           let nextActive = state.activeTabId;
           if (state.activeTabId === id) {
             if (next.length === 0) {
@@ -82,6 +137,15 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
         set((state) => ({
           tabs: state.tabs.map((t) =>
             t.id === id ? { ...t, lastSection: section } : t,
+          ),
+        })),
+
+      setTabNavState: (id, nav) =>
+        set((state) => ({
+          tabs: state.tabs.map((t) =>
+            t.id === id
+              ? { ...t, lastSection: nav.section, lastSchema: nav.schema, lastTable: nav.table }
+              : t,
           ),
         })),
 

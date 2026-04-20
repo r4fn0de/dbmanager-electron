@@ -21,6 +21,10 @@ import { useConnections } from "@/hooks/useConnections";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
+import {
+  buildConnectionTab,
+  useConnectionTabsStore,
+} from "@/lib/stores/connection-tabs";
 
 function Home() {
   const {
@@ -115,6 +119,13 @@ function Home() {
         to: "/database/$connectionId",
         params: { connectionId: db.id },
       });
+      useConnectionTabsStore.getState().addTab({
+        id: db.id,
+        name: db.name,
+        isLocal: true,
+        color: input.color,
+        provider: "direct",
+      });
       setIsLocalDbDialogOpen(false);
       toast.success("Local database created successfully");
     } catch (error) {
@@ -160,7 +171,9 @@ function Home() {
     setIsFormOpen(true);
   };
 
-  const handleSelectConnection = (connection: { id: string }) => {
+  const handleSelectConnection = (connection: Connection) => {
+    // Add tab synchronously BEFORE navigating so it appears instantly
+    useConnectionTabsStore.getState().addTab(buildConnectionTab(connection));
     navigate({
       to: "/database/$connectionId",
       params: { connectionId: connection.id },

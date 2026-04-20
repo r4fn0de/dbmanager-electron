@@ -74,7 +74,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useConnections } from "@/hooks/useConnections";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
-import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
+import {
+  buildConnectionTab,
+  useConnectionTabsStore,
+} from "@/lib/stores/connection-tabs";
 import { DatabaseOverview } from "@/components/DatabaseOverview";
 import { SqlEditor } from "@/components/SqlEditor";
 import { TableDataEditor } from "@/components/TableDataEditor";
@@ -88,14 +91,25 @@ export const Route = createFileRoute("/database/$connectionId")({
 
 function DatabasePage() {
   const { connectionId } = Route.useParams();
-  return <DatabasePageContent connectionId={connectionId} />;
+  // The actual content is rendered by TabbedConnectionView (keep-alive).
+  // This route component only ensures the URL is matched and the tab
+  // is registered in the store. It renders nothing itself — the tab
+  // container renders DatabasePageContent for all open tabs with CSS
+  // show/hide so their state is preserved when switching.
+  const store = useConnectionTabsStore.getState();
+  if (!store.tabs.some((t) => t.id === connectionId)) {
+    // Tab not yet in the store — the page will register it via the
+    // useEffect inside DatabasePageContent when it mounts.
+  }
+  return null;
 }
 
 interface DatabasePageContentProps {
   connectionId: string;
+  isActive?: boolean;
 }
 
-function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
+export function DatabasePageContent({ connectionId, isActive = true }: DatabasePageContentProps) {
   const navigate = useNavigate();
   const {
     connections,
@@ -122,14 +136,21 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     setColumnNullable,
   } = useConnections();
   const { start: startLocalDb, pause: pauseLocalDb, getStatus: getLocalDbStatus } = useLocalDatabases();
-  const { setTabSection } = useConnectionTabsStore();
+  const { setTabNavState, tabs } = useConnectionTabsStore();
 
-  const [activeSection, setActiveSection] = useState<SidebarSection>("overview");
+  const storedTab = tabs.find((t) => t.id === connectionId);
+  const [activeSection, setActiveSection] = useState<SidebarSection>(
+    storedTab?.lastSection ?? "tables"
+  );
+  const [selectedSchema, setSelectedSchema] = useState<string>(
+    storedTab?.lastSchema ?? "public"
+  );
+  const [selectedTableKey, setSelectedTableKey] = useState<string | null>(
+    storedTab?.lastTable ?? null
+  );
 
   const [tables, setTables] = useState<SchemaTableSummary[]>([]);
   const [schemas, setSchemas] = useState<string[]>([]);
-  const [selectedSchema, setSelectedSchema] = useState<string>("public");
-  const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
   const [initialSqlQuery, setInitialSqlQuery] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -184,19 +205,6 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
   const [selectedTableDetails, setSelectedTableDetails] = useState<SchemaTableDetails | null>(null);
   const [isLoadingTableDetails, setIsLoadingTableDetails] = useState(false);
 
-  // Reset state when connectionId changes to avoid showing stale data
-  useEffect(() => {
-    setActiveSection("overview");
-    setTables([]);
-    setSchemas([]);
-    setSelectedSchema("public");
-    setSelectedTableKey(null);
-    setInitialSqlQuery(null);
-    setTableSearch("");
-    setDatabaseInfo(null);
-    setLocalDbStatus(null);
-  }, [connectionId]);
-
   // Section flags - definidas antes de serem usadas
   const isTablesSection = activeSection === "tables";
   const isSqlEditorSection = activeSection === "sql-editor";
@@ -207,6 +215,18 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     () => connections.find((c) => c.id === connectionId),
     [connections, connectionId],
   );
+
+  // Ensure a tab exists for this connection (handles page refresh / direct URL)
+  // This is synchronizing with an external store (zustand) — a valid use of Effect.
+  useEffect(() => {
+    if (!connection) return;
+    const store = useConnectionTabsStore.getState();
+    if (!store.tabs.some((t) => t.id === connectionId)) {
+      store.addTab(buildConnectionTab(connection));
+    } else if (store.activeTabId !== connectionId) {
+      store.setActiveTab(connectionId);
+    }
+  }, [connection, connectionId]);
 
   const loadSchema = useCallback(async () => {
     if (!connectionId) return;
@@ -226,8 +246,10 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
   }, [connectionId, getSchemaSummary, selectedSchema]);
 
   useEffect(() => {
+    // Only load schema when the tab is active — skip IPC calls for background tabs
+    if (!isActive) return;
     loadSchema();
-  }, [loadSchema]);
+  }, [loadSchema, isActive]);
 
   const loadDatabaseInfo = useCallback(async () => {
     if (!connectionId) return;
@@ -255,22 +277,47 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     }
   }, [connectionId, connection?.is_local, getLocalDbStatus]);
 
-  useEffect(() => {
-    if (activeSection === "overview") {
+  // Helpers: update state AND persist to store in the same event handler
+  // (instead of separate Effects that watch these values — anti-pattern per React docs)
+  const changeSection = useCallback((section: SidebarSection) => {
+    setActiveSection(section);
+    setTabNavState(connectionId, {
+      section,
+      schema: selectedSchema,
+      table: selectedTableKey ?? undefined,
+    });
+    if (section === "overview") {
       loadDatabaseInfo();
       loadLocalDbStatus();
     }
-  }, [activeSection, loadDatabaseInfo, loadLocalDbStatus]);
+  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo, loadLocalDbStatus]);
 
+  const changeSchema = useCallback((schema: string) => {
+    setSelectedSchema(schema);
+    setTabNavState(connectionId, {
+      section: activeSection,
+      schema,
+      table: selectedTableKey ?? undefined,
+    });
+  }, [connectionId, activeSection, selectedTableKey, setTabNavState]);
+
+  const changeTable = useCallback((tableKey: string | null) => {
+    setSelectedTableKey(tableKey);
+    setTabNavState(connectionId, {
+      section: activeSection,
+      schema: selectedSchema,
+      table: tableKey ?? undefined,
+    });
+  }, [connectionId, activeSection, selectedSchema, setTabNavState]);
+
+  // Clean up initial SQL query after sql-editor renders it (valid Effect:
+  // synchronizing with a child component that consumes the one-shot value)
   useEffect(() => {
-    setTabSection(connectionId, activeSection);
-    // Clear initial SQL query after navigating to sql-editor
     if (activeSection === "sql-editor" && initialSqlQuery) {
-      // Keep it for the initial render, then clear
       const timer = setTimeout(() => setInitialSqlQuery(null), 100);
       return () => clearTimeout(timer);
     }
-  }, [connectionId, activeSection, setTabSection, initialSqlQuery]);
+  }, [activeSection, initialSqlQuery]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -404,24 +451,25 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     async (droppedKey: string) => {
       await handleDdlSuccess();
       if (selectedTableKey === droppedKey) {
-        setSelectedTableKey(null);
+        changeTable(null);
       }
     },
-    [handleDdlSuccess, selectedTableKey],
+    [handleDdlSuccess, selectedTableKey, changeTable],
   );
 
   const handleRenameTableSuccess = useCallback(
     async (oldKey: string, newKey: string) => {
       await handleDdlSuccess();
       if (selectedTableKey === oldKey) {
-        setSelectedTableKey(newKey);
+        changeTable(newKey);
       }
     },
-    [handleDdlSuccess, selectedTableKey],
+    [handleDdlSuccess, selectedTableKey, changeTable],
   );
 
   // Load table details when selected table changes
   useEffect(() => {
+    if (!isActive) return;
     if (selectedTableKey && selectedTableRef) {
       const loadTableDetails = async () => {
         setIsLoadingTableDetails(true);
@@ -438,10 +486,11 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     } else {
       setSelectedTableDetails(null);
     }
-  }, [selectedTableKey, selectedTableRef, connectionId, getTableDetails]);
+  }, [selectedTableKey, selectedTableRef, connectionId, getTableDetails, isActive]);
 
   // Load RLS policies when target changes
   useEffect(() => {
+    if (!isActive) return;
     if (rlsPoliciesTarget) {
       const loadPolicies = async () => {
         setIsLoadingRlsPolicies(true);
@@ -459,7 +508,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     } else {
       setRlsPolicies([]);
     }
-  }, [rlsPoliciesTarget, connectionId, getTableDetails]);
+  }, [rlsPoliciesTarget, connectionId, getTableDetails, isActive]);
 
   if (!connection) {
     return (
@@ -507,7 +556,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                     variant="ghost"
                     size="icon"
                     className={`h-7 w-7 ${activeSection === "overview" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => setActiveSection("overview")}
+                    onClick={() => changeSection("overview")}
                   >
                     <Database className="h-4 w-4" />
                   </Button>
@@ -522,7 +571,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                     variant="ghost"
                     size="icon"
                     className={`h-7 w-7 ${activeSection === "tables" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => setActiveSection("tables")}
+                    onClick={() => changeSection("tables")}
                   >
                     <Table2 className="h-4 w-4" />
                   </Button>
@@ -537,7 +586,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                     variant="ghost"
                     size="icon"
                     className={`h-7 w-7 ${activeSection === "sql-editor" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => setActiveSection("sql-editor")}
+                    onClick={() => changeSection("sql-editor")}
                   >
                     <Terminal className="h-4 w-4" />
                   </Button>
@@ -552,7 +601,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                     variant="ghost"
                     size="icon"
                     className={`h-7 w-7 ${activeSection === "settings" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => setActiveSection("settings")}
+                    onClick={() => changeSection("settings")}
                   >
                     <Settings className="h-4 w-4" />
                   </Button>
@@ -670,9 +719,9 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                       <Select
                         value={selectedSchema}
                         onValueChange={(value) => {
-                          if (value) setSelectedSchema(value);
+                          if (value) changeSchema(value);
                           const firstTable = tablesBySchema.find(([s]) => s === value)?.[1][0];
-                          setSelectedTableKey(firstTable ? `${firstTable.schema}.${firstTable.name}` : null);
+                          changeTable(firstTable ? `${firstTable.schema}.${firstTable.name}` : null);
                         }}
                       >
                         <SelectTrigger size="sm" className="w-full font-mono text-xs">
@@ -742,7 +791,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        setSelectedTableKey(`${table.schema}.${table.name}`)
+                                        changeTable(`${table.schema}.${table.name}`)
                                       }
                                       className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100 ${
                                         isActive
@@ -762,17 +811,17 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                                       </span>
                                       {table.has_rls ? (
                                         <Tooltip>
-                                          <TooltipTrigger className="contents">
+                                          <TooltipTrigger className="inline-flex shrink-0">
                                             <Lock className="h-3 w-3 text-cyan-500 shrink-0" />
                                           </TooltipTrigger>
-                                          <TooltipContent side="top">RLS enabled</TooltipContent>
+                                          <TooltipContent side="bottom" sideOffset={4}>RLS enabled</TooltipContent>
                                         </Tooltip>
                                       ) : (
                                         <Tooltip>
-                                          <TooltipTrigger className="contents">
+                                          <TooltipTrigger className="inline-flex shrink-0">
                                             <LockOpen className="h-3 w-3 text-muted-foreground/40 shrink-0" />
                                           </TooltipTrigger>
-                                          <TooltipContent side="top">RLS disabled</TooltipContent>
+                                          <TooltipContent side="bottom" sideOffset={4}>RLS disabled</TooltipContent>
                                         </Tooltip>
                                       )}
                                     </button>
@@ -903,7 +952,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                           size="sm"
                           onClick={() => {
                             setInitialSqlQuery(`SELECT * FROM "${selectedTableRef?.schema}"."${selectedTable}" LIMIT 100`);
-                            setActiveSection("sql-editor");
+                            changeSection("sql-editor");
                           }}
                           className="gap-1.5"
                         >
@@ -965,9 +1014,9 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
               localDbStatus={localDbStatus}
               isLoadingLocalDbStatus={isLoadingLocalDbStatus}
               isTogglingLocalDbStatus={isTogglingLocalDb}
-              onNewQuery={() => setActiveSection("sql-editor")}
+              onNewQuery={() => changeSection("sql-editor")}
               onTestConnection={handleTestConnection}
-              onViewTables={() => setActiveSection("tables")}
+              onViewTables={() => changeSection("tables")}
               onStartLocalDb={handleStartLocalDb}
               onPauseLocalDb={handlePauseLocalDb}
               connectionString={connection.url || `postgres://${connection.username}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?sslmode=${connection.ssl_mode}`}

@@ -72,7 +72,7 @@ interface UseConnectionsReturn {
 
 export function useConnections(): UseConnectionsReturn {
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchConnections = useCallback(async () => {

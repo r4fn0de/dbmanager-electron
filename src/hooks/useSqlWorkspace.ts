@@ -18,6 +18,11 @@ export interface SqlHistoryEntry {
   durationMs: number;
   createdAt: string;
   errorMessage?: string;
+  resultPreview?: {
+    columns: { name: string; type_name: string }[];
+    rows: unknown[][];
+    row_count: number;
+  };
 }
 
 export interface SqlExecutionLog {
