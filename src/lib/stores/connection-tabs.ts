@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 
 export type ConnectionProvider = "neon" | "supabase" | "url" | "direct";
 
-export type SidebarSection = "overview" | "tables" | "sql-editor" | "settings";
+export type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
 
 export interface ConnectionTab {
   id: string;

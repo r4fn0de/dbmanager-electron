@@ -4,6 +4,7 @@ import {
   Copy,
   Database,
   FileSearch,
+  GitGraph,
   Loader2,
   Lock,
   LockOpen,
@@ -83,9 +84,10 @@ import {
 import { DatabaseOverview } from "@/components/DatabaseOverview";
 import { SqlEditor } from "@/components/SqlEditor";
 import { TableDataEditor } from "@/components/TableDataEditor";
+import { SchemaVisualizer } from "@/components/SchemaVisualizer";
 import type { SchemaTableSummary, DatabaseInfo, LocalDbInfo, SchemaTableDetails, SchemaPolicy } from "@/ipc/db/types";
 
-type SidebarSection = "overview" | "tables" | "sql-editor" | "settings";
+type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
 
 export const Route = createFileRoute("/database/$connectionId")({
   component: DatabasePage,
@@ -202,6 +204,8 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const [rlsPoliciesTarget, setRlsPoliciesTarget] = useState<{ schema: string; name: string } | null>(null);
   const [rlsPolicies, setRlsPolicies] = useState<SchemaPolicy[]>([]);
   const [isLoadingRlsPolicies, setIsLoadingRlsPolicies] = useState(false);
+  const [visualizerTables, setVisualizerTables] = useState<SchemaTableDetails[]>([]);
+  const [isLoadingVisualizer, setIsLoadingVisualizer] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -209,6 +213,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const isTablesSection = activeSection === "tables";
   const isSqlEditorSection = activeSection === "sql-editor";
   const isOverviewSection = activeSection === "overview";
+  const isVisualizerSection = activeSection === "visualizer";
   const isSettingsSection = activeSection === "settings";
 
   const connection = useMemo(
@@ -279,6 +284,22 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
 
   // Helpers: update state AND persist to store in the same event handler
   // (instead of separate Effects that watch these values — anti-pattern per React docs)
+  const loadVisualizerData = useCallback(async () => {
+    if (!connectionId || tables.length === 0) return;
+    setIsLoadingVisualizer(true);
+    try {
+      const tableDetails = await Promise.all(
+        tables.map((t) => getTableDetails(connectionId, t.schema, t.name))
+      );
+      setVisualizerTables(tableDetails);
+    } catch (error) {
+      console.error("Failed to load visualizer data", error);
+      toast.error("Failed to load schema visualizer data");
+    } finally {
+      setIsLoadingVisualizer(false);
+    }
+  }, [connectionId, tables, getTableDetails]);
+
   const changeSection = useCallback((section: SidebarSection) => {
     setActiveSection(section);
     setTabNavState(connectionId, {
@@ -290,7 +311,10 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
       loadDatabaseInfo();
       loadLocalDbStatus();
     }
-  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo, loadLocalDbStatus]);
+    if (section === "visualizer") {
+      loadVisualizerData();
+    }
+  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo, loadLocalDbStatus, loadVisualizerData]);
 
   const changeSchema = useCallback((schema: string) => {
     setSelectedSchema(schema);
@@ -652,6 +676,21 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                 }
               />
               <TooltipContent side="right">SQL Editor</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`h-7 w-7 ${activeSection === "visualizer" ? "bg-accent text-accent-foreground" : ""}`}
+                    onClick={() => changeSection("visualizer")}
+                  >
+                    <GitGraph className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent side="right">Schema Visualizer</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -1099,6 +1138,32 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
               copyConnectionStringFeedback={copyConnFeedback}
               onCopyConnectionString={handleCopyConnectionString}
             />
+          )}
+          {isVisualizerSection && (
+            <div className="flex-1 min-w-0 min-h-0 p-4">
+              {isLoadingVisualizer ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
+                </div>
+              ) : visualizerTables.length === 0 ? (
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-muted-foreground">No tables to visualize</p>
+                </div>
+              ) : (
+                <SchemaVisualizer
+                  tables={visualizerTables}
+                  schemas={schemas}
+                  currentSchema={selectedSchema}
+                  onSchemaChange={changeSchema}
+                  onTableClick={(schema, table) => {
+                    changeSection("tables");
+                    changeSchema(schema);
+                    changeTable(`${schema}.${table}`);
+                  }}
+                />
+              )}
+            </div>
           )}
           {isSettingsSection && (
             <div className="flex-1 flex items-center justify-center p-8">

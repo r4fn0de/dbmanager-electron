@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "@base-ui/react": "^1.4.0",
+    "@dagrejs/dagre": "^3.0.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/geist-mono": "^5.2.7",
     "@fontsource-variable/inter": "^5.2.8",
@@ -37,6 +38,7 @@
     "@tanstack/react-router": "^1.168.2",
     "@tanstack/react-router-devtools": "^1.166.11",
     "@tanstack/react-virtual": "^3.13.24",
+    "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
