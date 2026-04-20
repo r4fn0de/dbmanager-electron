@@ -11,7 +11,7 @@ import type { Connection } from "@/ipc/db/types";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useConnections } from "@/hooks/useConnections";
 import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 
 function resolveProviderHost(conn: Connection): string {
   if (conn.url) {

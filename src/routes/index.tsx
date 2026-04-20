@@ -1,15 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Database, HardDrive, Plus, Search, Server } from "lucide-react";
+import { Database, HardDrive, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ConnectionForm } from "@/components/ConnectionForm";
+import { ConnectionList } from "@/components/ConnectionList";
 import {
   CreateLocalDbDialog,
   type CreateLocalDbInput,
@@ -32,9 +26,10 @@ function Home() {
     connections,
     isLoading: isLoadingConnections,
     saveConnection,
+    deleteConnection,
     testConnection,
   } = useConnections();
-  const { create: createLocalDb } = useLocalDatabases();
+  const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, databases: localDbs } = useLocalDatabases();
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLocalDbDialogOpen, setIsLocalDbDialogOpen] = useState(false);
@@ -43,6 +38,14 @@ function Home() {
   const [isTesting, setIsTesting] = useState(false);
   const [isCreatingLocalDb, setIsCreatingLocalDb] = useState(false);
   const navigate = useNavigate();
+
+  const localDbById = useMemo(() => {
+    const map: Record<string, typeof localDbs[number]> = {};
+    for (const db of localDbs) {
+      map[db.id] = db;
+    }
+    return map;
+  }, [localDbs]);
 
   const filteredConnections = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -70,29 +73,23 @@ function Home() {
     try {
       const db = await createLocalDb({
         name: input.name,
+        databaseName: input.databaseName,
+        username: input.username,
+        password: input.password,
+        port: input.port,
         postgresVersion: input.postgresVersion,
+        autoStart: input.autoStart,
       });
 
-      const parsed = new URL(db.connection_string);
-      const database =
-        parsed.pathname.replace(/^\//, "") ||
-        db.database_name ||
-        input.databaseName ||
-        input.name;
-      const port = Number(parsed.port || "5432");
-      const username = decodeURIComponent(
-        parsed.username || db.username || input.username || "postgres",
-      );
-      const password = decodeURIComponent(parsed.password || "");
-
+      // Create a connection entry that points to the local embedded postgres
       const localConnection: ConnectionInput = {
         id: db.id,
         name: db.name,
-        host: parsed.hostname || "localhost",
-        port,
-        database,
-        username,
-        password,
+        host: "localhost",
+        port: db.port ?? input.port,
+        database: db.database_name || input.databaseName,
+        username: db.username || input.username,
+        password: input.password,
         ssl_mode: "disable",
         url: db.connection_string,
         is_local: true,
@@ -140,6 +137,20 @@ function Home() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteConnection(id);
+      toast.success("Connection deleted");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete connection");
+    }
+  };
+
+  const handleEdit = (connection: Connection) => {
+    setEditingConnection(connection);
+    setIsFormOpen(true);
+  };
+
   const handleSelectConnection = (connection: { id: string }) => {
     navigate({
       to: "/database/$connectionId",
@@ -149,94 +160,61 @@ function Home() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="border-x border-b rounded-lg p-4 flex-1 flex flex-col bg-background">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-medium text-muted-foreground">
-            {filteredConnections.length}{" "}
-            {filteredConnections.length === 1 ? "database" : "databases"}
-            {searchQuery &&
-              connections.length !== filteredConnections.length && (
-                <> · {connections.length} total</>
-              )}
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button />}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleAdd}>
-                <Database className="mr-2 h-4 w-4" />
-                Remote Connection
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleAddLocalDb}>
-                <HardDrive className="mr-2 h-4 w-4" />
-                New Local Database
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {connections.length > 0 && (
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search connections…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-8 text-sm"
-            />
+      <div className="border-x border-b rounded-lg flex-1 flex flex-col bg-background overflow-hidden">
+        <div className="max-w-7xl mx-auto w-full px-12 sm:px-36 md:px-56 lg:px-72 py-4 sm:py-6 lg:py-8 flex-1 flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] text-muted-foreground font-mono">
+              {filteredConnections.length}{" "}
+              {filteredConnections.length === 1 ? "database" : "databases"}
+              {searchQuery &&
+                connections.length !== filteredConnections.length && (
+                  <> · {connections.length} total</>
+                )}
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button size="sm" />}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Add
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleAdd}>
+                  <Database className="mr-2 h-4 w-4" />
+                  Remote Connection
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleAddLocalDb}>
+                  <HardDrive className="mr-2 h-4 w-4" />
+                  New Local Database
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
-          {isLoadingConnections ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Loading connections...
-            </div>
-          ) : filteredConnections.length === 0 ? (
-            <div className="text-center py-12">
-              <Database className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">
-                {searchQuery ? "No matches found" : "No connections yet"}
-              </h3>
-              <p className="text-muted-foreground mb-4">
-                {searchQuery
-                  ? "Try a different search term."
-                  : "Add your first database connection to get started."}
-              </p>
-              <Button onClick={handleAdd}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Connection
-              </Button>
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {filteredConnections.map((conn) => (
-                <Card
-                  key={conn.id}
-                  className="hover:border-primary/50 transition-colors cursor-pointer"
-                  onClick={() => handleSelectConnection(conn)}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
-                      <Server className="h-4 w-4 text-muted-foreground" />
-                      <CardTitle className="text-base">{conn.name}</CardTitle>
-                      {conn.is_local && (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
-                          Local
-                        </span>
-                      )}
-                    </div>
-                    <CardDescription>
-                      {conn.host}:{conn.port}/{conn.database}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
+          {connections.length > 0 && (
+            <div className="relative mb-1.5">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search connections…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-7 pl-7 text-xs"
+              />
             </div>
           )}
+
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
+            <ConnectionList
+              connections={filteredConnections}
+              localDbById={localDbById}
+              isLoading={isLoadingConnections}
+              onAdd={handleAdd}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onSelect={handleSelectConnection}
+              onStartLocal={startLocalDb}
+              onPauseLocal={pauseLocalDb}
+            />
+          </div>
         </div>
       </div>
 

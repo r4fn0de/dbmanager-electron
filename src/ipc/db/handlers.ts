@@ -48,7 +48,23 @@ import {
   getTableDetails as getPgTableDetails,
   listRows,
   buildConnectionString,
+  tableSaveChanges as pgTableSaveChanges,
+  tableTruncate as pgTableTruncate,
+  tableFkLookup as pgTableFkLookup,
+  createTable as pgCreateTable,
+  dropTable as pgDropTable,
+  renameTable as pgRenameTable,
+  addColumn as pgAddColumn,
+  dropColumn as pgDropColumn,
+  renameColumn as pgRenameColumn,
+  alterColumnType as pgAlterColumnType,
+  setColumnNullable as pgSetColumnNullable,
+  setColumnDefault as pgSetColumnDefault,
+  createIndex as pgCreateIndex,
+  dropIndex as pgDropIndex,
+  createSchema as pgCreateSchema,
 } from "./pg-client";
+import { localDbManager } from "./local-db-manager";
 import { randomUUID } from "crypto";
 
 export const listConnections = os.handler(async (): Promise<Connection[]> => {
@@ -267,113 +283,308 @@ export const getDatabaseInfo = os
 export const createTable = os
   .input(createTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Create table:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    const sql = await pgCreateTable(
+      connStr,
+      input.schema,
+      input.name,
+      input.columns,
+      input.primaryKeyColumns,
+      input.ifNotExists,
+    );
+    return { sql };
   });
 
 export const dropTable = os
   .input(dropTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Drop table:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgDropTable(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    return { sql: `DROP TABLE "${input.schema}"."${input.name}"` };
   });
 
 export const renameTable = os
   .input(renameTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Rename table:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgRenameTable(connStr, input.schema, input.oldName, input.newName);
+    return { sql: `ALTER TABLE "${input.schema}"."${input.oldName}" RENAME TO "${input.newName}"` };
   });
 
 export const addColumn = os
   .input(addColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Add column:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgAddColumn(
+      connStr,
+      input.schema,
+      input.table,
+      input.column.name,
+      input.column.dataType,
+      input.column.isNullable,
+      input.column.defaultExpr,
+      input.ifNotExists,
+    );
+    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" ADD COLUMN "${input.column.name}" ${input.column.dataType}` };
   });
 
 export const dropColumn = os
   .input(dropColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Drop column:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgDropColumn(connStr, input.schema, input.table, input.column, input.cascade, input.ifExists);
+    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" DROP COLUMN "${input.column}"` };
   });
 
 export const renameColumn = os
   .input(renameColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Rename column:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgRenameColumn(connStr, input.schema, input.table, input.oldName, input.newName);
+    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" RENAME COLUMN "${input.oldName}" TO "${input.newName}"` };
   });
 
 export const alterColumnType = os
   .input(alterColumnTypeInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Alter column type:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgAlterColumnType(connStr, input.schema, input.table, input.column, input.newType, input.usingExpr);
+    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" TYPE ${input.newType}` };
   });
 
 export const setColumnNullable = os
   .input(setColumnNullableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Set column nullable:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgSetColumnNullable(connStr, input.schema, input.table, input.column, input.isNullable);
+    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" ${input.isNullable ? "DROP NOT NULL" : "SET NOT NULL"}` };
   });
 
 export const setColumnDefault = os
   .input(setColumnDefaultInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Set column default:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgSetColumnDefault(connStr, input.schema, input.table, input.column, input.defaultExpr);
+    return { sql: input.defaultExpr
+      ? `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" SET DEFAULT ${input.defaultExpr}`
+      : `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" DROP DEFAULT`
+    };
   });
 
 export const createIndex = os
   .input(createIndexInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Create index:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    const indexName = input.name || `${input.table}_${input.columns.join("_")}_idx`;
+    await pgCreateIndex(connStr, input.schema, input.table, indexName, input.columns, input.unique, input.ifNotExists);
+    return { sql: `CREATE INDEX ${indexName} ON "${input.schema}"."${input.table}" (${input.columns.join(", ")})` };
   });
 
 export const dropIndex = os
   .input(dropIndexInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Drop index:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgDropIndex(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    return { sql: `DROP INDEX "${input.schema}"."${input.name}"` };
   });
 
 export const createSchema = os
   .input(createSchemaInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    console.log("Create schema:", input);
-    return { sql: "" };
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    await pgCreateSchema(connStr, input.name, input.ifNotExists);
+    return { sql: `CREATE SCHEMA "${input.name}"` };
   });
 
 // Local DB Handlers
 export const listLocalDatabases = os.handler(async (): Promise<LocalDbInfo[]> => {
-  return [];
+  return await localDbManager.list();
 });
 
 export const createLocalDatabase = os
   .input(createLocalDatabaseSchema)
   .handler(async ({ input }): Promise<LocalDbInfo> => {
-    console.log("Create local DB:", input);
-    throw new Error("Not implemented");
+    return await localDbManager.create({
+      name: input.name,
+      databaseName: input.databaseName || "postgres",
+      username: input.username || "postgres",
+      password: input.password || "password",
+      port: input.port || 5432,
+      postgresVersion: input.postgresVersion || "16.13.0",
+      autoStart: input.autoStart ?? true,
+    });
   });
 
 export const startLocalDatabase = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
-    console.log("Start local DB:", input.id);
+    await localDbManager.start(input.id);
   });
 
 export const stopLocalDatabase = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
-    console.log("Stop local DB:", input.id);
+    await localDbManager.stop(input.id);
   });
 
 export const deleteLocalDatabase = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
-    console.log("Delete local DB:", input.id);
+    await localDbManager.delete(input.id);
   });

@@ -53,14 +53,14 @@ export function TitleBar() {
   };
 
   const tabsSlot = (
-    <div className="min-w-0 flex-1 h-full flex items-center gap-1 draglayer">
+    <div className="min-w-0 flex-1 h-full flex items-end gap-1 pl-0 draglayer">
       <div className="no-drag h-full flex items-center">
         <ConnectionTabs />
       </div>
       <button
         type="button"
         onClick={handleOpenConnections}
-        className="shrink-0 h-[28px] px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors no-drag"
+        className="shrink-0 h-[28px] px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors no-drag mb-1"
         aria-label="Open connections"
         title="Open connections"
       >

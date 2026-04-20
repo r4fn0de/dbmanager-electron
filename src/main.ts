@@ -9,6 +9,7 @@ import { UpdateSourceType, updateElectronApp } from "update-electron-app";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, inDevelopment } from "./constants";
 import { getBasePath } from "./utils/path";
+import { localDbManager } from "./ipc/db/local-db-manager";
 
 function createWindow() {
   const basePath = getBasePath();
@@ -101,9 +102,16 @@ app.whenReady().then(async () => {
     await installExtensions();
     checkForUpdates();
     await setupORPC();
+    // Hydrate local databases (auto-start instances that were running before)
+    await localDbManager.hydrate();
   } catch (error) {
     console.error("Error during app initialization:", error);
   }
+});
+
+// Stop all local DB instances on quit (sync — Electron won't await async handlers)
+app.on("will-quit", () => {
+  localDbManager.stopAllSync();
 });
 
 //osX only

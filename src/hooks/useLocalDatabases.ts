@@ -4,7 +4,12 @@ import type { LocalDbInfo } from "@/ipc/db/types";
 
 interface CreateLocalDbOptions {
   name: string;
+  databaseName?: string;
+  username?: string;
+  password?: string;
+  port?: number;
   postgresVersion?: string;
+  autoStart?: boolean;
 }
 
 export interface LocalDbStorageInfo {
@@ -67,7 +72,12 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     async (input: CreateLocalDbOptions): Promise<LocalDbInfo> => {
       const db = await ipc.client.db.createLocalDatabase({
         name: input.name,
+        databaseName: input.databaseName,
+        username: input.username,
+        password: input.password,
+        port: input.port,
         postgresVersion: input.postgresVersion,
+        autoStart: input.autoStart,
       });
       setDatabases((current) => upsertDb(current, db));
       await refresh();

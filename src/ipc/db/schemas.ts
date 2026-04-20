@@ -230,5 +230,10 @@ export const tableTruncateSchema = z.object({
 // Local DB schemas
 export const createLocalDatabaseSchema = z.object({
   name: z.string(),
+  databaseName: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  port: z.number().optional(),
   postgresVersion: z.string().optional(),
+  autoStart: z.boolean().optional(),
 });

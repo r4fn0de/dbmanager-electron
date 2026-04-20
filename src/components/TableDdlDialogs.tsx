@@ -1,4 +1,12 @@
-import { Database, Loader2, Plus, Trash2, Wand } from "lucide-react";
+import {
+  AlertTriangle,
+  Database,
+  Loader2,
+  Plus,
+  Trash2,
+  Upload,
+  Wand,
+} from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -9,6 +17,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -32,13 +41,26 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type {
-  CreateTableInput,
-  DropTableInput,
   AddColumnInput,
+  AlterColumnTypeInput,
+  ColumnDefinition,
   CreateIndexInput,
   CreateSchemaInput,
+  CreateTableInput,
   DdlResult,
+  DropColumnInput,
+  DropTableInput,
+  RenameColumnInput,
+  RenameTableInput,
+  SaveChangesInput,
+  SaveChangesResponse,
+  SetColumnDefaultInput,
+  SetColumnNullableInput,
 } from "@/ipc/db/types";
+
+// ============================================================
+// Common types used by quick "add column" row
+// ============================================================
 
 const COMMON_PG_TYPES = [
   "text",
@@ -77,6 +99,20 @@ interface ColumnRow {
   dataType: string;
   isNullable: boolean;
   isPrimaryKey: boolean;
+  isUnique: boolean;
+  defaultExpr: string;
+}
+
+function emptyColumn(id: string): ColumnRow {
+  return {
+    id,
+    name: "",
+    dataType: "text",
+    isNullable: true,
+    isPrimaryKey: false,
+    isUnique: false,
+    defaultExpr: "",
+  };
 }
 
 export function CreateTableDialog({
@@ -87,189 +123,227 @@ export function CreateTableDialog({
   createTable,
   onSuccess,
 }: CreateTableDialogProps) {
+  const baseId = useId();
   const [tableName, setTableName] = useState("");
-  const [columns, setColumns] = useState<ColumnRow[]>([
-    { id: "1", name: "id", dataType: "serial", isNullable: false, isPrimaryKey: true },
+  const [columns, setColumns] = useState<ColumnRow[]>(() => [
+    {
+      id: `${baseId}-0`,
+      name: "id",
+      dataType: "uuid",
+      isNullable: false,
+      isPrimaryKey: true,
+      isUnique: false,
+      defaultExpr: "gen_random_uuid()",
+    },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const isValid = useMemo(() => {
+    if (!tableName.trim()) return false;
+    if (columns.length === 0) return false;
+    return columns.every((c) => c.name.trim() && c.dataType.trim());
+  }, [tableName, columns]);
 
   const addColumn = () => {
-    setColumns((prev) => [
-      ...prev,
-      {
-        id: Math.random().toString(36).slice(2),
-        name: "",
-        dataType: "text",
-        isNullable: true,
-        isPrimaryKey: false,
-      },
-    ]);
+    setColumns((prev) => [...prev, emptyColumn(`${baseId}-${prev.length}`)]);
   };
 
-  const removeColumn = (id: string) => {
-    setColumns((prev) => prev.filter((c) => c.id !== id));
-  };
-
-  const updateColumn = (id: string, updates: Partial<ColumnRow>) => {
+  const updateColumn = (id: string, patch: Partial<ColumnRow>) => {
     setColumns((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
+      prev.map((col) => (col.id === id ? { ...col, ...patch } : col)),
     );
   };
 
-  const reset = () => {
-    setTableName("");
-    setColumns([
-      { id: "1", name: "id", dataType: "serial", isNullable: false, isPrimaryKey: true },
-    ]);
-    setError(null);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
+  const removeColumn = (id: string) => {
+    setColumns((prev) => prev.filter((col) => col.id !== id));
   };
 
   const handleSubmit = async () => {
-    if (!tableName.trim()) {
-      setError("Table name is required");
-      return;
-    }
-    if (columns.some((c) => !c.name.trim())) {
-      setError("All columns must have a name");
-      return;
-    }
-
+    if (!isValid) return;
     setIsSubmitting(true);
-    setError(null);
+    const toastId = toast.loading("Creating table...");
     try {
+      const columnDefs: ColumnDefinition[] = columns.map((c) => ({
+        name: c.name.trim(),
+        dataType: c.dataType.trim(),
+        isNullable: c.isNullable,
+        isPrimaryKey: c.isPrimaryKey,
+        isUnique: c.isUnique,
+        defaultExpr: c.defaultExpr.trim() || undefined,
+      }));
       const result = await createTable({
         connectionId,
         schema,
         name: tableName.trim(),
-        columns: columns.map((c) => ({
-          name: c.name.trim(),
-          dataType: c.dataType,
-          isNullable: c.isNullable,
-        })),
+        columns: columnDefs,
       });
-      toast.success(`Table created: ${result.sql}`);
+      toast.success("Table created", {
+        id: toastId,
+        description: result.sql,
+      });
       onSuccess();
-      handleClose();
+      onClose();
+      // Reset
+      setTableName("");
+      setColumns([
+        {
+          id: `${baseId}-0`,
+          name: "id",
+          dataType: "uuid",
+          isNullable: false,
+          isPrimaryKey: true,
+          isUnique: false,
+          defaultExpr: "gen_random_uuid()",
+        },
+      ]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create table");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to create table",
+        { id: toastId },
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-xl">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Create Table</DialogTitle>
+          <DialogTitle>Create table</DialogTitle>
           <DialogDescription>
-            Create a new table in schema "{schema}".
+            Creates a new table in{" "}
+            <code className="font-mono text-foreground">{schema}</code>.
           </DialogDescription>
         </DialogHeader>
 
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-4 py-2">
-          <div className="grid gap-2">
-            <Label htmlFor="table-name">Table Name</Label>
+        <div className="space-y-4 flex-1 overflow-auto px-0.5">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Table name</Label>
             <Input
-              id="table-name"
               value={tableName}
               onChange={(e) => setTableName(e.target.value)}
-              placeholder="my_table"
+              placeholder="users"
+              autoFocus
             />
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Columns</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addColumn}>
-                <Plus className="h-3.5 w-3.5 mr-1" />
-                Add Column
+              <Label className="text-xs text-muted-foreground">Columns</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addColumn}
+              >
+                <Plus className="h-3 w-3" />
+                Add column
               </Button>
             </div>
 
-            <div className="space-y-2 max-h-[300px] overflow-auto pr-1">
-              {columns.map((column, index) => (
-                <div key={column.id} className="flex items-start gap-2 p-2 border rounded">
-                  <div className="flex-1 grid grid-cols-2 gap-2">
-                    <Input
-                      value={column.name}
-                      onChange={(e) => updateColumn(column.id, { name: e.target.value })}
-                      placeholder="column_name"
-                      className="h-8 text-sm"
-                    />
-                    <Select
-                      value={column.dataType}
-                      onValueChange={(v) => v && updateColumn(column.id, { dataType: v })}
-                    >
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COMMON_PG_TYPES.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <Switch
-                        checked={column.isNullable}
-                        onCheckedChange={(v) => updateColumn(column.id, { isNullable: v })}
-                        id={`nullable-${column.id}`}
-                      />
-                      <Label htmlFor={`nullable-${column.id}`} className="text-xs cursor-pointer">
-                        Nullable
-                      </Label>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Switch
-                        checked={column.isPrimaryKey}
-                        onCheckedChange={(v) => updateColumn(column.id, { isPrimaryKey: v })}
-                        id={`pk-${column.id}`}
-                      />
-                      <Label htmlFor={`pk-${column.id}`} className="text-xs cursor-pointer">
-                        PK
-                      </Label>
-                    </div>
-                    {columns.length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => removeColumn(column.id)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+            {/* Column header */}
+            <div className="grid grid-cols-[1fr_1fr_60px_50px_50px_auto_32px] gap-1.5 items-center text-[10px] text-muted-foreground px-0.5">
+              <span>Name</span>
+              <span>Type</span>
+              <span className="text-center">Null</span>
+              <span className="text-center">PK</span>
+              <span className="text-center">UQ</span>
+              <span>Default</span>
+              <span />
             </div>
+
+            {columns.map((col) => (
+              <div
+                key={col.id}
+                className="grid grid-cols-[1fr_1fr_60px_50px_50px_auto_32px] gap-1.5 items-center"
+              >
+                <Input
+                  value={col.name}
+                  onChange={(e) =>
+                    updateColumn(col.id, { name: e.target.value })
+                  }
+                  placeholder="column_name"
+                  className="text-xs h-8"
+                />
+                <Select
+                  value={col.dataType}
+                  onValueChange={(v) =>
+                    updateColumn(col.id, { dataType: v ?? col.dataType })
+                  }
+                >
+                  <SelectTrigger className="text-xs h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMMON_PG_TYPES.map((t) => (
+                      <SelectItem key={t} value={t} className="text-xs">
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex justify-center">
+                  <Switch
+                    checked={col.isNullable}
+                    onCheckedChange={(v) =>
+                      updateColumn(col.id, { isNullable: v })
+                    }
+                    size="sm"
+                  />
+                </div>
+                <div className="flex justify-center">
+                  <Switch
+                    checked={col.isPrimaryKey}
+                    onCheckedChange={(v) =>
+                      updateColumn(col.id, {
+                        isPrimaryKey: v,
+                        // PK implies NOT NULL.
+                        ...(v ? { isNullable: false } : {}),
+                      })
+                    }
+                    size="sm"
+                  />
+                </div>
+                <div className="flex justify-center">
+                  <Switch
+                    checked={col.isUnique}
+                    onCheckedChange={(v) =>
+                      updateColumn(col.id, { isUnique: v })
+                    }
+                    size="sm"
+                  />
+                </div>
+                <Input
+                  value={col.defaultExpr}
+                  onChange={(e) =>
+                    updateColumn(col.id, { defaultExpr: e.target.value })
+                  }
+                  placeholder="DEFAULT"
+                  className="text-xs h-8 font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => removeColumn(col.id)}
+                  disabled={columns.length <= 1}
+                >
+                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                </Button>
+              </div>
+            ))}
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+        <DialogFooter className="gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Create Table
+          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Create table
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -300,90 +374,182 @@ export function DropTableDialog({
   dropTable,
   onSuccess,
 }: DropTableDialogProps) {
+  const [cascade, setCascade] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
-  const reset = () => {
-    setConfirmText("");
-    setError(null);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
-
-  const handleSubmit = async () => {
-    if (confirmText !== tableName) return;
-
+  const handleDrop = async () => {
     setIsSubmitting(true);
-    setError(null);
+    const toastId = toast.loading("Dropping table...");
     try {
       const result = await dropTable({
         connectionId,
         schema,
         name: tableName,
-        cascade: false,
+        cascade,
       });
-      toast.success(`Table dropped: ${result.sql}`);
+      toast.success("Table dropped", {
+        id: toastId,
+        description: result.sql,
+      });
       onSuccess();
-      handleClose();
+      onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to drop table");
+      toast.error(err instanceof Error ? err.message : "Failed to drop table", {
+        id: toastId,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <AlertDialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+    <AlertDialog
+      open={isOpen}
+      onOpenChange={(open) => !isSubmitting && !open && onClose()}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Drop Table</AlertDialogTitle>
-          <AlertDialogDescription>
-            This will permanently delete the table{" "}
-            <code className="font-mono text-sm bg-muted px-1 rounded">
+          <AlertDialogMedia className="bg-destructive/10 text-destructive">
+            <AlertTriangle />
+          </AlertDialogMedia>
+          <AlertDialogTitle>
+            Drop table{" "}
+            <code className="font-mono">
               {schema}.{tableName}
             </code>
-            . This action cannot be undone.
+            ?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently delete the table and all its data. This action
+            cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Type <strong>{tableName}</strong> to confirm:
-          </p>
-          <Input
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder={`Type ${tableName} to confirm`}
+        <label className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={cascade}
+            onChange={(e) => setCascade(e.target.checked)}
+            className="mt-0.5"
           />
-        </div>
+          <span>
+            <span className="font-medium text-foreground">CASCADE</span>
+            <span className="block text-muted-foreground">
+              Also drop objects that depend on this table (views, foreign keys,
+              etc.).
+            </span>
+          </span>
+        </label>
 
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleSubmit}
-            disabled={confirmText !== tableName || isSubmitting}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
+            onClick={handleDrop}
+            disabled={isSubmitting}
           >
             {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
             )}
-            Drop Table
+            Drop table
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+// ============================================================
+// Rename Table Dialog
+// ============================================================
+
+interface RenameTableDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  currentName: string;
+  renameTable: (input: RenameTableInput) => Promise<DdlResult>;
+  onSuccess: () => void;
+}
+
+export function RenameTableDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  currentName,
+  renameTable,
+  onSuccess,
+}: RenameTableDialogProps) {
+  const [newName, setNewName] = useState(currentName);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isValid = newName.trim() && newName.trim() !== currentName;
+
+  const handleSubmit = async () => {
+    if (!isValid) return;
+    setIsSubmitting(true);
+    const toastId = toast.loading("Renaming table...");
+    try {
+      const result = await renameTable({
+        connectionId,
+        schema,
+        oldName: currentName,
+        newName: newName.trim(),
+      });
+      toast.success("Table renamed", {
+        id: toastId,
+        description: result.sql,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to rename table",
+        { id: toastId },
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Rename table</DialogTitle>
+          <DialogDescription>
+            Rename{" "}
+            <code className="font-mono text-foreground">
+              {schema}.{currentName}
+            </code>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5 py-2">
+          <Label className="text-xs text-muted-foreground">New name</Label>
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          />
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Rename
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -410,128 +576,134 @@ export function AddColumnDialog({
   addColumn,
   onSuccess,
 }: AddColumnDialogProps) {
-  const [columnName, setColumnName] = useState("");
+  const [name, setName] = useState("");
   const [dataType, setDataType] = useState("text");
   const [isNullable, setIsNullable] = useState(true);
-  const [defaultValue, setDefaultValue] = useState("");
+  const [isUnique, setIsUnique] = useState(false);
+  const [defaultExpr, setDefaultExpr] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const reset = () => {
-    setColumnName("");
-    setDataType("text");
-    setIsNullable(true);
-    setDefaultValue("");
-    setError(null);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
+  const isValid = name.trim() && dataType.trim();
 
   const handleSubmit = async () => {
-    if (!columnName.trim()) {
-      setError("Column name is required");
-      return;
-    }
-
+    if (!isValid) return;
     setIsSubmitting(true);
-    setError(null);
+    const toastId = toast.loading("Adding column...");
     try {
       const result = await addColumn({
         connectionId,
         schema,
         table: tableName,
         column: {
-          name: columnName.trim(),
-          dataType,
+          name: name.trim(),
+          dataType: dataType.trim(),
           isNullable,
+          isUnique,
+          defaultExpr: defaultExpr.trim() || undefined,
         },
       });
-      toast.success(`Column added: ${result.sql}`);
+      toast.success("Column added", {
+        id: toastId,
+        description: result.sql,
+      });
       onSuccess();
-      handleClose();
+      onClose();
+      // Reset
+      setName("");
+      setDataType("text");
+      setIsNullable(true);
+      setIsUnique(false);
+      setDefaultExpr("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add column");
+      toast.error(err instanceof Error ? err.message : "Failed to add column", {
+        id: toastId,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-md">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Add Column</DialogTitle>
+          <DialogTitle>Add column</DialogTitle>
           <DialogDescription>
             Add a new column to{" "}
-            <code className="font-mono text-sm bg-muted px-1 rounded">
+            <code className="font-mono text-foreground">
               {schema}.{tableName}
             </code>
           </DialogDescription>
         </DialogHeader>
 
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-4 py-2">
-          <div className="grid gap-2">
-            <Label htmlFor="col-name">Column Name</Label>
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Column name</Label>
             <Input
-              id="col-name"
-              value={columnName}
-              onChange={(e) => setColumnName(e.target.value)}
-              placeholder="new_column"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="column_name"
+              autoFocus
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="col-type">Data Type</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Data type</Label>
             <Select value={dataType} onValueChange={(v) => v && setDataType(v)}>
-              <SelectTrigger id="col-type">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {COMMON_PG_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
+                {COMMON_PG_TYPES.map((t) => (
+                  <SelectItem key={t} value={t} className="text-xs">
+                    {t}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="col-default">Default Value (optional)</Label>
-            <Input
-              id="col-default"
-              value={defaultValue}
-              onChange={(e) => setDefaultValue(e.target.value)}
-              placeholder="NULL"
+          <div className="flex items-center justify-between rounded-md border p-2.5">
+            <span className="text-xs">Nullable</span>
+            <Switch
+              checked={isNullable}
+              onCheckedChange={setIsNullable}
+              size="sm"
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between rounded-md border p-2.5">
+            <span className="text-xs">Unique</span>
             <Switch
-              id="col-nullable"
-              checked={isNullable}
-              onCheckedChange={setIsNullable}
+              checked={isUnique}
+              onCheckedChange={setIsUnique}
+              size="sm"
             />
-            <Label htmlFor="col-nullable">Allow NULL values</Label>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              Default expression{" "}
+              <Badge variant="secondary" className="text-[9px] ml-1">
+                optional
+              </Badge>
+            </Label>
+            <Input
+              value={defaultExpr}
+              onChange={(e) => setDefaultExpr(e.target.value)}
+              placeholder="now(), 0, 'default'"
+              className="font-mono text-xs"
+            />
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Add Column
+          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Add column
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -540,148 +712,114 @@ export function AddColumnDialog({
 }
 
 // ============================================================
-// Create Index Dialog
+// Drop Column Dialog
 // ============================================================
 
-interface CreateIndexDialogProps {
+interface DropColumnDialogProps {
   isOpen: boolean;
   onClose: () => void;
   connectionId: string;
   schema: string;
   tableName: string;
-  columns: string[];
-  createIndex: (input: CreateIndexInput) => Promise<DdlResult>;
+  columnName: string;
+  dropColumn: (input: DropColumnInput) => Promise<DdlResult>;
   onSuccess: () => void;
 }
 
-export function CreateIndexDialog({
+export function DropColumnDialog({
   isOpen,
   onClose,
   connectionId,
   schema,
   tableName,
-  columns,
-  createIndex,
+  columnName,
+  dropColumn,
   onSuccess,
-}: CreateIndexDialogProps) {
-  const [indexName, setIndexName] = useState(`idx_${tableName}_`);
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
-  const [isUnique, setIsUnique] = useState(false);
+}: DropColumnDialogProps) {
+  const [cascade, setCascade] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const reset = () => {
-    setIndexName(`idx_${tableName}_`);
-    setSelectedColumns([]);
-    setIsUnique(false);
-    setError(null);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
-
-  const toggleColumn = (col: string) => {
-    setSelectedColumns((prev) =>
-      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
-    );
-  };
-
-  const handleSubmit = async () => {
-    if (!indexName.trim()) {
-      setError("Index name is required");
-      return;
-    }
-    if (selectedColumns.length === 0) {
-      setError("Select at least one column");
-      return;
-    }
-
+  const handleDrop = async () => {
     setIsSubmitting(true);
-    setError(null);
+    const toastId = toast.loading("Dropping column...");
     try {
-      const result = await createIndex({
+      const result = await dropColumn({
         connectionId,
         schema,
         table: tableName,
-        name: indexName.trim(),
-        columns: selectedColumns,
-        unique: isUnique,
+        column: columnName,
+        cascade,
       });
-      toast.success(`Index created: ${result.sql}`);
+      toast.success("Column dropped", {
+        id: toastId,
+        description: result.sql,
+      });
       onSuccess();
-      handleClose();
+      onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create index");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to drop column",
+        { id: toastId },
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Create Index</DialogTitle>
-          <DialogDescription>
-            Create an index on{" "}
-            <code className="font-mono text-sm bg-muted px-1 rounded">
+    <AlertDialog
+      open={isOpen}
+      onOpenChange={(open) => !isSubmitting && !open && onClose()}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogMedia className="bg-destructive/10 text-destructive">
+            <AlertTriangle />
+          </AlertDialogMedia>
+          <AlertDialogTitle>
+            Drop column <code className="font-mono">{columnName}</code>?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently remove the column from{" "}
+            <code className="font-mono">
               {schema}.{tableName}
             </code>
-          </DialogDescription>
-        </DialogHeader>
+            . All data in this column will be lost.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
 
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
-            {error}
-          </div>
-        )}
+        <label className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={cascade}
+            onChange={(e) => setCascade(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium text-foreground">CASCADE</span>
+            <span className="block text-muted-foreground">
+              Also drop objects that depend on this column.
+            </span>
+          </span>
+        </label>
 
-        <div className="space-y-4 py-2">
-          <div className="grid gap-2">
-            <Label htmlFor="idx-name">Index Name</Label>
-            <Input
-              id="idx-name"
-              value={indexName}
-              onChange={(e) => setIndexName(e.target.value)}
-              placeholder="idx_table_name"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Switch id="idx-unique" checked={isUnique} onCheckedChange={setIsUnique} />
-            <Label htmlFor="idx-unique">Unique Index</Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Select Columns</Label>
-            <div className="flex flex-wrap gap-2">
-              {columns.map((col) => (
-                <Badge
-                  key={col}
-                  variant={selectedColumns.includes(col) ? "default" : "outline"}
-                  className="cursor-pointer"
-                  onClick={() => toggleColumn(col)}
-                >
-                  {col}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Create Index
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={handleDrop}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+            Drop column
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -706,74 +844,841 @@ export function CreateSchemaDialog({
 }: CreateSchemaDialogProps) {
   const [schemaName, setSchemaName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const reset = () => {
-    setSchemaName("");
-    setError(null);
-  };
-
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
+  const isValid = schemaName.trim().length > 0;
 
   const handleSubmit = async () => {
-    if (!schemaName.trim()) {
-      setError("Schema name is required");
-      return;
-    }
-
+    if (!isValid) return;
     setIsSubmitting(true);
-    setError(null);
+    const toastId = toast.loading("Creating schema...");
     try {
       const result = await createSchema({
         connectionId,
         name: schemaName.trim(),
+        ifNotExists: true,
       });
-      toast.success(`Schema created: ${result.sql}`);
+      toast.success("Schema created", { id: toastId, description: result.sql });
       onSuccess();
-      handleClose();
+      onClose();
+      setSchemaName("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create schema");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to create schema",
+        {
+          id: toastId,
+        },
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-md">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Create Schema</DialogTitle>
-          <DialogDescription>Create a new schema in the database.</DialogDescription>
+          <DialogTitle>Create schema</DialogTitle>
+          <DialogDescription>
+            Creates a new PostgreSQL schema in this connection.
+          </DialogDescription>
         </DialogHeader>
 
-        {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
-            {error}
-          </div>
-        )}
+        <div className="space-y-1.5 py-2">
+          <Label className="text-xs text-muted-foreground">Schema name</Label>
+          <Input
+            autoFocus
+            value={schemaName}
+            onChange={(e) => setSchemaName(e.target.value)}
+            placeholder="analytics"
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          />
+        </div>
 
-        <div className="space-y-4 py-2">
-          <div className="grid gap-2">
-            <Label htmlFor="schema-name">Schema Name</Label>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <Database className="h-3.5 w-3.5" />
+            Create schema
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// Create Index Dialog
+// ============================================================
+
+interface CreateIndexDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  defaultTableName: string;
+  createIndex: (input: CreateIndexInput) => Promise<DdlResult>;
+  onSuccess: () => void;
+}
+
+export function CreateIndexDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  defaultTableName,
+  createIndex,
+  onSuccess,
+}: CreateIndexDialogProps) {
+  const [tableName, setTableName] = useState(defaultTableName);
+  const [indexName, setIndexName] = useState("");
+  const [columnsRaw, setColumnsRaw] = useState("");
+  const [isUnique, setIsUnique] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const columns = useMemo(
+    () =>
+      columnsRaw
+        .split(",")
+        .map((col) => col.trim())
+        .filter(Boolean),
+    [columnsRaw],
+  );
+  const isValid = tableName.trim().length > 0 && columns.length > 0;
+
+  const handleSubmit = async () => {
+    if (!isValid) return;
+    setIsSubmitting(true);
+    const toastId = toast.loading("Creating index...");
+    try {
+      const result = await createIndex({
+        connectionId,
+        schema,
+        table: tableName.trim(),
+        name: indexName.trim() || undefined,
+        columns,
+        unique: isUnique,
+        ifNotExists: true,
+      });
+      toast.success("Index created", { id: toastId, description: result.sql });
+      onSuccess();
+      onClose();
+      setIndexName("");
+      setColumnsRaw("");
+      setIsUnique(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to create index",
+        {
+          id: toastId,
+        },
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Create index</DialogTitle>
+          <DialogDescription>
+            Creates an index in{" "}
+            <code className="font-mono text-foreground">{schema}</code>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Table</Label>
             <Input
-              id="schema-name"
-              value={schemaName}
-              onChange={(e) => setSchemaName(e.target.value)}
-              placeholder="my_schema"
+              value={tableName}
+              onChange={(e) => setTableName(e.target.value)}
+              placeholder="users"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              Index name (optional)
+            </Label>
+            <Input
+              value={indexName}
+              onChange={(e) => setIndexName(e.target.value)}
+              placeholder="users_email_idx"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              Columns (comma separated)
+            </Label>
+            <Input
+              value={columnsRaw}
+              onChange={(e) => setColumnsRaw(e.target.value)}
+              placeholder="email, created_at"
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-md border p-2.5">
+            <span className="text-xs">Unique index</span>
+            <Switch
+              checked={isUnique}
+              onCheckedChange={setIsUnique}
+              size="sm"
             />
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <Wand className="h-3.5 w-3.5" />
+            Create index
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// Import CSV Dialog
+// ============================================================
+
+interface ImportCsvDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  defaultTableName: string;
+  tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
+  onSuccess: () => void;
+}
+
+type CsvParseResult = {
+  headers: string[];
+  rows: Record<string, unknown>[];
+};
+
+function parseCsvText(input: string): CsvParseResult {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    const next = input[i + 1];
+
+    if (ch === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && ch === ",") {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if (!inQuotes && (ch === "\n" || ch === "\r")) {
+      if (ch === "\r" && next === "\n") i += 1;
+      row.push(current);
+      current = "";
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  if (rows.length === 0) {
+    throw new Error("CSV is empty");
+  }
+
+  const headers = rows[0].map((h) => h.trim());
+  if (headers.some((h) => h.length === 0)) {
+    throw new Error("CSV header contains empty column names");
+  }
+
+  const objects: Record<string, unknown>[] = [];
+  for (let r = 1; r < rows.length; r += 1) {
+    const dataRow = rows[r];
+    const obj: Record<string, unknown> = {};
+    for (let c = 0; c < headers.length; c += 1) {
+      const raw = dataRow[c] ?? "";
+      obj[headers[c]] = raw === "" ? null : raw;
+    }
+    objects.push(obj);
+  }
+
+  return { headers, rows: objects };
+}
+
+export function ImportCsvDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  defaultTableName,
+  tableSaveChanges,
+  onSuccess,
+}: ImportCsvDialogProps) {
+  const [tableName, setTableName] = useState(defaultTableName);
+  const [fileName, setFileName] = useState("");
+  const [parsed, setParsed] = useState<CsvParseResult | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    const text = await file.text();
+    const parsedCsv = parseCsvText(text);
+    setFileName(file.name);
+    setParsed(parsedCsv);
+  };
+
+  const isValid =
+    tableName.trim().length > 0 && parsed && parsed.rows.length > 0;
+
+  const handleImport = async () => {
+    if (!isValid || !parsed) return;
+    setIsSubmitting(true);
+    const toastId = toast.loading("Importing CSV...");
+    try {
+      const chunkSize = 500;
+      for (let i = 0; i < parsed.rows.length; i += chunkSize) {
+        const chunk = parsed.rows.slice(i, i + chunkSize);
+        await tableSaveChanges({
+          tableRef: {
+            connectionId,
+            schema,
+            table: tableName.trim(),
+          },
+          inserts: chunk,
+          updates: [],
+          deletes: [],
+        });
+      }
+
+      toast.success(`Imported ${parsed.rows.length} rows`, {
+        id: toastId,
+        description: `${fileName} → ${schema}.${tableName.trim()}`,
+      });
+      onSuccess();
+      onClose();
+      setFileName("");
+      setParsed(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "CSV import failed", {
+        id: toastId,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Import CSV</DialogTitle>
+          <DialogDescription>
+            Imports rows into{" "}
+            <code className="font-mono text-foreground">{schema}</code>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              Target table
+            </Label>
+            <Input
+              value={tableName}
+              onChange={(e) => setTableName(e.target.value)}
+              placeholder="users"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">CSV file</Label>
+            <Input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                void handleFile(file);
+              }}
+            />
+          </div>
+
+          {parsed && (
+            <div className="rounded-md border p-2.5 text-xs space-y-1">
+              <p>
+                <strong>File:</strong> {fileName}
+              </p>
+              <p>
+                <strong>Columns:</strong> {parsed.headers.join(", ")}
+              </p>
+              <p>
+                <strong>Rows:</strong> {parsed.rows.length}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleImport} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <Upload className="h-3.5 w-3.5" />
+            Import CSV
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// Rename Column Dialog
+// ============================================================
+
+interface RenameColumnDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  tableName: string;
+  currentName: string;
+  renameColumn: (input: RenameColumnInput) => Promise<DdlResult>;
+  onSuccess: () => void;
+}
+
+export function RenameColumnDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  tableName,
+  currentName,
+  renameColumn,
+  onSuccess,
+}: RenameColumnDialogProps) {
+  const [newName, setNewName] = useState(currentName);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isValid = newName.trim().length > 0 && newName.trim() !== currentName;
+
+  const handleSubmit = async () => {
+    if (!isValid) return;
+    setIsSubmitting(true);
+    const toastId = toast.loading("Renaming column...");
+    try {
+      const result = await renameColumn({
+        connectionId,
+        schema,
+        table: tableName,
+        oldName: currentName,
+        newName: newName.trim(),
+      });
+      toast.success("Column renamed", { id: toastId, description: result.sql });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to rename column",
+        {
+          id: toastId,
+        },
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Rename column</DialogTitle>
+          <DialogDescription>
+            Rename{" "}
+            <code className="font-mono text-foreground">{currentName}</code> in
+            <code className="font-mono text-foreground">
+              {" "}
+              {schema}.{tableName}
+            </code>
+            .
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5 py-2">
+          <Label className="text-xs text-muted-foreground">
+            New column name
+          </Label>
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          />
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Rename column
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// Alter Column Type Dialog
+// ============================================================
+
+interface AlterColumnTypeDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  tableName: string;
+  columnName: string;
+  currentType: string;
+  alterColumnType: (input: AlterColumnTypeInput) => Promise<DdlResult>;
+  onSuccess: () => void;
+}
+
+export function AlterColumnTypeDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  tableName,
+  columnName,
+  currentType,
+  alterColumnType,
+  onSuccess,
+}: AlterColumnTypeDialogProps) {
+  const [newType, setNewType] = useState(currentType);
+  const [usingExpr, setUsingExpr] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isValid = newType.trim().length > 0 && newType.trim() !== currentType;
+
+  const handleSubmit = async () => {
+    if (!isValid) return;
+    setIsSubmitting(true);
+    const toastId = toast.loading("Altering column type...");
+    try {
+      const result = await alterColumnType({
+        connectionId,
+        schema,
+        table: tableName,
+        column: columnName,
+        newType: newType.trim(),
+        usingExpr: usingExpr.trim() || undefined,
+      });
+      toast.success("Column type updated", {
+        id: toastId,
+        description: result.sql,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to alter column type",
+        { id: toastId },
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle>Alter column type</DialogTitle>
+          <DialogDescription>
+            Change type of{" "}
+            <code className="font-mono text-foreground">{columnName}</code>
+            in{" "}
+            <code className="font-mono text-foreground">
+              {" "}
+              {schema}.{tableName}
+            </code>
+            .
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">New type</Label>
+            <Input
+              value={newType}
+              onChange={(e) => setNewType(e.target.value)}
+              placeholder="text, integer, varchar(255), jsonb..."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">
+              USING expression (optional)
+            </Label>
+            <Input
+              value={usingExpr}
+              onChange={(e) => setUsingExpr(e.target.value)}
+              placeholder='"column_name"::text'
+              className="font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Save type
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// Set Column Default Dialog
+// ============================================================
+
+interface SetColumnDefaultDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  tableName: string;
+  columnName: string;
+  currentDefault: string | null;
+  setColumnDefault: (input: SetColumnDefaultInput) => Promise<DdlResult>;
+  onSuccess: () => void;
+}
+
+export function SetColumnDefaultDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  tableName,
+  columnName,
+  currentDefault,
+  setColumnDefault,
+  onSuccess,
+}: SetColumnDefaultDialogProps) {
+  const [defaultExpr, setDefaultExpr] = useState(currentDefault ?? "");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSave = async (clear: boolean) => {
+    setIsSubmitting(true);
+    const toastId = toast.loading(
+      clear ? "Dropping default..." : "Setting default...",
+    );
+    try {
+      const result = await setColumnDefault({
+        connectionId,
+        schema,
+        table: tableName,
+        column: columnName,
+        defaultExpr: clear ? undefined : defaultExpr.trim() || undefined,
+      });
+      toast.success(clear ? "Default removed" : "Default updated", {
+        id: toastId,
+        description: result.sql,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update default",
+        {
+          id: toastId,
+        },
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Set column default</DialogTitle>
+          <DialogDescription>
+            Configure default for{" "}
+            <code className="font-mono text-foreground">{columnName}</code>
+            in{" "}
+            <code className="font-mono text-foreground">
+              {" "}
+              {schema}.{tableName}
+            </code>
+            .
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5 py-2">
+          <Label className="text-xs text-muted-foreground">
+            Default expression
+          </Label>
+          <Input
+            value={defaultExpr}
+            onChange={(e) => setDefaultExpr(e.target.value)}
+            placeholder="now(), gen_random_uuid(), 'active', 0"
+            className="font-mono text-xs"
+          />
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void handleSave(true);
+            }}
+            disabled={isSubmitting}
+          >
+            Clear default
+          </Button>
+          <Button
+            onClick={() => {
+              void handleSave(false);
+            }}
+            disabled={isSubmitting || defaultExpr.trim().length === 0}
+          >
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Save default
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// Set Column Nullable Dialog
+// ============================================================
+
+interface SetColumnNullableDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  tableName: string;
+  columnName: string;
+  isCurrentlyNullable: boolean;
+  setColumnNullable: (input: SetColumnNullableInput) => Promise<DdlResult>;
+  onSuccess: () => void;
+}
+
+export function SetColumnNullableDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  tableName,
+  columnName,
+  isCurrentlyNullable,
+  setColumnNullable,
+  onSuccess,
+}: SetColumnNullableDialogProps) {
+  const [isNullable, setIsNullable] = useState(isCurrentlyNullable);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    const toastId = toast.loading("Updating nullable constraint...");
+    try {
+      const result = await setColumnNullable({
+        connectionId,
+        schema,
+        table: tableName,
+        column: columnName,
+        isNullable,
+      });
+      toast.success("Nullable constraint updated", {
+        id: toastId,
+        description: result.sql,
+      });
+      onSuccess();
+      onClose();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to set nullable",
+        {
+          id: toastId,
+        },
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>Set nullable</DialogTitle>
+          <DialogDescription>
+            Toggle NULL/NOT NULL for{" "}
+            <code className="font-mono text-foreground">{columnName}</code> in
+            <code className="font-mono text-foreground">
+              {" "}
+              {schema}.{tableName}
+            </code>
+            .
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="py-2">
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <span className="text-sm">Allow NULL values</span>
+            <Switch checked={isNullable} onCheckedChange={setIsNullable} />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-            Create Schema
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>

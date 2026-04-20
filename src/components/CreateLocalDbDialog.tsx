@@ -39,10 +39,9 @@ interface CreateLocalDbDialogProps {
 }
 
 const POSTGRES_VERSIONS = [
-  { value: "16", label: "PostgreSQL 16" },
-  { value: "15", label: "PostgreSQL 15" },
-  { value: "14", label: "PostgreSQL 14" },
-  { value: "13", label: "PostgreSQL 13" },
+  { value: "16.13.0", label: "PostgreSQL 16" },
+  { value: "15.17.0", label: "PostgreSQL 15" },
+  { value: "14.22.0", label: "PostgreSQL 14" },
 ];
 
 export function CreateLocalDbDialog({
@@ -55,7 +54,7 @@ export function CreateLocalDbDialog({
     name: "",
     databaseName: "postgres",
     username: "postgres",
-    postgresVersion: "16",
+    postgresVersion: "16.13.0",
     password: "",
     port: 5432,
     autoStart: true,
@@ -68,7 +67,7 @@ export function CreateLocalDbDialog({
       name: "",
       databaseName: "postgres",
       username: "postgres",
-      postgresVersion: "16",
+      postgresVersion: "16.13.0",
       password: "",
       port: 5432,
       autoStart: true,
@@ -120,14 +119,14 @@ export function CreateLocalDbDialog({
               <Label htmlFor="version">PostgreSQL Version</Label>
               <Select
                 value={formData.postgresVersion}
-                onValueChange={(value) => updateField("postgresVersion", value || "16")}
+                onValueChange={(value) => updateField("postgresVersion", value || "16.13.0")}
               >
                 <SelectTrigger id="version">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {POSTGRES_VERSIONS.map((v) => (
-                    <SelectItem key={v.value} value={v.value || "16"}>
+                    <SelectItem key={v.value} value={v.value || "16.13.0"}>
                       {v.label}
                     </SelectItem>
                   ))}

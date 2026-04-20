@@ -1,8 +1,9 @@
-import { Database, Pencil, Play, Plus, Trash2, Server, Copy, Check, Pause, Globe } from "lucide-react";
+import { Database, Pencil, Play, Plus, Trash2, Copy, Check, Pause, Globe } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { Neon } from "@/components/icons/Neon";
+import { Supabase } from "@/components/icons/Supabase";
 import type { Connection, LocalDbInfo } from "@/ipc/db/types";
 
 interface ConnectionListProps {
@@ -77,7 +78,6 @@ function ConnectionCard({
   const [isTogglingState, setIsTogglingState] = useState(false);
   const isStatusKnown = Boolean(localDbInfo);
   const isRunning = localDbInfo?.running ?? false;
-  const stateLabel = !isStatusKnown ? "Unknown" : isRunning ? "Running" : "Paused";
 
   const handleCopy = async () => {
     try {
@@ -104,45 +104,34 @@ function ConnectionCard({
   };
 
   return (
-    <div className="group flex items-center gap-3 py-2.5 px-2.5 -mx-2.5 rounded-md border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors duration-150">
-      <div className="flex items-center justify-center h-8 w-8 rounded-md bg-muted/60 shrink-0 transition-colors duration-150 group-hover:bg-muted">
-        {provider === "neon" ? (
-          <span className="text-[10px] font-bold text-cyan-500">NEON</span>
-        ) : provider === "supabase" ? (
-          <span className="text-[10px] font-bold text-emerald-500">SUPA</span>
-        ) : isUrl ? (
-          <Globe className="h-4 w-4 text-muted-foreground" />
-        ) : (
-          <Server className="h-4 w-4 text-muted-foreground" />
-        )}
-      </div>
-
+    <div className="group flex items-center gap-2 py-1.5 px-4 -mx-4 rounded-md hover:bg-muted/30 transition-colors duration-100 sm:px-16 sm:-mx-16 md:px-36 md:-mx-36 lg:px-52 lg:-mx-52">
       <button
         type="button"
-        className="flex-1 min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm active:scale-[0.985] transition-transform duration-100"
+        className="flex-1 min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm"
         onClick={() => onSelect(connection)}
       >
         <div className="flex items-center gap-2">
-          <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: displayColor }} />
-          <span className="font-medium text-sm truncate">{connection.name}</span>
+          <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: displayColor }} />
+          <span className="font-medium text-[13px] truncate">{connection.name}</span>
           {connection.tag && (
-            <Badge variant="secondary" className="text-[10px] leading-none h-4 px-1.5 max-w-24 truncate" title={connection.tag}>
-              {connection.tag}
-            </Badge>
+            <span className="text-[9px] text-muted-foreground/50 font-mono" title={connection.tag}>{connection.tag}</span>
+          )}
+          {provider === "neon" && (
+            <Neon className="h-3.5 w-3.5" />
+          )}
+          {provider === "supabase" && (
+            <Supabase className="h-3.5 w-3.5" />
           )}
           {isLocal && (
-            <Badge variant="outline" className="text-[10px] leading-none h-4 px-1.5 font-mono">LOCAL</Badge>
+            <span className={`text-[9px] font-mono ${isRunning ? "text-emerald-600/60" : "text-muted-foreground/50"}`}>
+              {isRunning ? "●" : "○"}
+            </span>
           )}
-          {isLocal && (
-            <Badge variant={isRunning ? "secondary" : "outline"} className="text-[10px] leading-none h-4 px-1.5 font-mono">
-              {stateLabel}
-            </Badge>
-          )}
-          {isUrl && (
-            <Badge variant="secondary" className="text-[10px] leading-none h-4 px-1.5 font-mono">URL</Badge>
+          {provider === "url" && (
+            <Globe className="h-3 w-3 text-muted-foreground/40" />
           )}
         </div>
-        <p className="text-xs text-muted-foreground truncate font-mono mt-0.5">{displayInfo}</p>
+        <p className="text-[10px] text-muted-foreground/50 truncate font-mono ml-4">{displayInfo}</p>
       </button>
 
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -150,42 +139,42 @@ function ConnectionCard({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 active:scale-[0.97] transition-transform duration-100"
+            className="h-6 w-6"
             onClick={handleToggleLocalState}
             aria-label={`${isRunning ? "Pause" : "Start"} ${connection.name}`}
             title={isRunning ? "Pause local database" : "Start local database"}
             disabled={isTogglingState || !isStatusKnown}
           >
-            {isRunning ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {isRunning ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
           </Button>
         )}
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 active:scale-[0.97] transition-transform duration-100"
+          className="h-6 w-6"
           onClick={handleCopy}
           aria-label={`Copy connection string for ${connection.name}`}
           title={copied ? "Copied" : "Copy connection string"}
         >
-          {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 active:scale-[0.97] transition-transform duration-100"
+          className="h-6 w-6"
           onClick={() => onEdit(connection)}
           aria-label={`Edit ${connection.name}`}
         >
-          <Pencil className="h-3.5 w-3.5" />
+          <Pencil className="h-3 w-3" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-destructive hover:text-destructive active:scale-[0.97] transition-transform duration-100"
+          className="h-6 w-6 text-destructive hover:text-destructive"
           onClick={() => onDelete(connection.id)}
           aria-label={`Delete ${connection.name}`}
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="h-3 w-3" />
         </Button>
       </div>
     </div>
@@ -194,11 +183,11 @@ function ConnectionCard({
 
 function ConnectionCardSkeleton() {
   return (
-    <div className="flex items-center gap-3 py-2.5 px-2.5 -mx-2.5">
-      <Skeleton className="h-8 w-8 rounded-md shrink-0" />
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <Skeleton className="h-4 w-2/5" />
-        <Skeleton className="h-3 w-3/4" />
+    <div className="flex items-center gap-2 py-1.5 px-4 -mx-4 sm:px-16 sm:-mx-16 md:px-36 md:-mx-36 lg:px-52 lg:-mx-52">
+      <Skeleton className="h-2 w-2 rounded-full shrink-0" />
+      <div className="flex-1 min-w-0 space-y-0.5">
+        <Skeleton className="h-3 w-2/5" />
+        <Skeleton className="h-2 w-3/4 ml-4" />
       </div>
     </div>
   );
@@ -227,14 +216,11 @@ export function ConnectionList({
 
   if (connections.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-muted/60 mb-4">
-          <Database className="h-5 w-5 text-muted-foreground" />
-        </div>
-        <p className="text-sm font-medium mb-1">No connections yet</p>
-        <p className="text-xs text-muted-foreground mb-4">Add a database to get started</p>
-        <Button size="sm" onClick={onAdd}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <Database className="h-3.5 w-3.5 text-muted-foreground/40 mb-2" />
+        <p className="text-[11px] text-muted-foreground mb-2">No connections yet</p>
+        <Button size="sm" variant="outline" onClick={onAdd}>
+          <Plus className="h-3 w-3 mr-1" />
           Add Connection
         </Button>
       </div>
@@ -242,7 +228,7 @@ export function ConnectionList({
   }
 
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-px">
       {connections.map((conn) => (
         <ConnectionCard
           key={conn.id}

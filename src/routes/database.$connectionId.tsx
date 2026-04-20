@@ -5,18 +5,52 @@ import {
   Database,
   FileSearch,
   Lock,
+  LockOpen,
+  LockKeyhole,
   Pause,
+  Pencil,
   Play,
+  Plus,
   RefreshCw,
   Search,
   Settings,
   Table2,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  AddColumnDialog,
+  AlterColumnTypeDialog,
+  CreateIndexDialog,
+  CreateSchemaDialog,
+  CreateTableDialog,
+  DropColumnDialog,
+  DropTableDialog,
+  ImportCsvDialog,
+  RenameColumnDialog,
+  RenameTableDialog,
+  SetColumnDefaultDialog,
+  SetColumnNullableDialog,
+} from "@/components/TableDdlDialogs";
+import { RlsPoliciesDialog } from "@/components/RlsPoliciesDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   ResizableHandle,
@@ -44,7 +78,7 @@ import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
 import { DatabaseOverview } from "@/components/DatabaseOverview";
 import { SqlEditor } from "@/components/SqlEditor";
 import { TableDataEditor } from "@/components/TableDataEditor";
-import type { SchemaTableSummary, DatabaseInfo, LocalDbInfo, SchemaTableDetails } from "@/ipc/db/types";
+import type { SchemaTableSummary, DatabaseInfo, LocalDbInfo, SchemaTableDetails, SchemaPolicy } from "@/ipc/db/types";
 
 type SidebarSection = "overview" | "tables" | "sql-editor" | "settings";
 
@@ -75,6 +109,17 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     tableSaveChanges,
     tableTruncate,
     tableFkLookup,
+    createTable,
+    dropTable,
+    renameTable,
+    addColumn,
+    createSchema,
+    createIndex,
+    dropColumn,
+    renameColumn,
+    alterColumnType,
+    setColumnDefault,
+    setColumnNullable,
   } = useConnections();
   const { start: startLocalDb, pause: pauseLocalDb, getStatus: getLocalDbStatus } = useLocalDatabases();
   const { tabs, setTabSection } = useConnectionTabsStore();
@@ -99,6 +144,44 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
   const [localDbStatus, setLocalDbStatus] = useState<LocalDbInfo | null>(null);
   const [isLoadingLocalDbStatus, setIsLoadingLocalDbStatus] = useState(false);
   const [copyConnFeedback, setCopyConnFeedback] = useState<null | "copied" | "failed">(null);
+  const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
+  const [isCreateSchemaOpen, setIsCreateSchemaOpen] = useState(false);
+  const [isCreateIndexOpen, setIsCreateIndexOpen] = useState(false);
+  const [isImportCsvOpen, setIsImportCsvOpen] = useState(false);
+  const [ddlDropTarget, setDdlDropTarget] = useState<{ schema: string; name: string } | null>(null);
+  const [ddlRenameTarget, setDdlRenameTarget] = useState<{ schema: string; name: string } | null>(null);
+  const [ddlAddColumnTarget, setDdlAddColumnTarget] = useState<{ schema: string; name: string } | null>(null);
+  const [ddlDropColumnTarget, setDdlDropColumnTarget] = useState<{
+    schema: string;
+    table: string;
+    column: string;
+  } | null>(null);
+  const [ddlRenameColumnTarget, setDdlRenameColumnTarget] = useState<{
+    schema: string;
+    table: string;
+    column: string;
+  } | null>(null);
+  const [ddlAlterColumnTypeTarget, setDdlAlterColumnTypeTarget] = useState<{
+    schema: string;
+    table: string;
+    column: string;
+    currentType: string;
+  } | null>(null);
+  const [ddlSetColumnDefaultTarget, setDdlSetColumnDefaultTarget] = useState<{
+    schema: string;
+    table: string;
+    column: string;
+    currentDefault: null | string;
+  } | null>(null);
+  const [ddlSetColumnNullableTarget, setDdlSetColumnNullableTarget] = useState<{
+    schema: string;
+    table: string;
+    column: string;
+    isNullable: boolean;
+  } | null>(null);
+  const [rlsPoliciesTarget, setRlsPoliciesTarget] = useState<{ schema: string; name: string } | null>(null);
+  const [rlsPolicies, setRlsPolicies] = useState<SchemaPolicy[]>([]);
+  const [isLoadingRlsPolicies, setIsLoadingRlsPolicies] = useState(false);
 
   // Table details for selected table
   const [selectedTableDetails, setSelectedTableDetails] = useState<SchemaTableDetails | null>(null);
@@ -303,6 +386,42 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
 
   const selectedTable = selectedTableRef?.name ?? null;
 
+  const handleDdlSuccess = useCallback(async () => {
+    await loadSchema();
+    if (selectedTableRef) {
+      try {
+        const details = await getTableDetails(
+          connectionId,
+          selectedTableRef.schema,
+          selectedTableRef.name,
+        );
+        setSelectedTableDetails(details);
+      } catch {
+        setSelectedTableDetails(null);
+      }
+    }
+  }, [connectionId, getTableDetails, loadSchema, selectedTableRef]);
+
+  const handleDropTableSuccess = useCallback(
+    async (droppedKey: string) => {
+      await handleDdlSuccess();
+      if (selectedTableKey === droppedKey) {
+        setSelectedTableKey(null);
+      }
+    },
+    [handleDdlSuccess, selectedTableKey],
+  );
+
+  const handleRenameTableSuccess = useCallback(
+    async (oldKey: string, newKey: string) => {
+      await handleDdlSuccess();
+      if (selectedTableKey === oldKey) {
+        setSelectedTableKey(newKey);
+      }
+    },
+    [handleDdlSuccess, selectedTableKey],
+  );
+
   // Load table details when selected table changes
   useEffect(() => {
     if (selectedTableKey && selectedTableRef) {
@@ -482,6 +601,45 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                             {filteredTablesForSchema.length}
                           </span>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                disabled={!selectedSchema}
+                              />
+                            }
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" side="bottom">
+                            <DropdownMenuItem onClick={() => setIsCreateSchemaOpen(true)}>
+                              <Database className="h-3.5 w-3.5" />
+                              Create schema
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setIsCreateTableOpen(true)}>
+                              <Table2 className="h-3.5 w-3.5" />
+                              Create table
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setIsCreateIndexOpen(true)}
+                              disabled={!selectedTableRef}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Create index
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => setIsImportCsvOpen(true)}
+                              disabled={!selectedTableRef}
+                            >
+                              <Terminal className="h-3.5 w-3.5" />
+                              Import CSV
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         {isLoading && (
                           <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
                         )}
@@ -559,31 +717,88 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                           {filteredTablesForSchema.map((table) => {
                             const isActive = selectedTableKey === `${table.schema}.${table.name}`;
                             return (
-                              <button
-                                key={`${table.schema}.${table.name}`}
-                                onClick={() => setSelectedTableKey(`${table.schema}.${table.name}`)}
-                                className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100 ${
-                                  isActive
-                                    ? "bg-accent text-accent-foreground"
-                                    : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
-                                }`}
-                              >
-                                <Table2 className={`h-3.5 w-3.5 shrink-0 transition-colors ${
-                                  isActive ? "text-accent-foreground" : "text-muted-foreground group-hover:text-foreground/70"
-                                }`} />
-                                <span className="flex-1 truncate text-[13px] font-medium leading-none">
-                                  {table.name}
-                                </span>
-                                {table.has_rls && (
-                                  <Badge
-                                    variant={isActive ? "outline" : "secondary"}
-                                    className="font-mono text-[9px] h-4 px-1 gap-0.5 shrink-0"
+                              <ContextMenu key={`${table.schema}.${table.name}`}>
+                                <ContextMenuTrigger
+                                  render={
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setSelectedTableKey(`${table.schema}.${table.name}`)
+                                      }
+                                      className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100 ${
+                                        isActive
+                                          ? "bg-accent text-accent-foreground"
+                                          : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
+                                      }`}
+                                    >
+                                      <Table2
+                                        className={`h-3.5 w-3.5 shrink-0 transition-colors ${
+                                          isActive
+                                            ? "text-accent-foreground"
+                                            : "text-muted-foreground group-hover:text-foreground/70"
+                                        }`}
+                                      />
+                                      <span className="flex-1 truncate text-[13px] font-medium leading-none">
+                                        {table.name}
+                                      </span>
+                                      {table.has_rls ? (
+                                        <Tooltip>
+                                          <TooltipTrigger className="contents">
+                                            <Lock className="h-3 w-3 text-cyan-500 shrink-0" />
+                                          </TooltipTrigger>
+                                          <TooltipContent side="top">RLS enabled</TooltipContent>
+                                        </Tooltip>
+                                      ) : (
+                                        <Tooltip>
+                                          <TooltipTrigger className="contents">
+                                            <LockOpen className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                                          </TooltipTrigger>
+                                          <TooltipContent side="top">RLS disabled</TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                    </button>
+                                  }
+                                />
+                                <ContextMenuContent>
+                                  <ContextMenuItem
+                                    onClick={() =>
+                                      setDdlRenameTarget({
+                                        schema: table.schema,
+                                        name: table.name,
+                                      })
+                                    }
                                   >
-                                    <Lock className="h-2 w-2" />
-                                    RLS
-                                  </Badge>
-                                )}
-                              </button>
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    Rename table
+                                  </ContextMenuItem>
+                                  {table.has_rls && (
+                                    <ContextMenuItem
+                                      onClick={() =>
+                                        setRlsPoliciesTarget({
+                                          schema: table.schema,
+                                          name: table.name,
+                                        })
+                                      }
+                                    >
+                                      <LockKeyhole className="h-3.5 w-3.5" />
+                                      View RLS policies
+                                    </ContextMenuItem>
+                                  )}
+                                  <ContextMenuSeparator />
+                                  <ContextMenuItem
+                                    variant="destructive"
+                                    onClick={() =>
+                                      setDdlDropTarget({
+                                        schema: table.schema,
+                                        name: table.name,
+                                      })
+                                    }
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Drop table
+                                  </ContextMenuItem>
+                                </ContextMenuContent>
+                              </ContextMenu>
                             );
                           })}
                         </div>
@@ -606,6 +821,50 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
                       tableSaveChanges={tableSaveChanges}
                       tableTruncate={tableTruncate}
                       tableFkLookup={tableFkLookup}
+                      onRequestAddColumn={() =>
+                        setDdlAddColumnTarget({
+                          schema: selectedTableDetails.schema,
+                          name: selectedTableDetails.name,
+                        })
+                      }
+                      onRequestDropColumn={(columnName) =>
+                        setDdlDropColumnTarget({
+                          schema: selectedTableDetails.schema,
+                          table: selectedTableDetails.name,
+                          column: columnName,
+                        })
+                      }
+                      onRequestRenameColumn={(columnName) =>
+                        setDdlRenameColumnTarget({
+                          schema: selectedTableDetails.schema,
+                          table: selectedTableDetails.name,
+                          column: columnName,
+                        })
+                      }
+                      onRequestAlterColumnType={(column) =>
+                        setDdlAlterColumnTypeTarget({
+                          schema: selectedTableDetails.schema,
+                          table: selectedTableDetails.name,
+                          column: column.name,
+                          currentType: column.data_type,
+                        })
+                      }
+                      onRequestSetColumnDefault={(column) =>
+                        setDdlSetColumnDefaultTarget({
+                          schema: selectedTableDetails.schema,
+                          table: selectedTableDetails.name,
+                          column: column.name,
+                          currentDefault: column.column_default,
+                        })
+                      }
+                      onRequestSetColumnNullable={(column) =>
+                        setDdlSetColumnNullableTarget({
+                          schema: selectedTableDetails.schema,
+                          table: selectedTableDetails.name,
+                          column: column.name,
+                          isNullable: column.is_nullable,
+                        })
+                      }
                     />
                   ) : selectedTable ? (
                     <div className="flex-1 flex items-center justify-center p-8">
@@ -709,6 +968,170 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
           )}
         </div>
       </div>
+      {connection && selectedSchema && (
+        <CreateTableDialog
+          isOpen={isCreateTableOpen}
+          onClose={() => setIsCreateTableOpen(false)}
+          connectionId={connection.id}
+          schema={selectedSchema}
+          createTable={createTable}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && ddlDropTarget && (
+        <DropTableDialog
+          isOpen
+          onClose={() => setDdlDropTarget(null)}
+          connectionId={connection.id}
+          schema={ddlDropTarget.schema}
+          tableName={ddlDropTarget.name}
+          dropTable={dropTable}
+          onSuccess={() => {
+            void handleDropTableSuccess(`${ddlDropTarget.schema}.${ddlDropTarget.name}`);
+          }}
+        />
+      )}
+      {connection && ddlRenameTarget && (
+        <RenameTableDialog
+          isOpen
+          onClose={() => setDdlRenameTarget(null)}
+          connectionId={connection.id}
+          schema={ddlRenameTarget.schema}
+          currentName={ddlRenameTarget.name}
+          renameTable={renameTable}
+          onSuccess={() => {
+            void handleRenameTableSuccess(
+              `${ddlRenameTarget.schema}.${ddlRenameTarget.name}`,
+              `${ddlRenameTarget.schema}.${ddlRenameTarget.name}`,
+            );
+          }}
+        />
+      )}
+      {connection && ddlAddColumnTarget && (
+        <AddColumnDialog
+          isOpen
+          onClose={() => setDdlAddColumnTarget(null)}
+          connectionId={connection.id}
+          schema={ddlAddColumnTarget.schema}
+          tableName={ddlAddColumnTarget.name}
+          addColumn={addColumn}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && ddlDropColumnTarget && (
+        <DropColumnDialog
+          isOpen
+          onClose={() => setDdlDropColumnTarget(null)}
+          connectionId={connection.id}
+          schema={ddlDropColumnTarget.schema}
+          tableName={ddlDropColumnTarget.table}
+          columnName={ddlDropColumnTarget.column}
+          dropColumn={dropColumn}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && ddlRenameColumnTarget && (
+        <RenameColumnDialog
+          isOpen
+          onClose={() => setDdlRenameColumnTarget(null)}
+          connectionId={connection.id}
+          schema={ddlRenameColumnTarget.schema}
+          tableName={ddlRenameColumnTarget.table}
+          currentName={ddlRenameColumnTarget.column}
+          renameColumn={renameColumn}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && ddlAlterColumnTypeTarget && (
+        <AlterColumnTypeDialog
+          isOpen
+          onClose={() => setDdlAlterColumnTypeTarget(null)}
+          connectionId={connection.id}
+          schema={ddlAlterColumnTypeTarget.schema}
+          tableName={ddlAlterColumnTypeTarget.table}
+          columnName={ddlAlterColumnTypeTarget.column}
+          currentType={ddlAlterColumnTypeTarget.currentType}
+          alterColumnType={alterColumnType}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && ddlSetColumnDefaultTarget && (
+        <SetColumnDefaultDialog
+          isOpen
+          onClose={() => setDdlSetColumnDefaultTarget(null)}
+          connectionId={connection.id}
+          schema={ddlSetColumnDefaultTarget.schema}
+          tableName={ddlSetColumnDefaultTarget.table}
+          columnName={ddlSetColumnDefaultTarget.column}
+          currentDefault={ddlSetColumnDefaultTarget.currentDefault}
+          setColumnDefault={setColumnDefault}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && ddlSetColumnNullableTarget && (
+        <SetColumnNullableDialog
+          isOpen
+          onClose={() => setDdlSetColumnNullableTarget(null)}
+          connectionId={connection.id}
+          schema={ddlSetColumnNullableTarget.schema}
+          tableName={ddlSetColumnNullableTarget.table}
+          columnName={ddlSetColumnNullableTarget.column}
+          isCurrentlyNullable={ddlSetColumnNullableTarget.isNullable}
+          setColumnNullable={setColumnNullable}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && (
+        <CreateSchemaDialog
+          isOpen={isCreateSchemaOpen}
+          onClose={() => setIsCreateSchemaOpen(false)}
+          connectionId={connection.id}
+          createSchema={createSchema}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && selectedSchema && (
+        <CreateIndexDialog
+          isOpen={isCreateIndexOpen}
+          onClose={() => setIsCreateIndexOpen(false)}
+          connectionId={connection.id}
+          schema={selectedSchema}
+          defaultTableName={selectedTableRef?.name ?? ""}
+          createIndex={createIndex}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
+      {connection && selectedSchema && (
+        <ImportCsvDialog
+          isOpen={isImportCsvOpen}
+          onClose={() => setIsImportCsvOpen(false)}
+          connectionId={connection.id}
+          schema={selectedSchema}
+          defaultTableName={selectedTableRef?.name ?? ""}
+          tableSaveChanges={tableSaveChanges}
+          onSuccess={() => {
+            void handleDdlSuccess();
+          }}
+        />
+      )}
     </div>
   );
 }
