@@ -39,6 +39,8 @@ interface CreateLocalDbDialogProps {
 }
 
 const POSTGRES_VERSIONS = [
+  { value: "18.3.0", label: "PostgreSQL 18" },
+  { value: "17.9.0", label: "PostgreSQL 17" },
   { value: "16.13.0", label: "PostgreSQL 16" },
   { value: "15.17.0", label: "PostgreSQL 15" },
   { value: "14.22.0", label: "PostgreSQL 14" },
@@ -62,7 +64,11 @@ export function CreateLocalDbDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onCreate(formData);
+    try {
+      await onCreate(formData);
+    } catch {
+      return;
+    }
     setFormData({
       name: "",
       databaseName: "postgres",

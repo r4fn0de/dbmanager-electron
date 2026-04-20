@@ -100,7 +100,15 @@ function Home() {
         local_auto_start: db.auto_start,
       };
 
-      await saveConnection(localConnection);
+      try {
+        await saveConnection(localConnection);
+      } catch (error) {
+        throw new Error(
+          error instanceof Error
+            ? `Failed to save local connection: ${error.message}`
+            : "Failed to save local connection",
+        );
+      }
       navigate({
         to: "/database/$connectionId",
         params: { connectionId: db.id },
@@ -109,7 +117,6 @@ function Home() {
       toast.success("Local database created successfully");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create local database");
-      throw error;
     } finally {
       setIsCreatingLocalDb(false);
     }

@@ -442,6 +442,27 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     }
   }, [selectedTableKey, selectedTableRef, connectionId, getTableDetails]);
 
+  // Load RLS policies when target changes
+  useEffect(() => {
+    if (rlsPoliciesTarget) {
+      const loadPolicies = async () => {
+        setIsLoadingRlsPolicies(true);
+        try {
+          const details = await getTableDetails(connectionId, rlsPoliciesTarget.schema, rlsPoliciesTarget.name);
+          setRlsPolicies(details.rls_policies);
+        } catch (error) {
+          console.error("Failed to load RLS policies", error);
+          setRlsPolicies([]);
+        } finally {
+          setIsLoadingRlsPolicies(false);
+        }
+      };
+      loadPolicies();
+    } else {
+      setRlsPolicies([]);
+    }
+  }, [rlsPoliciesTarget, connectionId, getTableDetails]);
+
   if (!connection) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-8">
@@ -1130,6 +1151,15 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
           onSuccess={() => {
             void handleDdlSuccess();
           }}
+        />
+      )}
+      {rlsPoliciesTarget && (
+        <RlsPoliciesDialog
+          isOpen={Boolean(rlsPoliciesTarget)}
+          onClose={() => setRlsPoliciesTarget(null)}
+          schema={rlsPoliciesTarget.schema}
+          tableName={rlsPoliciesTarget.name}
+          policies={rlsPolicies}
         />
       )}
     </div>

@@ -2,10 +2,17 @@ import EmbeddedPostgres from "embedded-postgres";
 import { app } from "electron";
 import { existsSync, rmSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createConnection } from "node:net";
+import { createRequire } from "node:module";
+import { platform, arch } from "node:os";
 import type { LocalDbInfo } from "./types";
+
+/** ESM-compatible require for resolving module paths */
+const runtimeRequire = createRequire(
+  typeof __filename === "string" ? __filename : import.meta.url,
+);
 
 /** Metadata stored persistently for each local DB instance */
 interface LocalDbMeta {
@@ -27,6 +34,30 @@ interface RunningInstance {
 
 const STORAGE_FILE = "local-databases.json";
 const DATA_SUBDIR = "local-dbs";
+
+/** Map (platform, arch) to the @embedded-postgres package name */
+function getPlatformPackageName(): string {
+  const p = platform();
+  const a = arch();
+  switch (p) {
+    case "darwin":
+      return a === "arm64" ? "@embedded-postgres/darwin-arm64" : "@embedded-postgres/darwin-x64";
+    case "linux":
+      return a === "arm64"
+        ? "@embedded-postgres/linux-arm64"
+        : a === "arm"
+          ? "@embedded-postgres/linux-arm"
+          : a === "ia32"
+            ? "@embedded-postgres/linux-ia32"
+            : a === "ppc64"
+              ? "@embedded-postgres/linux-ppc64"
+              : "@embedded-postgres/linux-x64";
+    case "win32":
+      return "@embedded-postgres/windows-x64";
+    default:
+      return `@embedded-postgres/${p}-${a}`;
+  }
+}
 
 function getStoragePath(): string {
   return join(app.getPath("userData"), STORAGE_FILE);
@@ -100,6 +131,104 @@ export class LocalDbManager {
     });
   }
 
+  // ── Binary check ───────────────────────────────────────────
+
+  /** Cached result of the binary availability check (won't change at runtime) */
+  private binariesAvailable: boolean | null = null;
+
+  /**
+   * Verify that the embedded-postgres platform binaries are available.
+   * If binaries are missing (e.g. because `pnpm approve-builds` was never run
+   * and the postinstall scripts didn't execute), throw a clear error with
+   * instructions instead of letting embedded-postgres fail with a cryptic message.
+   *
+   * The result is cached after the first successful check.
+   *
+   * Note: In packaged Electron apps (asar/pruned), require.resolve may not work.
+   * The check falls back to app.getAppPath() / process.resourcesDir in that case.
+   */
+  private checkBinariesAvailable(): void {
+    if (this.binariesAvailable) return;
+
+    const pkgName = getPlatformPackageName();
+    const isWindows = platform() === "win32";
+    const ext = isWindows ? ".exe" : "";
+
+    // 1. Resolve the platform package path
+    let pkgPath: string;
+    try {
+      pkgPath = dirname(runtimeRequire.resolve(`${pkgName}/package.json`));
+    } catch {
+      // Fallback for packaged Electron apps where node_modules may be pruned/asar'd
+      const appPath = app.getAppPath();
+      const fallbackPath = join(appPath, "node_modules", pkgName);
+      if (existsSync(join(fallbackPath, "package.json"))) {
+        pkgPath = fallbackPath;
+      } else {
+        throw new Error(
+          `PostgreSQL binaries for your platform (${pkgName}) are not installed. ` +
+          `Please run: pnpm install`,
+        );
+      }
+    }
+
+    // 2. Check that the essential binaries exist (postgres, initdb, pg_ctl)
+    //    On Windows, these have a .exe extension.
+    const binDir = join(pkgPath, "native", "bin");
+    const requiredBinaries = ["postgres", "initdb", "pg_ctl"];
+    const missing = requiredBinaries.filter(
+      (bin) => !existsSync(join(binDir, `${bin}${ext}`)),
+    );
+
+    if (missing.length > 0) {
+      throw new Error(
+        `PostgreSQL binaries are missing (${missing.join(", ")}). ` +
+        `The postinstall scripts may not have run. ` +
+        `Please run: pnpm approve-builds && pnpm install`,
+      );
+    }
+
+    // 3. Check that shared library symlinks were created by the postinstall script
+    //    (hydrate-symlinks.js). On macOS/Linux, missing .dylib/.so symlinks will
+    //    cause the postgres binary to fail at runtime. (Not applicable on Windows.)
+    if (!isWindows) {
+      const libDir = join(pkgPath, "native", "lib");
+      if (existsSync(libDir)) {
+        const symlinksConfig = join(pkgPath, "native", "pg-symlinks.json");
+        if (existsSync(symlinksConfig)) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const config = runtimeRequire(symlinksConfig) as Array<{ target: string }>;
+            const missingLinks = config.filter(
+              // `target` in pg-symlinks.json is relative to package root (e.g. "native/lib/libpq.dylib")
+              // so resolve from pkgPath, not libDir.
+              (entry) => !existsSync(join(pkgPath, entry.target)),
+            );
+            if (missingLinks.length > 0) {
+              throw new Error(
+                `PostgreSQL library symlinks are missing. ` +
+                `The postinstall scripts may not have run. ` +
+                `Please run: pnpm approve-builds && pnpm install`,
+              );
+            }
+          } catch (err) {
+            // Re-throw our own friendly errors, ignore JSON parse failures
+            if (err instanceof Error && err.message.includes("pnpm approve-builds")) {
+              throw err;
+            }
+          }
+        }
+      }
+    }
+
+    // Cache the successful result — binaries won't change at runtime
+    this.binariesAvailable = true;
+    // NOTE: In production builds, @embedded-postgres/* must be listed in
+    // electron-forge's asar.unpack config. Native executables cannot run from
+    // inside an asar archive, and existsSync may give false negatives for
+    // asar'd paths. Without unpacking, neither this check nor PG will work.
+  }
+
   // ── CRUD ────────────────────────────────────────────────────
 
   async create(input: {
@@ -111,6 +240,9 @@ export class LocalDbManager {
     postgresVersion: string;
     autoStart: boolean;
   }): Promise<LocalDbInfo> {
+    // Check that embedded-postgres binaries are available before attempting creation
+    this.checkBinariesAvailable();
+
     const port = input.port || 5432;
 
     // Check port availability before creating.
@@ -224,6 +356,9 @@ export class LocalDbManager {
         `Local database data directory is corrupted (missing PG_VERSION). Delete and recreate the local database.`,
       );
     }
+
+    // Check that embedded-postgres binaries are available before attempting start
+    this.checkBinariesAvailable();
 
     const pg = new EmbeddedPostgres({
       databaseDir: dataDir,

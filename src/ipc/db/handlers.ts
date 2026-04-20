@@ -1,4 +1,4 @@
-import { os } from "@orpc/server";
+import { ORPCError, os } from "@orpc/server";
 import type {
   Connection,
   LocalDbInfo,
@@ -74,34 +74,44 @@ export const listConnections = os.handler(async (): Promise<Connection[]> => {
 export const saveConnection = os
   .input(connectionInputSchema)
   .handler(async ({ input }): Promise<void> => {
-    const connections = await loadConnections();
-    const existingIndex = connections.findIndex((c) => c.id === input.id);
+    try {
+      const connections = await loadConnections();
+      const existingIndex = connections.findIndex((c) => c.id === input.id);
 
-    const connection: Connection = {
-      id: input.id || randomUUID(),
-      name: input.name,
-      host: input.host,
-      port: input.port,
-      database: input.database,
-      username: input.username,
-      password: input.password,
-      ssl_mode: input.ssl_mode,
-      url: input.url,
-      is_local: input.is_local,
-      connection_string: input.connection_string,
-      postgres_version: input.postgres_version,
-      tag: input.tag,
-      color: input.color,
-      local_auto_start: input.local_auto_start,
-    };
+      const connection: Connection = {
+        id: input.id || randomUUID(),
+        name: input.name,
+        host: input.host,
+        port: input.port,
+        database: input.database,
+        username: input.username,
+        password: input.password,
+        ssl_mode: input.ssl_mode,
+        url: input.url,
+        is_local: input.is_local,
+        connection_string: input.connection_string,
+        postgres_version: input.postgres_version,
+        tag: input.tag,
+        color: input.color,
+        local_auto_start: input.local_auto_start,
+      };
 
-    if (existingIndex >= 0) {
-      connections[existingIndex] = connection;
-    } else {
-      connections.push(connection);
+      if (existingIndex >= 0) {
+        connections[existingIndex] = connection;
+      } else {
+        connections.push(connection);
+      }
+
+      await saveConnections(connections);
+    } catch (err) {
+      console.error("[db] saveConnection failed:", err);
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to save connection",
+      });
     }
-
-    await saveConnections(connections);
   });
 
 export const deleteConnection = os
@@ -560,15 +570,25 @@ export const listLocalDatabases = os.handler(async (): Promise<LocalDbInfo[]> =>
 export const createLocalDatabase = os
   .input(createLocalDatabaseSchema)
   .handler(async ({ input }): Promise<LocalDbInfo> => {
-    return await localDbManager.create({
-      name: input.name,
-      databaseName: input.databaseName || "postgres",
-      username: input.username || "postgres",
-      password: input.password || "password",
-      port: input.port || 5432,
-      postgresVersion: input.postgresVersion || "16.13.0",
-      autoStart: input.autoStart ?? true,
-    });
+    try {
+      return await localDbManager.create({
+        name: input.name,
+        databaseName: input.databaseName || "postgres",
+        username: input.username || "postgres",
+        password: input.password || "password",
+        port: input.port || 5432,
+        postgresVersion: input.postgresVersion || "16.13.0",
+        autoStart: input.autoStart ?? true,
+      });
+    } catch (err) {
+      console.error("[db] createLocalDatabase failed:", err);
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to create local database",
+      });
+    }
   });
 
 export const startLocalDatabase = os

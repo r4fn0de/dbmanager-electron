@@ -10,7 +10,7 @@ import type { ForgeConfig } from "@electron-forge/shared-types";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: "**/node_modules/embedded-postgres/**",
+      unpack: "{**/node_modules/embedded-postgres/**,**/node_modules/@embedded-postgres/**}",
     },
   },
   rebuildConfig: {},

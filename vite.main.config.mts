@@ -7,4 +7,14 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      external: [
+        "embedded-postgres",
+        /^@embedded-postgres\//,
+        "pg",
+        "pg-native",
+      ],
+    },
+  },
 });
