@@ -1,21 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Database,
-  FileSearch,
   Loader2,
-  Lock,
-  LockOpen,
-  LockKeyhole,
   Pause,
-  Pencil,
   Play,
-  Plus,
-  RefreshCw,
-  Search,
   Settings,
   Table2,
-  Terminal,
-  Trash2,
 } from "lucide-react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -35,23 +25,7 @@ import {
   SetColumnNullableDialog,
 } from "@/components/TableDdlDialogs";
 import { RlsPoliciesDialog } from "@/components/RlsPoliciesDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -59,16 +33,6 @@ import {
   type PanelImperativeHandle,
   type Layout,
 } from "@/components/ui/resizable";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -82,6 +46,7 @@ import {
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 import { DatabaseNavSidebar } from "@/components/DatabaseNavSidebar";
+import { TablesExplorerSidebar } from "@/components/TablesExplorerSidebar";
 import { DatabaseOverview } from "@/components/DatabaseOverview";
 import { SqlEditor } from "@/components/SqlEditor";
 import { TableDataEditor } from "@/components/TableDataEditor";
@@ -168,6 +133,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const [tableSearch, setTableSearch] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
+  const TABLES_SIDEBAR_COLLAPSED_SIZE_PX = 44;
 
   // Persist sidebar width across sessions via localStorage
   const savedLayout = useMemo(() => {
@@ -709,10 +675,12 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                 minSize="15%"
                 maxSize="35%"
                 collapsible
-                collapsedSize="3%"
+                collapsedSize={`${TABLES_SIDEBAR_COLLAPSED_SIZE_PX}px`}
                 panelRef={sidebarPanelRef}
                 onResize={(size) => {
-                  const collapsed = size.asPercentage <= 3;
+                  const collapsed =
+                    sidebarPanelRef.current?.isCollapsed() ??
+                    size.inPixels <= TABLES_SIDEBAR_COLLAPSED_SIZE_PX + 2;
                   if (collapsed !== isSidebarCollapsed) setIsSidebarCollapsed(collapsed);
                 }}
                 className="min-w-0"
@@ -733,230 +701,27 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                   <TooltipContent side="right">Expand sidebar</TooltipContent>
                 </Tooltip>
               ) : (
-                <aside className="h-full min-h-0 flex flex-col bg-muted/30">
-                  {/* Header */}
-                  <div className="px-3 pt-3 pb-2 space-y-2 shrink-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                        Tables
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        {!isLoading && filteredTablesForSchema.length > 0 && (
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            {filteredTablesForSchema.length}
-                          </span>
-                        )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                disabled={!selectedSchema}
-                              />
-                            }
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" side="bottom">
-                            <DropdownMenuItem onClick={() => setIsCreateSchemaOpen(true)}>
-                              <Database className="h-3.5 w-3.5" />
-                              Create schema
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setIsCreateTableOpen(true)}>
-                              <Table2 className="h-3.5 w-3.5" />
-                              Create table
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setIsCreateIndexOpen(true)}
-                              disabled={!selectedTableRef}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              Create index
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => setIsImportCsvOpen(true)}
-                              disabled={!selectedTableRef}
-                            >
-                              <Terminal className="h-3.5 w-3.5" />
-                              Import CSV
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        {isLoading && (
-                          <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Schema selector */}
-                    {schemas.length > 0 && (
-                      <Select
-                        value={selectedSchema}
-                        onValueChange={(value) => {
-                          if (value) changeSchema(value);
-                          const firstTable = tablesBySchema.find(([s]) => s === value)?.[1][0];
-                          changeTable(firstTable ? `${firstTable.schema}.${firstTable.name}` : null);
-                        }}
-                      >
-                        <SelectTrigger size="sm" className="w-full font-mono text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {schemas.map((s) => {
-                            const count = tablesBySchema.find(([schema]) => schema === s)?.[1].length ?? 0;
-                            return (
-                              <SelectItem key={s} value={s} className="text-xs">
-                                <div className="flex items-center gap-2">
-                                  <Database className="h-3 w-3 text-muted-foreground" />
-                                  <span className="font-mono">{s}</span>
-                                  <Badge variant="secondary" className="ml-auto font-mono text-[10px] h-4 px-1">
-                                    {count}
-                                  </Badge>
-                                </div>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    )}
-
-                    {/* Search */}
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
-                      <Input
-                        type="text"
-                        placeholder="Search tables..."
-                        value={tableSearch}
-                        onChange={(e) => setTableSearch(e.target.value)}
-                        className="h-7 pl-7 text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  {/* Table list */}
-                  <ScrollArea className="flex-1 min-h-0">
-                    <div className="px-2 py-1.5">
-                      {isLoading ? (
-                        <div className="space-y-2 px-1 py-1">
-                          {Array.from({ length: 6 }).map((_, i) => (
-                            <div key={i} className="flex items-center gap-2.5 px-2 py-2">
-                              <Skeleton className="h-3.5 w-3.5 rounded-sm shrink-0" />
-                              <Skeleton className="h-3 w-24" />
-                            </div>
-                          ))}
-                        </div>
-                      ) : filteredTablesForSchema.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                          <FileSearch className="h-4 w-4 text-muted-foreground/50 mb-2" />
-                          <p className="text-xs text-muted-foreground">
-                            {tableSearch ? "No matches found" : "No tables"}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-0.5">
-                          {filteredTablesForSchema.map((table) => {
-                            const isActive = selectedTableKey === `${table.schema}.${table.name}`;
-                            return (
-                              <ContextMenu key={`${table.schema}.${table.name}`}>
-                                <ContextMenuTrigger
-                                  render={
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        changeTable(`${table.schema}.${table.name}`)
-                                      }
-                                      onMouseEnter={() =>
-                                        prefetchTableDetails(table.schema, table.name)
-                                      }
-                                      onFocus={() =>
-                                        prefetchTableDetails(table.schema, table.name)
-                                      }
-                                      className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100 ${
-                                        isActive
-                                          ? "bg-accent text-accent-foreground"
-                                          : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
-                                      }`}
-                                    >
-                                      <Table2
-                                        className={`h-3.5 w-3.5 shrink-0 transition-colors ${
-                                          isActive
-                                            ? "text-accent-foreground"
-                                            : "text-muted-foreground group-hover:text-foreground/70"
-                                        }`}
-                                      />
-                                      <span className="flex-1 truncate text-[13px] font-medium leading-none">
-                                        {table.name}
-                                      </span>
-                                      {table.has_rls ? (
-                                        <Tooltip>
-                                          <TooltipTrigger className="inline-flex shrink-0">
-                                            <Lock className="h-3 w-3 text-cyan-500 shrink-0" />
-                                          </TooltipTrigger>
-                                          <TooltipContent side="bottom" sideOffset={4}>RLS enabled</TooltipContent>
-                                        </Tooltip>
-                                      ) : (
-                                        <Tooltip>
-                                          <TooltipTrigger className="inline-flex shrink-0">
-                                            <LockOpen className="h-3 w-3 text-muted-foreground/40 shrink-0" />
-                                          </TooltipTrigger>
-                                          <TooltipContent side="bottom" sideOffset={4}>RLS disabled</TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                    </button>
-                                  }
-                                />
-                                <ContextMenuContent>
-                                  <ContextMenuItem
-                                    onClick={() =>
-                                      setDdlRenameTarget({
-                                        schema: table.schema,
-                                        name: table.name,
-                                      })
-                                    }
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                    Rename table
-                                  </ContextMenuItem>
-                                  {table.has_rls && (
-                                    <ContextMenuItem
-                                      onClick={() =>
-                                        setRlsPoliciesTarget({
-                                          schema: table.schema,
-                                          name: table.name,
-                                        })
-                                      }
-                                    >
-                                      <LockKeyhole className="h-3.5 w-3.5" />
-                                      View RLS policies
-                                    </ContextMenuItem>
-                                  )}
-                                  <ContextMenuSeparator />
-                                  <ContextMenuItem
-                                    variant="destructive"
-                                    onClick={() =>
-                                      setDdlDropTarget({
-                                        schema: table.schema,
-                                        name: table.name,
-                                      })
-                                    }
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    Drop table
-                                  </ContextMenuItem>
-                                </ContextMenuContent>
-                              </ContextMenu>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </aside>
+                <TablesExplorerSidebar
+                  tablesBySchema={tablesBySchema}
+                  filteredTables={filteredTablesForSchema}
+                  schemas={schemas}
+                  selectedSchema={selectedSchema}
+                  selectedTableKey={selectedTableKey}
+                  selectedTableRef={selectedTableRef}
+                  tableSearch={tableSearch}
+                  isLoading={isLoading}
+                  onSchemaChange={changeSchema}
+                  onTableSelect={changeTable}
+                  onTableSearchChange={setTableSearch}
+                  onPrefetchTable={prefetchTableDetails}
+                  onCreateSchema={() => setIsCreateSchemaOpen(true)}
+                  onCreateTable={() => setIsCreateTableOpen(true)}
+                  onCreateIndex={() => setIsCreateIndexOpen(true)}
+                  onImportCsv={() => setIsImportCsvOpen(true)}
+                  onRenameTable={setDdlRenameTarget}
+                  onDropTable={setDdlDropTarget}
+                  onViewRlsPolicies={setRlsPoliciesTarget}
+                />
               )}
               </ResizablePanel>
 
