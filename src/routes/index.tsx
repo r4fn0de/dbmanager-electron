@@ -2,6 +2,16 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Database, HardDrive, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { ConnectionForm } from "@/components/ConnectionForm";
 import { ConnectionList } from "@/components/ConnectionList";
 import {
@@ -37,7 +48,7 @@ function Home() {
     deleteConnection,
     testConnection,
   } = useConnections();
-  const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, databases: localDbs } = useLocalDatabases();
+  const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, remove: removeLocalDb, databases: localDbs } = useLocalDatabases();
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLocalDbDialogOpen, setIsLocalDbDialogOpen] = useState(false);
@@ -46,6 +57,8 @@ function Home() {
   const [cloneRowCounts, setCloneRowCounts] = useState<TableRowCount[]>([]);
   const [isLoadingCloneSchema, setIsLoadingCloneSchema] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Connection | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isCreatingLocalDb, setIsCreatingLocalDb] = useState(false);
@@ -80,6 +93,15 @@ function Home() {
         (c.url ?? "").toLowerCase().includes(q),
     );
   }, [connections, searchQuery]);
+
+  const localCount = useMemo(
+    () => connections.filter((c) => c.is_local).length,
+    [connections],
+  );
+  const remoteCount = useMemo(
+    () => connections.filter((c) => !c.is_local).length,
+    [connections],
+  );
 
   const handleAdd = () => {
     setEditingConnection(null);
@@ -174,12 +196,33 @@ function Home() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteRequest = (connection: Connection) => {
+    setPendingDelete(connection);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    const isLocal = pendingDelete.is_local;
+    let localDbRemoved = false;
     try {
-      await deleteConnection(id);
+      if (isLocal) {
+        await removeLocalDb(pendingDelete.id);
+        localDbRemoved = true;
+      }
+      await deleteConnection(pendingDelete.id);
+      useConnectionTabsStore.getState().removeTab(pendingDelete.id);
       toast.success("Connection deleted");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete connection");
+      const msg = error instanceof Error ? error.message : "Failed to delete connection";
+      if (isLocal && localDbRemoved) {
+        toast.error(`Database removed but failed to delete connection entry: ${msg}`);
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setPendingDelete(null);
+      setIsDeleting(false);
     }
   };
 
@@ -267,16 +310,24 @@ function Home() {
   return (
     <div className="h-full flex flex-col">
       <div className="border-x border-b rounded-lg flex-1 flex flex-col bg-background overflow-hidden">
-        <div className="max-w-7xl mx-auto w-full px-12 sm:px-36 md:px-56 lg:px-72 py-4 sm:py-6 lg:py-8 flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] text-muted-foreground font-mono">
-              {filteredConnections.length}{" "}
-              {filteredConnections.length === 1 ? "database" : "databases"}
-              {searchQuery &&
-                connections.length !== filteredConnections.length && (
-                  <> · {connections.length} total</>
-                )}
-            </span>
+        <div className="max-w-2xl mx-auto w-full px-6 py-6 flex-1 flex flex-col min-h-0">
+          {/* Page header */}
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">
+                Databases
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {connections.length === 0
+                  ? "Connect to a database to get started"
+                  : [
+                      remoteCount > 0 && `${remoteCount} remote`,
+                      localCount > 0 && `${localCount} local`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+              </p>
+            </div>
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button size="sm" />}>
                 <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -296,18 +347,29 @@ function Home() {
             </DropdownMenu>
           </div>
 
+          {/* Search */}
           {connections.length > 0 && (
-            <div className="relative mb-1.5">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+            <div className="relative mb-3">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <Input
-                placeholder="Search connections…"
+                placeholder="Search by name, host, or database…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-7 pl-7 text-xs"
+                className="h-8 pl-8 text-xs"
               />
             </div>
           )}
 
+          {/* Filtered count indicator */}
+          {searchQuery && connections.length !== filteredConnections.length && (
+            <p className="text-[11px] text-muted-foreground mb-2">
+              Showing {filteredConnections.length} of {connections.length}
+            </p>
+          )}
+
+          <Separator className="mb-3" />
+
+          {/* Connection list */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
             <ConnectionList
               connections={filteredConnections}
@@ -315,7 +377,7 @@ function Home() {
               isLoading={isLoadingConnections}
               onAdd={handleAdd}
               onEdit={handleEdit}
-              onDelete={handleDelete}
+              onDelete={handleDeleteRequest}
               onSelect={handleSelectConnection}
               onStartLocal={startLocalDb}
               onPauseLocal={pauseLocalDb}
@@ -324,6 +386,29 @@ function Home() {
           </div>
         </div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete connection?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove <strong>{pendingDelete?.name}</strong> from your saved connections.
+              {pendingDelete?.is_local && " The local PostgreSQL database will also be deleted."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ConnectionForm
         connection={editingConnection}

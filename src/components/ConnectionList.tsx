@@ -1,7 +1,26 @@
-import { Database, Pencil, Play, Plus, Trash2, Copy, Check, Pause, Globe, Download } from "lucide-react";
+import {
+  Cable,
+  Check,
+  Copy,
+  Download,
+  FolderOpen,
+  Globe,
+  Pencil,
+  Play,
+  Plus,
+  Server,
+  Trash2,
+  Pause,
+} from "lucide-react";
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import type { Connection, LocalDbInfo } from "@/ipc/db/types";
@@ -12,7 +31,7 @@ interface ConnectionListProps {
   isLoading: boolean;
   onAdd: () => void;
   onEdit: (connection: Connection) => void;
-  onDelete: (id: string) => void;
+  onDelete: (connection: Connection) => void;
   onSelect: (connection: Connection) => void;
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
@@ -35,7 +54,8 @@ function resolveProviderHost(connection: Connection): string {
 function detectConnectionProvider(connection: Connection): ConnectionProvider {
   const host = resolveProviderHost(connection);
   if (host.includes("neon.tech")) return "neon";
-  if (host.includes("supabase.co") || host.includes("supabase.com")) return "supabase";
+  if (host.includes("supabase.co") || host.includes("supabase.com"))
+    return "supabase";
   return connection.url ? "url" : "direct";
 }
 
@@ -47,6 +67,19 @@ function connectionCopyValue(connection: Connection): string {
   const hasPassword = connection.password.length > 0;
   const auth = hasPassword ? `${username}:${password}` : username;
   return `postgresql://${auth}@${connection.host}:${connection.port}/${connection.database}?sslmode=${connection.ssl_mode}`;
+}
+
+function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
+  switch (provider) {
+    case "neon":
+      return <Neon className="h-4 w-4 shrink-0" />;
+    case "supabase":
+      return <Supabase className="h-4 w-4 shrink-0" />;
+    case "url":
+      return <Globe className="h-4 w-4 shrink-0 text-muted-foreground/50" />;
+    default:
+      return <Cable className="h-4 w-4 shrink-0 text-muted-foreground/50" />;
+  }
 }
 
 function ConnectionCard({
@@ -62,7 +95,7 @@ function ConnectionCard({
   connection: Connection;
   localDbInfo?: LocalDbInfo;
   onEdit: (c: Connection) => void;
-  onDelete: (id: string) => void;
+  onDelete: (connection: Connection) => void;
   onSelect: (connection: Connection) => void;
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
@@ -74,9 +107,10 @@ function ConnectionCard({
   const displayInfo = isUrl
     ? (connection.url ?? "").replace(/:[^:]*@/, ":****@")
     : `${connection.username}@${connection.host}:${connection.port}/${connection.database}`;
-  const displayColor = connection.color && /^#[0-9a-fA-F]{6}$/.test(connection.color)
-    ? connection.color
-    : "#64748b";
+  const displayColor =
+    connection.color && /^#[0-9a-fA-F]{6}$/.test(connection.color)
+      ? connection.color
+      : "#64748b";
   const [copied, setCopied] = useState(false);
   const [isTogglingState, setIsTogglingState] = useState(false);
   const isStatusKnown = Boolean(localDbInfo);
@@ -107,90 +141,149 @@ function ConnectionCard({
   };
 
   return (
-    <div className="group flex items-center gap-2 py-1.5 px-4 -mx-4 rounded-md hover:bg-muted/30 transition-colors duration-100 sm:px-16 sm:-mx-16 md:px-36 md:-mx-36 lg:px-52 lg:-mx-52">
+    <div className="group relative flex items-stretch gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-border hover:bg-muted/40">
+      {/* Color accent bar */}
+      <div
+        className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full transition-opacity opacity-40 group-hover:opacity-100"
+        style={{ backgroundColor: displayColor }}
+      />
+
+      {/* Click area — name, provider, info */}
       <button
         type="button"
         className="flex-1 min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm"
         onClick={() => onSelect(connection)}
       >
         <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: displayColor }} />
-          <span className="font-medium text-[13px] truncate">{connection.name}</span>
+          <ProviderIcon provider={provider} />
+          <span className="font-medium text-sm truncate">
+            {connection.name}
+          </span>
           {connection.tag && (
-            <span className="text-[9px] text-muted-foreground/50 font-mono" title={connection.tag}>{connection.tag}</span>
-          )}
-          {provider === "neon" && (
-            <Neon className="h-3.5 w-3.5" />
-          )}
-          {provider === "supabase" && (
-            <Supabase className="h-3.5 w-3.5" />
+            <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono">
+              {connection.tag}
+            </Badge>
           )}
           {isLocal && (
-            <span className={`text-[9px] font-mono ${isRunning ? "text-emerald-600/60" : "text-muted-foreground/50"}`}>
-              {isRunning ? "●" : "○"}
+            <span
+              className={`inline-flex items-center gap-1 text-[10px] font-medium ${
+                isRunning
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  isRunning
+                    ? "bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]"
+                    : "bg-muted-foreground/40"
+                }`}
+              />
+              {isRunning ? "Running" : "Stopped"}
             </span>
           )}
-          {provider === "url" && (
-            <Globe className="h-3 w-3 text-muted-foreground/40" />
-          )}
         </div>
-        <p className="text-[10px] text-muted-foreground/50 truncate font-mono ml-4">{displayInfo}</p>
+        <p className="text-xs text-muted-foreground truncate font-mono mt-0.5 pl-6">
+          {displayInfo}
+        </p>
       </button>
 
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      {/* Action buttons — visible on hover */}
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 self-center">
         {isLocal && (onStartLocal || onPauseLocal) && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={handleToggleLocalState}
-            aria-label={`${isRunning ? "Pause" : "Start"} ${connection.name}`}
-            title={isRunning ? "Pause local database" : "Start local database"}
-            disabled={isTogglingState || !isStatusKnown}
-          >
-            {isRunning ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleToggleLocalState}
+                  disabled={isTogglingState || !isStatusKnown}
+                />
+              }
+            >
+              {isRunning ? (
+                <Pause className="h-3.5 w-3.5" />
+              ) : (
+                <Play className="h-3.5 w-3.5" />
+              )}
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={4}>
+              {isRunning ? "Pause database" : "Start database"}
+            </TooltipContent>
+          </Tooltip>
         )}
         {!isLocal && onCloneToLocal && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={() => onCloneToLocal(connection)}
-            aria-label={`Clone ${connection.name} to local`}
-            title="Clone to local database"
-          >
-            <Download className="h-3 w-3" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onCloneToLocal(connection)}
+                />
+              }
+            >
+              <Download className="h-3.5 w-3.5" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={4}>
+              Clone to local
+            </TooltipContent>
+          </Tooltip>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={handleCopy}
-          aria-label={`Copy connection string for ${connection.name}`}
-          title={copied ? "Copied" : "Copy connection string"}
-        >
-          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => onEdit(connection)}
-          aria-label={`Edit ${connection.name}`}
-        >
-          <Pencil className="h-3 w-3" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-destructive hover:text-destructive"
-          onClick={() => onDelete(connection.id)}
-          aria-label={`Delete ${connection.name}`}
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleCopy}
+              />
+            }
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-500" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            {copied ? "Copied!" : "Copy connection string"}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => onEdit(connection)}
+              />
+            }
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            Edit connection
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(connection)}
+              />
+            }
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            Delete connection
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -198,11 +291,65 @@ function ConnectionCard({
 
 function ConnectionCardSkeleton() {
   return (
-    <div className="flex items-center gap-2 py-1.5 px-4 -mx-4 sm:px-16 sm:-mx-16 md:px-36 md:-mx-36 lg:px-52 lg:-mx-52">
-      <Skeleton className="h-2 w-2 rounded-full shrink-0" />
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <Skeleton className="h-3 w-2/5" />
-        <Skeleton className="h-2 w-3/4 ml-4" />
+    <div className="flex items-center gap-3 px-3 py-2.5">
+      <Skeleton className="h-4 w-4 rounded shrink-0" />
+      <div className="flex-1 min-w-0 space-y-1">
+        <Skeleton className="h-3.5 w-2/5" />
+        <Skeleton className="h-2.5 w-3/4" />
+      </div>
+    </div>
+  );
+}
+
+function ConnectionGroup({
+  label,
+  icon: Icon,
+  connections,
+  localDbById,
+  onEdit,
+  onDelete,
+  onSelect,
+  onStartLocal,
+  onPauseLocal,
+  onCloneToLocal,
+}: {
+  label: string;
+  icon: typeof Server;
+  connections: Connection[];
+  localDbById?: Record<string, LocalDbInfo>;
+  onEdit: (c: Connection) => void;
+  onDelete: (connection: Connection) => void;
+  onSelect: (c: Connection) => void;
+  onStartLocal?: (id: string) => Promise<void>;
+  onPauseLocal?: (id: string) => Promise<void>;
+  onCloneToLocal?: (c: Connection) => void;
+}) {
+  if (connections.length === 0) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon className="h-3 w-3 text-muted-foreground/60" />
+        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          {label}
+        </span>
+        <span className="text-[10px] text-muted-foreground/50">
+          {connections.length}
+        </span>
+      </div>
+      <div className="space-y-0.5">
+        {connections.map((conn) => (
+          <ConnectionCard
+            key={conn.id}
+            connection={conn}
+            localDbInfo={conn.is_local ? localDbById?.[conn.id] : undefined}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onSelect={onSelect}
+            onStartLocal={onStartLocal}
+            onPauseLocal={onPauseLocal}
+            onCloneToLocal={onCloneToLocal}
+          />
+        ))}
       </div>
     </div>
   );
@@ -232,32 +379,53 @@ export function ConnectionList({
 
   if (connections.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-center">
-        <Database className="h-3.5 w-3.5 text-muted-foreground/40 mb-2" />
-        <p className="text-[11px] text-muted-foreground mb-2">No connections yet</p>
-        <Button size="sm" variant="outline" onClick={onAdd}>
-          <Plus className="h-3 w-3 mr-1" />
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="rounded-full bg-muted/60 p-3 mb-3">
+          <FolderOpen className="h-5 w-5 text-muted-foreground/60" />
+        </div>
+        <p className="text-sm text-muted-foreground mb-1">
+          No connections yet
+        </p>
+        <p className="text-xs text-muted-foreground/60 mb-4 max-w-[220px]">
+          Add a remote database or create a local PostgreSQL instance to get
+          started.
+        </p>
+        <Button size="sm" onClick={onAdd}>
+          <Plus className="h-3.5 w-3.5 mr-1.5" />
           Add Connection
         </Button>
       </div>
     );
   }
 
+  // Split connections into local and remote groups
+  const localConnections = connections.filter((c) => c.is_local === true);
+  const remoteConnections = connections.filter((c) => c.is_local !== true);
+
+  const sharedProps = {
+    localDbById,
+    onEdit,
+    onDelete,
+    onSelect,
+    onStartLocal,
+    onPauseLocal,
+    onCloneToLocal,
+  };
+
   return (
-    <div className="space-y-px">
-      {connections.map((conn) => (
-        <ConnectionCard
-          key={conn.id}
-          connection={conn}
-          localDbInfo={conn.is_local ? localDbById?.[conn.id] : undefined}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onSelect={onSelect}
-          onStartLocal={onStartLocal}
-          onPauseLocal={onPauseLocal}
-          onCloneToLocal={onCloneToLocal}
-        />
-      ))}
+    <div className="space-y-4">
+      <ConnectionGroup
+        label="Local"
+        icon={Server}
+        connections={localConnections}
+        {...sharedProps}
+      />
+      <ConnectionGroup
+        label="Remote"
+        icon={Globe}
+        connections={remoteConnections}
+        {...sharedProps}
+      />
     </div>
   );
 }

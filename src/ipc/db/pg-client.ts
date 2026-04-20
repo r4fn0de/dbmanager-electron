@@ -277,25 +277,123 @@ export async function getTableDetails(
   };
 }
 
+function buildWhereClause(
+  filters: Array<{ column: string; operator: string; value?: unknown }>,
+  startIndex: number = 1,
+): { sql: string; params: unknown[] } {
+  if (filters.length === 0) return { sql: "", params: [] };
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  for (const filter of filters) {
+    const col = `"${filter.column.replaceAll('"', '""')}"`;
+    // Parameter index accounts for already-used positional params.
+    // NOTE: is_null/is_not_null don't push to params, so the next parameterized
+    // filter's index is always params.length + startIndex (skipping non-parameterized branches).
+    const idx = params.length + startIndex;
+
+    switch (filter.operator) {
+      case "eq":
+        if (filter.value === null || filter.value === undefined) {
+          conditions.push(`${col} IS NULL`);
+        } else {
+          conditions.push(`${col} = $${idx}`);
+          params.push(filter.value);
+        }
+        break;
+      case "neq":
+        if (filter.value === null || filter.value === undefined) {
+          conditions.push(`${col} IS NOT NULL`);
+        } else {
+          conditions.push(`${col} != $${idx}`);
+          params.push(filter.value);
+        }
+        break;
+      case "contains":
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`%${String(filter.value ?? "")}%`);
+        break;
+      case "starts_with":
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`${String(filter.value ?? "")}%`);
+        break;
+      case "ends_with":
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`%${String(filter.value ?? "")}`);
+        break;
+      case "gt":
+        conditions.push(`${col} > $${idx}`);
+        params.push(filter.value);
+        break;
+      case "gte":
+        conditions.push(`${col} >= $${idx}`);
+        params.push(filter.value);
+        break;
+      case "lt":
+        conditions.push(`${col} < $${idx}`);
+        params.push(filter.value);
+        break;
+      case "lte":
+        conditions.push(`${col} <= $${idx}`);
+        params.push(filter.value);
+        break;
+      case "is_null":
+        conditions.push(`${col} IS NULL`);
+        break;
+      case "is_not_null":
+        conditions.push(`${col} IS NOT NULL`);
+        break;
+      default:
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`%${String(filter.value ?? "")}%`);
+    }
+  }
+
+  return {
+    sql: ` WHERE ${conditions.join(" AND ")}`,
+    params,
+  };
+}
+
+function buildOrderByClause(
+  sort: Array<{ column: string; direction: "asc" | "desc" }>,
+): string {
+  if (sort.length === 0) return "";
+  const clauses = sort.map(
+    (s) => `"${s.column.replaceAll('"', '""')}" ${s.direction.toUpperCase()}`,
+  );
+  return ` ORDER BY ${clauses.join(", ")}`;
+}
+
 export async function listRows(
   connectionString: string,
   schema: string,
   table: string,
   page: number,
   pageSize: number,
+  sort: Array<{ column: string; direction: "asc" | "desc" }> = [],
+  filters: Array<{ column: string; operator: string; value?: unknown }> = [],
 ): Promise<TableRowsResponse> {
   const client = new Client({ connectionString });
   try {
     await client.connect();
 
+    // Rows query: $1=LIMIT, $2=OFFSET, so filter params start at $3
+    const where = buildWhereClause(filters, 3);
+    const orderBy = buildOrderByClause(sort);
     const offset = (page - 1) * pageSize;
+
     const rowsResult = await client.query(
-      `SELECT * FROM "${schema}"."${table}" LIMIT $1 OFFSET $2`,
-      [pageSize, offset],
+      `SELECT * FROM "${schema}"."${table}"${where.sql}${orderBy} LIMIT $1 OFFSET $2`,
+      [pageSize, offset, ...where.params],
     );
 
+    // Count query: no LIMIT/OFFSET, so filter params start at $1
+    const countWhere = buildWhereClause(filters, 1);
     const countResult = await client.query(
-      `SELECT COUNT(*) FROM "${schema}"."${table}"`,
+      `SELECT COUNT(*) FROM "${schema}"."${table}"${countWhere.sql}`,
+      countWhere.params,
     );
     const totalEstimate = parseInt(countResult.rows[0].count, 10);
 
@@ -645,6 +743,44 @@ export async function exportSchemaDdl(
       });
     }
 
+    // 1.5. Get enum types and create them before tables.
+    const enumResult = await client.query(`
+      SELECT
+        n.nspname AS enum_schema,
+        t.typname AS enum_name,
+        e.enumlabel,
+        e.enumsortorder
+      FROM pg_type t
+      JOIN pg_enum e ON e.enumtypid = t.oid
+      JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname NOT LIKE 'pg_%'
+        AND n.nspname != 'information_schema'
+      ORDER BY n.nspname, t.typname, e.enumsortorder
+    `);
+
+    const enumValuesByType = new Map<string, string[]>();
+    for (const row of enumResult.rows) {
+      const key = `${row.enum_schema}.${row.enum_name}`;
+      if (!enumValuesByType.has(key)) {
+        enumValuesByType.set(key, []);
+      }
+      enumValuesByType.get(key)!.push(row.enumlabel);
+    }
+
+    for (const [enumKey, labels] of enumValuesByType) {
+      const [enumSchema, enumName] = enumKey.split(".");
+      const values = labels
+        .map((label) => `'${String(label).replaceAll("'", "''")}'`)
+        .join(", ");
+
+      scripts.push({
+        type: "type",
+        schema: enumSchema,
+        name: enumName,
+        sql: `DO $$ BEGIN CREATE TYPE "${enumSchema}"."${enumName}" AS ENUM (${values}); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      });
+    }
+
     // 2. Get sequences (for serial/identity columns)
     const seqResult = await client.query(`
       SELECT
@@ -693,13 +829,30 @@ export async function exportSchemaDdl(
         c.column_name,
         c.data_type,
         c.udt_name,
+        c.udt_schema,
         c.is_nullable,
         c.column_default,
-        c.ordinal_position
+        c.ordinal_position,
+        pg_catalog.format_type(a.atttypid, a.atttypmod) AS sql_type
       FROM information_schema.columns c
+      JOIN information_schema.tables t
+        ON t.table_schema = c.table_schema
+        AND t.table_name = c.table_name
+      JOIN pg_catalog.pg_namespace ns
+        ON ns.nspname = c.table_schema
+      JOIN pg_catalog.pg_class cls
+        ON cls.relname = c.table_name
+        AND cls.relnamespace = ns.oid
+        AND cls.relkind IN ('r', 'p')
+      JOIN pg_catalog.pg_attribute a
+        ON a.attrelid = cls.oid
+        AND a.attname = c.column_name
+        AND a.attnum > 0
+        AND NOT a.attisdropped
       WHERE c.table_schema NOT LIKE 'pg_%'
         AND c.table_schema != 'information_schema'
         AND c.table_schema NOT LIKE 'pg_catalog'
+        AND t.table_type = 'BASE TABLE'
       ORDER BY c.table_schema, c.table_name, c.ordinal_position
     `);
 
@@ -708,8 +861,10 @@ export async function exportSchemaDdl(
       name: string;
       data_type: string;
       udt_name: string;
+      udt_schema: string;
       is_nullable: string;
       column_default: string | null;
+      sql_type: string;
     }>>();
 
     for (const row of tablesResult.rows) {
@@ -717,7 +872,15 @@ export async function exportSchemaDdl(
       if (!tableColumns.has(key)) {
         tableColumns.set(key, []);
       }
-      tableColumns.get(key)!.push(row);
+      tableColumns.get(key)!.push({
+        name: row.column_name,
+        data_type: row.data_type,
+        udt_name: row.udt_name,
+        udt_schema: row.udt_schema,
+        is_nullable: row.is_nullable,
+        column_default: row.column_default,
+        sql_type: row.sql_type,
+      });
     }
 
     // 4. Get primary keys
@@ -727,10 +890,14 @@ export async function exportSchemaDdl(
         tc.table_name,
         kcu.column_name
       FROM information_schema.table_constraints tc
-      JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+        AND tc.table_name = kcu.table_name
       WHERE tc.constraint_type = 'PRIMARY KEY'
         AND tc.table_schema NOT LIKE 'pg_%'
         AND tc.table_schema != 'information_schema'
+      ORDER BY tc.table_schema, tc.table_name, kcu.ordinal_position
     `);
 
     const tablePrimaryKeys = new Map<string, string[]>();
@@ -749,7 +916,7 @@ export async function exportSchemaDdl(
 
       const columnDefs: string[] = [];
       for (const col of columns) {
-        let def = `  "${col.name}" ${col.data_type}`;
+        let def = `  "${col.name}" ${col.sql_type}`;
         if (col.is_nullable === "NO") def += " NOT NULL";
         if (col.column_default) {
           // Skip nextval defaults for serial types (will handle separately)
@@ -819,8 +986,13 @@ export async function exportSchemaDdl(
         ccu.table_name AS foreign_table_name,
         ccu.column_name AS foreign_column_name
       FROM information_schema.table_constraints AS tc
-      JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
-      JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
+      JOIN information_schema.key_column_usage AS kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+        AND tc.table_name = kcu.table_name
+      JOIN information_schema.constraint_column_usage AS ccu
+        ON ccu.constraint_name = tc.constraint_name
+        AND ccu.constraint_schema = tc.constraint_schema
       WHERE tc.constraint_type = 'FOREIGN KEY'
         AND tc.table_schema NOT LIKE 'pg_%'
         AND tc.table_schema != 'information_schema'

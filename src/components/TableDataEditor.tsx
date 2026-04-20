@@ -19,7 +19,6 @@ import {
   Save,
   Trash2,
   Undo2,
-  Wand,
 } from "lucide-react";
 import {
   useCallback,
@@ -40,7 +39,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -146,6 +144,27 @@ function normalizeDisplay(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function compareSortValues(a: unknown, b: unknown): number {
+  if (a === b) return 0;
+  if (a === null || a === undefined) return 1;
+  if (b === null || b === undefined) return -1;
+
+  if (typeof a === "number" && typeof b === "number") {
+    return a - b;
+  }
+
+  if (typeof a === "boolean" && typeof b === "boolean") {
+    return Number(a) - Number(b);
+  }
+
+  const aStr = normalizeDisplay(a);
+  const bStr = normalizeDisplay(b);
+  return aStr.localeCompare(bStr, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function parseByType(raw: string, column: SchemaColumn): unknown {
@@ -449,6 +468,10 @@ export function TableDataEditor({
     ];
   }, [filterColumn, deferredFilterValue]);
 
+  useEffect(() => {
+    setPage((current) => (current === 0 ? current : 0));
+  }, [sort, filterColumn, deferredFilterValue]);
+
   const {
     data: rowsResponse = null,
     isFetching: isLoading,
@@ -505,16 +528,27 @@ export function TableDataEditor({
   }, [foreignKeys]);
 
   const rows = rowsResponse?.rows ?? [];
+  const displayedRows = useMemo(() => {
+    const activeSort = sort[0];
+    if (!activeSort?.column) return rows;
+
+    const next = [...rows];
+    next.sort((a, b) => {
+      const cmp = compareSortValues(a[activeSort.column], b[activeSort.column]);
+      return activeSort.direction === "asc" ? cmp : -cmp;
+    });
+    return next;
+  }, [rows, sort]);
   const isBlockingTableLoading = isLoading && !rowsResponse;
 
   const effectiveRows = useMemo(() => {
-    return rows
+    return displayedRows
       .map((row, index) => {
         const key = rowKeyFromPk(primaryKey, row, `row:${index}`);
         return { row, rowKey: key, index };
       })
       .filter((entry) => !draftDeletes[entry.rowKey]);
-  }, [draftDeletes, primaryKey, rows]);
+  }, [displayedRows, draftDeletes, primaryKey]);
 
   const effectiveRowsRef = useRef(effectiveRows);
   effectiveRowsRef.current = effectiveRows;
@@ -1160,8 +1194,8 @@ export function TableDataEditor({
       className="h-full flex flex-col min-h-0"
       onClickCapture={clearSelectionOnOutsideClick}
     >
-      <div className="border-b px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="border-b px-3 py-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
           {onToggleSidebar && (
             <Tooltip>
               <TooltipTrigger
@@ -1185,13 +1219,26 @@ export function TableDataEditor({
               </TooltipContent>
             </Tooltip>
           )}
+
+          <Button variant="default" size="sm" onClick={handleAddDraftRecord}>
+            <Plus className="h-3.5 w-3.5" />
+            Add row
+          </Button>
+
+          {onRequestAddColumn && (
+            <Button variant="outline" size="sm" onClick={onRequestAddColumn}>
+              <Plus className="h-3.5 w-3.5" />
+              Column
+            </Button>
+          )}
+
           <Button
-            variant="outline"
+            variant={showFilters ? "secondary" : "outline"}
             size="sm"
             onClick={() => setShowFilters((v) => !v)}
           >
             <Filter className="h-3.5 w-3.5" />
-            Filters
+            Filter
           </Button>
 
           <DropdownMenu>
@@ -1229,7 +1276,7 @@ export function TableDataEditor({
             onRequestAlterColumnType ||
             onRequestSetColumnDefault ||
             onRequestSetColumnNullable) && (
-            <div className="flex items-center gap-2">
+            <>
               <Select
                 value={ddlColumnName}
                 onValueChange={(value) => {
@@ -1247,12 +1294,10 @@ export function TableDataEditor({
                   ))}
                 </SelectContent>
               </Select>
-
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={<Button variant="outline" size="sm" />}
                 >
-                  <Wand className="h-3.5 w-3.5" />
                   Column DDL
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
@@ -1301,32 +1346,8 @@ export function TableDataEditor({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
+            </>
           )}
-
-          <Button variant="default" size="sm" onClick={handleAddDraftRecord}>
-            <Plus className="h-3.5 w-3.5" />
-            Add record
-          </Button>
-
-          {onRequestAddColumn && (
-            <Button variant="outline" size="sm" onClick={onRequestAddColumn}>
-              <Plus className="h-3.5 w-3.5" />
-              Add column
-            </Button>
-          )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setPendingTruncate(true);
-              setConfirmText("");
-            }}
-          >
-            <Wand className="h-3.5 w-3.5" />
-            Truncate
-          </Button>
 
           {selectedRowKeys.size > 0 && (
             <Button
@@ -1336,44 +1357,27 @@ export function TableDataEditor({
               disabled={primaryKey.length === 0}
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Delete ({selectedRowKeys.size})
+              Delete {selectedRowKeys.size}
             </Button>
           )}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="outline" size="sm" />}
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export page
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => exportData("csv")}>
-                Export page as CSV
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportData("json")}>
-                Export page as JSON
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <Badge variant="outline">
-            {rowsResponse?.totalEstimate ?? 0} rows
-          </Badge>
-          <Badge variant="outline">+{dirtyCounts.inserts}</Badge>
-          <Badge variant="outline">~{dirtyCounts.updates}</Badge>
-          <Badge variant="outline">-{dirtyCounts.deletes}</Badge>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
           {(isLoading || isSwitchingTable) && rowsResponse && (
-            <Badge variant="secondary" className="gap-1">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {isSwitchingTable ? "Loading..." : "Updating..."}
-            </Badge>
+            <Loader2 className="h-3 w-3 animate-spin" />
+          )}
+          <span>{(rowsResponse?.totalEstimate ?? 0).toLocaleString()} rows</span>
+          {hasDraftChanges && (
+            <span className="flex items-center gap-1">
+              {dirtyCounts.inserts > 0 && <span className="text-emerald-600 dark:text-emerald-400">+{dirtyCounts.inserts}</span>}
+              {dirtyCounts.updates > 0 && <span className="text-amber-600 dark:text-amber-400">~{dirtyCounts.updates}</span>}
+              {dirtyCounts.deletes > 0 && <span className="text-red-600 dark:text-red-400">-{dirtyCounts.deletes}</span>}
+            </span>
           )}
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon-sm"
+            className="text-muted-foreground hover:text-foreground"
             onClick={() =>
               queryClient.invalidateQueries({
                 queryKey: [
@@ -1386,6 +1390,34 @@ export function TableDataEditor({
             }
           >
             <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" />
+              }
+            >
+              <Download className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => exportData("csv")}>
+                Export as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportData("json")}>
+                Export as JSON
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground hover:text-destructive"
+            onClick={() => {
+              setPendingTruncate(true);
+              setConfirmText("");
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
@@ -1473,31 +1505,38 @@ export function TableDataEditor({
                   return (
                     <TableHead
                       key={columnName}
-                      className="cursor-pointer border-r border-border last:border-r-0 select-none hover:bg-muted/60 transition-colors relative group h-8 py-1 px-2 bg-background"
+                      className="border-r border-border last:border-r-0 select-none hover:bg-muted/60 transition-colors relative group h-8 py-1 px-2 bg-background"
                       style={{ width, minWidth: width, maxWidth: width }}
-                      onClick={() => {
-                        setSort((current) => {
-                          if (current[0]?.column !== columnName) {
-                            return [{ column: columnName, direction: "asc" }];
-                          }
-                          if (current[0]?.direction === "asc") {
-                            return [{ column: columnName, direction: "desc" }];
-                          }
-                          return [];
-                        });
-                      }}
                     >
-                      <span className="font-semibold text-foreground/90">
-                        {columnName}
-                      </span>
-                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground/70">
-                        {column?.data_type}
-                      </span>
-                      {sorted && (
-                        <span className="ml-1 text-[10px] font-medium text-primary">
-                          {sorted === "asc" ? "↑" : "↓"}
+                      <button
+                        type="button"
+                        className="w-full h-full text-left cursor-pointer pr-2"
+                        onClick={() => {
+                          setSort((current) => {
+                            if (current[0]?.column !== columnName) {
+                              return [{ column: columnName, direction: "asc" }];
+                            }
+                            if (current[0]?.direction === "asc") {
+                              return [
+                                { column: columnName, direction: "desc" },
+                              ];
+                            }
+                            return [];
+                          });
+                        }}
+                      >
+                        <span className="font-semibold text-foreground/90">
+                          {columnName}
                         </span>
-                      )}
+                        <span className="ml-1.5 text-[10px] font-normal text-muted-foreground/70">
+                          {column?.data_type}
+                        </span>
+                        {sorted && (
+                          <span className="ml-1 text-[10px] font-medium text-primary">
+                            {sorted === "asc" ? "↑" : "↓"}
+                          </span>
+                        )}
+                      </button>
                       {/* Resize handle */}
                       <div
                         className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-20"

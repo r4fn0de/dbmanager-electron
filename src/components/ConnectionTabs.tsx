@@ -15,6 +15,7 @@ import {
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 import { cn } from "@/lib/utils";
+import type { ConnectionTab } from "@/lib/stores/connection-tabs";
 
 export function ConnectionTabs() {
   const { tabs, activeTabId, removeTab, setActiveTab } =
@@ -222,17 +223,55 @@ export function ConnectionTabs() {
 
 /**
  * Keeps tab data in sync with the latest connection info and removes
- * stale tabs for deleted connections. Tab creation is handled directly
- * at the navigation points (handleSelectConnection, database page mount)
- * so this hook only does background maintenance.
+ * stale tabs for deleted connections. When a stale tab is the currently
+ * active route, navigates to the nearest sibling or home.
  */
 export function useConnectionTabSync() {
   const { tabs, updateTab, removeTab } = useConnectionTabsStore();
   const { connections, isLoading, refetch } = useConnections();
+  const navigate = useNavigate();
+  const matchRoute = useMatchRoute();
 
   const connectionIds = useMemo(
     () => new Set(connections.map((c) => c.id)),
     [connections],
+  );
+
+  // Keep a ref to the current tabs so the navigation helper can read the
+  // latest state without being a dependency of the Effect.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
+  // Navigate away from a deleted connection's page to the nearest sibling
+  // or the home page.
+  const navigateAwayFromDeleted = useCallback(
+    (deletedId: string) => {
+      const currentTabs = tabsRef.current;
+      const remaining = currentTabs.filter((t: ConnectionTab) => t.id !== deletedId);
+      const dbMatch = matchRoute({ to: "/database/$connectionId", fuzzy: true });
+      const currentConnectionId =
+        dbMatch && typeof dbMatch === "object" && "connectionId" in dbMatch
+          ? (dbMatch.connectionId as string)
+          : null;
+
+      // Only navigate if the user is currently viewing the deleted connection
+      if (currentConnectionId !== deletedId) return;
+
+      if (remaining.length > 0) {
+        const deletedIdx = currentTabs.findIndex((t: ConnectionTab) => t.id === deletedId);
+        const nextIdx = Math.min(deletedIdx, remaining.length - 1);
+        const nextTab = remaining[nextIdx];
+        if (nextTab) {
+          navigate({
+            to: "/database/$connectionId",
+            params: { connectionId: nextTab.id },
+          });
+        }
+      } else {
+        navigate({ to: "/" });
+      }
+    },
+    [matchRoute, navigate],
   );
 
   // Sync existing tabs with fresh connection data and remove stale tabs.
@@ -245,6 +284,7 @@ export function useConnectionTabSync() {
       for (const tab of tabs) {
         if (!connectionIds.has(tab.id)) {
           removeTab(tab.id);
+          navigateAwayFromDeleted(tab.id);
         }
       }
     }
@@ -270,5 +310,5 @@ export function useConnectionTabSync() {
         });
       }
     }
-  }, [connections, connectionIds, isLoading, tabs, updateTab, removeTab]);
+  }, [connections, connectionIds, isLoading, tabs, updateTab, removeTab, navigateAwayFromDeleted]);
 }

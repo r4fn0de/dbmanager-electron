@@ -257,6 +257,8 @@ export const tableListRows = os
       input.tableRef.table,
       input.page,
       input.pageSize,
+      input.sort,
+      input.filters,
     );
   });
 
@@ -606,19 +608,46 @@ export const createLocalDatabase = os
 export const startLocalDatabase = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
-    await localDbManager.start(input.id);
+    try {
+      await localDbManager.start(input.id);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to start local database",
+      });
+    }
   });
 
 export const stopLocalDatabase = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
-    await localDbManager.stop(input.id);
+    try {
+      await localDbManager.stop(input.id);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to stop local database",
+      });
+    }
   });
 
 export const deleteLocalDatabase = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
-    await localDbManager.delete(input.id);
+    try {
+      await localDbManager.delete(input.id);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to delete local database",
+      });
+    }
   });
 
 export const findAvailablePort = os.handler(async (): Promise<number> => {

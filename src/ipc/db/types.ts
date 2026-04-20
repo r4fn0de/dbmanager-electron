@@ -340,7 +340,7 @@ export interface CreateSchemaInput {
 
 // Clone to Local Types
 export interface DdlScript {
-  type: "schema" | "table" | "index" | "constraint" | "sequence";
+  type: "schema" | "type" | "table" | "index" | "constraint" | "sequence";
   schema: string;
   name: string;
   sql: string;

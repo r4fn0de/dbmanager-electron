@@ -78,11 +78,42 @@ export class LocalDbManager {
 
   // ── Persistence ─────────────────────────────────────────────
 
+  private normalizeMetaList(list: LocalDbMeta[]): LocalDbMeta[] {
+    const normalized: LocalDbMeta[] = [];
+    const seenIds = new Set<string>();
+    const usedPorts = new Set<number>();
+
+    for (const meta of list) {
+      if (!meta?.id || seenIds.has(meta.id)) continue;
+      if (!Number.isFinite(meta.port)) continue;
+
+      // Self-heal stale metadata when data directory was manually removed
+      // or when a previous failed clone left dangling entries.
+      const dataDir = getInstanceDataDir(meta.id);
+      if (!existsSync(dataDir)) continue;
+
+      // Keep only one configured DB per port to prevent perpetual auto-start
+      // conflicts (legacy duplicated metadata can happen after failed flows).
+      if (usedPorts.has(meta.port)) continue;
+
+      seenIds.add(meta.id);
+      usedPorts.add(meta.port);
+      normalized.push(meta);
+    }
+
+    return normalized;
+  }
+
   private async loadMetaList(): Promise<LocalDbMeta[]> {
     if (this.metaCache) return this.metaCache;
     try {
       const data = await readFile(getStoragePath(), "utf-8");
-      this.metaCache = JSON.parse(data) as LocalDbMeta[];
+      const parsed = JSON.parse(data) as LocalDbMeta[];
+      const normalized = this.normalizeMetaList(parsed);
+      this.metaCache = normalized;
+      if (normalized.length !== parsed.length) {
+        await this.saveMetaList(normalized);
+      }
     } catch {
       this.metaCache = [];
     }
@@ -259,6 +290,14 @@ export class LocalDbManager {
     this.checkBinariesAvailable();
 
     const port = input.port || 5432;
+
+    // Prevent reserving the same port for multiple local DB definitions.
+    const existing = await this.loadMetaList();
+    if (existing.some((m) => m.port === port)) {
+      throw new Error(
+        `Port ${port} is already in use by another configured local database.`,
+      );
+    }
 
     // Check port availability before creating.
     // Note: there is a TOCTOU window between this check and when PG actually

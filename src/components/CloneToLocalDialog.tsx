@@ -79,6 +79,7 @@ export function CloneToLocalDialog({
   const [postgresVersion, setPostgresVersion] = useState("16.13.0");
   const [tableSelections, setTableSelections] = useState<TableSelection[]>([]);
   const [cloneMode, setCloneMode] = useState<"schema_and_data" | "schema_only">("schema_and_data");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Derived: all selected state based on actual selections
   const selectedCount = useMemo(
@@ -87,6 +88,19 @@ export function CloneToLocalDialog({
   );
   const allSelected = tableSelections.length > 0 && selectedCount === tableSelections.length;
   const isSchemaOnly = cloneMode === "schema_only";
+
+  useEffect(() => {
+    if (!isCloning) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isCloning]);
 
   // Initialize table selections when schema is loaded
   useEffect(() => {
@@ -158,7 +172,10 @@ export function CloneToLocalDialog({
 
   const getProgressPercentage = () => {
     if (!progress || progress.totalTables === 0) return 0;
-    if (progress.stage === "schema") return 10;
+    if (progress.stage === "schema") {
+      // Keep schema phase visibly moving even when source introspection is slow.
+      return Math.min(35, 10 + elapsedSeconds * 0.8);
+    }
     if (progress.stage === "data") {
       return 10 + (progress.tablesProcessed / progress.totalTables) * 70;
     }
@@ -206,6 +223,11 @@ export function CloneToLocalDialog({
                 <span className="font-medium">{Math.round(getProgressPercentage())}%</span>
               </div>
               <Progress value={getProgressPercentage()} className="h-2" />
+              {isCloning && progress?.stage === "schema" && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  This step can take a while for large databases ({elapsedSeconds}s elapsed).
+                </p>
+              )}
             </div>
 
             {/* Status Details */}

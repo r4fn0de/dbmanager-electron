@@ -105,6 +105,7 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
 
   const start = useCallback(
     async (id: string): Promise<void> => {
+      const previous = databases;
       setDatabases((current) =>
         current.map((db) =>
           db.id === id
@@ -112,10 +113,15 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
             : db,
         ),
       );
-      await ipc.client.db.startLocalDatabase({ id });
-      await refresh();
+      try {
+        await ipc.client.db.startLocalDatabase({ id });
+        await refresh();
+      } catch (err) {
+        setDatabases(previous);
+        throw err;
+      }
     },
-    [refresh],
+    [databases, refresh],
   );
 
   const pause = useCallback(
