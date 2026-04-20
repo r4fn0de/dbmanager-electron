@@ -10,6 +10,7 @@ import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, inDevelopment } from "./constants";
 import { getBasePath } from "./utils/path";
 import { localDbManager } from "./ipc/db/local-db-manager";
+import { APP_DISPLAY_NAME } from "./appBranding";
 
 function createWindow() {
   const basePath = getBasePath();
@@ -47,6 +48,7 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    icon: path.join(basePath, "../icons/app-icon.png"),
     webPreferences: {
       devTools: inDevelopment,
       contextIsolation: true,
@@ -57,6 +59,15 @@ function createWindow() {
     ...platformOptions,
   });
   ipcContext.setMainWindow(mainWindow);
+
+  // Força o título da janela para o nome do app
+  mainWindow.on("page-title-updated", (event) => {
+    event.preventDefault();
+    mainWindow.setTitle(APP_DISPLAY_NAME);
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.setTitle(APP_DISPLAY_NAME);
+  });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -96,8 +107,17 @@ async function setupORPC() {
   });
 }
 
+function configureAppIdentity(): void {
+  app.setName(APP_DISPLAY_NAME);
+  app.setAboutPanelOptions({
+    applicationName: APP_DISPLAY_NAME,
+    applicationVersion: app.getVersion(),
+  });
+}
+
 app.whenReady().then(async () => {
   try {
+    configureAppIdentity();
     createWindow();
     await installExtensions();
     checkForUpdates();

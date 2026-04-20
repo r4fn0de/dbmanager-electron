@@ -60,7 +60,7 @@ export function TitleBar() {
       <button
         type="button"
         onClick={handleOpenConnections}
-        className="shrink-0 h-[28px] px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors no-drag mb-1"
+        className="shrink-0 h-[28px] px-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors no-drag self-center"
         aria-label="Open connections"
         title="Open connections"
       >

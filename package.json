@@ -1,11 +1,12 @@
 {
   "name": "electron-shadcn",
-  "productName": "electron-shadcn Template",
-  "version": "1.4.0",
+  "productName": "TarsDB (DEV)",
+  "version": "0.0.1",
   "description": "Electron Forge with shadcn-ui (Vite + Typescript)",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
+    "prestart": "node scripts/patch-electron.mjs",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",

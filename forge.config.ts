@@ -9,6 +9,7 @@ import type { ForgeConfig } from "@electron-forge/shared-types";
 
 const config: ForgeConfig = {
   packagerConfig: {
+    icon: "./icons/app-icon",
     asar: {
       unpack: "{**/node_modules/embedded-postgres/**,**/node_modules/@embedded-postgres/**}",
     },

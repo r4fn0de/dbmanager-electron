@@ -90,10 +90,14 @@ export function DatabaseNavSidebar({
             }
           />
           <TooltipContent side="right" sideOffset={8}>
-            <span className="font-medium">{connection.name}</span>
-            <span className="block text-[11px] text-muted-foreground mt-0.5">
-              {connection.database}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">{connection.name}</span>
+              {provider && (
+                <span className="text-[11px] text-muted-foreground">
+                  {provider}
+                </span>
+              )}
+            </div>
           </TooltipContent>
         </Tooltip>
       </div>
@@ -117,20 +121,12 @@ export function DatabaseNavSidebar({
                       transition-all duration-150 outline-none
                       focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
                       ${isActive
-                        ? "bg-accent text-accent-foreground shadow-sm"
+                        ? "bg-accent text-accent-foreground border border-border/50"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                       }
                     `}
                   >
-                    {/* Active indicator bar */}
-                    {isActive && (
-                      <span className="absolute -left-1.5 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-accent-foreground/70" />
-                    )}
                     <Icon className="h-[18px] w-[18px]" />
-                    {/* Keyboard hint on hover */}
-                    <span className="absolute -right-0.5 -top-0.5 text-[9px] font-mono text-muted-foreground/0 group-hover:text-muted-foreground/50 transition-colors">
-                      {shortcut}
-                    </span>
                   </button>
                 }
               />
