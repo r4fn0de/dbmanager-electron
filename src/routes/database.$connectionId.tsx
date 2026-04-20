@@ -19,7 +19,7 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -302,7 +302,12 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   }, [connectionId, activeSection, selectedTableKey, setTabNavState]);
 
   const changeTable = useCallback((tableKey: string | null) => {
-    setSelectedTableKey(tableKey);
+    // Mark the (potentially expensive) table switch as a non-urgent transition
+    // so React can prioritize the click feedback (highlight, focus) and
+    // interrupt if the user quickly clicks another table.
+    startTransition(() => {
+      setSelectedTableKey(tableKey);
+    });
     setTabNavState(connectionId, {
       section: activeSection,
       schema: selectedSchema,
@@ -486,8 +491,9 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     invalidateTableDetails();
   }, [loadSchema, invalidateTableDetails]);
 
-  // Prefetch table details on hover — gives near-instant navigation when
-  // the user clicks a table they've already hovered over (conar-style).
+  // Prefetch table details AND first page of rows on hover — gives near-instant
+  // navigation when the user clicks a table they've already hovered over.
+  // Inspired by conar's route loader prefetch pattern.
   const prefetchTableDetails = useCallback(
     (schema: string, name: string) => {
       queryClient.prefetchQuery({
@@ -495,8 +501,29 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
         queryFn: () => getTableDetails(connectionId, schema, name),
         staleTime: 2 * 60_000,
       });
+      queryClient.prefetchQuery({
+        queryKey: [
+          "table-rows",
+          connectionId,
+          schema,
+          name,
+          0, // page
+          50, // default pageSize (matches TableDataEditor)
+          [], // sort
+          [], // filters
+        ],
+        queryFn: () =>
+          tableListRows({
+            tableRef: { connectionId, schema, table: name },
+            page: 1,
+            pageSize: 50,
+            sort: [],
+            filters: [],
+          }),
+        staleTime: 5 * 60_000,
+      });
     },
-    [connectionId, getTableDetails, queryClient],
+    [connectionId, getTableDetails, tableListRows, queryClient],
   );
 
   const handleDropTableSuccess = useCallback(
