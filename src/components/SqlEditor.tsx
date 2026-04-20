@@ -18,19 +18,13 @@ import { QueryResults } from "@/components/QueryResults";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type PanelImperativeHandle,
 } from "@/components/ui/resizable";
-import { cn } from "@/utils/tailwind";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -158,6 +152,7 @@ export function SqlEditor({
   );
   const [searchText, setSearchText] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [lastResult, setLastResult] = useState<QueryResult | null>(null);
@@ -437,14 +432,17 @@ export function SqlEditor({
       <ResizablePanelGroup className="h-full min-h-0">
         {showWorkspaceSidebar && (
           <ResizablePanel
-            defaultSize={22}
-            minSize={15}
-            maxSize={40}
+            defaultSize="22%"
+            minSize="15%"
+            maxSize="40%"
             collapsible
-            collapsedSize={0}
-            onCollapse={() => setIsSidebarCollapsed(true)}
-            onExpand={() => setIsSidebarCollapsed(false)}
-            className={cn("min-h-0", isSidebarCollapsed && "flex items-center justify-center")}
+            collapsedSize="3%"
+            panelRef={sidebarPanelRef}
+            onResize={(size) => {
+              const collapsed = size.asPercentage <= 3;
+              if (collapsed !== isSidebarCollapsed) setIsSidebarCollapsed(collapsed);
+            }}
+            className="min-h-0"
           >
           {isSidebarCollapsed ? (
             <Tooltip>
@@ -452,8 +450,8 @@ export function SqlEditor({
                 render={
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
-                    onClick={() => setIsSidebarCollapsed(false)}
+                    className="flex h-full w-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => sidebarPanelRef.current?.expand()}
                   >
                     <FileCode2 className="h-4 w-4" />
                   </button>
@@ -462,7 +460,7 @@ export function SqlEditor({
               <TooltipContent side="right">Expand sidebar</TooltipContent>
             </Tooltip>
           ) : (
-          <aside className="min-h-0 flex flex-col">
+          <aside className="h-full min-h-0 flex flex-col">
             {/* ── Sidebar header + search ────────────────────── */}
             <div className="px-3 pt-2 pb-2 space-y-2 border-b">
               <div className="flex items-center gap-2">
@@ -650,7 +648,7 @@ export function SqlEditor({
         )}
         {showWorkspaceSidebar && <ResizableHandle withHandle />}
         <ResizablePanel className="min-h-0">
-        <section className="min-h-0 flex flex-col">
+        <section className="h-full min-h-0 flex flex-col">
           {/* ── Editor toolbar (single row) ──────────────────── */}
           <div className="flex items-center gap-2 border-b px-3 py-1.5">
             {/* Query title */}
@@ -686,7 +684,7 @@ export function SqlEditor({
 
             <Separator orientation="vertical" className="h-5" />
 
-            {/* Connection selector */}
+            {/* Current connection (fixed by page context) */}
             <span
               className={`inline-block h-2 w-2 rounded-full shrink-0 ${
                 selectedConnection
@@ -694,25 +692,9 @@ export function SqlEditor({
                   : "bg-muted-foreground/40"
               }`}
             />
-            <Select
-              value={selectedConnection || undefined}
-              onValueChange={(value) => value && onSelectConnection(value)}
-            >
-              <SelectTrigger size="sm" className="w-[240px] truncate">
-                <SelectValue placeholder="Select a connection">
-                  {selectedConnectionMeta.label}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {connections.map((conn) => (
-                  <SelectItem key={conn.id} value={conn.id}>
-                    {conn.name?.trim() ||
-                      conn.database?.trim() ||
-                      "Unnamed connection"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <span className="max-w-[260px] truncate text-xs text-muted-foreground">
+              {selectedConnectionMeta.label || "No connection selected"}
+            </span>
 
             {/* Run button */}
             <div className="ml-auto flex items-center gap-2 shrink-0">
@@ -750,8 +732,9 @@ export function SqlEditor({
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 grid grid-rows-[minmax(300px,1fr)_260px]">
-            <div className="min-h-0 border-b">
+          <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
+            <ResizablePanel defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
+              <div className="h-full min-h-0">
               <Editor
                 height="100%"
                 defaultLanguage="sql"
@@ -761,16 +744,18 @@ export function SqlEditor({
                 theme={monacoTheme}
                 options={MONACO_OPTIONS}
               />
-            </div>
-
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
             <Tabs
               value={activeResultTab}
               onValueChange={(value) =>
                 setActiveResultTab(value as "result" | "logs")
               }
-              className="min-h-0 flex flex-col"
+              className="h-full min-h-0 flex flex-col"
             >
-              <div className="border-b px-3 py-2">
+              <div className="border-b px-3 py-2 shrink-0">
                 <TabsList>
                   <TabsTrigger value="result">Result</TabsTrigger>
                   <TabsTrigger value="logs">Logs</TabsTrigger>
@@ -836,7 +821,8 @@ export function SqlEditor({
                 </div>
               </TabsContent>
             </Tabs>
-          </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </section>
         </ResizablePanel>
       </ResizablePanelGroup>

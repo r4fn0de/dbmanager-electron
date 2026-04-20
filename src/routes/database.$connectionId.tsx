@@ -4,6 +4,7 @@ import {
   Copy,
   Database,
   FileSearch,
+  Loader2,
   Lock,
   LockOpen,
   LockKeyhole,
@@ -471,20 +472,29 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   useEffect(() => {
     if (!isActive) return;
     if (selectedTableKey && selectedTableRef) {
+      setIsLoadingTableDetails(true);
+
+      let cancelled = false;
       const loadTableDetails = async () => {
-        setIsLoadingTableDetails(true);
         try {
           const details = await getTableDetails(connectionId, selectedTableRef.schema, selectedTableRef.name);
+          if (cancelled) return;
           setSelectedTableDetails(details);
         } catch (error) {
+          if (cancelled) return;
           console.error("Failed to load table details", error);
+          setSelectedTableDetails(null);
         } finally {
-          setIsLoadingTableDetails(false);
+          if (!cancelled) setIsLoadingTableDetails(false);
         }
       };
       loadTableDetails();
+      return () => {
+        cancelled = true;
+      };
     } else {
       setSelectedTableDetails(null);
+      setIsLoadingTableDetails(false);
     }
   }, [selectedTableKey, selectedTableRef, connectionId, getTableDetails, isActive]);
 
@@ -881,103 +891,114 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
               {/* Main Panel */}
               <ResizablePanel defaultSize={75} className="min-w-0">
                 <div className="h-full flex flex-col bg-background/60">
-                  {selectedTable && selectedTableDetails ? (
-                    <TableDataEditor
-                      connectionId={connectionId}
-                      table={selectedTableDetails}
-                      tableListRows={tableListRows}
-                      tableSaveChanges={tableSaveChanges}
-                      tableTruncate={tableTruncate}
-                      tableFkLookup={tableFkLookup}
-                      onRequestAddColumn={() =>
-                        setDdlAddColumnTarget({
-                          schema: selectedTableDetails.schema,
-                          name: selectedTableDetails.name,
-                        })
-                      }
-                      onRequestDropColumn={(columnName) =>
-                        setDdlDropColumnTarget({
-                          schema: selectedTableDetails.schema,
-                          table: selectedTableDetails.name,
-                          column: columnName,
-                        })
-                      }
-                      onRequestRenameColumn={(columnName) =>
-                        setDdlRenameColumnTarget({
-                          schema: selectedTableDetails.schema,
-                          table: selectedTableDetails.name,
-                          column: columnName,
-                        })
-                      }
-                      onRequestAlterColumnType={(column) =>
-                        setDdlAlterColumnTypeTarget({
-                          schema: selectedTableDetails.schema,
-                          table: selectedTableDetails.name,
-                          column: column.name,
-                          currentType: column.data_type,
-                        })
-                      }
-                      onRequestSetColumnDefault={(column) =>
-                        setDdlSetColumnDefaultTarget({
-                          schema: selectedTableDetails.schema,
-                          table: selectedTableDetails.name,
-                          column: column.name,
-                          currentDefault: column.column_default,
-                        })
-                      }
-                      onRequestSetColumnNullable={(column) =>
-                        setDdlSetColumnNullableTarget({
-                          schema: selectedTableDetails.schema,
-                          table: selectedTableDetails.name,
-                          column: column.name,
-                          isNullable: column.is_nullable,
-                        })
-                      }
-                    />
-                  ) : selectedTable ? (
-                    <div className="flex-1 flex items-center justify-center p-8">
-                      <div className="text-center max-w-xs space-y-4">
-                        <div className="mx-auto w-fit rounded-xl bg-muted/50 p-3">
-                          <Table2 className="h-8 w-8 text-muted-foreground" />
+                  {(() => {
+                    const detailsMatch =
+                      !!selectedTableDetails &&
+                      !!selectedTableRef &&
+                      selectedTableDetails.name === selectedTableRef.name &&
+                      selectedTableDetails.schema === selectedTableRef.schema;
+
+                    if (!selectedTable) {
+                      return (
+                        <div className="flex-1 flex items-center justify-center p-8">
+                          <div className="text-center space-y-3">
+                            <div className="mx-auto w-fit rounded-full bg-muted/40 p-3">
+                              <Database className="h-5 w-5 text-muted-foreground/50" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground">
+                                Select a table
+                              </p>
+                              <p className="text-xs text-muted-foreground/60 mt-0.5">
+                                Choose a table from the sidebar to get started
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-heading text-lg font-semibold tracking-tight">
-                            {selectedTable}
-                          </h3>
-                          <p className="font-mono text-xs text-muted-foreground mt-1">
-                            {selectedTableRef?.schema}.{selectedTable}
-                          </p>
+                      );
+                    }
+
+                    // First-time load (no details ever loaded yet) → show skeleton
+                    if (!selectedTableDetails) {
+                      return (
+                        <div className="flex-1 flex items-center justify-center p-8">
+                          <div className="flex items-center gap-3 text-muted-foreground">
+                            {isLoadingTableDetails ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span className="text-sm">
+                                  Loading {selectedTableRef?.schema}.{selectedTable}…
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-sm">Failed to load table details</span>
+                            )}
+                          </div>
                         </div>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setInitialSqlQuery(`SELECT * FROM "${selectedTableRef?.schema}"."${selectedTable}" LIMIT 100`);
-                            changeSection("sql-editor");
-                          }}
-                          className="gap-1.5"
-                        >
-                          <Terminal className="h-3.5 w-3.5" />
-                          Query This Table
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center p-8">
-                      <div className="text-center space-y-3">
-                        <div className="mx-auto w-fit rounded-full bg-muted/40 p-3">
-                          <Database className="h-5 w-5 text-muted-foreground/50" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">
-                            Select a table
-                          </p>
-                          <p className="text-xs text-muted-foreground/60 mt-0.5">
-                            Choose a table from the sidebar to get started
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                      );
+                    }
+
+                    // Keep TableDataEditor mounted while switching tables —
+                    // the header/chrome stays visible, only the body shows
+                    // a "Loading..." indicator via isSwitchingTable.
+                    const td = selectedTableDetails;
+                    const isSwitching = isLoadingTableDetails && !detailsMatch;
+                    return (
+                      <TableDataEditor
+                        connectionId={connectionId}
+                        table={td}
+                        tableListRows={tableListRows}
+                        tableSaveChanges={tableSaveChanges}
+                        tableTruncate={tableTruncate}
+                        tableFkLookup={tableFkLookup}
+                        isSwitchingTable={isSwitching}
+                        onRequestAddColumn={() =>
+                          setDdlAddColumnTarget({
+                            schema: td.schema,
+                            name: td.name,
+                          })
+                        }
+                        onRequestDropColumn={(columnName) =>
+                          setDdlDropColumnTarget({
+                            schema: td.schema,
+                            table: td.name,
+                            column: columnName,
+                          })
+                        }
+                        onRequestRenameColumn={(columnName) =>
+                          setDdlRenameColumnTarget({
+                            schema: td.schema,
+                            table: td.name,
+                            column: columnName,
+                          })
+                        }
+                        onRequestAlterColumnType={(column) =>
+                          setDdlAlterColumnTypeTarget({
+                            schema: td.schema,
+                            table: td.name,
+                            column: column.name,
+                            currentType: column.data_type,
+                          })
+                        }
+                        onRequestSetColumnDefault={(column) =>
+                          setDdlSetColumnDefaultTarget({
+                            schema: td.schema,
+                            table: td.name,
+                            column: column.name,
+                            currentDefault: column.column_default,
+                          })
+                        }
+                        onRequestSetColumnNullable={(column) =>
+                          setDdlSetColumnNullableTarget({
+                            schema: td.schema,
+                            table: td.name,
+                            column: column.name,
+                            isNullable: column.is_nullable,
+                          })
+                        }
+                      />
+                    );
+                  })()}
                 </div>
               </ResizablePanel>
             </ResizablePanelGroup>
