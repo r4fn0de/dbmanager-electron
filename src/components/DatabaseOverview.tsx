@@ -14,7 +14,7 @@ import {
   Table2,
   Terminal,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Connection,
   DatabaseInfo,
@@ -25,6 +25,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface DatabaseOverviewProps {
   connection: Connection;
@@ -96,6 +102,15 @@ export function DatabaseOverview({
   onCopyConnectionString,
 }: DatabaseOverviewProps) {
   const [showConnectionString, setShowConnectionString] = useState(false);
+  const [displayInfoCopyFeedback, setDisplayInfoCopyFeedback] = useState<
+    null | "copied" | "failed"
+  >(null);
+  const [isDisplayInfoHovered, setIsDisplayInfoHovered] = useState(false);
+  const [isDisplayInfoTooltipPinned, setIsDisplayInfoTooltipPinned] =
+    useState(false);
+  const displayInfoTooltipTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const totalSchemas = schemaSummary?.schemas.length ?? 0;
   const totalTables = schemaSummary?.tables.length ?? 0;
   const tablesWithRls =
@@ -126,6 +141,48 @@ export function DatabaseOverview({
     if (!connectionString) return null;
     return connectionString.replace(/(\/\/[^:/?#]+:)([^@]*)(@)/, "$1****$3");
   }, [connectionString]);
+  const displayInfo = useMemo(() => {
+    if (connection.url) {
+      return connection.url.replace(/:[^:]*@/, ":****@");
+    }
+    return `${connection.username}@${connection.host}:${connection.port}/${connection.database}`;
+  }, [
+    connection.url,
+    connection.username,
+    connection.host,
+    connection.port,
+    connection.database,
+  ]);
+  const handleCopyDisplayInfo = async () => {
+    if (displayInfoTooltipTimeoutRef.current) {
+      clearTimeout(displayInfoTooltipTimeoutRef.current);
+      displayInfoTooltipTimeoutRef.current = null;
+    }
+    setIsDisplayInfoTooltipPinned(true);
+    try {
+      await navigator.clipboard.writeText(displayInfo);
+      setDisplayInfoCopyFeedback("copied");
+    } catch {
+      setDisplayInfoCopyFeedback("failed");
+    } finally {
+      displayInfoTooltipTimeoutRef.current = setTimeout(() => {
+        setDisplayInfoCopyFeedback(null);
+        setIsDisplayInfoTooltipPinned(false);
+        displayInfoTooltipTimeoutRef.current = null;
+      }, 1500);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (displayInfoTooltipTimeoutRef.current) {
+        clearTimeout(displayInfoTooltipTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const isDisplayInfoTooltipOpen =
+    isDisplayInfoHovered || isDisplayInfoTooltipPinned;
 
   return (
     <div className="h-full overflow-auto">
@@ -174,10 +231,35 @@ export function DatabaseOverview({
               </Badge>
             </div>
           </div>
-          <p className="font-mono text-xs text-muted-foreground truncate">
-            {connection.username}@{connection.host}:{connection.port}/
-            {connection.database}
-          </p>
+          <TooltipProvider delay={0}>
+            <Tooltip open={isDisplayInfoTooltipOpen}>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyDisplayInfo()}
+                    onMouseEnter={() => setIsDisplayInfoHovered(true)}
+                    onMouseLeave={() => setIsDisplayInfoHovered(false)}
+                    className="font-mono text-xs text-muted-foreground truncate text-left cursor-copy hover:text-foreground transition-colors max-w-full"
+                  />
+                }
+              >
+                {displayInfo}
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={6}>
+                <span
+                  key={displayInfoCopyFeedback ?? "idle"}
+                  className="inline-block animate-in fade-in-0 zoom-in-95 duration-150"
+                >
+                  {displayInfoCopyFeedback === "copied"
+                    ? "Copied!"
+                    : displayInfoCopyFeedback === "failed"
+                      ? "Failed to copy"
+                      : "Click to copy"}
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <div className="flex items-center gap-1">
             <Button
               size="sm"
