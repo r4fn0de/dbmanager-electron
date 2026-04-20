@@ -204,9 +204,6 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const [rlsPoliciesTarget, setRlsPoliciesTarget] = useState<{ schema: string; name: string } | null>(null);
   const [rlsPolicies, setRlsPolicies] = useState<SchemaPolicy[]>([]);
   const [isLoadingRlsPolicies, setIsLoadingRlsPolicies] = useState(false);
-  const [visualizerTables, setVisualizerTables] = useState<SchemaTableDetails[]>([]);
-  const [isLoadingVisualizer, setIsLoadingVisualizer] = useState(false);
-
   const queryClient = useQueryClient();
 
   // Section flags - definidas antes de serem usadas
@@ -284,21 +281,41 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
 
   // Helpers: update state AND persist to store in the same event handler
   // (instead of separate Effects that watch these values — anti-pattern per React docs)
-  const loadVisualizerData = useCallback(async () => {
-    if (!connectionId || tables.length === 0) return;
-    setIsLoadingVisualizer(true);
-    try {
-      const tableDetails = await Promise.all(
-        tables.map((t) => getTableDetails(connectionId, t.schema, t.name))
+  // React Query para carregar detalhes das tabelas incrementalmente
+  const visualizerQueryKey = useMemo(
+    () => ["visualizer", connectionId, selectedSchema],
+    [connectionId, selectedSchema]
+  );
+
+  const { data: visualizerTables = [], isLoading: isLoadingVisualizer } = useQuery({
+    queryKey: visualizerQueryKey,
+    queryFn: async () => {
+      const schemaTables = tables.filter((t) => t.schema === selectedSchema);
+      const details = await Promise.all(
+        schemaTables.map((t) => getTableDetails(connectionId, t.schema, t.name))
       );
-      setVisualizerTables(tableDetails);
-    } catch (error) {
-      console.error("Failed to load visualizer data", error);
-      toast.error("Failed to load schema visualizer data");
-    } finally {
-      setIsLoadingVisualizer(false);
+      return details;
+    },
+    enabled: isActive && isVisualizerSection && tables.length > 0,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  // Pré-carregar dados do visualizer quando o schema muda ou quando está na seção tables
+  useEffect(() => {
+    if (!isActive || !connectionId || tables.length === 0) return;
+    // Pré-carrega em background quando na seção tables ou overview
+    if (activeSection === "tables" || activeSection === "overview") {
+      const schemaTables = tables.filter((t) => t.schema === selectedSchema);
+      for (const table of schemaTables.slice(0, 10)) {
+        queryClient.prefetchQuery({
+          queryKey: ["table-details", connectionId, table.schema, table.name],
+          queryFn: () => getTableDetails(connectionId, table.schema, table.name),
+          staleTime: 5 * 60 * 1000,
+        });
+      }
     }
-  }, [connectionId, tables, getTableDetails]);
+  }, [isActive, connectionId, tables, selectedSchema, activeSection, queryClient, getTableDetails]);
 
   const changeSection = useCallback((section: SidebarSection) => {
     setActiveSection(section);
@@ -311,10 +328,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
       loadDatabaseInfo();
       loadLocalDbStatus();
     }
-    if (section === "visualizer") {
-      loadVisualizerData();
-    }
-  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo, loadLocalDbStatus, loadVisualizerData]);
+  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo, loadLocalDbStatus]);
 
   const changeSchema = useCallback((schema: string) => {
     setSelectedSchema(schema);
