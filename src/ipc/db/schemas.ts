@@ -237,3 +237,31 @@ export const createLocalDatabaseSchema = z.object({
   postgresVersion: z.string().optional(),
   autoStart: z.boolean().optional(),
 });
+
+// Clone to Local schemas
+export const exportTableDataSchema = z.object({
+  connectionId: z.string(),
+  schema: z.string(),
+  table: z.string(),
+  batchSize: z.number().min(1).max(5000).default(500),
+  offset: z.number().min(0).default(0),
+});
+
+export const executeBatchDdlSchema = z.object({
+  connectionId: z.string(),
+  statements: z.array(z.string()),
+});
+
+export const importTableRowsSchema = z.object({
+  connectionId: z.string(),
+  schema: z.string(),
+  table: z.string(),
+  columns: z.array(z.string()),
+  rows: z.array(z.record(z.string(), z.unknown())),
+});
+
+export const waitForDatabaseSchema = z.object({
+  connectionString: z.string(),
+  maxRetries: z.number().optional(),
+  intervalMs: z.number().optional(),
+});

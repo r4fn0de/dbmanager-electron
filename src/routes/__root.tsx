@@ -18,7 +18,7 @@ function Root() {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <TooltipProvider>
+      <TooltipProvider delay={500}>
         <div className="h-screen flex flex-col overflow-hidden antialiased">
           <TitleBar />
           <div className="flex-1 min-h-0 overflow-hidden bg-background/60">

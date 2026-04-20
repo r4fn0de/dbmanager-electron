@@ -12,6 +12,8 @@ import {
   Expand,
   Filter,
   Loader2,
+  PanelLeft,
+  PanelLeftClose,
   Plus,
   RefreshCw,
   Save,
@@ -40,7 +42,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -100,6 +108,10 @@ interface TableDataEditorProps {
   onRequestAlterColumnType?: (column: SchemaColumn) => void;
   onRequestSetColumnDefault?: (column: SchemaColumn) => void;
   onRequestSetColumnNullable?: (column: SchemaColumn) => void;
+  /** Whether the tables explorer sidebar is currently visible */
+  isSidebarVisible?: boolean;
+  /** Toggle the tables explorer sidebar visibility */
+  onToggleSidebar?: () => void;
 }
 
 type RowRecord = Record<string, unknown>;
@@ -257,6 +269,8 @@ export function TableDataEditor({
   onRequestAlterColumnType,
   onRequestSetColumnDefault,
   onRequestSetColumnNullable,
+  isSidebarVisible = true,
+  onToggleSidebar,
 }: TableDataEditorProps) {
   const tableRef = useMemo<TableRef>(
     () => ({ connectionId, schema: table.schema, table: table.name }),
@@ -1148,6 +1162,29 @@ export function TableDataEditor({
     >
       <div className="border-b px-3 py-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
+          {onToggleSidebar && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={onToggleSidebar}
+                  >
+                    {isSidebarVisible ? (
+                      <PanelLeftClose className="h-4 w-4" />
+                    ) : (
+                      <PanelLeft className="h-4 w-4" />
+                    )}
+                  </Button>
+                }
+              />
+              <TooltipContent side="bottom" sideOffset={4}>
+                {isSidebarVisible ? "Hide" : "Show"} explorer <KbdGroup className="ml-1.5"><Kbd>⌘</Kbd><Kbd>B</Kbd></KbdGroup>
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Button
             variant="outline"
             size="sm"

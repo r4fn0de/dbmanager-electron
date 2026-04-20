@@ -124,45 +124,47 @@ export function TablesExplorerSidebar({
               </Badge>
             ) : null}
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                  disabled={!selectedSchema}
-                />
-              }
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="bottom">
-              <DropdownMenuItem onClick={onCreateSchema}>
-                <Database className="h-3.5 w-3.5" />
-                Create schema
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onCreateTable}>
-                <Table2 className="h-3.5 w-3.5" />
-                Create table
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={onCreateIndex}
-                disabled={!selectedTableRef}
+          <div className="flex items-center gap-0.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                    disabled={!selectedSchema}
+                  />
+                }
               >
-                <Pencil className="h-3.5 w-3.5" />
-                Create index
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={onImportCsv}
-                disabled={!selectedTableRef}
-              >
-                <Terminal className="h-3.5 w-3.5" />
-                Import CSV
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <Plus className="h-3.5 w-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="bottom">
+                <DropdownMenuItem onClick={onCreateSchema}>
+                  <Database className="h-3.5 w-3.5" />
+                  Create schema
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onCreateTable}>
+                  <Table2 className="h-3.5 w-3.5" />
+                  Create table
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={onCreateIndex}
+                  disabled={!selectedTableRef}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Create index
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={onImportCsv}
+                  disabled={!selectedTableRef}
+                >
+                  <Terminal className="h-3.5 w-3.5" />
+                  Import CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Schema Selector */}

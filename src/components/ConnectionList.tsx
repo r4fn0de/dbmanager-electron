@@ -1,4 +1,4 @@
-import { Database, Pencil, Play, Plus, Trash2, Copy, Check, Pause, Globe } from "lucide-react";
+import { Database, Pencil, Play, Plus, Trash2, Copy, Check, Pause, Globe, Download } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,7 @@ interface ConnectionListProps {
   onSelect: (connection: Connection) => void;
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
+  onCloneToLocal?: (connection: Connection) => void;
 }
 
 type ConnectionProvider = "neon" | "supabase" | "url" | "direct";
@@ -56,6 +57,7 @@ function ConnectionCard({
   onSelect,
   onStartLocal,
   onPauseLocal,
+  onCloneToLocal,
 }: {
   connection: Connection;
   localDbInfo?: LocalDbInfo;
@@ -64,6 +66,7 @@ function ConnectionCard({
   onSelect: (connection: Connection) => void;
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
+  onCloneToLocal?: (connection: Connection) => void;
 }) {
   const isUrl = !!connection.url;
   const isLocal = connection.is_local === true;
@@ -148,6 +151,18 @@ function ConnectionCard({
             {isRunning ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
           </Button>
         )}
+        {!isLocal && onCloneToLocal && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => onCloneToLocal(connection)}
+            aria-label={`Clone ${connection.name} to local`}
+            title="Clone to local database"
+          >
+            <Download className="h-3 w-3" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -203,6 +218,7 @@ export function ConnectionList({
   onSelect,
   onStartLocal,
   onPauseLocal,
+  onCloneToLocal,
 }: ConnectionListProps) {
   if (isLoading) {
     return (
@@ -239,6 +255,7 @@ export function ConnectionList({
           onSelect={onSelect}
           onStartLocal={onStartLocal}
           onPauseLocal={onPauseLocal}
+          onCloneToLocal={onCloneToLocal}
         />
       ))}
     </div>

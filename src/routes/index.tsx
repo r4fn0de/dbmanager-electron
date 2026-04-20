@@ -17,8 +17,11 @@ import {
   CreateLocalDbDialog,
   type CreateLocalDbInput,
 } from "@/components/CreateLocalDbDialog";
+import { CloneToLocalDialog } from "@/components/CloneToLocalDialog";
 import { useConnections } from "@/hooks/useConnections";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import { useCloneToLocal } from "@/hooks/useCloneToLocal";
+import type { TableRowCount } from "@/ipc/db/types";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
 import {
@@ -38,11 +41,25 @@ function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLocalDbDialogOpen, setIsLocalDbDialogOpen] = useState(false);
+  const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
+  const [cloningConnection, setCloningConnection] = useState<Connection | null>(null);
+  const [cloneRowCounts, setCloneRowCounts] = useState<TableRowCount[]>([]);
+  const [isLoadingCloneSchema, setIsLoadingCloneSchema] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isCreatingLocalDb, setIsCreatingLocalDb] = useState(false);
   const navigate = useNavigate();
+
+  const {
+    isLoading: isCloning,
+    progress: cloneProgress,
+    error: cloneError,
+    exportSchema,
+    cloneToLocal,
+    cancelClone,
+    reset: resetClone,
+  } = useCloneToLocal();
 
   const localDbById = useMemo(() => {
     const map: Record<string, typeof localDbs[number]> = {};
@@ -180,6 +197,73 @@ function Home() {
     });
   };
 
+  const handleCloneToLocal = async (connection: Connection) => {
+    setCloningConnection(connection);
+    setIsCloneDialogOpen(true);
+    setIsLoadingCloneSchema(true);
+    resetClone();
+
+    try {
+      const schemaResult = await exportSchema(connection.id);
+      if (schemaResult) {
+        setCloneRowCounts(schemaResult.tableRowCounts);
+      } else {
+        setCloneRowCounts([]);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load schema");
+      setCloneRowCounts([]);
+    } finally {
+      setIsLoadingCloneSchema(false);
+    }
+  };
+
+  const handleStartClone = async (
+    targetName: string,
+    selectedTables: { schema: string; table: string; importData: boolean }[],
+    postgresVersion: string,
+  ) => {
+    if (!cloningConnection) return;
+
+    try {
+      const newConnection = await cloneToLocal(
+        cloningConnection,
+        targetName,
+        selectedTables,
+        postgresVersion,
+      );
+
+      if (newConnection) {
+        // Add tab and navigate to the new connection
+        useConnectionTabsStore.getState().addTab({
+          id: newConnection.id,
+          name: newConnection.name,
+          isLocal: true,
+          provider: "direct",
+        });
+        navigate({
+          to: "/database/$connectionId",
+          params: { connectionId: newConnection.id },
+        });
+        toast.success(`Database "${targetName}" cloned successfully`);
+        setIsCloneDialogOpen(false);
+        setCloningConnection(null);
+        setCloneRowCounts([]);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Clone failed");
+    }
+  };
+
+  const handleCloseCloneDialog = () => {
+    if (!isCloning) {
+      setIsCloneDialogOpen(false);
+      setCloningConnection(null);
+      setCloneRowCounts([]);
+      resetClone();
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="border-x border-b rounded-lg flex-1 flex flex-col bg-background overflow-hidden">
@@ -235,6 +319,7 @@ function Home() {
               onSelect={handleSelectConnection}
               onStartLocal={startLocalDb}
               onPauseLocal={pauseLocalDb}
+              onCloneToLocal={handleCloneToLocal}
             />
           </div>
         </div>
@@ -255,6 +340,19 @@ function Home() {
         onClose={() => setIsLocalDbDialogOpen(false)}
         onCreate={handleCreateLocalDb}
         isCreating={isCreatingLocalDb}
+      />
+
+      <CloneToLocalDialog
+        isOpen={isCloneDialogOpen}
+        onClose={handleCloseCloneDialog}
+        sourceConnection={cloningConnection}
+        tableRowCounts={cloneRowCounts}
+        isLoadingSchema={isLoadingCloneSchema}
+        onStartClone={handleStartClone}
+        onCancelClone={cancelClone}
+        progress={cloneProgress}
+        isCloning={isCloning}
+        error={cloneError}
       />
     </div>
   );

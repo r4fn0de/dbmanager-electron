@@ -30,6 +30,11 @@ import {
   startLocalDatabase,
   stopLocalDatabase,
   deleteLocalDatabase,
+  exportSchemaDdl,
+  exportTableData,
+  executeBatchDdl,
+  waitForDatabase,
+  importTableRows,
 } from "./handlers";
 
 export const db = {
@@ -70,4 +75,10 @@ export const db = {
   startLocalDatabase,
   stopLocalDatabase,
   deleteLocalDatabase,
+  // Clone to Local
+  exportSchemaDdl,
+  exportTableData,
+  executeBatchDdl,
+  waitForDatabase,
+  importTableRows,
 };

@@ -11,6 +11,8 @@ import type {
   FkLookupResponse,
   DatabaseInfo,
   DdlResult,
+  ExportSchemaResult,
+  ExportTableDataResult,
 } from "./types";
 import {
   connectionInputSchema,
@@ -34,12 +36,23 @@ import {
   createSchemaInputSchema,
   idSchema,
   createLocalDatabaseSchema,
+  exportTableDataSchema,
+  executeBatchDdlSchema,
+  importTableRowsSchema,
+  waitForDatabaseSchema,
 } from "./schemas";
 import {
   loadConnections,
   saveConnections,
 } from "./connection-store";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
+import {
+  exportSchemaDdl as pgExportSchemaDdl,
+  exportTableData as pgExportTableData,
+  executeBatchDdl as pgExecuteBatchDdl,
+  waitForDatabase as pgWaitForDatabase,
+  importTableRows as pgImportTableRows,
+} from "./pg-client";
 import {
   testConnection as testPgConnection,
   executeQuery as executePgQuery,
@@ -49,9 +62,6 @@ import {
   getTableDetails as getPgTableDetails,
   listRows,
   buildConnectionString,
-  tableSaveChanges as pgTableSaveChanges,
-  tableTruncate as pgTableTruncate,
-  tableFkLookup as pgTableFkLookup,
   createTable as pgCreateTable,
   dropTable as pgDropTable,
   renameTable as pgRenameTable,
@@ -609,4 +619,111 @@ export const deleteLocalDatabase = os
   .input(idSchema)
   .handler(async ({ input }): Promise<void> => {
     await localDbManager.delete(input.id);
+  });
+
+// Clone to Local Handlers
+export const exportSchemaDdl = os
+  .input(idSchema)
+  .handler(async ({ input }): Promise<ExportSchemaResult> => {
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.id);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    const result = await pgExportSchemaDdl(connStr);
+    return {
+      scripts: result.scripts as ExportSchemaResult["scripts"],
+      tableRowCounts: result.tableRowCounts,
+    };
+  });
+
+export const exportTableData = os
+  .input(exportTableDataSchema)
+  .handler(async ({ input }): Promise<ExportTableDataResult> => {
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await pgExportTableData(
+      connStr,
+      input.schema,
+      input.table,
+      input.batchSize,
+      input.offset,
+    );
+  });
+
+export const executeBatchDdl = os
+  .input(executeBatchDdlSchema)
+  .handler(async ({ input }): Promise<{ errors: Array<{ sql: string; error: string }> }> => {
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await pgExecuteBatchDdl(connStr, input.statements);
+  });
+
+export const waitForDatabase = os
+  .input(waitForDatabaseSchema)
+  .handler(async ({ input }): Promise<void> => {
+    await pgWaitForDatabase(
+      input.connectionString,
+      input.maxRetries,
+      input.intervalMs,
+    );
+  });
+
+export const importTableRows = os
+  .input(importTableRowsSchema)
+  .handler(async ({ input }): Promise<number> => {
+    const connections = await loadConnections();
+    const connection = connections.find((c) => c.id === input.connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+    const connStr = buildConnectionString({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      username: connection.username,
+      password: connection.password,
+      ssl_mode: connection.ssl_mode,
+      url: connection.url,
+    });
+    return await pgImportTableRows(
+      connStr,
+      input.schema,
+      input.table,
+      input.columns,
+      input.rows,
+    );
   });

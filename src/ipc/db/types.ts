@@ -337,3 +337,80 @@ export interface CreateSchemaInput {
   name: string;
   ifNotExists?: boolean;
 }
+
+// Clone to Local Types
+export interface DdlScript {
+  type: "schema" | "table" | "index" | "constraint" | "sequence";
+  schema: string;
+  name: string;
+  sql: string;
+  dependsOn?: string[];
+}
+
+export interface TableRowCount {
+  schema: string;
+  table: string;
+  rowCount: number;
+}
+
+export interface ExportSchemaResult {
+  scripts: DdlScript[];
+  tableRowCounts: TableRowCount[];
+}
+
+export interface InsertBatch {
+  tableRef: TableRef;
+  rows: Record<string, unknown>[];
+  columns: string[];
+  isLastBatch: boolean;
+}
+
+export interface ExportTableDataInput {
+  connectionId: string;
+  schema: string;
+  table: string;
+  batchSize: number;
+  offset: number;
+}
+
+export interface ExportTableDataResult {
+  rows: Record<string, unknown>[];
+  columns: string[];
+  hasMore: boolean;
+  totalExported: number;
+}
+
+export interface ExecuteBatchDdlInput {
+  connectionId: string;
+  statements: string[];
+}
+
+export interface ImportTableRowsInput {
+  connectionId: string;
+  schema: string;
+  table: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
+export interface WaitForDatabaseInput {
+  connectionString: string;
+  maxRetries?: number;
+  intervalMs?: number;
+}
+
+export interface CloneToLocalProgress {
+  stage: "schema" | "data" | "indexes" | "constraints" | "complete";
+  currentTable?: string;
+  tablesProcessed: number;
+  totalTables: number;
+  rowsProcessed: number;
+  message: string;
+}
+
+export interface CloneToLocalInput {
+  sourceConnectionId: string;
+  targetLocalDbName: string;
+  selectedTables: { schema: string; table: string; importData: boolean }[];
+  postgresVersion?: string;
+}

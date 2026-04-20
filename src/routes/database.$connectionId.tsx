@@ -5,7 +5,6 @@ import {
   Pause,
   Play,
   Settings,
-  Table2,
 } from "lucide-react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -131,9 +130,62 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const [schemas, setSchemas] = useState<string[]>([]);
   const [initialSqlQuery, setInitialSqlQuery] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Sidebar visibility: persisted per-connection in localStorage
+  const [isSidebarVisible, setIsSidebarVisible] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`db-tables-sidebar-visible:${connectionId}`);
+      return raw !== null ? raw === "true" : true; // visible by default
+    } catch {
+      return true;
+    }
+  });
   const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
-  const TABLES_SIDEBAR_COLLAPSED_SIZE_PX = 44;
+  const [isSidebarAnimating, setIsSidebarAnimating] = useState(false);
+  const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const toggleSidebar = useCallback(() => {
+    const panel = sidebarPanelRef.current;
+    if (!panel) return;
+    setIsSidebarAnimating(true);
+    if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+    animationTimeoutRef.current = setTimeout(() => setIsSidebarAnimating(false), 220);
+  }, []);
+
+  // Clean up animation timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+    };
+  }, []);
+
+
+  // Track sidebar visibility in a ref so onResize can skip redundant setState during drag
+  const sidebarVisibleRef = useRef(isSidebarVisible);
+  sidebarVisibleRef.current = isSidebarVisible;
+
+  // Sync isSidebarVisible when sidebar panel resizes (including collapse/expand)
+  const handleSidebarResize = useCallback(
+    (panelSize: { asPercentage: number; inPixels: number }) => {
+      const visible = panelSize.asPercentage !== 0;
+      if (sidebarVisibleRef.current !== visible) {
+        setIsSidebarVisible(visible);
+      }
+    },
+    [],
+  );
+
+  // Persist sidebar visibility to localStorage when it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(`db-tables-sidebar-visible:${connectionId}`, String(isSidebarVisible));
+    } catch { /* quota exceeded or private mode */ }
+  }, [isSidebarVisible, connectionId]);
 
   // Persist sidebar width across sessions via localStorage
   const savedLayout = useMemo(() => {
@@ -371,11 +423,18 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
       if (section && section !== activeSection) {
         e.preventDefault();
         changeSection(section);
+        return;
+      }
+
+      // ⌘B to toggle sidebar visibility (only in tables section)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && isTablesSection) {
+        e.preventDefault();
+        toggleSidebar();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isActive, activeSection, changeSection]);
+  }, [isActive, activeSection, changeSection, isTablesSection, toggleSidebar]);
 
   // Clean up initial SQL query after sql-editor renders it (valid Effect:
   // synchronizing with a child component that consumes the one-shot value)
@@ -664,43 +723,25 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {isTablesSection && (
             <ResizablePanelGroup
-              className="min-w-0 flex-1"
-              defaultLayout={savedLayout}
-              onLayoutChanged={persistLayout}
+              className="flex-1 min-w-0"
+              defaultLayout={isSidebarVisible ? savedLayout : undefined}
+              onLayoutChanged={(layout: Layout) => {
+                // Don't persist layout while sidebar is collapsed — avoids saving [0, 100]
+                if (isSidebarVisible) persistLayout(layout);
+              }}
             >
-              {/* Tables Sidebar */}
+              {/* Tables Sidebar — always mounted, collapses to 0 for smooth animation */}
               <ResizablePanel
                 id="tables-sidebar"
-                defaultSize="25%"
+                defaultSize={isSidebarVisible ? 25 : 0}
                 minSize="15%"
-                maxSize="35%"
+                maxSize="25%"
                 collapsible
-                collapsedSize={`${TABLES_SIDEBAR_COLLAPSED_SIZE_PX}px`}
+                collapsedSize={0}
                 panelRef={sidebarPanelRef}
-                onResize={(size) => {
-                  const collapsed =
-                    sidebarPanelRef.current?.isCollapsed() ??
-                    size.inPixels <= TABLES_SIDEBAR_COLLAPSED_SIZE_PX + 2;
-                  if (collapsed !== isSidebarCollapsed) setIsSidebarCollapsed(collapsed);
-                }}
-                className="min-w-0"
+                onResize={handleSidebarResize}
+                className={`min-w-0 ${isSidebarAnimating ? 'transition-[flex-grow] duration-200 ease-out' : ''}`}
               >
-              {isSidebarCollapsed ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        className="flex h-full w-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-                        onClick={() => sidebarPanelRef.current?.expand()}
-                      >
-                        <Table2 className="h-4 w-4" />
-                      </button>
-                    }
-                  />
-                  <TooltipContent side="right">Expand sidebar</TooltipContent>
-                </Tooltip>
-              ) : (
                 <TablesExplorerSidebar
                   tablesBySchema={tablesBySchema}
                   filteredTables={filteredTablesForSchema}
@@ -722,123 +763,130 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                   onDropTable={setDdlDropTarget}
                   onViewRlsPolicies={setRlsPoliciesTarget}
                 />
-              )}
               </ResizablePanel>
 
               <ResizableHandle withHandle />
 
               {/* Main Panel */}
-              <ResizablePanel id="tables-main" minSize="30%" className="min-w-0">
-                <div className="h-full flex flex-col bg-background/60">
-                  {(() => {
-                    const detailsMatch =
-                      !!selectedTableDetails &&
-                      !!selectedTableRef &&
-                      selectedTableDetails.name === selectedTableRef.name &&
-                      selectedTableDetails.schema === selectedTableRef.schema;
-
-                    if (!selectedTable) {
-                      return (
-                        <div className="flex-1 flex items-center justify-center p-8">
-                          <div className="text-center space-y-3">
-                            <div className="mx-auto w-fit rounded-full bg-muted/40 p-3">
-                              <Database className="h-5 w-5 text-muted-foreground/50" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-muted-foreground">
-                                Select a table
-                              </p>
-                              <p className="text-xs text-muted-foreground/60 mt-0.5">
-                                Choose a table from the sidebar to get started
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // First-time load (no details ever loaded yet) → show skeleton
-                    if (!selectedTableDetails) {
-                      return (
-                        <div className="flex-1 flex items-center justify-center p-8">
-                          <div className="flex items-center gap-3 text-muted-foreground">
-                            {isLoadingTableDetails ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="text-sm">
-                                  Loading {selectedTableRef?.schema}.{selectedTable}…
-                                </span>
-                              </>
-                            ) : (
-                              <span className="text-sm">Failed to load table details</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // Keep TableDataEditor mounted while switching tables —
-                    // the header/chrome stays visible, only the body shows
-                    // a "Loading..." indicator via isSwitchingTable.
-                    const td = selectedTableDetails;
-                    const isSwitching = isLoadingTableDetails && !detailsMatch;
+              <ResizablePanel id="tables-main" minSize={30} className={`min-w-0 ${isSidebarAnimating ? 'transition-[flex-grow] duration-200 ease-out' : ''}`}>
+                {(() => {
+                  if (!selectedTable) {
                     return (
-                      <TableDataEditor
-                        connectionId={connectionId}
-                        table={td}
-                        tableListRows={tableListRows}
-                        tableSaveChanges={tableSaveChanges}
-                        tableTruncate={tableTruncate}
-                        tableFkLookup={tableFkLookup}
-                        isSwitchingTable={isSwitching}
-                        onRequestAddColumn={() =>
-                          setDdlAddColumnTarget({
-                            schema: td.schema,
-                            name: td.name,
-                          })
-                        }
-                        onRequestDropColumn={(columnName) =>
-                          setDdlDropColumnTarget({
-                            schema: td.schema,
-                            table: td.name,
-                            column: columnName,
-                          })
-                        }
-                        onRequestRenameColumn={(columnName) =>
-                          setDdlRenameColumnTarget({
-                            schema: td.schema,
-                            table: td.name,
-                            column: columnName,
-                          })
-                        }
-                        onRequestAlterColumnType={(column) =>
-                          setDdlAlterColumnTypeTarget({
-                            schema: td.schema,
-                            table: td.name,
-                            column: column.name,
-                            currentType: column.data_type,
-                          })
-                        }
-                        onRequestSetColumnDefault={(column) =>
-                          setDdlSetColumnDefaultTarget({
-                            schema: td.schema,
-                            table: td.name,
-                            column: column.name,
-                            currentDefault: column.column_default,
-                          })
-                        }
-                        onRequestSetColumnNullable={(column) =>
-                          setDdlSetColumnNullableTarget({
-                            schema: td.schema,
-                            table: td.name,
-                            column: column.name,
-                            isNullable: column.is_nullable,
-                          })
-                        }
-                      />
+                      <div className="h-full flex items-center justify-center p-8">
+                        <div className="text-center space-y-3">
+                          <div className="mx-auto w-fit rounded-full bg-muted/40 p-3">
+                            <Database className="h-5 w-5 text-muted-foreground/50" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-muted-foreground">
+                              Select a table
+                            </p>
+                            <p className="text-xs text-muted-foreground/60 mt-0.5">
+                              {isSidebarVisible
+                                ? "Choose a table from the sidebar to get started"
+                                : "Show the explorer sidebar to select a table"}
+                            </p>
+                          </div>
+                          {!isSidebarVisible && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={toggleSidebar}
+                              className="mt-1"
+                            >
+                              <Database className="h-3.5 w-3.5 mr-1.5" />
+                              Show explorer
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     );
-                  })()}
-                </div>
+                  }
+
+                  if (!selectedTableDetails) {
+                    return (
+                      <div className="h-full flex items-center justify-center p-8">
+                        <div className="flex items-center gap-3 text-muted-foreground">
+                          {isLoadingTableDetails ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <span className="text-sm">
+                                Loading {selectedTableRef?.schema}.{selectedTable}…
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-sm">Failed to load table details</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const td = selectedTableDetails;
+                  const detailsMatch =
+                    !!selectedTableRef &&
+                    td.name === selectedTableRef.name &&
+                    td.schema === selectedTableRef.schema;
+                  const isSwitching = isLoadingTableDetails && !detailsMatch;
+
+                  return (
+                    <TableDataEditor
+                      connectionId={connectionId}
+                      table={td}
+                      tableListRows={tableListRows}
+                      tableSaveChanges={tableSaveChanges}
+                      tableTruncate={tableTruncate}
+                      tableFkLookup={tableFkLookup}
+                      isSwitchingTable={isSwitching}
+                      isSidebarVisible={isSidebarVisible}
+                      onToggleSidebar={toggleSidebar}
+                      onRequestAddColumn={() =>
+                        setDdlAddColumnTarget({
+                          schema: td.schema,
+                          name: td.name,
+                        })
+                      }
+                      onRequestDropColumn={(columnName) =>
+                        setDdlDropColumnTarget({
+                          schema: td.schema,
+                          table: td.name,
+                          column: columnName,
+                        })
+                      }
+                      onRequestRenameColumn={(columnName) =>
+                        setDdlRenameColumnTarget({
+                          schema: td.schema,
+                          table: td.name,
+                          column: columnName,
+                        })
+                      }
+                      onRequestAlterColumnType={(column) =>
+                        setDdlAlterColumnTypeTarget({
+                          schema: td.schema,
+                          table: td.name,
+                          column: column.name,
+                          currentType: column.data_type,
+                        })
+                      }
+                      onRequestSetColumnDefault={(column) =>
+                        setDdlSetColumnDefaultTarget({
+                          schema: td.schema,
+                          table: td.name,
+                          column: column.name,
+                          currentDefault: column.column_default,
+                        })
+                      }
+                      onRequestSetColumnNullable={(column) =>
+                        setDdlSetColumnNullableTarget({
+                          schema: td.schema,
+                          table: td.name,
+                          column: column.name,
+                          isNullable: column.is_nullable,
+                        })
+                      }
+                    />
+                  );
+                })()}
               </ResizablePanel>
             </ResizablePanelGroup>
           )}
