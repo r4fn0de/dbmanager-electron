@@ -1175,6 +1175,8 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                     changeSchema(schema);
                     changeTable(`${schema}.${table}`);
                   }}
+                  isLoading={isLoadingVisualizer}
+                  onNavigateToTables={() => changeSection("tables")}
                 />
               )}
             </div>
