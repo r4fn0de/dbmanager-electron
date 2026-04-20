@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createConnection } from "node:net";
 import { createRequire } from "node:module";
 import { platform, arch } from "node:os";
+import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import type { LocalDbInfo } from "./types";
 
 /** ESM-compatible require for resolving module paths */
@@ -262,7 +263,7 @@ export class LocalDbManager {
       name: input.name,
       database_name: input.databaseName,
       username: input.username || "postgres",
-      password: input.password || "password",
+      password: input.password.trim() || LOCAL_DB_DEFAULT_PASSWORD,
       port,
       postgres_version: input.postgresVersion || "16.13.0",
       auto_start: input.autoStart,

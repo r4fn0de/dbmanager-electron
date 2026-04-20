@@ -122,12 +122,9 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
     setColumnNullable,
   } = useConnections();
   const { start: startLocalDb, pause: pauseLocalDb, getStatus: getLocalDbStatus } = useLocalDatabases();
-  const { tabs, setTabSection } = useConnectionTabsStore();
+  const { setTabSection } = useConnectionTabsStore();
 
-  const storedSection = tabs.find((t) => t.id === connectionId)?.lastSection;
-  const [activeSection, setActiveSection] = useState<SidebarSection>(
-    storedSection ?? "tables"
-  );
+  const [activeSection, setActiveSection] = useState<SidebarSection>("overview");
 
   const [tables, setTables] = useState<SchemaTableSummary[]>([]);
   const [schemas, setSchemas] = useState<string[]>([]);
@@ -189,6 +186,7 @@ function DatabasePageContent({ connectionId }: DatabasePageContentProps) {
 
   // Reset state when connectionId changes to avoid showing stale data
   useEffect(() => {
+    setActiveSection("overview");
     setTables([]);
     setSchemas([]);
     setSelectedSchema("public");

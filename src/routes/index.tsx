@@ -19,6 +19,7 @@ import {
 } from "@/components/CreateLocalDbDialog";
 import { useConnections } from "@/hooks/useConnections";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
 
 function Home() {
@@ -71,11 +72,12 @@ function Home() {
   const handleCreateLocalDb = async (input: CreateLocalDbInput) => {
     setIsCreatingLocalDb(true);
     try {
+      const password = input.password.trim() || LOCAL_DB_DEFAULT_PASSWORD;
       const db = await createLocalDb({
         name: input.name,
         databaseName: input.databaseName,
         username: input.username,
-        password: input.password,
+        password,
         port: input.port,
         postgresVersion: input.postgresVersion,
         autoStart: input.autoStart,
@@ -89,7 +91,7 @@ function Home() {
         port: db.port ?? input.port,
         database: db.database_name || input.databaseName,
         username: db.username || input.username,
-        password: input.password,
+        password,
         ssl_mode: "disable",
         url: db.connection_string,
         is_local: true,

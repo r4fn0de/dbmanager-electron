@@ -156,7 +156,7 @@ export function CreateLocalDbDialog({
                 <Input
                   id="password"
                   type="password"
-                  placeholder="••••••••"
+                  placeholder="Default: postgres"
                   value={formData.password}
                   onChange={(e) => updateField("password", e.target.value)}
                 />

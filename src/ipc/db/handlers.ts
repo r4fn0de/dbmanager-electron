@@ -39,6 +39,7 @@ import {
   loadConnections,
   saveConnections,
 } from "./connection-store";
+import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import {
   testConnection as testPgConnection,
   executeQuery as executePgQuery,
@@ -571,11 +572,12 @@ export const createLocalDatabase = os
   .input(createLocalDatabaseSchema)
   .handler(async ({ input }): Promise<LocalDbInfo> => {
     try {
+      const password = input.password?.trim() || LOCAL_DB_DEFAULT_PASSWORD;
       return await localDbManager.create({
         name: input.name,
         databaseName: input.databaseName || "postgres",
         username: input.username || "postgres",
-        password: input.password || "password",
+        password,
         port: input.port || 5432,
         postgresVersion: input.postgresVersion || "16.13.0",
         autoStart: input.autoStart ?? true,
