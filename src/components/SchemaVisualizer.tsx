@@ -504,14 +504,14 @@ export function SchemaVisualizer({
 
   if (filteredTables.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border bg-background">
+      <div className="flex h-full items-center justify-center bg-background">
         <p className="text-muted-foreground">No tables to visualize</p>
       </div>
     );
   }
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-lg border bg-background">
+    <div className="relative h-full w-full overflow-hidden bg-background">
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
         <div className="relative w-56">
           <div className="relative">

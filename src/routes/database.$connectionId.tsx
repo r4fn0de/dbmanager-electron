@@ -1140,7 +1140,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
             />
           )}
           {isVisualizerSection && (
-            <div className="flex-1 min-w-0 min-h-0 p-4">
+            <div className="flex-1 min-w-0 min-h-0">
               {isLoadingVisualizer ? (
                 <div className="flex h-full items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
