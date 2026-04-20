@@ -813,7 +813,7 @@ export function SqlEditor({
                 </TabsList>
               </div>
 
-              <TabsContent value="result" className="min-h-0 overflow-auto p-3">
+              <TabsContent value="result" className="min-h-0 overflow-auto px-3 pb-3">
                 <QueryResults result={lastResult} error={lastError} durationMs={lastDurationMs} />
               </TabsContent>
 

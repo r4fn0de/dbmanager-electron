@@ -199,24 +199,17 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   // ── Error state ──────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-destructive/20 bg-destructive/10">
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive/20">
-            <X className="h-3 w-3 text-destructive" />
-          </div>
-          <span className="text-sm font-medium text-destructive">
-            Query failed
-          </span>
+      <div className="border-l-2 border-destructive/50 bg-destructive/5 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <X className="h-3.5 w-3.5 text-destructive shrink-0" />
+          <code className="font-mono text-xs text-destructive/90 leading-5 break-all">
+            {error}
+          </code>
           {durationMs !== undefined && (
-            <span className="ml-auto text-xs text-destructive/60 font-mono">
+            <span className="ml-auto text-[10px] text-destructive/60 font-mono shrink-0">
               {formatDuration(durationMs)}
             </span>
           )}
-        </div>
-        <div className="px-4 py-3">
-          <code className="font-mono text-sm text-destructive/90 leading-6 break-all">
-            {error}
-          </code>
         </div>
       </div>
     );
@@ -225,14 +218,9 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   // ── Empty / placeholder state ────────────────────────────────────
   if (!result) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted/60 mb-3">
-          <Terminal className="h-5 w-5" />
-        </div>
-        <p className="text-sm font-medium">No results yet</p>
-        <p className="text-xs mt-1 text-muted-foreground/70">
-          Run a query to see results here
-        </p>
+      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/60">
+        <Terminal className="h-5 w-5 mb-2 opacity-40" />
+        <p className="text-xs">No results yet</p>
       </div>
     );
   }
@@ -240,28 +228,15 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   // ── Success but no rows ──────────────────────────────────────────
   if (result.row_count === 0) {
     return (
-      <div className="rounded-lg border border-dashed bg-muted/20 overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-dashed">
-          <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/15">
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
-              ✓
-            </span>
-          </div>
-          <span className="text-xs font-medium text-foreground">
-            Query executed successfully
-          </span>
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2 text-muted-foreground/70">
+          <span className="text-[10px] text-emerald-500">✓</span>
+          <span className="text-xs">Query executed successfully</span>
           {durationMs !== undefined && (
-            <span className="ml-auto text-xs font-mono text-muted-foreground">
+            <span className="ml-auto text-[10px] font-mono text-muted-foreground/60">
               {formatDuration(durationMs)}
             </span>
           )}
-        </div>
-        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-          <Table2 className="h-6 w-6 mb-2 opacity-40" />
-          <p className="text-sm">No rows returned</p>
-          <p className="text-xs mt-1 opacity-60">
-            The query completed but returned 0 results
-          </p>
         </div>
       </div>
     );
@@ -271,35 +246,31 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   const colCount = result.columns.length;
 
   return (
-    <div className="rounded-lg border overflow-hidden bg-background">
+    <div>
       {/* ── Toolbar header ──────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50">
         <div className="flex items-center gap-1.5">
-          <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/15">
-            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-              ✓
-            </span>
-          </div>
-          <span className="text-xs font-medium">
+          <span className="text-[10px] text-emerald-500">✓</span>
+          <span className="text-xs text-muted-foreground">
             {result.row_count.toLocaleString()}{" "}
             {result.row_count === 1 ? "row" : "rows"}
           </span>
         </div>
 
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-[10px] text-muted-foreground/50">
           ·
         </span>
 
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground/70">
           {colCount} {colCount === 1 ? "column" : "columns"}
         </span>
 
         {durationMs !== undefined && (
           <>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground/50">
               ·
             </span>
-            <span className="text-xs font-mono text-muted-foreground">
+            <span className="text-xs font-mono text-muted-foreground/70">
               {formatDuration(durationMs)}
             </span>
           </>
@@ -330,13 +301,13 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
       {/* ── Table container ─────────────────────────────────────── */}
       <ScrollArea className="max-h-[200px]">
         <div className="min-w-full">
-          <table className="w-full border-collapse text-sm">
+          <table className="w-full border-collapse text-xs">
             {/* ── Column headers ────────────────────────────────── */}
             <thead className="sticky top-0 z-10">
-              <tr className="border-b bg-muted/50">
+              <tr className="border-b border-border/50 bg-muted/30">
                 {/* Row # column */}
                 <th
-                  className="h-8 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] font-medium text-muted-foreground/60 border-r bg-muted/30"
+                  className="h-7 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] font-medium text-muted-foreground/50 border-r border-border/30 bg-muted/20"
                   scope="col"
                 >
                   #
@@ -344,11 +315,11 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
                 {result.columns.map((col) => (
                   <th
                     key={col.name}
-                    className="h-8 px-3 text-left font-medium whitespace-nowrap border-r last:border-r-0"
+                    className="h-7 px-3 text-left font-medium whitespace-nowrap border-r border-border/30 last:border-r-0"
                     scope="col"
                   >
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {col.name}
                       </span>
                       <Badge
@@ -368,12 +339,10 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
               {result.rows.map((row, rowIdx) => (
                 <tr
                   key={rowIdx}
-                  className={`border-b last:border-b-0 transition-colors hover:bg-muted/40 ${
-                    rowIdx % 2 === 1 ? "bg-muted/15" : ""
-                  }`}
+                  className="border-b border-border/30 last:border-b-0 hover:bg-muted/20"
                 >
                   {/* Row number */}
-                  <td className="h-7 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] text-muted-foreground/50 border-r bg-muted/10">
+                  <td className="h-6 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] text-muted-foreground/40 border-r border-border/20 bg-muted/10">
                     {rowIdx + 1}
                   </td>
                   {row.map((cell, cellIdx) => {
@@ -389,16 +358,16 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
                     return (
                       <td
                         key={cellIdx}
-                        className={`group/cell h-7 px-3 font-mono text-xs whitespace-nowrap max-w-[240px] truncate border-r last:border-r-0 relative ${
+                        className={`group/cell h-6 px-3 font-mono text-xs whitespace-nowrap max-w-[240px] truncate border-r border-border/20 last:border-r-0 relative ${
                           isNull
-                            ? "italic text-muted-foreground/50"
+                            ? "italic text-muted-foreground/40"
                             : isNum
-                              ? "text-right tabular-nums text-foreground"
+                              ? "text-right tabular-nums text-muted-foreground"
                               : isBool
                                 ? "text-center"
                                 : isJson
-                                  ? "text-muted-foreground"
-                                  : "text-foreground"
+                                  ? "text-muted-foreground/70"
+                                  : "text-muted-foreground"
                         } ${isCopied ? "bg-primary/10" : ""}`}
                         title={text}
                       >
