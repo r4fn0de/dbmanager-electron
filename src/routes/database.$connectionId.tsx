@@ -1,10 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  ChevronLeft,
-  Copy,
   Database,
   FileSearch,
-  GitGraph,
   Loader2,
   Lock,
   LockOpen,
@@ -81,8 +78,10 @@ import { useConnections } from "@/hooks/useConnections";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
 import {
   buildConnectionTab,
+  detectConnectionProvider,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
+import { DatabaseNavSidebar } from "@/components/DatabaseNavSidebar";
 import { DatabaseOverview } from "@/components/DatabaseOverview";
 import { SqlEditor } from "@/components/SqlEditor";
 import { TableDataEditor } from "@/components/TableDataEditor";
@@ -90,6 +89,14 @@ import { SchemaVisualizer } from "@/components/SchemaVisualizer";
 import type { SchemaTableSummary, DatabaseInfo, LocalDbInfo, SchemaTableDetails, SchemaPolicy } from "@/ipc/db/types";
 
 type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
+
+const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
+  "1": "overview",
+  "2": "tables",
+  "3": "sql-editor",
+  "4": "visualizer",
+  "5": "settings",
+};
 
 export const Route = createFileRoute("/database/$connectionId")({
   component: DatabasePage,
@@ -241,6 +248,11 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     [connections, connectionId],
   );
 
+  const connectionProvider = useMemo(
+    () => connection ? detectConnectionProvider(connection) : undefined,
+    [connection],
+  );
+
   // Ensure a tab exists for this connection (handles page refresh / direct URL)
   // This is synchronizing with an external store (zustand) — a valid use of Effect.
   useEffect(() => {
@@ -375,6 +387,29 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
       table: tableKey ?? undefined,
     });
   }, [connectionId, activeSection, selectedSchema, setTabNavState]);
+
+  // Keyboard shortcuts: 1–5 switch sidebar sections
+  useEffect(() => {
+    if (!isActive) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore when user is typing in an input, textarea, or contentEditable element
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable) return;
+      // Ignore when Monaco editor or similar code editor has focus (class check)
+      const el = e.target as HTMLElement;
+      if (el.closest(".monaco-editor, [data-monaco-editor], .cm-editor")) return;
+      // Ignore when a Radix Select/Menu dropdown is open (portal in body)
+      if (document.querySelector("[data-radix-select-viewport], [data-radix-popper-content-wrapper]")) return;
+
+      const section = SECTION_SHORTCUTS[e.key];
+      if (section && section !== activeSection) {
+        e.preventDefault();
+        changeSection(section);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isActive, activeSection, changeSection]);
 
   // Clean up initial SQL query after sql-editor renders it (valid Effect:
   // synchronizing with a child component that consumes the one-shot value)
@@ -648,142 +683,16 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   return (
     <div className="h-full flex flex-col">
       <div className="border-x border-b rounded-lg flex-1 flex min-h-0 bg-background overflow-hidden">
-        {/* Left Icon Sidebar */}
-        <aside className="w-11 min-h-0 bg-muted/40 border-r py-3 px-2 flex flex-col items-center gap-1 shrink-0">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => navigate({ to: "/" })}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-              }
-            />
-            <TooltipContent side="right">Back</TooltipContent>
-          </Tooltip>
-
-          <div className="w-5 h-px bg-border my-1" />
-
-          <nav className="flex flex-col gap-0.5">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`h-7 w-7 ${activeSection === "overview" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => changeSection("overview")}
-                  >
-                    <Database className="h-4 w-4" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right">Overview</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`h-7 w-7 ${activeSection === "tables" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => changeSection("tables")}
-                  >
-                    <Table2 className="h-4 w-4" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right">Tables</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`h-7 w-7 ${activeSection === "sql-editor" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => changeSection("sql-editor")}
-                  >
-                    <Terminal className="h-4 w-4" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right">SQL Editor</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`h-7 w-7 ${activeSection === "visualizer" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => changeSection("visualizer")}
-                  >
-                    <GitGraph className="h-4 w-4" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right">Schema Visualizer</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={`h-7 w-7 ${activeSection === "settings" ? "bg-accent text-accent-foreground" : ""}`}
-                    onClick={() => changeSection("settings")}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right">Settings</TooltipContent>
-            </Tooltip>
-          </nav>
-
-          <div className="flex-1" />
-
-          <div className="flex flex-col gap-0.5">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={handleRefresh}
-                    disabled={isRefreshing}
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right">Refresh</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={handleCopyConnection}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right">
-                {copyFeedback === "copied" ? "Copied!" : copyFeedback === "failed" ? "Copy failed" : "Copy Connection"}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </aside>
+        <DatabaseNavSidebar
+          connection={connection}
+          provider={connectionProvider}
+          activeSection={activeSection}
+          onSectionChange={changeSection}
+          onRefresh={handleRefresh}
+          onCopyConnection={handleCopyConnection}
+          isRefreshing={isRefreshing}
+          copyFeedback={copyFeedback}
+        />
 
         {/* Main Content Area */}
         <div className="flex-1 min-w-0 flex flex-col min-h-0">

@@ -1,0 +1,217 @@
+import { useNavigate } from "@tanstack/react-router";
+import {
+  ChevronLeft,
+  Copy,
+  Database,
+  GitGraph,
+  HardDrive,
+  RefreshCw,
+  Settings,
+  Table2,
+  Terminal,
+} from "lucide-react";
+import { Neon } from "@/components/icons/Neon";
+import { Supabase } from "@/components/icons/Supabase";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { ConnectionProvider, SidebarSection } from "@/lib/stores/connection-tabs";
+import type { Connection } from "@/ipc/db/types";
+
+interface DatabaseNavSidebarProps {
+  connection: Connection;
+  provider?: ConnectionProvider;
+  activeSection: SidebarSection;
+  onSectionChange: (section: SidebarSection) => void;
+  onRefresh: () => void;
+  onCopyConnection: () => void;
+  isRefreshing?: boolean;
+  copyFeedback?: null | "copied" | "failed";
+}
+
+const NAV_ITEMS: {
+  section: SidebarSection;
+  icon: typeof Database;
+  label: string;
+  shortcut: string;
+}[] = [
+  { section: "overview", icon: Database, label: "Overview", shortcut: "1" },
+  { section: "tables", icon: Table2, label: "Tables", shortcut: "2" },
+  { section: "sql-editor", icon: Terminal, label: "SQL Editor", shortcut: "3" },
+  { section: "visualizer", icon: GitGraph, label: "Visualizer", shortcut: "4" },
+  { section: "settings", icon: Settings, label: "Settings", shortcut: "5" },
+];
+
+function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; isLocal?: boolean }) {
+  if (provider === "neon") return <Neon className="h-[18px] w-[18px]" />;
+  if (provider === "supabase") return <Supabase className="h-[18px] w-[18px]" />;
+  if (isLocal) return <HardDrive className="h-[18px] w-[18px] text-emerald-500" />;
+  return <Database className="h-[18px] w-[18px] text-muted-foreground" />;
+}
+
+export function DatabaseNavSidebar({
+  connection,
+  provider,
+  activeSection,
+  onSectionChange,
+  onRefresh,
+  onCopyConnection,
+  isRefreshing = false,
+  copyFeedback = null,
+}: DatabaseNavSidebarProps) {
+  const navigate = useNavigate();
+  const colorDot = connection.color || (connection.is_local ? "#22c55e" : undefined);
+
+  return (
+    <aside className="w-12 min-h-0 bg-sidebar border-r flex flex-col items-center py-2 shrink-0">
+      {/* ── Connection identity ────────────────────────────── */}
+      <div className="flex flex-col items-center gap-1 px-1.5 mb-1">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="group relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-muted/60"
+                onClick={() => navigate({ to: "/" })}
+              >
+                {/* Color ring */}
+                {colorDot && (
+                  <span
+                    className="absolute inset-0 rounded-lg ring-1 ring-inset opacity-30 group-hover:opacity-50 transition-opacity"
+                    style={{ backgroundColor: "transparent", borderColor: colorDot }}
+                  />
+                )}
+                <ProviderIcon provider={provider} isLocal={connection.is_local} />
+              </button>
+            }
+          />
+          <TooltipContent side="right" sideOffset={8}>
+            <span className="font-medium">{connection.name}</span>
+            <span className="block text-[11px] text-muted-foreground mt-0.5">
+              {connection.database}
+            </span>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+
+      {/* Separator */}
+      <div className="w-6 h-px bg-border/60 my-1" />
+
+      {/* ── Navigation ─────────────────────────────────────── */}
+      <nav className="flex flex-col gap-0.5 px-1.5">
+        {NAV_ITEMS.map(({ section, icon: Icon, label, shortcut }) => {
+          const isActive = activeSection === section;
+          return (
+            <Tooltip key={section}>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={() => onSectionChange(section)}
+                    className={`
+                      group relative flex h-9 w-9 items-center justify-center rounded-lg
+                      transition-all duration-150 outline-none
+                      focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
+                      ${isActive
+                        ? "bg-accent text-accent-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      }
+                    `}
+                  >
+                    {/* Active indicator bar */}
+                    {isActive && (
+                      <span className="absolute -left-1.5 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-accent-foreground/70" />
+                    )}
+                    <Icon className="h-[18px] w-[18px]" />
+                    {/* Keyboard hint on hover */}
+                    <span className="absolute -right-0.5 -top-0.5 text-[9px] font-mono text-muted-foreground/0 group-hover:text-muted-foreground/50 transition-colors">
+                      {shortcut}
+                    </span>
+                  </button>
+                }
+              />
+              <TooltipContent side="right" sideOffset={8}>
+                <span className="flex items-center gap-2">
+                  {label}
+                  <Kbd>{shortcut}</Kbd>
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </nav>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Separator */}
+      <div className="w-6 h-px bg-border/60 my-1" />
+
+      {/* ── Bottom actions ─────────────────────────────────── */}
+      <div className="flex flex-col gap-0.5 px-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                onClick={onRefresh}
+                disabled={isRefreshing}
+              >
+                <RefreshCw className={`h-[18px] w-[18px] ${isRefreshing ? "animate-spin" : ""}`} />
+              </Button>
+            }
+          />
+          <TooltipContent side="right" sideOffset={8}>Refresh</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-9 w-9 transition-colors ${
+                  copyFeedback === "copied"
+                    ? "text-emerald-500"
+                    : copyFeedback === "failed"
+                      ? "text-destructive"
+                      : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={onCopyConnection}
+              >
+                <Copy className="h-[18px] w-[18px]" />
+              </Button>
+            }
+          />
+          <TooltipContent side="right" sideOffset={8}>
+            {copyFeedback === "copied" ? "Copied!" : copyFeedback === "failed" ? "Copy failed" : "Copy connection string"}
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Separator */}
+        <div className="w-6 h-px bg-border/60 my-0.5" />
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                onClick={() => navigate({ to: "/" })}
+              >
+                <ChevronLeft className="h-[18px] w-[18px]" />
+              </Button>
+            }
+          />
+          <TooltipContent side="right" sideOffset={8}>Back to connections</TooltipContent>
+        </Tooltip>
+      </div>
+    </aside>
+  );
+}
