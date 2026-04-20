@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   AddColumnDialog,
@@ -202,9 +203,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const [rlsPolicies, setRlsPolicies] = useState<SchemaPolicy[]>([]);
   const [isLoadingRlsPolicies, setIsLoadingRlsPolicies] = useState(false);
 
-  // Table details for selected table
-  const [selectedTableDetails, setSelectedTableDetails] = useState<SchemaTableDetails | null>(null);
-  const [isLoadingTableDetails, setIsLoadingTableDetails] = useState(false);
+  const queryClient = useQueryClient();
 
   // Section flags - definidas antes de serem usadas
   const isTablesSection = activeSection === "tables";
@@ -432,21 +431,73 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
 
   const selectedTable = selectedTableRef?.name ?? null;
 
+  // React Query for table details — gives us cache, keepPreviousData for smooth
+  // transitions, and automatic revalidation. Trocar para uma tabela já visitada
+  // é instantâneo (cache hit); primeira visita mostra skeleton.
+  const tableDetailsQueryKey = useMemo(
+    () => [
+      "table-details",
+      connectionId,
+      selectedTableRef?.schema ?? null,
+      selectedTableRef?.name ?? null,
+    ] as const,
+    [connectionId, selectedTableRef],
+  );
+
+  const {
+    data: selectedTableDetails = null,
+    isFetching: isFetchingTableDetails,
+  } = useQuery({
+    queryKey: tableDetailsQueryKey,
+    queryFn: () => {
+      if (!selectedTableRef) return null;
+      return getTableDetails(connectionId, selectedTableRef.schema, selectedTableRef.name);
+    },
+    enabled: isActive && !!selectedTableRef,
+    // Keep the previous table's details rendered while the new one loads —
+    // header/chrome stays mounted; TableDataEditor gets isSwitchingTable=true.
+    placeholderData: keepPreviousData,
+    staleTime: 2 * 60_000,
+    gcTime: 15 * 60_000,
+  });
+
+  const isLoadingTableDetails = isFetchingTableDetails;
+
+  // Invalidate table details cache on DDL changes so next read refetches.
+  const invalidateTableDetails = useCallback(
+    (schema?: string, name?: string) => {
+      if (schema && name) {
+        queryClient.invalidateQueries({
+          queryKey: ["table-details", connectionId, schema, name],
+        });
+      } else {
+        queryClient.invalidateQueries({
+          queryKey: ["table-details", connectionId],
+        });
+      }
+    },
+    [connectionId, queryClient],
+  );
+
   const handleDdlSuccess = useCallback(async () => {
     await loadSchema();
-    if (selectedTableRef) {
-      try {
-        const details = await getTableDetails(
-          connectionId,
-          selectedTableRef.schema,
-          selectedTableRef.name,
-        );
-        setSelectedTableDetails(details);
-      } catch {
-        setSelectedTableDetails(null);
-      }
-    }
-  }, [connectionId, getTableDetails, loadSchema, selectedTableRef]);
+    // Invalidate all cached table details for this connection — safest default
+    // since DDL can affect any table.
+    invalidateTableDetails();
+  }, [loadSchema, invalidateTableDetails]);
+
+  // Prefetch table details on hover — gives near-instant navigation when
+  // the user clicks a table they've already hovered over (conar-style).
+  const prefetchTableDetails = useCallback(
+    (schema: string, name: string) => {
+      queryClient.prefetchQuery({
+        queryKey: ["table-details", connectionId, schema, name],
+        queryFn: () => getTableDetails(connectionId, schema, name),
+        staleTime: 2 * 60_000,
+      });
+    },
+    [connectionId, getTableDetails, queryClient],
+  );
 
   const handleDropTableSuccess = useCallback(
     async (droppedKey: string) => {
@@ -469,35 +520,6 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   );
 
   // Load table details when selected table changes
-  useEffect(() => {
-    if (!isActive) return;
-    if (selectedTableKey && selectedTableRef) {
-      setIsLoadingTableDetails(true);
-
-      let cancelled = false;
-      const loadTableDetails = async () => {
-        try {
-          const details = await getTableDetails(connectionId, selectedTableRef.schema, selectedTableRef.name);
-          if (cancelled) return;
-          setSelectedTableDetails(details);
-        } catch (error) {
-          if (cancelled) return;
-          console.error("Failed to load table details", error);
-          setSelectedTableDetails(null);
-        } finally {
-          if (!cancelled) setIsLoadingTableDetails(false);
-        }
-      };
-      loadTableDetails();
-      return () => {
-        cancelled = true;
-      };
-    } else {
-      setSelectedTableDetails(null);
-      setIsLoadingTableDetails(false);
-    }
-  }, [selectedTableKey, selectedTableRef, connectionId, getTableDetails, isActive]);
-
   // Load RLS policies when target changes
   useEffect(() => {
     if (!isActive) return;
@@ -802,6 +824,12 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                                       type="button"
                                       onClick={() =>
                                         changeTable(`${table.schema}.${table.name}`)
+                                      }
+                                      onMouseEnter={() =>
+                                        prefetchTableDetails(table.schema, table.name)
+                                      }
+                                      onFocus={() =>
+                                        prefetchTableDetails(table.schema, table.name)
                                       }
                                       className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100 ${
                                         isActive
