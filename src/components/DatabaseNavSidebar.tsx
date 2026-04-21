@@ -3,14 +3,14 @@ import { motion } from "motion/react";
 import {
   ChevronLeft,
   Copy,
-  Database,
   GitGraph,
   HardDrive,
   RefreshCw,
   Settings,
-  Table2,
   Terminal,
 } from "lucide-react";
+import { Database } from "@/components/icons/Database";
+import { Table } from "@/components/icons/Table";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
@@ -38,12 +38,12 @@ interface DatabaseNavSidebarProps {
 
 const NAV_ITEMS: {
   section: SidebarSection;
-  icon: typeof Database;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   shortcut: string;
 }[] = [
   { section: "overview", icon: Database, label: "Overview", shortcut: "1" },
-  { section: "tables", icon: Table2, label: "Tables", shortcut: "2" },
+  { section: "tables", icon: Table, label: "Tables", shortcut: "2" },
   { section: "sql-editor", icon: Terminal, label: "SQL Editor", shortcut: "3" },
   { section: "visualizer", icon: GitGraph, label: "Visualizer", shortcut: "4" },
   { section: "settings", icon: Settings, label: "Settings", shortcut: "5" },
