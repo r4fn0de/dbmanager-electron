@@ -6,6 +6,7 @@ import {
   Play,
   Settings,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -22,11 +23,34 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useConnections } from "@/hooks/useConnections";
+import { useConnectionsList } from "@/hooks/useConnectionsList";
+import {
+  getSchemaSummary,
+  executeQuery,
+  getDatabaseInfo,
+  testConnection,
+  getTableDetails,
+  tableListRows,
+  tableSaveChanges,
+  tableTruncate,
+  tableFkLookup,
+  createTable,
+  dropTable,
+  renameTable,
+  addColumn,
+  createSchema,
+  createIndex,
+  dropColumn,
+  renameColumn,
+  alterColumnType,
+  setColumnDefault,
+  setColumnNullable,
+} from "@/hooks/db-actions";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
 import {
   buildConnectionTab,
   detectConnectionProvider,
+  type ConnectionTabChrome,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 import { DatabaseNavSidebar } from "@/components/DatabaseNavSidebar";
@@ -89,36 +113,21 @@ function DatabasePage() {
 interface DatabasePageContentProps {
   connectionId: string;
   isActive?: boolean;
+  animateNavOnMount?: boolean;
 }
 
-export function DatabasePageContent({ connectionId, isActive = true }: DatabasePageContentProps) {
+export function DatabasePageContent({
+  connectionId,
+  isActive = true,
+  animateNavOnMount = true,
+}: DatabasePageContentProps) {
   const navigate = useNavigate();
   const {
     connections,
-    getSchemaSummary,
-    executeQuery,
     refetch,
-    getDatabaseInfo,
-    testConnection,
-    getTableDetails,
-    tableListRows,
-    tableSaveChanges,
-    tableTruncate,
-    tableFkLookup,
-    createTable,
-    dropTable,
-    renameTable,
-    addColumn,
-    createSchema,
-    createIndex,
-    dropColumn,
-    renameColumn,
-    alterColumnType,
-    setColumnDefault,
-    setColumnNullable,
-  } = useConnections();
+  } = useConnectionsList();
   const { start: startLocalDb, pause: pauseLocalDb, getStatus: getLocalDbStatus } = useLocalDatabases();
-  const { setTabNavState, tabs } = useConnectionTabsStore();
+  const { setTabNavState, updateTab, tabs } = useConnectionTabsStore();
 
   const storedTab = tabs.find((t) => t.id === connectionId);
   const [activeSection, setActiveSection] = useState<SidebarSection>(
@@ -147,6 +156,9 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   });
   const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
   const [isSidebarAnimating, setIsSidebarAnimating] = useState(false);
+  const [isNavVisible, setIsNavVisible] = useState(true);
+  const [tablesSidebarWidthPx, setTablesSidebarWidthPx] = useState(280);
+  const [sqlSidebarWidthPx, setSqlSidebarWidthPx] = useState(280);
   const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const toggleSidebar = useCallback(() => {
@@ -161,6 +173,13 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     }
     animationTimeoutRef.current = setTimeout(() => setIsSidebarAnimating(false), 220);
   }, []);
+
+  const handleBackToConnections = useCallback(() => {
+    setIsNavVisible(false);
+    window.setTimeout(() => {
+      navigate({ to: "/" });
+    }, 180);
+  }, [navigate]);
 
   // Clean up animation timeout on unmount
   useEffect(() => {
@@ -178,6 +197,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const handleSidebarResize = useCallback(
     (panelSize: { asPercentage: number; inPixels: number }) => {
       const visible = panelSize.asPercentage !== 0;
+      setTablesSidebarWidthPx(panelSize.inPixels);
       if (sidebarVisibleRef.current !== visible) {
         setIsSidebarVisible(visible);
       }
@@ -265,6 +285,16 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   const isOverviewSection = activeSection === "overview";
   const isVisualizerSection = activeSection === "visualizer";
   const isSettingsSection = activeSection === "settings";
+  const tabChrome = useMemo<ConnectionTabChrome | undefined>(() => {
+    if (isTablesSection && isSidebarVisible) return "tables-sidebar";
+    if (isSqlEditorSection) return "sql-sidebar";
+    return undefined;
+  }, [isTablesSection, isSidebarVisible, isSqlEditorSection]);
+  const tabChromeWidthPx = useMemo(() => {
+    if (isTablesSection && isSidebarVisible) return tablesSidebarWidthPx;
+    if (isSqlEditorSection) return sqlSidebarWidthPx;
+    return 0;
+  }, [isTablesSection, isSidebarVisible, tablesSidebarWidthPx, isSqlEditorSection, sqlSidebarWidthPx]);
 
   const connection = useMemo(
     () => connections.find((c) => c.id === connectionId),
@@ -303,13 +333,17 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     } finally {
       setIsLoading(false);
     }
-  }, [connectionId, getSchemaSummary, selectedSchema]);
+  }, [connectionId, selectedSchema]);
 
   useEffect(() => {
     // Only load schema when the tab is active — skip IPC calls for background tabs
     if (!isActive) return;
     loadSchema();
   }, [loadSchema, isActive]);
+
+  useEffect(() => {
+    updateTab(connectionId, { chrome: tabChrome, chromeWidthPx: tabChromeWidthPx });
+  }, [connectionId, tabChrome, tabChromeWidthPx, updateTab]);
 
   const loadDatabaseInfo = useCallback(async () => {
     if (!connectionId) return;
@@ -322,7 +356,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     } finally {
       setIsLoadingDatabaseInfo(false);
     }
-  }, [connectionId, getDatabaseInfo]);
+  }, [connectionId]);
 
   const loadLocalDbStatus = useCallback(async () => {
     if (!connectionId || !connection?.is_local) return;
@@ -335,7 +369,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     } finally {
       setIsLoadingLocalDbStatus(false);
     }
-  }, [connectionId, connection?.is_local, getLocalDbStatus]);
+  }, [connectionId, connection?.is_local]);
 
   // Helpers: update state AND persist to store in the same event handler
   // (instead of separate Effects that watch these values — anti-pattern per React docs)
@@ -373,7 +407,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
         });
       }
     }
-  }, [isActive, connectionId, tables, selectedSchema, activeSection, queryClient, getTableDetails]);
+  }, [isActive, connectionId, tables, selectedSchema, activeSection, queryClient]);
 
   const changeSection = useCallback((section: SidebarSection) => {
     setActiveSection(section);
@@ -657,7 +691,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
         staleTime: 5 * 60_000,
       });
     },
-    [connectionId, getTableDetails, tableListRows, queryClient],
+    [connectionId, queryClient],
   );
 
   const handleDropTableSuccess = useCallback(
@@ -701,7 +735,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     } else {
       setRlsPolicies([]);
     }
-  }, [rlsPoliciesTarget, connectionId, getTableDetails, isActive]);
+  }, [rlsPoliciesTarget, connectionId, isActive]);
 
   if (!connection) {
     return (
@@ -721,18 +755,27 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 flex bg-transparent">
-        <DatabaseNavSidebar
-          connection={connection}
-          provider={connectionProvider}
-          activeSection={activeSection}
-          onSectionChange={changeSection}
-          onRefresh={handleRefresh}
-          onCopyConnection={handleCopyConnection}
-          isRefreshing={isRefreshing}
-          copyFeedback={copyFeedback}
-        />
+        <AnimatePresence initial={animateNavOnMount}>
+          {isNavVisible && (
+            <DatabaseNavSidebar
+              connection={connection}
+              provider={connectionProvider}
+              activeSection={activeSection}
+              onSectionChange={changeSection}
+              onRefresh={handleRefresh}
+              onCopyConnection={handleCopyConnection}
+              isRefreshing={isRefreshing}
+              copyFeedback={copyFeedback}
+              onBackToConnections={handleBackToConnections}
+            />
+          )}
+        </AnimatePresence>
 
-        <div className="border-x border-b rounded-lg flex-1 flex min-h-0 bg-background overflow-hidden">
+        <motion.div
+          layout
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="border-x border-b rounded-lg flex-1 flex min-h-0 bg-background overflow-hidden"
+        >
           {/* Main Content Area */}
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {isTablesSection && (
@@ -915,6 +958,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
                 }}
                 executeQuery={executeQuery}
                 showWorkspaceSidebar={true}
+                onWorkspaceSidebarResize={setSqlSidebarWidthPx}
                 loadRequest={initialSqlQuery ? {
                   key: `query:${Date.now()}`,
                   title: "Query",
@@ -989,7 +1033,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
             </div>
           )}
         </div>
-        </div>
+        </motion.div>
       </div>
       {/* Lazy-loaded DDL dialogs — Suspense boundary for all of them */}
       <Suspense fallback={null}>

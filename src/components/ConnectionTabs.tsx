@@ -9,8 +9,8 @@ import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useConnections } from "@/hooks/useConnections";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useConnectionsList } from "@/hooks/useConnectionsList";
 import {
   detectConnectionProvider,
   useConnectionTabsStore,
@@ -43,6 +43,11 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   // This replaces an Effect that called setActiveTab — derived state should
   // be calculated during render, not set via Effect.
   const effectiveActiveId = currentConnectionId ?? activeTabId;
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === effectiveActiveId) ?? null,
+    [tabs, effectiveActiveId],
+  );
+  const [activeTabOverlapsSidebar, setActiveTabOverlapsSidebar] = useState(false);
 
   // Only sync the store's activeTabId when the user explicitly interacts
   // (click tab, close tab) or when navigating from a database page to home.
@@ -141,6 +146,46 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     });
   }, [effectiveActiveId, tabs.length]);
 
+  const measureActiveTabOverlap = useCallback(() => {
+    if (!effectiveActiveId || !activeTab?.chrome) {
+      setActiveTabOverlapsSidebar(false);
+      return;
+    }
+    const sidebarWidth = activeTab.chromeWidthPx ?? 0;
+    if (sidebarWidth <= 0) {
+      setActiveTabOverlapsSidebar(false);
+      return;
+    }
+
+    const activeEl = tabRefs.current[effectiveActiveId];
+    if (!activeEl) {
+      setActiveTabOverlapsSidebar(false);
+      return;
+    }
+
+    const rect = activeEl.getBoundingClientRect();
+    const sidebarLeft = 0;
+    const sidebarRight = sidebarWidth;
+    const overlaps = rect.left < sidebarRight && rect.right > sidebarLeft;
+    setActiveTabOverlapsSidebar(overlaps);
+  }, [effectiveActiveId, activeTab]);
+
+  useLayoutEffect(() => {
+    measureActiveTabOverlap();
+
+    const onWindowResize = () => measureActiveTabOverlap();
+    window.addEventListener("resize", onWindowResize);
+
+    const container = containerRef.current;
+    const onScroll = () => measureActiveTabOverlap();
+    container?.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", onWindowResize);
+      container?.removeEventListener("scroll", onScroll);
+    };
+  }, [measureActiveTabOverlap, pathname, tabs.length]);
+
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     const el = containerRef.current;
     if (!el) return;
@@ -177,6 +222,13 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
       {tabs.map((tab) => {
         const isActive = tab.id === effectiveActiveId;
         const colorDot = tab.color || (tab.isLocal ? "#22c55e" : undefined);
+        const shouldUseSidebarTint = isActive && activeTabOverlapsSidebar && !!tab.chrome;
+        const activeChromeClass =
+          shouldUseSidebarTint && tab.chrome === "tables-sidebar"
+            ? "bg-sidebar"
+            : shouldUseSidebarTint && tab.chrome === "sql-sidebar"
+              ? "bg-sidebar"
+              : "bg-background";
 
         return (
           <Reorder.Item
@@ -233,7 +285,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               >
                 <motion.div
                   layoutId="titlebar-gooey-active-tab"
-                  className="absolute inset-0 bg-background rounded-t-[8px] rounded-b-[4px]"
+                  className={cn("absolute inset-0 rounded-t-[8px] rounded-b-[4px]", activeChromeClass)}
                   transition={{
                     type: "spring",
                     bounce: 0,
@@ -242,7 +294,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 />
                 <motion.div
                   layoutId="titlebar-gooey-active-tab-bridge"
-                  className="absolute -left-4 -right-4 -bottom-5 h-5 bg-background rounded-b-[22px]"
+                  className={cn("absolute -left-4 -right-4 -bottom-5 h-5 rounded-b-[22px]", activeChromeClass)}
                   transition={{
                     type: "spring",
                     bounce: 0,
@@ -313,7 +365,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
  */
 export function useConnectionTabSync() {
   const { tabs, updateTab, removeTab } = useConnectionTabsStore();
-  const { connections, isLoading, refetch } = useConnections();
+  const { connections, isLoading } = useConnectionsList();
   const navigate = useNavigate();
   const matchRoute = useMatchRoute();
 

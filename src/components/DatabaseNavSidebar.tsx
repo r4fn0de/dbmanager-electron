@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import {
   ChevronLeft,
   Copy,
@@ -31,6 +32,7 @@ interface DatabaseNavSidebarProps {
   onCopyConnection: () => void;
   isRefreshing?: boolean;
   copyFeedback?: null | "copied" | "failed";
+  onBackToConnections?: () => void;
 }
 
 const NAV_ITEMS: {
@@ -62,12 +64,19 @@ export function DatabaseNavSidebar({
   onCopyConnection,
   isRefreshing = false,
   copyFeedback = null,
+  onBackToConnections,
 }: DatabaseNavSidebarProps) {
   const navigate = useNavigate();
   const colorDot = connection.color;
 
   return (
-    <aside className="w-12 min-h-0 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground/90">
+    <motion.aside
+      className="min-h-0 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground/90 overflow-hidden"
+      initial={{ width: 0, x: -10 }}
+      animate={{ width: 48, x: 0 }}
+      exit={{ width: 0, x: -10 }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+    >
       {/* ── Connection identity ────────────────────────────── */}
       <div className="flex flex-col items-center gap-1 pl-[1px] pr-1.5 mb-1">
         <Tooltip>
@@ -103,7 +112,7 @@ export function DatabaseNavSidebar({
       </div>
 
       {/* Separator */}
-      <div className="w-6 h-px bg-white/25 my-1" />
+      <div className="w-6 h-px bg-white/25 my-1 pl-[1px] pr-1.5" />
 
       {/* ── Navigation ─────────────────────────────────────── */}
       <nav className="flex flex-col gap-0.5 pl-[1px] pr-1.5">
@@ -145,7 +154,7 @@ export function DatabaseNavSidebar({
       <div className="flex-1" />
 
       {/* Separator */}
-      <div className="w-6 h-px bg-white/15 my-1" />
+      <div className="w-6 h-px bg-white/15 my-1 pl-[1px] pr-1.5" />
 
       {/* ── Bottom actions ─────────────────────────────────── */}
       <div className="flex flex-col gap-0.5 pl-[1px] pr-1.5">
@@ -199,7 +208,13 @@ export function DatabaseNavSidebar({
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9 text-foreground/60 hover:text-foreground/95 hover:bg-white/10"
-                onClick={() => navigate({ to: "/" })}
+                onClick={() => {
+                  if (onBackToConnections) {
+                    onBackToConnections();
+                    return;
+                  }
+                  navigate({ to: "/" });
+                }}
               >
                 <ChevronLeft className="h-[18px] w-[18px]" />
               </Button>
@@ -208,6 +223,6 @@ export function DatabaseNavSidebar({
           <TooltipContent side="right" sideOffset={8}>Back to connections</TooltipContent>
         </Tooltip>
       </div>
-    </aside>
+    </motion.aside>
   );
 }

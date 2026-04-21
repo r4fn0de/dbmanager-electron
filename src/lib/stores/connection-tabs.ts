@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type ConnectionProvider = "neon" | "supabase" | "url" | "direct";
+export type ConnectionTabChrome = "tables-sidebar" | "sql-sidebar";
 
 export type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
 
@@ -11,6 +12,8 @@ export interface ConnectionTab {
   isLocal?: boolean;
   color?: string;
   provider?: ConnectionProvider;
+  chrome?: ConnectionTabChrome;
+  chromeWidthPx?: number;
   lastSection?: SidebarSection;
   lastSchema?: string;
   lastTable?: string;

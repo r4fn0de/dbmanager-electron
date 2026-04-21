@@ -29,7 +29,8 @@ import {
   type CreateLocalDbInput,
 } from "@/components/CreateLocalDbDialog";
 import { CloneToLocalDialog } from "@/components/CloneToLocalDialog";
-import { useConnections } from "@/hooks/useConnections";
+import { useConnectionsList } from "@/hooks/useConnectionsList";
+import { testConnection } from "@/hooks/db-actions";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
 import { useCloneToLocal } from "@/hooks/useCloneToLocal";
 import type { TableRowCount } from "@/ipc/db/types";
@@ -46,8 +47,7 @@ function Home() {
     isLoading: isLoadingConnections,
     saveConnection,
     deleteConnection,
-    testConnection,
-  } = useConnections();
+  } = useConnectionsList();
   const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, remove: removeLocalDb, databases: localDbs } = useLocalDatabases();
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);

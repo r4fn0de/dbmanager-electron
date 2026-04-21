@@ -9,13 +9,19 @@ import { DatabasePageContent } from "@/routes/database.$connectionId";
 const TabPage = memo(function TabPage({
   connectionId,
   isActive,
+  animateNavOnMount,
 }: {
   connectionId: string;
   isActive: boolean;
+  animateNavOnMount: boolean;
 }) {
   return (
     <div className={isActive ? "h-full" : "hidden"}>
-      <DatabasePageContent connectionId={connectionId} isActive={isActive} />
+      <DatabasePageContent
+        connectionId={connectionId}
+        isActive={isActive}
+        animateNavOnMount={animateNavOnMount}
+      />
     </div>
   );
 });
@@ -84,9 +90,9 @@ export function TabbedConnectionView() {
           key={id}
           connectionId={id}
           isActive={id === activeTabId}
+          animateNavOnMount={mountedTabs.size === 1}
         />
       ))}
     </div>
   );
 }
-

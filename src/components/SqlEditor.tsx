@@ -1,7 +1,5 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import {
-  ChevronsLeft,
-  ChevronsRight,
   Clock,
   FileCode2,
   Loader2,
@@ -25,7 +23,6 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-  type PanelImperativeHandle,
   type Layout,
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
@@ -50,6 +47,7 @@ interface SqlEditorProps {
   onSelectConnection: (id: string) => void;
   executeQuery: (connectionId: string, sql: string) => Promise<QueryResult>;
   showWorkspaceSidebar?: boolean;
+  onWorkspaceSidebarResize?: (widthPx: number) => void;
   loadRequest?: {
     key: string;
     title: string;
@@ -129,6 +127,7 @@ export function SqlEditor({
   onSelectConnection,
   executeQuery,
   showWorkspaceSidebar = true,
+  onWorkspaceSidebarResize,
   loadRequest = null,
 }: SqlEditorProps) {
   const {
@@ -154,8 +153,6 @@ export function SqlEditor({
     "result",
   );
   const [searchText, setSearchText] = useState("");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
 
   // Persist sidebar width across sessions via localStorage
   const savedSidebarLayout = useMemo(() => {
@@ -463,17 +460,8 @@ export function SqlEditor({
         searchInputRef.current?.focus();
       }
 
-      // ⌘B to toggle sidebar collapse
-      if (event.key.toLowerCase() === "b" && showWorkspaceSidebar) {
-        event.preventDefault();
-        if (isSidebarCollapsed) {
-          sidebarPanelRef.current?.expand();
-        } else {
-          sidebarPanelRef.current?.collapse();
-        }
-      }
     },
-    [runSql, saveCurrentQuery, showWorkspaceSidebar, isSidebarCollapsed],
+    [runSql, saveCurrentQuery],
   );
 
   return (
@@ -493,79 +481,19 @@ export function SqlEditor({
             defaultSize="22%"
             minSize="15%"
             maxSize="40%"
-            collapsible
-            collapsedSize="3%"
-            panelRef={sidebarPanelRef}
             onResize={(size) => {
-              const collapsed = size.asPercentage <= 3;
-              if (collapsed !== isSidebarCollapsed) setIsSidebarCollapsed(collapsed);
+              onWorkspaceSidebarResize?.(size.inPixels);
             }}
-            className="min-h-0"
+            className="min-h-0 bg-sidebar"
           >
-          {isSidebarCollapsed ? (
-            <div className="flex h-full w-full flex-col items-center py-3 gap-1">
-              {/* Expand button */}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-                      onClick={() => sidebarPanelRef.current?.expand()}
-                    >
-                      <ChevronsRight className="h-4 w-4" />
-                    </button>
-                  }
-                />
-                <TooltipContent side="right" sideOffset={8}>Expand sidebar <KbdGroup className="ml-1.5"><Kbd>⌘</Kbd><Kbd>B</Kbd></KbdGroup></TooltipContent>
-              </Tooltip>
-
-              <div className="w-5 h-px bg-border/60 my-1" />
-
-              {/* Tab indicators */}
-              <Tooltip>
-                <TooltipTrigger className="inline-flex">
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-md ${activeSidebarTab === "saved" ? "bg-accent/60" : "bg-muted/40"}`}>
-                    <Star className={`h-3 w-3 ${activeSidebarTab === "saved" ? "text-accent-foreground" : "text-muted-foreground"}`} />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8}>{savedQueries.length} saved queries</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger className="inline-flex">
-                  <span className={`flex h-6 w-6 items-center justify-center rounded-md ${activeSidebarTab === "history" ? "bg-accent/60" : "bg-muted/40"}`}>
-                    <Clock className={`h-3 w-3 ${activeSidebarTab === "history" ? "text-accent-foreground" : "text-muted-foreground"}`} />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8}>{history.length} history entries</TooltipContent>
-              </Tooltip>
-            </div>
-          ) : (
           <aside className="h-full min-h-0 flex flex-col">
             {/* ── Sidebar header + search ────────────────────── */}
             <div className="px-3 pt-2 pb-2 space-y-2 border-b">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="text-sm font-medium truncate">
-                    {selectedConnectionMeta.name}
-                  </span>
-                </div>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => sidebarPanelRef.current?.collapse()}
-                      >
-                        <ChevronsLeft className="h-3.5 w-3.5" />
-                      </Button>
-                    }
-                  />
-                  <TooltipContent side="bottom" sideOffset={4}>Collapse <KbdGroup className="ml-1.5"><Kbd>⌘</Kbd><Kbd>B</Kbd></KbdGroup></TooltipContent>
-                </Tooltip>
+              <div className="flex items-center gap-2 min-w-0">
+                <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-sm font-medium truncate">
+                  {selectedConnectionMeta.name}
+                </span>
               </div>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -741,7 +669,6 @@ export function SqlEditor({
               </TabsContent>
             </Tabs>
           </aside>
-          )}
           </ResizablePanel>
         )}
         {showWorkspaceSidebar && <ResizableHandle withHandle />}
