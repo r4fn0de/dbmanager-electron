@@ -363,6 +363,14 @@ export function DatabasePageContent({
     }
   }, [connectionId]);
 
+  // Load database info (including size) on mount when overview section is active
+  useEffect(() => {
+    if (!isActive) return;
+    if (activeSection === "overview") {
+      loadDatabaseInfo();
+    }
+  }, [isActive, activeSection, loadDatabaseInfo]);
+
   // Load local db status immediately on mount and when tab becomes active
   // The status is now derived from the shared cache (localDatabases) so it
   // stays in sync across all tabs automatically.
