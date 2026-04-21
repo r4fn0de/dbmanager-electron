@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Database, HardDrive, Plus, Search } from "lucide-react";
+import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -308,7 +309,13 @@ function Home() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <motion.div
+      className="h-full flex flex-col"
+      initial={{ paddingLeft: 24 }}
+      animate={{ paddingLeft: 0 }}
+      exit={{ paddingLeft: 24 }}
+      transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+    >
       <div className="border-x border-b rounded-lg flex-1 flex flex-col bg-background overflow-hidden">
         <div className="max-w-2xl mx-auto w-full px-6 py-6 flex-1 flex flex-col min-h-0">
           {/* Page header */}
@@ -439,7 +446,7 @@ function Home() {
         isCloning={isCloning}
         error={cloneError}
       />
-    </div>
+    </motion.div>
   );
 }
 
