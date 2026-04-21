@@ -26,7 +26,7 @@ function createWindow() {
           visualEffectState: "active", // mantém o blur mesmo quando a janela perde foco
           backgroundColor: "#00000000",
           titleBarStyle: "hiddenInset",
-          trafficLightPosition: { x: 14, y: 10 },
+          trafficLightPosition: { x: 14, y: 12 },
         }
       : process.platform === "win32"
         ? {

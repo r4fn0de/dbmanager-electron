@@ -77,7 +77,7 @@ export function TitleBar() {
     return (
       <div className="z-50 select-none">
         <div className="h-10 bg-background/60 backdrop-blur-md flex items-center pr-3">
-          <div className="w-[82px] shrink-0 h-full draglayer" />
+          <div className="w-[78px] shrink-0 h-full draglayer" />
           {tabsSlot}
           <div className="ml-auto flex items-center no-drag pl-2">
             <ThemeToggle />
