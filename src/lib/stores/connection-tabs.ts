@@ -28,6 +28,7 @@ interface ConnectionTabsState {
   setTabSection: (id: string, section: SidebarSection) => void;
   setTabNavState: (id: string, state: { section: SidebarSection; schema?: string; table?: string }) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
+  reorderTabsByIds: (orderedIds: string[]) => void;
   clearTabs: () => void;
 }
 
@@ -152,9 +153,33 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
 
       reorderTabs: (fromIndex, toIndex) =>
         set((state) => {
+          if (fromIndex === toIndex) return state;
+          if (
+            fromIndex < 0 ||
+            toIndex < 0 ||
+            fromIndex >= state.tabs.length ||
+            toIndex >= state.tabs.length
+          ) {
+            return state;
+          }
+
           const next = [...state.tabs];
           const [moved] = next.splice(fromIndex, 1);
+          if (!moved) return state;
           next.splice(toIndex, 0, moved);
+          return { tabs: next };
+        }),
+
+      reorderTabsByIds: (orderedIds) =>
+        set((state) => {
+          if (orderedIds.length !== state.tabs.length) return state;
+
+          const byId = new Map(state.tabs.map((tab) => [tab.id, tab] as const));
+          const next = orderedIds
+            .map((id) => byId.get(id))
+            .filter((tab): tab is ConnectionTab => Boolean(tab));
+
+          if (next.length !== state.tabs.length) return state;
           return { tabs: next };
         }),
 

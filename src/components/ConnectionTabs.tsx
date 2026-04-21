@@ -4,12 +4,12 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { Globe, HardDrive, Server, X } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, Reorder } from "motion/react";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useConnections } from "@/hooks/useConnections";
 import {
   detectConnectionProvider,
@@ -23,11 +23,9 @@ interface ConnectionTabsProps {
 }
 
 export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
-  const { tabs, activeTabId, removeTab, setActiveTab, reorderTabs } =
+  const { tabs, activeTabId, removeTab, setActiveTab, reorderTabsByIds } =
     useConnectionTabsStore();
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const dragSrcIndex = useRef<number | null>(null);
-  const dragSrcWidth = useRef<number>(0);
+  const suppressClickRef = useRef(false);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -58,6 +56,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
 
   const handleTabClick = useCallback(
     (id: string) => {
+      if (suppressClickRef.current) return;
       setActiveTab(id);
       navigate({
         to: "/database/$connectionId",
@@ -151,77 +150,20 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   }, []);
 
   if (tabs.length === 0) return null;
-
-  const isDragging = dragOverIndex !== null;
-  const srcIdx = dragSrcIndex.current;
-  const GAP = 4; // gap-1 = 4px
-
-  // Compute the horizontal offset for a tab at the given index during drag.
-  // Tabs between the source and the hover target shift to create a visual gap
-  // at the drop position, while the source tab becomes invisible.
-  function getDragOffset(tabIndex: number): number {
-    if (!isDragging || srcIdx === null || dragOverIndex === null) return 0;
-    if (tabIndex === srcIdx) return 0; // source stays in DOM position
-
-    const shift = dragSrcWidth.current + GAP;
-
-    if (srcIdx < dragOverIndex) {
-      // Dragging right → tabs between src+1 and target shift left
-      if (tabIndex > srcIdx && tabIndex <= dragOverIndex) return -shift;
-    } else if (srcIdx > dragOverIndex) {
-      // Dragging left → tabs between target and src-1 shift right
-      if (tabIndex >= dragOverIndex && tabIndex < srcIdx) return shift;
-    }
-
-    return 0;
-  }
-
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    dragSrcIndex.current = index;
-    dragSrcWidth.current = (e.currentTarget as HTMLElement).offsetWidth;
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", String(index));
-    // Delay opacity change so the browser ghost image captures the tab at full opacity
-    requestAnimationFrame(() => {
-      const el = e.currentTarget as HTMLElement;
-      el.style.opacity = "0";
-    });
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    (e.currentTarget as HTMLElement).style.opacity = "";
-    setDragOverIndex(null);
-    dragSrcIndex.current = null;
-    dragSrcWidth.current = 0;
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverIndex(index);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    const related = e.relatedTarget as HTMLElement | null;
-    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
-    setDragOverIndex(null);
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    const from = dragSrcIndex.current;
-    // Reset drag state immediately so transforms are removed in the same render
-    setDragOverIndex(null);
-    dragSrcIndex.current = null;
-    dragSrcWidth.current = 0;
-
-    if (from !== null && from !== dropIndex) {
-      reorderTabs(from, dropIndex);
-    }
-  };
+  const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+  const handleReorder = useCallback(
+    (nextOrder: string[]) => {
+      reorderTabsByIds(nextOrder);
+    },
+    [reorderTabsByIds],
+  );
 
   return (
-    <div
+    <Reorder.Group
+      axis="x"
+      values={tabIds}
+      onReorder={handleReorder}
+      layoutScroll
       ref={containerRef}
       role="tablist"
       aria-label="Connection tabs"
@@ -232,26 +174,34 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
           "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]",
       )}
     >
-      {tabs.map((tab, index) => {
+      {tabs.map((tab) => {
         const isActive = tab.id === effectiveActiveId;
         const colorDot = tab.color || (tab.isLocal ? "#22c55e" : undefined);
-        const dragOffset = getDragOffset(index);
 
         return (
-          <div
+          <Reorder.Item
             key={tab.id}
+            value={tab.id}
+            layout="position"
+            dragMomentum={false}
+            dragElastic={0}
+            dragConstraints={containerRef}
+            whileDrag={{ zIndex: 40 }}
+            transition={{ type: "spring", stiffness: 550, damping: 42, mass: 0.7 }}
             ref={(el) => {
               tabRefs.current[tab.id] = el;
             }}
             role="tab"
             tabIndex={isActive ? 0 : -1}
             aria-selected={isActive}
-            draggable
-            onDragStart={(e) => handleDragStart(e, index)}
-            onDragEnd={handleDragEnd}
-            onDragOver={(e) => handleDragOver(e, index)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, index)}
+            onDragStart={() => {
+              suppressClickRef.current = true;
+            }}
+            onDragEnd={() => {
+              requestAnimationFrame(() => {
+                suppressClickRef.current = false;
+              });
+            }}
             onClick={() => handleTabClick(tab.id)}
             onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
             onMouseDown={(e) => handleMouseDown(e, tab.id)}
@@ -259,14 +209,12 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               "group relative flex items-center justify-center gap-1.5 h-[39px] w-[128px] px-0 text-xs font-medium",
               "rounded-sm shrink-0 outline-none cursor-default",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-              // Use transition-transform for smooth drag shifts; separate from
-              // the other transitions (bg, color) to avoid lag on hover/click.
-              isDragging
-                ? "transition-transform duration-150 ease-out"
-                : "transition-all",
+              "transition-colors duration-150",
               isActive
                 ? "text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
                 : "text-muted-foreground",
+              !isActive &&
+                "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60",
               gooeyFilterId &&
                 (isActive
                   ? "rounded-t-[5px] rounded-b-[5px]"
@@ -274,7 +222,6 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             )}
             style={{
               overflow: "visible",
-              transform: dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined,
             }}
             title={tab.name}
           >
@@ -352,10 +299,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             >
               <X className="h-3 w-3" />
             </button>
-          </div>
+          </Reorder.Item>
         );
       })}
-    </div>
+    </Reorder.Group>
   );
 }
 
