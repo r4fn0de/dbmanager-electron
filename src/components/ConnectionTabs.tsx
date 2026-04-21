@@ -4,6 +4,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { Globe, HardDrive, Server, X } from "lucide-react";
+import { motion } from "motion/react";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
@@ -17,7 +18,11 @@ import {
 import { cn } from "@/lib/utils";
 import type { ConnectionTab } from "@/lib/stores/connection-tabs";
 
-export function ConnectionTabs() {
+interface ConnectionTabsProps {
+  gooeyFilterId?: string;
+}
+
+export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const { tabs, activeTabId, removeTab, setActiveTab, reorderTabs } =
     useConnectionTabsStore();
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -221,7 +226,11 @@ export function ConnectionTabs() {
       role="tablist"
       aria-label="Connection tabs"
       onWheel={handleWheel}
-      className="flex items-center h-full gap-1 overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2"
+      className={cn(
+        "flex items-center h-full gap-1 overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
+        gooeyFilterId &&
+          "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]",
+      )}
     >
       {tabs.map((tab, index) => {
         const isActive = tab.id === effectiveActiveId;
@@ -247,8 +256,8 @@ export function ConnectionTabs() {
             onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
             onMouseDown={(e) => handleMouseDown(e, tab.id)}
             className={cn(
-              "group relative flex items-center gap-1.5 h-[32px] px-2.5 pr-1 text-xs font-medium",
-              "rounded-lg shrink-0 outline-none cursor-default",
+              "group relative flex items-center justify-center gap-1.5 h-[39px] w-[128px] px-0 text-xs font-medium",
+              "rounded-sm shrink-0 outline-none cursor-default",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
               // Use transition-transform for smooth drag shifts; separate from
               // the other transitions (bg, color) to avoid lag on hover/click.
@@ -256,8 +265,12 @@ export function ConnectionTabs() {
                 ? "transition-transform duration-150 ease-out"
                 : "transition-all",
               isActive
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:bg-muted/40",
+                ? "text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
+                : "text-muted-foreground",
+              gooeyFilterId &&
+                (isActive
+                  ? "rounded-t-[5px] rounded-b-[5px]"
+                  : "rounded-[5px]"),
             )}
             style={{
               overflow: "visible",
@@ -265,36 +278,75 @@ export function ConnectionTabs() {
             }}
             title={tab.name}
           >
-            {tab.provider === "neon" ? (
-              <Neon className="h-3.5 w-3.5 shrink-0" />
-            ) : tab.provider === "supabase" ? (
-              <Supabase className="h-3.5 w-3.5 shrink-0" />
-            ) : tab.isLocal ? (
-              <HardDrive className="h-3 w-3 shrink-0 text-green-500" />
-            ) : colorDot ? (
-              <span
-                className="h-2 w-2 rounded-full shrink-0"
-                style={{ backgroundColor: colorDot }}
-              />
-            ) : tab.provider === "url" ? (
-              <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
-            ) : (
-              <Server className="h-3 w-3 shrink-0 text-muted-foreground" />
+            {gooeyFilterId && isActive && (
+              <div
+                className="absolute inset-0 pointer-events-none z-0"
+                style={{ filter: `url(#${gooeyFilterId})` }}
+                aria-hidden="true"
+              >
+                <motion.div
+                  layoutId="titlebar-gooey-active-tab"
+                  className="absolute inset-0 bg-background rounded-t-[8px] rounded-b-[4px]"
+                  transition={{
+                    type: "spring",
+                    bounce: 0,
+                    duration: 0.35,
+                  }}
+                />
+                <motion.div
+                  layoutId="titlebar-gooey-active-tab-bridge"
+                  className="absolute -left-4 -right-4 -bottom-5 h-5 bg-background rounded-b-[22px]"
+                  transition={{
+                    type: "spring",
+                    bounce: 0,
+                    duration: 0.35,
+                  }}
+                />
+              </div>
             )}
 
-            <span className="truncate max-w-[140px]">{tab.name}</span>
+            <div className="relative z-10 flex w-full min-w-0 -translate-y-[2px] items-center justify-start gap-1.5 pl-3 pr-3">
+              {tab.provider === "neon" ? (
+                <Neon className="h-3.5 w-3.5 shrink-0" />
+              ) : tab.provider === "supabase" ? (
+                <Supabase className="h-3.5 w-3.5 shrink-0" />
+              ) : tab.isLocal ? (
+                <HardDrive className="h-3 w-3 shrink-0 text-green-500" />
+              ) : colorDot ? (
+                <span
+                  className="h-2 w-2 rounded-full shrink-0"
+                  style={{ backgroundColor: colorDot }}
+                />
+              ) : tab.provider === "url" ? (
+                <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
+              ) : (
+                <Server className="h-3 w-3 shrink-0 text-muted-foreground" />
+              )}
+
+              <div className="relative min-w-0 flex-1 pr-1 transition-[padding-right] duration-150 group-hover:pr-5">
+                <span
+                  className="block truncate"
+                  style={{
+                    WebkitMaskImage:
+                      "linear-gradient(to right, black 0%, black 78%, transparent 100%)",
+                    maskImage:
+                      "linear-gradient(to right, black 0%, black 78%, transparent 100%)",
+                  }}
+                >
+                  {tab.name}
+                </span>
+              </div>
+            </div>
 
             <button
               type="button"
               onClick={(e) => handleClose(e, tab.id)}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                "ml-0.5 rounded-sm p-0.5 transition-opacity outline-none",
+                "absolute right-1.5 top-[calc(50%-2px)] -translate-y-1/2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-sm p-0.5 transition-opacity outline-none",
                 "focus-visible:ring-2 focus-visible:ring-ring",
                 "hover:bg-muted hover:text-foreground",
-                isActive
-                  ? "opacity-60 hover:opacity-100"
-                  : "opacity-0 group-hover:opacity-70 hover:!opacity-100",
+                "opacity-0 group-hover:opacity-70 hover:!opacity-100 focus-visible:opacity-100",
               )}
               aria-label={`Close ${tab.name}`}
             >
