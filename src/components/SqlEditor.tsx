@@ -10,6 +10,7 @@ import {
   Star,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import type { KeyboardEvent } from "react";
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useSqlWorkspace,
@@ -475,8 +477,7 @@ export function SqlEditor({
         defaultLayout={savedSidebarLayout}
         onLayoutChanged={persistSidebarLayout}
       >
-        {showWorkspaceSidebar && (
-          <ResizablePanel
+        {showWorkspaceSidebar && (            <ResizablePanel
             id="sql-sidebar"
             defaultSize="22%"
             minSize="15%"
@@ -486,28 +487,49 @@ export function SqlEditor({
             }}
             className="min-h-0 bg-sidebar"
           >
-          <aside className="h-full min-h-0 flex flex-col">
-            {/* ── Sidebar header + search ────────────────────── */}
-            <div className="px-3 pt-2 pb-2 space-y-2 border-b">
-              <div className="flex items-center gap-2 min-w-0">
-                <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="text-sm font-medium truncate">
-                  {selectedConnectionMeta.name}
-                </span>
+          <aside className="h-full min-h-0 flex flex-col bg-sidebar">
+            {/* Sidebar Header */}
+            <div className="px-3 pt-3 pb-1 shrink-0">
+              {/* Title Row */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <FileCode2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold tracking-tight text-foreground">Workspace</span>
+                  {isExecuting ? (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  ) : (
+                    savedQueries.length > 0 && (
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {savedQueries.length} saved · {history.length} history
+                      </span>
+                    )
+                  )}
+                </div>
               </div>
+
+              {/* Search Bar */}
               <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
                 <Input
                   ref={searchInputRef}
                   value={searchText}
                   onChange={(event) => setSearchText(event.target.value)}
-                  placeholder="Search…"
-                  className="h-7 pl-7 text-xs"
+                  placeholder="Filter queries..."
+                  className="h-7 pl-7 pr-7 text-xs bg-muted/40 border-dashed focus:bg-background focus:border-solid"
                 />
+                {searchText && (
+                  <button
+                    type="button"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setSearchText("")}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* ── Tabs (line variant for clean look) ────────── */}
+            {/* Tabs */}
             <Tabs
               value={activeSidebarTab}
               onValueChange={(value) =>
@@ -519,153 +541,158 @@ export function SqlEditor({
                 <TabsTrigger value="saved" className="gap-1.5 text-xs">
                   <Star className="h-3 w-3" />
                   Saved
-                  {savedQueries.length > 0 && (
-                    <span className="text-[10px] text-muted-foreground tabular-nums">{savedQueries.length}</span>
-                  )}
                 </TabsTrigger>
                 <TabsTrigger value="history" className="gap-1.5 text-xs">
                   <Clock className="h-3 w-3" />
                   History
-                  {history.length > 0 && (
-                    <span className="text-[10px] text-muted-foreground tabular-nums">{history.length}</span>
-                  )}
                 </TabsTrigger>
               </TabsList>
 
-              {/* ── Saved queries ─────────────────────────────── */}
-              <TabsContent
-                value="saved"
-                className="min-h-0 overflow-auto px-2 pt-1 pb-2"
-              >
-                <div className="space-y-0.5">
-                  {filteredSaved.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="group/saved rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors relative"
-                    >
-                      <button
-                        type="button"
-                        className="w-full text-left pr-12"
-                        onClick={() => hydrateFromSaved(entry)}
+              {/* Saved queries */}
+              <ScrollArea className="flex-1 min-h-0">
+                <div className="px-2 py-1.5">
+                  <div className="space-y-0.5">
+                    {filteredSaved.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="group/saved rounded-md px-2.5 py-[7px] hover:bg-muted/50 transition-colors relative"
                       >
-                        <p className="text-xs font-medium truncate">
-                          {entry.title}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground truncate font-mono leading-4 mt-0.5">
-                          {previewSql(entry.sql)}
-                        </p>
-                      </button>
-                      {/* Hover-reveal actions */}
-                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/saved:opacity-100 transition-opacity">
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                onClick={() => {
-                                  const next = window.prompt(
-                                    "Rename query",
-                                    entry.title,
-                                  );
-                                  if (next?.trim()) {
-                                    void renameQuery(entry.id, next.trim());
-                                  }
-                                }}
-                                className="text-muted-foreground hover:text-foreground"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Rename query</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                onClick={() => void deleteQuery(entry.id)}
-                                className="text-muted-foreground hover:text-destructive"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Delete query</TooltipContent>
-                        </Tooltip>
+                        <button
+                          type="button"
+                          className="w-full text-left pr-12"
+                          onClick={() => hydrateFromSaved(entry)}
+                        >
+                          <p className="text-[13px] font-medium truncate leading-tight">
+                            {entry.title}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate font-mono leading-4 mt-0.5">
+                            {previewSql(entry.sql)}
+                          </p>
+                        </button>
+                        {/* Hover-reveal actions */}
+                        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/saved:opacity-100 transition-opacity">
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={() => {
+                                    const next = window.prompt(
+                                      "Rename query",
+                                      entry.title,
+                                    );
+                                    if (next?.trim()) {
+                                      void renameQuery(entry.id, next.trim());
+                                    }
+                                  }}
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              }
+                            />
+                            <TooltipContent>Rename query</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  onClick={() => void deleteQuery(entry.id)}
+                                  className="text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              }
+                            />
+                            <TooltipContent>Delete query</TooltipContent>
+                          </Tooltip>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
 
                   {filteredSaved.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <Star className="h-6 w-6 mb-2 opacity-20" />
-                      <p className="text-xs font-medium">No saved queries</p>
-                      <p className="text-[11px] mt-1 opacity-50">
-                        Press ⌘S to save the current query
+                    <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                      <Star className="h-4 w-4 text-muted-foreground/50 mb-2" />
+                      <p className="text-xs text-muted-foreground">
+                        {searchText ? "No matches found" : "No saved queries"}
                       </p>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* ── History ────────────────────────────────────── */}
-              <TabsContent
-                value="history"
-                className="min-h-0 overflow-auto px-2 pt-1 pb-2"
-              >
-                <div className="space-y-0.5">
-                  {filteredHistory.map((entry) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className="w-full rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors"
-                      onClick={() => hydrateFromHistory(entry)}
-                    >
-                      {/* Status dot + SQL preview */}
-                      <div className="flex items-start gap-2">
-                        <span
-                          className={`mt-1.5 inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
-                            entry.status === "success"
-                              ? "bg-emerald-500"
-                              : "bg-destructive/60"
-                          }`}
-                        />
-                        <p className="text-xs truncate font-mono leading-5">
-                          {entry.sqlPreview}
-                        </p>
-                      </div>
-
-                      {/* Meta row */}
-                      <div className="flex items-center gap-1.5 mt-0.5 pl-[14px] text-[10px] text-muted-foreground">
-                        <span>{formatDuration(entry.durationMs)}</span>
-                        <span className="opacity-30">·</span>
-                        <span>{entry.rowCount} rows</span>
-                        <span className="opacity-30">·</span>
-                        <span>{new Date(entry.createdAt).toLocaleTimeString()}</span>
-                      </div>
-
-                      {/* Error message */}
-                      {entry.status === "error" && entry.errorMessage && (
-                        <p className="text-[10px] text-destructive/60 mt-0.5 pl-[14px] truncate">
-                          {entry.errorMessage}
+                      {searchText && (
+                        <p className="text-[11px] text-muted-foreground/60 mt-1">
+                          Press ⌘S to save queries
                         </p>
                       )}
-                    </button>
-                  ))}
-
-                  {filteredHistory.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <Clock className="h-6 w-6 mb-2 opacity-20" />
-                      <p className="text-xs font-medium">No history yet</p>
-                      <p className="text-[11px] mt-1 opacity-50">
-                        Run a query with ⌘⏎ to see it here
-                      </p>
                     </div>
                   )}
                 </div>
+              </ScrollArea>
+
+              {/* History */}
+              <TabsContent
+                value="history"
+                className="min-h-0 flex flex-col"
+              >
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="px-2 py-1.5">
+                    <div className="space-y-0.5">
+                      {filteredHistory.map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          className="group/history w-full flex items-start gap-2.5 px-2.5 py-[7px] rounded-md text-left hover:bg-muted/50 transition-colors"
+                          onClick={() => hydrateFromHistory(entry)}
+                        >
+                          {/* Status indicator */}
+                          <span
+                            className={`mt-1 inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
+                              entry.status === "success"
+                                ? "bg-emerald-500"
+                                : "bg-destructive/60"
+                            }`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium truncate leading-tight">
+                              {entry.sqlPreview}
+                            </p>
+
+                            {/* Meta row */}
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
+                              <span>{formatDuration(entry.durationMs)}</span>
+                              <span className="opacity-30">·</span>
+                              <span>{entry.rowCount} rows</span>
+                              <span className="opacity-30">·</span>
+                              <span>{new Date(entry.createdAt).toLocaleTimeString()}</span>
+                            </div>
+
+                            {/* Error message */}
+                            {entry.status === "error" && entry.errorMessage && (
+                              <p className="text-[10px] text-destructive/60 mt-0.5 truncate">
+                                {entry.errorMessage}
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {filteredHistory.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                        <Clock className="h-4 w-4 text-muted-foreground/50 mb-2" />
+                        <p className="text-xs text-muted-foreground">
+                          {searchText ? "No matches found" : "No history yet"}
+                        </p>
+                        {searchText && (
+                          <p className="text-[11px] text-muted-foreground/60 mt-1">
+                            Run a query with ⌘⏎
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
               </TabsContent>
             </Tabs>
           </aside>
