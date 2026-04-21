@@ -278,7 +278,7 @@ export function TablesExplorerSidebar({
                                 : "text-muted-foreground group-hover:text-foreground/70"
                             }`}
                           />
-                          <span className="flex-1 truncate text-[13px] font-medium leading-none">
+                          <span className="flex-1 truncate text-[13px] font-medium leading-tight">
                             {table.name}
                           </span>
                           {table.has_rls ? (

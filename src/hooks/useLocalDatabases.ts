@@ -229,17 +229,13 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     [pauseMutateAsync],
   );
 
-  // getStatus reads from the cached query data — no extra IPC call
+  // getStatus fetches from IPC directly — always returns real-time status
   const getStatus = useCallback(
     async (id: string): Promise<LocalDbInfo | null> => {
-      const data = queryClient.getQueryData<{
-        databases: LocalDbInfo[];
-        storage: LocalDbStorageInfo;
-      }>(LOCAL_DBS_QUERY_KEY);
-      const db = data?.databases.find((d) => d.id === id);
-      return db ?? null;
+      const dbs = await ipc.client.db.listLocalDatabases();
+      return dbs.find((d) => d.id === id) ?? null;
     },
-    [queryClient],
+    [],
   );
 
   return {

@@ -359,7 +359,7 @@ export function DatabasePageContent({
   }, [connectionId]);
 
   const loadLocalDbStatus = useCallback(async () => {
-    if (!connectionId || !connection?.is_local) return;
+    if (!connectionId) return;
     setIsLoadingLocalDbStatus(true);
     try {
       const status = await getLocalDbStatus(connectionId);
@@ -369,7 +369,13 @@ export function DatabasePageContent({
     } finally {
       setIsLoadingLocalDbStatus(false);
     }
-  }, [connectionId, connection?.is_local]);
+  }, [connectionId, getLocalDbStatus]);
+
+  // Load local db status immediately on mount and when tab becomes active
+  useEffect(() => {
+    if (!isActive) return;
+    loadLocalDbStatus();
+  }, [isActive]); // loadLocalDbStatus is stable (no reactive deps)
 
   // Helpers: update state AND persist to store in the same event handler
   // (instead of separate Effects that watch these values — anti-pattern per React docs)
