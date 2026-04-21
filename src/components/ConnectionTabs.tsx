@@ -7,6 +7,7 @@ import { Globe, HardDrive, Server, X } from "lucide-react";
 import { motion, Reorder } from "motion/react";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
+import { MySql } from "@/components/icons/MySql";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -309,6 +310,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 <Neon className="h-3.5 w-3.5 shrink-0" />
               ) : tab.provider === "supabase" ? (
                 <Supabase className="h-3.5 w-3.5 shrink-0" />
+              ) : tab.provider === "mysql" || tab.provider === "mariadb" ? (
+                <MySql className="h-3.5 w-3.5 shrink-0" />
               ) : tab.isLocal ? (
                 <HardDrive className="h-3 w-3 shrink-0 text-green-500" />
               ) : colorDot ? (

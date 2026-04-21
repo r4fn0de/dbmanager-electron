@@ -46,37 +46,52 @@ import {
   saveConnections,
 } from "./connection-store";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
-import {
-  exportSchemaDdl as pgExportSchemaDdl,
-  exportTableData as pgExportTableData,
-  executeBatchDdl as pgExecuteBatchDdl,
-  waitForDatabase as pgWaitForDatabase,
-  importTableRows as pgImportTableRows,
-} from "./pg-client";
-import {
-  testConnection as testPgConnection,
-  executeQuery as executePgQuery,
-  getDatabaseInfo as getPgDatabaseInfo,
-  getSchema as getPgSchema,
-  getSchemaSummary as getPgSchemaSummary,
-  getTableDetails as getPgTableDetails,
-  listRows,
-  buildConnectionString,
-  createTable as pgCreateTable,
-  dropTable as pgDropTable,
-  renameTable as pgRenameTable,
-  addColumn as pgAddColumn,
-  dropColumn as pgDropColumn,
-  renameColumn as pgRenameColumn,
-  alterColumnType as pgAlterColumnType,
-  setColumnNullable as pgSetColumnNullable,
-  setColumnDefault as pgSetColumnDefault,
-  createIndex as pgCreateIndex,
-  dropIndex as pgDropIndex,
-  createSchema as pgCreateSchema,
-} from "./pg-client";
+import { driverRegistry } from "./registry";
 import { localDbManager } from "./local-db-manager";
 import { randomUUID } from "crypto";
+import type { DriverConnectionConfig } from "./driver";
+import type { DatabaseType } from "./types";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Resolve the db_type for a connection, defaulting to postgresql. */
+function resolveDbType(connection: Partial<Connection>): DatabaseType {
+  return (connection as Connection).db_type || "postgresql";
+}
+
+/** Derive a DriverConnectionConfig from a Connection. */
+function toDriverConfig(connection: Partial<Connection>): DriverConnectionConfig {
+  const dbType = resolveDbType(connection);
+  const driver = driverRegistry.get(dbType);
+  return {
+    host: connection.host ?? "",
+    port: connection.port ?? driver.defaultPort,
+    database: connection.database ?? driver.defaultDatabase,
+    username: connection.username ?? driver.defaultUsername,
+    password: connection.password ?? "",
+    ssl_mode: connection.ssl_mode ?? "prefer",
+    url: connection.url,
+  };
+}
+
+/** Load a connection by ID and build its connection string via the driver. */
+async function resolveConnectionString(connectionId: string): Promise<{ connection: Connection; connStr: string }> {
+  const connections = await loadConnections();
+  const connection = connections.find((c) => c.id === connectionId);
+  if (!connection) {
+    throw new Error("Connection not found");
+  }
+  const dbType = resolveDbType(connection);
+  const driver = driverRegistry.get(dbType);
+  const connStr = driver.buildConnectionString(toDriverConfig(connection));
+  return { connection, connStr };
+}
+
+// ---------------------------------------------------------------------------
+// Connection handlers
+// ---------------------------------------------------------------------------
 
 export const listConnections = os.handler(async (): Promise<Connection[]> => {
   return await loadConnections();
@@ -89,9 +104,13 @@ export const saveConnection = os
       const connections = await loadConnections();
       const existingIndex = connections.findIndex((c) => c.id === input.id);
 
+      const dbType: DatabaseType = input.db_type || "postgresql";
+      const driver = driverRegistry.get(dbType);
+
       const connection: Connection = {
         id: input.id || randomUUID(),
         name: input.name,
+        db_type: dbType,
         host: input.host,
         port: input.port,
         database: input.database,
@@ -101,6 +120,8 @@ export const saveConnection = os
         url: input.url,
         is_local: input.is_local,
         connection_string: input.connection_string,
+        engine_version: input.engine_version,
+        // Backward compat: persist postgres_version if it was provided
         postgres_version: input.postgres_version,
         tag: input.tag,
         color: input.color,
@@ -136,15 +157,9 @@ export const deleteConnection = os
 export const testConnection = os
   .input(connectionInputSchema)
   .handler(async ({ input }): Promise<boolean> => {
-    return await testPgConnection({
-      host: input.host,
-      port: input.port,
-      database: input.database,
-      username: input.username,
-      password: input.password,
-      ssl_mode: input.ssl_mode,
-      url: input.url,
-    });
+    const dbType: DatabaseType = input.db_type || "postgresql";
+    const driver = driverRegistry.get(dbType);
+    return await driver.testConnection(toDriverConfig(input));
   });
 
 export const getConnection = os
@@ -154,104 +169,48 @@ export const getConnection = os
     return connections.find((c) => c.id === input.id) || null;
   });
 
+// ---------------------------------------------------------------------------
+// Query / Schema handlers (use registry)
+// ---------------------------------------------------------------------------
+
 export const executeQuery = os
   .input(executeQuerySchema)
   .handler(async ({ input }): Promise<QueryResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await executePgQuery(connStr, input.sql);
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.executeQuery(connStr, input.sql);
   });
 
 export const getSchema = os
   .input(idSchema)
   .handler(async ({ input }): Promise<DatabaseSchema> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.id);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await getPgSchema(connStr);
+    const { connStr, connection } = await resolveConnectionString(input.id);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.getSchema(connStr);
   });
 
 export const getSchemaSummary = os
   .input(idSchema)
   .handler(async ({ input }): Promise<SchemaSummary> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.id);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await getPgSchemaSummary(connStr);
+    const { connStr, connection } = await resolveConnectionString(input.id);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.getSchemaSummary(connStr);
   });
 
 export const getTableDetails = os
   .input(getTableDetailsSchema)
   .handler(async ({ input }): Promise<SchemaTableDetails> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await getPgTableDetails(connStr, input.schema, input.table);
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.getTableDetails(connStr, input.schema, input.table);
   });
 
 export const tableListRows = os
   .input(listRowsInputSchema)
   .handler(async ({ input }): Promise<TableRowsResponse> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.tableRef.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await listRows(
+    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.listRows(
       connStr,
       input.tableRef.schema,
       input.tableRef.table,
@@ -285,42 +244,21 @@ export const tableFkLookup = os
 export const getDatabaseInfo = os
   .input(idSchema)
   .handler(async ({ input }): Promise<DatabaseInfo> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.id);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await getPgDatabaseInfo(connStr);
+    const { connStr, connection } = await resolveConnectionString(input.id);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.getDatabaseInfo(connStr);
   });
 
-// DDL Handlers
+// ---------------------------------------------------------------------------
+// DDL handlers (use registry)
+// ---------------------------------------------------------------------------
+
 export const createTable = os
   .input(createTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    const sql = await pgCreateTable(
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.createTable(
       connStr,
       input.schema,
       input.name,
@@ -334,63 +272,27 @@ export const createTable = os
 export const dropTable = os
   .input(dropTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgDropTable(connStr, input.schema, input.name, input.cascade, input.ifExists);
-    return { sql: `DROP TABLE "${input.schema}"."${input.name}"` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.dropTable(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    return { sql };
   });
 
 export const renameTable = os
   .input(renameTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgRenameTable(connStr, input.schema, input.oldName, input.newName);
-    return { sql: `ALTER TABLE "${input.schema}"."${input.oldName}" RENAME TO "${input.newName}"` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.renameTable(connStr, input.schema, input.oldName, input.newName);
+    return { sql };
   });
 
 export const addColumn = os
   .input(addColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgAddColumn(
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.addColumn(
       connStr,
       input.schema,
       input.table,
@@ -400,182 +302,86 @@ export const addColumn = os
       input.column.defaultExpr,
       input.ifNotExists,
     );
-    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" ADD COLUMN "${input.column.name}" ${input.column.dataType}` };
+    return { sql };
   });
 
 export const dropColumn = os
   .input(dropColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgDropColumn(connStr, input.schema, input.table, input.column, input.cascade, input.ifExists);
-    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" DROP COLUMN "${input.column}"` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.dropColumn(connStr, input.schema, input.table, input.column, input.cascade, input.ifExists);
+    return { sql };
   });
 
 export const renameColumn = os
   .input(renameColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgRenameColumn(connStr, input.schema, input.table, input.oldName, input.newName);
-    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" RENAME COLUMN "${input.oldName}" TO "${input.newName}"` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.renameColumn(connStr, input.schema, input.table, input.oldName, input.newName);
+    return { sql };
   });
 
 export const alterColumnType = os
   .input(alterColumnTypeInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgAlterColumnType(connStr, input.schema, input.table, input.column, input.newType, input.usingExpr);
-    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" TYPE ${input.newType}` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.alterColumnType(connStr, input.schema, input.table, input.column, input.newType, input.usingExpr);
+    return { sql };
   });
 
 export const setColumnNullable = os
   .input(setColumnNullableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgSetColumnNullable(connStr, input.schema, input.table, input.column, input.isNullable);
-    return { sql: `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" ${input.isNullable ? "DROP NOT NULL" : "SET NOT NULL"}` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.setColumnNullable(connStr, input.schema, input.table, input.column, input.isNullable);
+    return { sql };
   });
 
 export const setColumnDefault = os
   .input(setColumnDefaultInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgSetColumnDefault(connStr, input.schema, input.table, input.column, input.defaultExpr);
-    return { sql: input.defaultExpr
-      ? `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" SET DEFAULT ${input.defaultExpr}`
-      : `ALTER TABLE "${input.schema}"."${input.table}" ALTER COLUMN "${input.column}" DROP DEFAULT`
-    };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.setColumnDefault(connStr, input.schema, input.table, input.column, input.defaultExpr);
+    return { sql };
   });
 
 export const createIndex = os
   .input(createIndexInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
     const indexName = input.name || `${input.table}_${input.columns.join("_")}_idx`;
-    await pgCreateIndex(connStr, input.schema, input.table, indexName, input.columns, input.unique, input.ifNotExists);
-    return { sql: `CREATE INDEX ${indexName} ON "${input.schema}"."${input.table}" (${input.columns.join(", ")})` };
+    const sql = await driver.createIndex(connStr, input.schema, input.table, indexName, input.columns, input.unique, input.ifNotExists);
+    return { sql };
   });
 
 export const dropIndex = os
   .input(dropIndexInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgDropIndex(connStr, input.schema, input.name, input.cascade, input.ifExists);
-    return { sql: `DROP INDEX "${input.schema}"."${input.name}"` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.dropIndex(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    return { sql };
   });
 
 export const createSchema = os
   .input(createSchemaInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    await pgCreateSchema(connStr, input.name, input.ifNotExists);
-    return { sql: `CREATE SCHEMA "${input.name}"` };
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.createSchema(connStr, input.name, input.ifNotExists);
+    return { sql };
   });
 
-// Local DB Handlers
+// ---------------------------------------------------------------------------
+// Local DB handlers (PostgreSQL-only, unchanged)
+// ---------------------------------------------------------------------------
+
 export const listLocalDatabases = os.handler(async (): Promise<LocalDbInfo[]> => {
   return await localDbManager.list();
 });
@@ -654,25 +460,16 @@ export const findAvailablePort = os.handler(async (): Promise<number> => {
   return await localDbManager.findAvailablePort();
 });
 
-// Clone to Local Handlers
+// ---------------------------------------------------------------------------
+// Clone to Local handlers (PostgreSQL-only, use pg-client directly)
+// ---------------------------------------------------------------------------
+
 export const exportSchemaDdl = os
   .input(idSchema)
   .handler(async ({ input }): Promise<ExportSchemaResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.id);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    const result = await pgExportSchemaDdl(connStr);
+    const { connStr, connection } = await resolveConnectionString(input.id);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const result = await driver.exportSchemaDdl(connStr);
     return {
       scripts: result.scripts as ExportSchemaResult["scripts"],
       tableRowCounts: result.tableRowCounts,
@@ -682,21 +479,9 @@ export const exportSchemaDdl = os
 export const exportTableData = os
   .input(exportTableDataSchema)
   .handler(async ({ input }): Promise<ExportTableDataResult> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await pgExportTableData(
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.exportTableData(
       connStr,
       input.schema,
       input.table,
@@ -708,27 +493,25 @@ export const exportTableData = os
 export const executeBatchDdl = os
   .input(executeBatchDdlSchema)
   .handler(async ({ input }): Promise<{ errors: Array<{ sql: string; error: string }> }> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await pgExecuteBatchDdl(connStr, input.statements);
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.executeBatchDdl(connStr, input.statements);
   });
 
 export const waitForDatabase = os
   .input(waitForDatabaseSchema)
   .handler(async ({ input }): Promise<void> => {
-    await pgWaitForDatabase(
+    // waitForDatabase uses a connection string directly — resolve the driver from it
+    let dbType: DatabaseType = "postgresql";
+    try {
+      const protocol = new URL(input.connectionString).protocol.toLowerCase();
+      if (protocol === "mysql:") dbType = "mysql";
+      else if (protocol === "mariadb:") dbType = "mariadb";
+    } catch {
+      // default to postgresql
+    }
+    const driver = driverRegistry.get(dbType);
+    await driver.waitForDatabase(
       input.connectionString,
       input.maxRetries,
       input.intervalMs,
@@ -738,21 +521,9 @@ export const waitForDatabase = os
 export const importTableRows = os
   .input(importTableRowsSchema)
   .handler(async ({ input }): Promise<number> => {
-    const connections = await loadConnections();
-    const connection = connections.find((c) => c.id === input.connectionId);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-    const connStr = buildConnectionString({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      username: connection.username,
-      password: connection.password,
-      ssl_mode: connection.ssl_mode,
-      url: connection.url,
-    });
-    return await pgImportTableRows(
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.importTableRows(
       connStr,
       input.schema,
       input.table,

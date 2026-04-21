@@ -1,4 +1,7 @@
 // Types migrated from dblocal - Database connection and schema types
+
+export type DatabaseType = "postgresql" | "mysql" | "mariadb";
+
 export type SslMode =
   | "disable"
   | "prefer"
@@ -9,6 +12,7 @@ export type SslMode =
 export interface Connection {
   id: string;
   name: string;
+  db_type: DatabaseType;
   host: string;
   port: number;
   database: string;
@@ -18,6 +22,8 @@ export interface Connection {
   url?: string;
   is_local?: boolean;
   connection_string?: string;
+  engine_version?: string; // Renamed from postgres_version for multi-db support
+  /** @deprecated Use engine_version instead */
   postgres_version?: string;
   tag?: string;
   color?: string;
@@ -26,6 +32,8 @@ export interface Connection {
 
 export type ConnectionInput = Omit<Connection, "id"> & {
   id?: string;
+  /** Optional — defaults to "postgresql" for backward compatibility */
+  db_type?: DatabaseType;
 };
 
 export interface LocalDbInfo {

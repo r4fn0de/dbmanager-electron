@@ -18,15 +18,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Connection, ConnectionInput, SslMode } from "@/ipc/db/types";
+import type { Connection, ConnectionInput, DatabaseType, SslMode } from "@/ipc/db/types";
 
-const SSL_MODES: { value: SslMode; label: string }[] = [
-  { value: "disable", label: "Disable" },
-  { value: "prefer", label: "Prefer" },
-  { value: "require", label: "Require" },
-  { value: "verify_ca", label: "Verify CA" },
-  { value: "verify_full", label: "Verify Full" },
+const DB_TYPE_OPTIONS: { value: DatabaseType; label: string; description: string }[] = [
+  { value: "postgresql", label: "PostgreSQL", description: "PostgreSQL, Neon, Supabase" },
+  { value: "mysql", label: "MySQL", description: "MySQL 5.7+ / 8.0+" },
+  { value: "mariadb", label: "MariaDB", description: "MariaDB 10.x+" },
 ];
+
+const SSL_MODES: { value: SslMode; label: string; dbTypes: DatabaseType[] }[] = [
+  { value: "disable", label: "Disable", dbTypes: ["postgresql", "mysql", "mariadb"] },
+  { value: "prefer", label: "Prefer", dbTypes: ["postgresql", "mysql", "mariadb"] },
+  { value: "require", label: "Require", dbTypes: ["postgresql", "mysql", "mariadb"] },
+  { value: "verify_ca", label: "Verify CA", dbTypes: ["postgresql", "mysql", "mariadb"] },
+  { value: "verify_full", label: "Verify Full", dbTypes: ["postgresql", "mysql", "mariadb"] },
+];
+
+const DB_DEFAULTS: Record<DatabaseType, { port: number; database: string; username: string }> = {
+  postgresql: { port: 5432, database: "postgres", username: "postgres" },
+  mysql: { port: 3306, database: "mysql", username: "root" },
+  mariadb: { port: 3306, database: "mysql", username: "root" },
+};
 
 interface ConnectionFormProps {
   connection: Connection | null;
@@ -46,19 +58,24 @@ const DEFAULT_CONNECTION: ConnectionInput = {
   username: "postgres",
   password: "",
   ssl_mode: "prefer",
+  db_type: "postgresql",
 };
 
 type InputMode = "fields" | "url";
 
-function extractDatabaseNameFromUrl(connectionUrl: string): string | null {
+function extractDatabaseNameFromUrl(connectionUrl: string): { database: string | null; dbType: DatabaseType | null } {
   try {
     const parsed = new URL(connectionUrl.trim());
-    const isPostgresProtocol = parsed.protocol === "postgres:" || parsed.protocol === "postgresql:";
-    if (!isPostgresProtocol) return null;
-    const database = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
-    return database || "postgres";
+    const protocol = parsed.protocol.toLowerCase();
+    let dbType: DatabaseType | null = null;
+    if (protocol === "postgres:" || protocol === "postgresql:") dbType = "postgresql";
+    else if (protocol === "mysql:") dbType = "mysql";
+    else if (protocol === "mariadb:") dbType = "mariadb";
+    if (!dbType) return { database: null, dbType: null };
+    const database = decodeURIComponent(parsed.pathname).replace(/^\/+/, "") || DB_DEFAULTS[dbType].database;
+    return { database, dbType };
   } catch {
-    return null;
+    return { database: null, dbType: null };
   }
 }
 
@@ -78,7 +95,9 @@ export function ConnectionForm({
     success: boolean;
     message: string;
   } | null>(null);
-  const detectedDatabase = extractDatabaseNameFromUrl(urlValue);
+  const detected = extractDatabaseNameFromUrl(urlValue);
+  const detectedDatabase = detected.database;
+  const detectedDbType = detected.dbType;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -86,6 +105,7 @@ export function ConnectionForm({
       setFormData({
         id: connection.id,
         name: connection.name,
+        db_type: connection.db_type || "postgresql",
         host: connection.host,
         port: connection.port,
         database: connection.database,
@@ -94,6 +114,7 @@ export function ConnectionForm({
         ssl_mode: connection.ssl_mode,
         is_local: connection.is_local,
         connection_string: connection.connection_string,
+        engine_version: connection.engine_version,
         postgres_version: connection.postgres_version,
         tag: connection.tag,
         color: connection.color,
@@ -151,13 +172,26 @@ export function ConnectionForm({
     setTestStatus(null);
   };
 
+  const handleDbTypeChange = (newType: DatabaseType) => {
+    const defaults = DB_DEFAULTS[newType];
+    setFormData((prev) => ({
+      ...prev,
+      db_type: newType,
+      port: prev.host === "localhost" && (prev.port === 5432 || prev.port === 3306) ? defaults.port : prev.port,
+      database: ["postgres", "mysql", "mariadb"].includes(prev.database) ? defaults.database : prev.database,
+      username: ["postgres", "root"].includes(prev.username) ? defaults.username : prev.username,
+    }));
+    setTestStatus(null);
+  };
+
   const handleUrlChange = (value: string) => {
     setUrlValue(value);
     setTestStatus(null);
-    const parsedDatabase = extractDatabaseNameFromUrl(value);
+    const { database: parsedDatabase, dbType: parsedDbType } = extractDatabaseNameFromUrl(value);
     if (!parsedDatabase) return;
     setFormData((prev) => ({
       ...prev,
+      ...(parsedDbType ? { db_type: parsedDbType } : {}),
       database: parsedDatabase,
       name: !connection && !prev.name.trim() ? parsedDatabase : prev.name,
     }));
@@ -169,7 +203,7 @@ export function ConnectionForm({
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{connection ? "Edit Connection" : "New Connection"}</DialogTitle>
-            <DialogDescription>Configure your PostgreSQL connection. Test before saving.</DialogDescription>
+            <DialogDescription>Configure your database connection. Test before saving.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -180,9 +214,28 @@ export function ConnectionForm({
             >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="fields">Connection Details</TabsTrigger>
-                <TabsTrigger value="url">URL (Neon/Supabase)</TabsTrigger>
+                <TabsTrigger value="url">URL</TabsTrigger>
               </TabsList>
             </Tabs>
+
+            <div className="grid gap-2">
+              <Label>Database Type</Label>
+              <Select
+                value={formData.db_type || "postgresql"}
+                onValueChange={(value) => handleDbTypeChange(value as DatabaseType)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DB_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label} — {opt.description}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="grid gap-2">
               <Label>Name</Label>
@@ -199,16 +252,21 @@ export function ConnectionForm({
                 <Label>Connection URL</Label>
                 <textarea
                   className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="postgresql://user:password@host:port/database?sslmode=require"
+                  placeholder={`${formData.db_type === "mysql" ? "mysql" : formData.db_type === "mariadb" ? "mariadb" : "postgresql"}://user:password@host:port/database?sslmode=require`}
                   value={urlValue}
                   onChange={(e) => handleUrlChange(e.target.value)}
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Paste your Neon, Supabase, or other PostgreSQL connection string
+                  Paste your connection string (Neon, Supabase, PlanetScale, etc.)
                 </p>
                 {detectedDatabase && (
-                  <p className="text-xs text-muted-foreground">Database detected: {detectedDatabase}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Database detected: {detectedDatabase}
+                    {detectedDbType && (
+                      <span className="ml-1 text-primary">({detectedDbType})</span>
+                    )}
+                  </p>
                 )}
               </div>
             ) : (
@@ -231,7 +289,7 @@ export function ConnectionForm({
                       max={65535}
                       value={formData.port}
                       onChange={(e) =>
-                        updateField("port", Number.parseInt(e.target.value, 10) || 5432)
+                        updateField("port", Number.parseInt(e.target.value, 10) || DB_DEFAULTS[formData.db_type || "postgresql"].port)
                       }
                       required
                     />
@@ -241,7 +299,7 @@ export function ConnectionForm({
                 <div className="grid gap-2">
                   <Label>Database</Label>
                   <Input
-                    placeholder="postgres"
+                    placeholder={DB_DEFAULTS[formData.db_type || "postgresql"].database}
                     value={formData.database}
                     onChange={(e) => updateField("database", e.target.value)}
                     required
@@ -252,7 +310,7 @@ export function ConnectionForm({
                   <div className="grid gap-2">
                     <Label>Username</Label>
                     <Input
-                      placeholder="postgres"
+                      placeholder={DB_DEFAULTS[formData.db_type || "postgresql"].username}
                       value={formData.username}
                       onChange={(e) => updateField("username", e.target.value)}
                       required
@@ -279,11 +337,13 @@ export function ConnectionForm({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {SSL_MODES.map((mode) => (
-                        <SelectItem key={mode.value} value={mode.value}>
-                          {mode.label}
-                        </SelectItem>
-                      ))}
+                      {SSL_MODES
+                        .filter((mode) => mode.dbTypes.includes(formData.db_type || "postgresql"))
+                        .map((mode) => (
+                          <SelectItem key={mode.value} value={mode.value}>
+                            {mode.label}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

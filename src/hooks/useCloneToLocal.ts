@@ -196,6 +196,7 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
         const localConnection: Connection = {
           id: localDb.id,
           name: localDb.name,
+          db_type: "postgresql",
           host: "localhost",
           port: localDb.port ?? 5432,
           database: localDb.database_name || "postgres",
@@ -205,6 +206,7 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           url: localDb.connection_string,
           is_local: true,
           connection_string: localDb.connection_string,
+          engine_version: localDb.postgres_version ?? postgresVersion ?? "16.13.0",
           postgres_version: localDb.postgres_version ?? postgresVersion ?? "16.13.0",
           local_auto_start: localDb.auto_start,
         };
@@ -212,6 +214,7 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
         const connectionInput: ConnectionInput = {
           id: localConnection.id,
           name: localConnection.name,
+          db_type: localConnection.db_type,
           host: localConnection.host,
           port: localConnection.port,
           database: localConnection.database,
@@ -221,6 +224,7 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           url: localConnection.url,
           is_local: localConnection.is_local,
           connection_string: localConnection.connection_string,
+          engine_version: localConnection.engine_version,
           postgres_version: localConnection.postgres_version,
           local_auto_start: localConnection.local_auto_start,
         };

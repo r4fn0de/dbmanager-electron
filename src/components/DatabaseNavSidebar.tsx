@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
+import { MySql } from "@/components/icons/MySql";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -51,6 +52,8 @@ const NAV_ITEMS: {
 function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; isLocal?: boolean }) {
   if (provider === "neon") return <Neon className="h-[18px] w-[18px]" />;
   if (provider === "supabase") return <Supabase className="h-[18px] w-[18px]" />;
+  if (provider === "mysql") return <MySql className="h-[18px] w-[18px]" />;
+  if (provider === "mariadb") return <MySql className="h-[18px] w-[18px]" />;
   if (isLocal) return <HardDrive className="h-[18px] w-[18px] text-emerald-500" />;
   return <Database className="h-[18px] w-[18px] text-muted-foreground" />;
 }

@@ -131,6 +131,7 @@ function Home() {
       const localConnection: ConnectionInput = {
         id: db.id,
         name: db.name,
+        db_type: "postgresql",
         host: "localhost",
         port: db.port ?? input.port,
         database: db.database_name || input.databaseName,
@@ -140,6 +141,7 @@ function Home() {
         url: db.connection_string,
         is_local: true,
         connection_string: db.connection_string,
+        engine_version: db.postgres_version ?? input.postgresVersion,
         postgres_version: db.postgres_version ?? input.postgresVersion,
         tag: input.tag,
         color: input.color,

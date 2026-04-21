@@ -543,12 +543,18 @@ export function DatabasePageContent({
     }
   };
 
+  const buildConnStr = useCallback(() => {
+    if (!connection) return "";
+    if (connection.url) return connection.url;
+    const protocol = connection.db_type === "mysql" || connection.db_type === "mariadb" ? "mysql" : "postgres";
+    const sslParam = protocol === "mysql" ? `ssl=${connection.ssl_mode === "disable" ? "false" : "true"}` : `sslmode=${connection.ssl_mode}`;
+    return `${protocol}://${connection.username}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?${sslParam}`;
+  }, [connection]);
+
   const handleCopyConnectionString = async () => {
     if (!connection) return;
     try {
-      const connStr = connection.url ||
-        `postgres://${connection.username}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?sslmode=${connection.ssl_mode}`;
-      await navigator.clipboard.writeText(connStr);
+      await navigator.clipboard.writeText(buildConnStr());
       setCopyConnFeedback("copied");
       setTimeout(() => setCopyConnFeedback(null), 2000);
     } catch {
@@ -560,9 +566,7 @@ export function DatabasePageContent({
   const handleCopyConnection = async () => {
     if (!connection) return;
     try {
-      const connStr = connection.url ||
-        `postgres://${connection.username}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?sslmode=${connection.ssl_mode}`;
-      await navigator.clipboard.writeText(connStr);
+      await navigator.clipboard.writeText(buildConnStr());
       setCopyFeedback("copied");
       toast.success("Connection string copied");
     } catch {
@@ -989,7 +993,7 @@ export function DatabasePageContent({
               onViewTables={() => changeSection("tables")}
               onStartLocalDb={handleStartLocalDb}
               onPauseLocalDb={handlePauseLocalDb}
-              connectionString={connection.url || `postgres://${connection.username}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?sslmode=${connection.ssl_mode}`}
+              connectionString={buildConnStr()}
               copyConnectionStringFeedback={copyConnFeedback}
               onCopyConnectionString={handleCopyConnectionString}
             />

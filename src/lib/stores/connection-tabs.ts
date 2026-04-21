@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type ConnectionProvider = "neon" | "supabase" | "url" | "direct";
+export type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "url" | "direct";
 export type ConnectionTabChrome = "tables-sidebar" | "sql-sidebar";
 
 export type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
@@ -52,6 +52,7 @@ export function resolveProviderHost(conn: {
 export function detectConnectionProvider(conn: {
   url?: string;
   host: string;
+  db_type?: string;
 }): ConnectionProvider {
   const host = resolveProviderHost(conn);
 
@@ -67,6 +68,10 @@ export function detectConnectionProvider(conn: {
     return "supabase";
   }
 
+  // Detect by db_type for MySQL/MariaDB
+  if (conn.db_type === "mysql") return "mysql";
+  if (conn.db_type === "mariadb") return "mariadb";
+
   return conn.url ? "url" : "direct";
 }
 
@@ -78,6 +83,7 @@ export function buildConnectionTab(conn: {
   color?: string;
   url?: string;
   host: string;
+  db_type?: string;
 }): ConnectionTab {
   return {
     id: conn.id,

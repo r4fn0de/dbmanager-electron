@@ -1,11 +1,19 @@
 import z from "zod";
 import type {
+  DatabaseType,
   SslMode,
   ColumnDefinition,
   TableSort,
   TableFilter,
   TableRef,
 } from "./types";
+
+// Database type schema
+export const databaseTypeSchema = z.enum([
+  "postgresql",
+  "mysql",
+  "mariadb",
+]) as z.ZodType<DatabaseType>;
 
 // Connection schemas
 export const sslModeSchema = z.enum([
@@ -19,6 +27,7 @@ export const sslModeSchema = z.enum([
 export const connectionInputSchema = z.object({
   id: z.string().optional(),
   name: z.string(),
+  db_type: databaseTypeSchema.optional().default("postgresql"),
   host: z.string(),
   port: z.number(),
   database: z.string(),
@@ -28,6 +37,7 @@ export const connectionInputSchema = z.object({
   url: z.string().optional(),
   is_local: z.boolean().optional(),
   connection_string: z.string().optional(),
+  engine_version: z.string().optional(),
   postgres_version: z.string().optional(),
   tag: z.string().optional(),
   color: z.string().optional(),

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
+import { MySql } from "@/components/icons/MySql";
 import type { Connection, LocalDbInfo } from "@/ipc/db/types";
 
 interface ConnectionListProps {
@@ -38,7 +39,7 @@ interface ConnectionListProps {
   onCloneToLocal?: (connection: Connection) => void;
 }
 
-type ConnectionProvider = "neon" | "supabase" | "url" | "direct";
+type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "url" | "direct";
 
 function resolveProviderHost(connection: Connection): string {
   if (connection.url) {
@@ -56,17 +57,26 @@ function detectConnectionProvider(connection: Connection): ConnectionProvider {
   if (host.includes("neon.tech")) return "neon";
   if (host.includes("supabase.co") || host.includes("supabase.com"))
     return "supabase";
+  // Detect by db_type for MySQL/MariaDB
+  if (connection.db_type === "mysql") return "mysql";
+  if (connection.db_type === "mariadb") return "mariadb";
   return connection.url ? "url" : "direct";
 }
 
-function connectionCopyValue(connection: Connection): string {
+function buildConnectionStringFromConnection(connection: Connection): string {
   if (connection.connection_string) return connection.connection_string;
   if (connection.url) return connection.url;
   const username = encodeURIComponent(connection.username);
   const password = encodeURIComponent(connection.password);
   const hasPassword = connection.password.length > 0;
   const auth = hasPassword ? `${username}:${password}` : username;
-  return `postgresql://${auth}@${connection.host}:${connection.port}/${connection.database}?sslmode=${connection.ssl_mode}`;
+  const protocol = connection.db_type === "mysql" || connection.db_type === "mariadb" ? "mysql" : "postgresql";
+  const sslParam = protocol === "mysql" ? `ssl=${connection.ssl_mode === "disable" ? "false" : "true"}` : `sslmode=${connection.ssl_mode}`;
+  return `${protocol}://${auth}@${connection.host}:${connection.port}/${connection.database}?${sslParam}`;
+}
+
+function connectionCopyValue(connection: Connection): string {
+  return buildConnectionStringFromConnection(connection);
 }
 
 function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
@@ -75,6 +85,10 @@ function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
       return <Neon className="h-4 w-4 shrink-0" />;
     case "supabase":
       return <Supabase className="h-4 w-4 shrink-0" />;
+    case "mysql":
+      return <MySql className="h-4 w-4 shrink-0" />;
+    case "mariadb":
+      return <MySql className="h-4 w-4 shrink-0" />;
     case "url":
       return <Globe className="h-4 w-4 shrink-0 text-muted-foreground/50" />;
     default:
@@ -377,7 +391,7 @@ export function ConnectionList({
           No connections yet
         </p>
         <p className="text-xs text-muted-foreground/60 mb-4 max-w-[220px]">
-          Add a remote database or create a local PostgreSQL instance to get
+          Add a database connection (PostgreSQL, MySQL, MariaDB) or create a local instance to get
           started.
         </p>
         <Button size="sm" onClick={onAdd}>

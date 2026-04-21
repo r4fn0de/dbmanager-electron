@@ -38,6 +38,10 @@ import {
   importTableRows,
 } from "./handlers";
 
+export { driverRegistry, registerDrivers } from "./registry";
+export type { DatabaseDriver, DriverConnectionConfig } from "./driver";
+export type { DatabaseType } from "./types";
+
 export const db = {
   // Connections
   listConnections,

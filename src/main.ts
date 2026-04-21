@@ -10,6 +10,7 @@ import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, inDevelopment } from "./constants";
 import { getBasePath } from "./utils/path";
 import { localDbManager } from "./ipc/db/local-db-manager";
+import { registerDrivers } from "./ipc/db/registry";
 import { APP_DISPLAY_NAME } from "./appBranding";
 
 function createWindow() {
@@ -129,6 +130,8 @@ app.whenReady().then(async () => {
     await installExtensions();
     checkForUpdates();
     await setupORPC();
+    // Register database drivers (PostgreSQL, MySQL, MariaDB)
+    await registerDrivers();
     // Hydrate local databases (auto-start instances that were running before)
     await localDbManager.hydrate();
   } catch (error) {
