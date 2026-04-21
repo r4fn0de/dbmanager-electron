@@ -6,24 +6,9 @@ import {
   Play,
   Settings,
 } from "lucide-react";
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  AddColumnDialog,
-  AlterColumnTypeDialog,
-  CreateIndexDialog,
-  CreateSchemaDialog,
-  CreateTableDialog,
-  DropColumnDialog,
-  DropTableDialog,
-  ImportCsvDialog,
-  RenameColumnDialog,
-  RenameTableDialog,
-  SetColumnDefaultDialog,
-  SetColumnNullableDialog,
-} from "@/components/TableDdlDialogs";
-import { RlsPoliciesDialog } from "@/components/RlsPoliciesDialog";
 import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
@@ -47,10 +32,30 @@ import {
 import { DatabaseNavSidebar } from "@/components/DatabaseNavSidebar";
 import { TablesExplorerSidebar } from "@/components/TablesExplorerSidebar";
 import { DatabaseOverview } from "@/components/DatabaseOverview";
-import { SqlEditor } from "@/components/SqlEditor";
 import { TableDataEditor } from "@/components/TableDataEditor";
-import { SchemaVisualizer } from "@/components/SchemaVisualizer";
 import type { SchemaTableSummary, DatabaseInfo, LocalDbInfo, SchemaTableDetails, SchemaPolicy } from "@/ipc/db/types";
+
+// ── Lazy-loaded components ──────────────────────────────────────────
+// Heavy components (~2MB Monaco + ~150KB xyflow/dagre) and rarely-used
+// DDL dialogs are deferred via React.lazy() to reduce initial bundle size.
+// All use named exports → re-export as default for React.lazy().
+
+const SqlEditor = lazy(() => import("@/components/SqlEditor").then((m) => ({ default: m.SqlEditor })));
+const SchemaVisualizer = lazy(() => import("@/components/SchemaVisualizer").then((m) => ({ default: m.SchemaVisualizer })));
+
+const CreateTableDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.CreateTableDialog })));
+const DropTableDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.DropTableDialog })));
+const RenameTableDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.RenameTableDialog })));
+const AddColumnDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.AddColumnDialog })));
+const DropColumnDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.DropColumnDialog })));
+const RenameColumnDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.RenameColumnDialog })));
+const AlterColumnTypeDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.AlterColumnTypeDialog })));
+const SetColumnDefaultDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.SetColumnDefaultDialog })));
+const SetColumnNullableDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.SetColumnNullableDialog })));
+const CreateSchemaDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.CreateSchemaDialog })));
+const CreateIndexDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.CreateIndexDialog })));
+const ImportCsvDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.ImportCsvDialog })));
+const RlsPoliciesDialog = lazy(() => import("@/components/RlsPoliciesDialog").then((m) => ({ default: m.RlsPoliciesDialog })));
 
 type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
 
@@ -406,35 +411,38 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
     });
   }, [connectionId, activeSection, selectedSchema, setTabNavState]);
 
-  // Keyboard shortcuts: 1–5 switch sidebar sections
+  // Stable ref for keyboard handler — avoids re-registering the listener
+  // when changeSection/activeSection/toggleSidebar change (rerender-optimization)
+  const keyboardHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyboardHandlerRef.current = (e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable) return;
+    const el = e.target as HTMLElement;
+    if (el.closest(".monaco-editor, [data-monaco-editor], .cm-editor")) return;
+    if (document.querySelector("[data-radix-select-viewport], [data-radix-popper-content-wrapper]")) return;
+
+    const section = SECTION_SHORTCUTS[e.key];
+    if (section && section !== activeSection) {
+      e.preventDefault();
+      changeSection(section);
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && isTablesSection) {
+      e.preventDefault();
+      toggleSidebar();
+    }
+  };
+
+  // Keyboard shortcuts: 1–5 switch sidebar sections — effect only depends on isActive
   useEffect(() => {
     if (!isActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore when user is typing in an input, textarea, or contentEditable element
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable) return;
-      // Ignore when Monaco editor or similar code editor has focus (class check)
-      const el = e.target as HTMLElement;
-      if (el.closest(".monaco-editor, [data-monaco-editor], .cm-editor")) return;
-      // Ignore when a Radix Select/Menu dropdown is open (portal in body)
-      if (document.querySelector("[data-radix-select-viewport], [data-radix-popper-content-wrapper]")) return;
-
-      const section = SECTION_SHORTCUTS[e.key];
-      if (section && section !== activeSection) {
-        e.preventDefault();
-        changeSection(section);
-        return;
-      }
-
-      // ⌘B to toggle sidebar visibility (only in tables section)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && isTablesSection) {
-        e.preventDefault();
-        toggleSidebar();
-      }
+      keyboardHandlerRef.current(e);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isActive, activeSection, changeSection, isTablesSection, toggleSidebar]);
+  }, [isActive]);
 
   // Clean up initial SQL query after sql-editor renders it (valid Effect:
   // synchronizing with a child component that consumes the one-shot value)
@@ -447,13 +455,18 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refetch();
-    await loadSchema();
-    if (activeSection === "overview") {
-      await loadDatabaseInfo();
-      await loadLocalDbStatus();
+    try {
+      // refetch (connections list) and loadSchema are independent — run in parallel
+      await Promise.all([refetch(), loadSchema()]);
+      if (activeSection === "overview") {
+        // loadDatabaseInfo and loadLocalDbStatus are independent — run in parallel
+        await Promise.all([loadDatabaseInfo(), loadLocalDbStatus()]);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to refresh");
+    } finally {
+      setIsRefreshing(false);
     }
-    setIsRefreshing(false);
   };
 
   const handleTestConnection = async () => {
@@ -707,7 +720,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
 
   return (
     <div className="h-full flex flex-col">
-      <div className="border-x border-b rounded-lg flex-1 flex min-h-0 bg-background overflow-hidden">
+      <div className="flex-1 min-h-0 flex bg-transparent">
         <DatabaseNavSidebar
           connection={connection}
           provider={connectionProvider}
@@ -719,8 +732,9 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
           copyFeedback={copyFeedback}
         />
 
-        {/* Main Content Area */}
-        <div className="flex-1 min-w-0 flex flex-col min-h-0">
+        <div className="border-x border-b rounded-lg flex-1 flex min-h-0 bg-background overflow-hidden">
+          {/* Main Content Area */}
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {isTablesSection && (
             <ResizablePanelGroup
               className="flex-1 min-w-0"
@@ -891,27 +905,29 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
             </ResizablePanelGroup>
           )}
           {isSqlEditorSection && (
-            <SqlEditor
-              key={connectionId}
-              connections={connections}
-              selectedConnection={connectionId}
-              onSelectConnection={(id) => {
-                navigate({ to: "/database/$connectionId", params: { connectionId: id } });
-              }}
-              executeQuery={executeQuery}
-              showWorkspaceSidebar={true}
-              loadRequest={initialSqlQuery ? {
-                key: `query:${Date.now()}`,
-                title: "Query",
-                sql: initialSqlQuery,
-                connectionId: connectionId,
-              } : selectedTableKey ? {
-                key: `table:${selectedTableKey}`,
-                title: `Query: ${selectedTableKey}`,
-                sql: `SELECT * FROM "${selectedTableRef?.schema}"."${selectedTableRef?.name}" LIMIT 100`,
-                connectionId: connectionId,
-              } : null}
-            />
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}>
+              <SqlEditor
+                key={connectionId}
+                connections={connections}
+                selectedConnection={connectionId}
+                onSelectConnection={(id) => {
+                  navigate({ to: "/database/$connectionId", params: { connectionId: id } });
+                }}
+                executeQuery={executeQuery}
+                showWorkspaceSidebar={true}
+                loadRequest={initialSqlQuery ? {
+                  key: `query:${Date.now()}`,
+                  title: "Query",
+                  sql: initialSqlQuery,
+                  connectionId: connectionId,
+                } : selectedTableKey ? {
+                  key: `table:${selectedTableKey}`,
+                  title: `Query: ${selectedTableKey}`,
+                  sql: `SELECT * FROM "${selectedTableRef?.schema}"."${selectedTableRef?.name}" LIMIT 100`,
+                  connectionId: connectionId,
+                } : null}
+              />
+            </Suspense>
           )}
           {isOverviewSection && (
             <DatabaseOverview
@@ -933,32 +949,34 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
             />
           )}
           {isVisualizerSection && (
-            <div className="flex-1 min-w-0 min-h-0">
-              {isLoadingVisualizer ? (
-                <div className="flex h-full items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
-                </div>
-              ) : visualizerTables.length === 0 ? (
-                <div className="flex h-full items-center justify-center">
-                  <p className="text-muted-foreground">No tables to visualize</p>
-                </div>
-              ) : (
-                <SchemaVisualizer
-                  tables={visualizerTables}
-                  schemas={schemas}
-                  currentSchema={selectedSchema}
-                  onSchemaChange={changeSchema}
-                  onTableClick={(schema, table) => {
-                    changeSection("tables");
-                    changeSchema(schema);
-                    changeTable(`${schema}.${table}`);
-                  }}
-                  isLoading={isLoadingVisualizer}
-                  onNavigateToTables={() => changeSection("tables")}
-                />
-              )}
-            </div>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading schema...</span></div>}>
+              <div className="flex-1 min-w-0 min-h-0">
+                {isLoadingVisualizer ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
+                  </div>
+                ) : visualizerTables.length === 0 ? (
+                  <div className="flex h-full items-center justify-center">
+                    <p className="text-muted-foreground">No tables to visualize</p>
+                  </div>
+                ) : (
+                  <SchemaVisualizer
+                    tables={visualizerTables}
+                    schemas={schemas}
+                    currentSchema={selectedSchema}
+                    onSchemaChange={changeSchema}
+                    onTableClick={(schema, table) => {
+                      changeSection("tables");
+                      changeSchema(schema);
+                      changeTable(`${schema}.${table}`);
+                    }}
+                    isLoading={isLoadingVisualizer}
+                    onNavigateToTables={() => changeSection("tables")}
+                  />
+                )}
+              </div>
+            </Suspense>
           )}
           {isSettingsSection && (
             <div className="flex-1 flex items-center justify-center p-8">
@@ -971,7 +989,10 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
             </div>
           )}
         </div>
+        </div>
       </div>
+      {/* Lazy-loaded DDL dialogs — Suspense boundary for all of them */}
+      <Suspense fallback={null}>
       {connection && selectedSchema && (
         <CreateTableDialog
           isOpen={isCreateTableOpen}
@@ -1145,6 +1166,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
           policies={rlsPolicies}
         />
       )}
+      </Suspense>
     </div>
   );
 }

@@ -64,18 +64,18 @@ export function DatabaseNavSidebar({
   copyFeedback = null,
 }: DatabaseNavSidebarProps) {
   const navigate = useNavigate();
-  const colorDot = connection.color || (connection.is_local ? "#22c55e" : undefined);
+  const colorDot = connection.color;
 
   return (
-    <aside className="w-12 min-h-0 bg-sidebar border-r flex flex-col items-center py-2 shrink-0">
+    <aside className="w-12 min-h-0 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground/90">
       {/* ── Connection identity ────────────────────────────── */}
-      <div className="flex flex-col items-center gap-1 px-1.5 mb-1">
+      <div className="flex flex-col items-center gap-1 pl-[1px] pr-1.5 mb-1">
         <Tooltip>
           <TooltipTrigger
             render={
               <button
                 type="button"
-                className="group relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-muted/60"
+                className="group relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-white/10"
                 onClick={() => navigate({ to: "/" })}
               >
                 {/* Color ring */}
@@ -93,7 +93,7 @@ export function DatabaseNavSidebar({
             <div className="flex items-center gap-1.5">
               <span className="font-medium">{connection.name}</span>
               {provider && (
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[11px] text-foreground/55">
                   {provider}
                 </span>
               )}
@@ -103,10 +103,10 @@ export function DatabaseNavSidebar({
       </div>
 
       {/* Separator */}
-      <div className="w-6 h-px bg-border/60 my-1" />
+      <div className="w-6 h-px bg-white/25 my-1" />
 
       {/* ── Navigation ─────────────────────────────────────── */}
-      <nav className="flex flex-col gap-0.5 px-1.5">
+      <nav className="flex flex-col gap-0.5 pl-[1px] pr-1.5">
         {NAV_ITEMS.map(({ section, icon: Icon, label, shortcut }) => {
           const isActive = activeSection === section;
           return (
@@ -121,8 +121,8 @@ export function DatabaseNavSidebar({
                       transition-all duration-150 outline-none
                       focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
                       ${isActive
-                        ? "bg-accent text-accent-foreground border border-border/50"
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        ? "bg-white/20 text-foreground"
+                        : "text-foreground/60 hover:bg-white/16 hover:text-foreground"
                       }
                     `}
                   >
@@ -145,17 +145,17 @@ export function DatabaseNavSidebar({
       <div className="flex-1" />
 
       {/* Separator */}
-      <div className="w-6 h-px bg-border/60 my-1" />
+      <div className="w-6 h-px bg-white/15 my-1" />
 
       {/* ── Bottom actions ─────────────────────────────────── */}
-      <div className="flex flex-col gap-0.5 px-1.5">
+      <div className="flex flex-col gap-0.5 pl-[1px] pr-1.5">
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                className="h-9 w-9 text-foreground/60 hover:text-foreground/95 hover:bg-white/10"
                 onClick={onRefresh}
                 disabled={isRefreshing}
               >
@@ -176,7 +176,7 @@ export function DatabaseNavSidebar({
                     ? "text-emerald-500"
                     : copyFeedback === "failed"
                       ? "text-destructive"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-foreground/60 hover:text-foreground/95 hover:bg-white/10"
                 }`}
                 onClick={onCopyConnection}
               >
@@ -190,7 +190,7 @@ export function DatabaseNavSidebar({
         </Tooltip>
 
         {/* Separator */}
-        <div className="w-6 h-px bg-border/60 my-0.5" />
+        <div className="w-6 h-px bg-white/15 my-1" />
 
         <Tooltip>
           <TooltipTrigger
@@ -198,7 +198,7 @@ export function DatabaseNavSidebar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                className="h-9 w-9 text-foreground/60 hover:text-foreground/95 hover:bg-white/10"
                 onClick={() => navigate({ to: "/" })}
               >
                 <ChevronLeft className="h-[18px] w-[18px]" />

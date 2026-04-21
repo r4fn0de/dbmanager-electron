@@ -111,20 +111,36 @@ export function DatabaseOverview({
   const displayInfoTooltipTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
-  const totalSchemas = schemaSummary?.schemas.length ?? 0;
-  const totalTables = schemaSummary?.tables.length ?? 0;
-  const tablesWithRls =
-    schemaSummary?.tables.filter((t) => t.has_rls).length ?? 0;
-
-  const schemasWithCounts = schemaSummary
-    ? schemaSummary.schemas.map((schema) => ({
-        name: schema,
-        count: schemaSummary.tables.filter((t) => t.schema === schema).length,
-        rlsCount: schemaSummary.tables.filter(
-          (t) => t.schema === schema && t.has_rls,
-        ).length,
-      }))
-    : [];
+  // Single-pass memoized derived values — avoids O(n×m) per render from
+  // repeated .filter() calls inside .map() for each schema.
+  const { totalSchemas, totalTables, tablesWithRls, schemasWithCounts } = useMemo(() => {
+    if (!schemaSummary) return { totalSchemas: 0, totalTables: 0, tablesWithRls: 0, schemasWithCounts: [] as { name: string; count: number; rlsCount: number }[] };
+    let rlsCount = 0;
+    const schemaMap = new Map<string, { count: number; rlsCount: number }>();
+    for (const schema of schemaSummary.schemas) {
+      schemaMap.set(schema, { count: 0, rlsCount: 0 });
+    }
+    for (const table of schemaSummary.tables) {
+      const entry = schemaMap.get(table.schema);
+      if (entry) {
+        entry.count++;
+        if (table.has_rls) {
+          entry.rlsCount++;
+          rlsCount++;
+        }
+      }
+    }
+    const counts = schemaSummary.schemas.map((name) => ({
+      name,
+      ...(schemaMap.get(name) ?? { count: 0, rlsCount: 0 }),
+    }));
+    return {
+      totalSchemas: schemaSummary.schemas.length,
+      totalTables: schemaSummary.tables.length,
+      tablesWithRls: rlsCount,
+      schemasWithCounts: counts,
+    };
+  }, [schemaSummary]);
 
   const shortVersion = databaseInfo?.version?.split(" on ")?.[0] ?? null;
   const colorBadge =

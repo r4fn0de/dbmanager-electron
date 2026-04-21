@@ -1,15 +1,25 @@
 import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+
+// Hydration-safe mounted check — avoids the useEffect + useState pattern
+// that causes an extra render cycle. useSyncExternalStore with a
+// server snapshot of false and client snapshot of true gives us the
+// same result without the intermediate state update.
+const noop = () => {};
+const emptySubscribe = () => noop;
+function useHydrated() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
+}
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useHydrated();
 
   if (!mounted) {
     return (
