@@ -2,73 +2,73 @@
   "scripts": [
     {
       "name": "start",
-      "command": "pnpm start",
+      "command": "bun start",
       "mode": "service",
       "category": "dev"
     },
     {
       "name": "package",
-      "command": "pnpm package",
+      "command": "bun package",
       "mode": "command",
       "category": "other"
     },
     {
       "name": "make",
-      "command": "pnpm make",
+      "command": "bun make",
       "mode": "command",
       "category": "other"
     },
     {
       "name": "publish",
-      "command": "pnpm publish",
+      "command": "bun publish",
       "mode": "command",
       "category": "other"
     },
     {
       "name": "check",
-      "command": "pnpm check",
+      "command": "bun check",
       "mode": "command",
       "category": "typecheck"
     },
     {
       "name": "fix",
-      "command": "pnpm fix",
+      "command": "bun fix",
       "mode": "command",
       "category": "other"
     },
     {
       "name": "bump-ui",
-      "command": "pnpm bump-ui",
+      "command": "bun bump-ui",
       "mode": "command",
       "category": "other"
     },
     {
       "name": "test",
-      "command": "pnpm test",
+      "command": "bun test",
       "mode": "command",
       "category": "test"
     },
     {
       "name": "test:watch",
-      "command": "pnpm test:watch",
+      "command": "bun test:watch",
       "mode": "command",
       "category": "test"
     },
     {
       "name": "test:unit",
-      "command": "pnpm test:unit",
+      "command": "bun test:unit",
       "mode": "command",
       "category": "test"
     },
     {
       "name": "test:e2e",
-      "command": "pnpm test:e2e",
+      "command": "bun test:e2e",
       "mode": "command",
       "category": "test"
     },
     {
       "name": "test:all",
-      "command": "pnpm test:all",
+      "command": "bun test:all",
       "mode": "command",
       "category": "test"
     }

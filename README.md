@@ -68,13 +68,13 @@ Or use it as a template on GitHub
 2. Install dependencies
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Run the app
 
 ```bash
-pnpm run start
+bun run start
 ```
 
 Now you can go directly to `/src/routes/index.tsx` and modify the app as you want.

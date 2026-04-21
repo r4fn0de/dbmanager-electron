@@ -12,20 +12,12 @@ jobs:
       - name: Checkout git repo
         uses: actions/checkout@v6
 
-      - name: Install Node and pnpm
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install and build
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Publish Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm run publish
+        run: bun run publish

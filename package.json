@@ -111,8 +111,6 @@
     "vitest": "^4.1.2"
   },
   "overrides": {
-    "@electron-forge/plugin-fuses": {
-      "@electron/fuses": "^2"
-    }
+    "@electron/fuses": "^2"
   }
 }

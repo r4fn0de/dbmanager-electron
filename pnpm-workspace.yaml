@@ -1,6 +1,0 @@
-allowBuilds:
-  '@embedded-postgres/darwin-arm64': true
-  electron: true
-  electron-winstaller: true
-  esbuild: true
-  msw: true

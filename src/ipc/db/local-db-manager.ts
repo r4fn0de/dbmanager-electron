@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { createConnection } from "node:net";
 import { createRequire } from "node:module";
 import { platform, arch } from "node:os";
+import { spawnSync } from "node:child_process";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import type { LocalDbInfo } from "./types";
 
@@ -183,8 +184,26 @@ export class LocalDbManager {
   private binariesAvailable: boolean | null = null;
 
   /**
+   * Best-effort recovery for environments where dependency postinstall scripts
+   * were skipped and shared-library symlinks were not created.
+   */
+  private tryHydrateSymlinks(pkgPath: string): void {
+    const hydrateScript = join(pkgPath, "scripts", "hydrate-symlinks.js");
+    if (!existsSync(hydrateScript)) return;
+
+    const result = spawnSync(process.execPath, [hydrateScript], {
+      cwd: pkgPath,
+      stdio: "ignore",
+    });
+
+    if (result.error) {
+      console.warn("[local-db] Could not run hydrate-symlinks script:", result.error.message);
+    }
+  }
+
+  /**
    * Verify that the embedded-postgres platform binaries are available.
-   * If binaries are missing (e.g. because `pnpm approve-builds` was never run
+   * If binaries are missing (e.g. because `bun install` was never run
    * and the postinstall scripts didn't execute), throw a clear error with
    * instructions instead of letting embedded-postgres fail with a cryptic message.
    *
@@ -213,7 +232,7 @@ export class LocalDbManager {
       } else {
         throw new Error(
           `PostgreSQL binaries for your platform (${pkgName}) are not installed. ` +
-          `Please run: pnpm install`,
+          `Please run: bun install`,
         );
       }
     }
@@ -245,21 +264,29 @@ export class LocalDbManager {
           try {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const config = runtimeRequire(symlinksConfig) as Array<{ target: string }>;
-            const missingLinks = config.filter(
+            let missingLinks = config.filter(
               // `target` in pg-symlinks.json is relative to package root (e.g. "native/lib/libpq.dylib")
               // so resolve from pkgPath, not libDir.
               (entry) => !existsSync(join(pkgPath, entry.target)),
             );
+
+            if (missingLinks.length > 0) {
+              this.tryHydrateSymlinks(pkgPath);
+              missingLinks = config.filter(
+                (entry) => !existsSync(join(pkgPath, entry.target)),
+              );
+            }
+
             if (missingLinks.length > 0) {
               throw new Error(
                 `PostgreSQL library symlinks are missing. ` +
                 `The postinstall scripts may not have run. ` +
-                `Please run: pnpm approve-builds && pnpm install`,
+                `Please run: bun install --force`,
               );
             }
           } catch (err) {
             // Re-throw our own friendly errors, ignore JSON parse failures
-            if (err instanceof Error && err.message.includes("pnpm approve-builds")) {
+            if (err instanceof Error && err.message.includes("bun install")) {
               throw err;
             }
           }
