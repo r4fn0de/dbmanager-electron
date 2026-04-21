@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Copy, Minus, Plus, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ConnectionTabs,
   useConnectionTabSync,
@@ -12,10 +12,16 @@ import { Button } from "@/components/ui/button";
 type Platform = "macos" | "windows" | "linux" | "unknown";
 
 function detectPlatform(): Platform {
-  const platform = navigator.platform.toLowerCase();
-  if (platform.includes("mac") || platform.includes("darwin")) return "macos";
-  if (platform.includes("win")) return "windows";
-  if (platform.includes("linux")) return "linux";
+  const electronPlatform = window.electron?.platform?.toLowerCase() ?? "";
+  const uaDataPlatform = (
+    navigator as Navigator & { userAgentData?: { platform?: string } }
+  ).userAgentData?.platform?.toLowerCase() ?? "";
+  const uaPlatform = navigator.userAgent.toLowerCase();
+  const platform = electronPlatform || uaDataPlatform || uaPlatform;
+
+  if (platform === "darwin" || platform.includes("mac")) return "macos";
+  if (platform === "win32" || platform.includes("win")) return "windows";
+  if (platform === "linux" || platform.includes("linux")) return "linux";
   return "unknown";
 }
 
@@ -27,12 +33,6 @@ export function TitleBar() {
 
   // Auto-add tabs when navigating to database pages
   useConnectionTabSync();
-
-  // Sync maximize state with Electron window
-  useEffect(() => {
-    // Electron window state sync would go here
-    // For now, just track state locally
-  }, []);
 
   const handleMinimize = () => {
     // Electron minimize - to be implemented with IPC
@@ -63,7 +63,7 @@ export function TitleBar() {
       <button
         type="button"
         onClick={handleOpenConnections}
-        className="shrink-0 h-[37px] px-3 rounded-md text-muted-foreground hover:text-foreground transition-colors no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60"
+        className="shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground hover:text-foreground transition-colors no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60"
         aria-label="Open connections"
         title="Open connections"
       >
@@ -76,7 +76,7 @@ export function TitleBar() {
   if (platform === "macos") {
     return (
       <div className="z-50 select-none">
-        <div className="h-10 bg-background/60 backdrop-blur-md flex items-center pr-3">
+        <div className="h-10 bg-bkacground/5 flex items-center pr-3">
           <div className="w-[78px] shrink-0 h-full draglayer" />
           {tabsSlot}
           <div className="ml-auto flex items-center no-drag pl-2">
@@ -89,7 +89,7 @@ export function TitleBar() {
 
   // Windows / Linux: custom window controls
   return (
-    <div className="z-50 select-none draglayer">
+    <div className="z-50 select-none">
       <div className="h-7 bg-background/20 backdrop-blur-md flex items-center justify-between">
         <div className="min-w-0 flex-1 flex items-center gap-2 px-3">
           <div className="w-4 h-4 rounded bg-primary/20 flex items-center justify-center no-drag">

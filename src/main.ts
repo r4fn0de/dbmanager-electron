@@ -1,5 +1,5 @@
 import path from "node:path";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, nativeTheme } from "electron";
 import { ipcMain } from "electron/main";
 import {
   installExtension,
@@ -105,6 +105,13 @@ async function setupORPC() {
     serverPort.start();
     rpcHandler.upgrade(serverPort);
   });
+
+  ipcMain.on(
+    IPC_CHANNELS.SET_NATIVE_THEME_SOURCE,
+    (_event, themeSource: "system" | "light" | "dark") => {
+      nativeTheme.themeSource = themeSource;
+    }
+  );
 }
 
 function configureAppIdentity(): void {

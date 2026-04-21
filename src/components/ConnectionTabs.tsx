@@ -212,7 +212,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               "transition-colors duration-150",
               isActive
                 ? "text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
-                : "text-muted-foreground",
+                : "text-foreground/80 dark:text-muted-foreground",
               !isActive &&
                 "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60",
               gooeyFilterId &&

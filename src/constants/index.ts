@@ -5,6 +5,7 @@ export const LOCAL_STORAGE_KEYS = {
 
 export const IPC_CHANNELS = {
   START_ORPC_SERVER: "start-orpc-server",
+  SET_NATIVE_THEME_SOURCE: "set-native-theme-source",
 };
 
 export const ENVIRONMENT_VARIABLES = {
