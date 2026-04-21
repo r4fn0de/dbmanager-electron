@@ -8,7 +8,7 @@ import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConnections } from "@/hooks/useConnections";
 import {
   detectConnectionProvider,
@@ -18,8 +18,11 @@ import { cn } from "@/lib/utils";
 import type { ConnectionTab } from "@/lib/stores/connection-tabs";
 
 export function ConnectionTabs() {
-  const { tabs, activeTabId, removeTab, setActiveTab } =
+  const { tabs, activeTabId, removeTab, setActiveTab, reorderTabs } =
     useConnectionTabsStore();
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragSrcIndex = useRef<number | null>(null);
+  const dragSrcWidth = useRef<number>(0);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -144,6 +147,74 @@ export function ConnectionTabs() {
 
   if (tabs.length === 0) return null;
 
+  const isDragging = dragOverIndex !== null;
+  const srcIdx = dragSrcIndex.current;
+  const GAP = 4; // gap-1 = 4px
+
+  // Compute the horizontal offset for a tab at the given index during drag.
+  // Tabs between the source and the hover target shift to create a visual gap
+  // at the drop position, while the source tab becomes invisible.
+  function getDragOffset(tabIndex: number): number {
+    if (!isDragging || srcIdx === null || dragOverIndex === null) return 0;
+    if (tabIndex === srcIdx) return 0; // source stays in DOM position
+
+    const shift = dragSrcWidth.current + GAP;
+
+    if (srcIdx < dragOverIndex) {
+      // Dragging right → tabs between src+1 and target shift left
+      if (tabIndex > srcIdx && tabIndex <= dragOverIndex) return -shift;
+    } else if (srcIdx > dragOverIndex) {
+      // Dragging left → tabs between target and src-1 shift right
+      if (tabIndex >= dragOverIndex && tabIndex < srcIdx) return shift;
+    }
+
+    return 0;
+  }
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    dragSrcIndex.current = index;
+    dragSrcWidth.current = (e.currentTarget as HTMLElement).offsetWidth;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(index));
+    // Delay opacity change so the browser ghost image captures the tab at full opacity
+    requestAnimationFrame(() => {
+      const el = e.currentTarget as HTMLElement;
+      el.style.opacity = "0";
+    });
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    (e.currentTarget as HTMLElement).style.opacity = "";
+    setDragOverIndex(null);
+    dragSrcIndex.current = null;
+    dragSrcWidth.current = 0;
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const related = e.relatedTarget as HTMLElement | null;
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    const from = dragSrcIndex.current;
+    // Reset drag state immediately so transforms are removed in the same render
+    setDragOverIndex(null);
+    dragSrcIndex.current = null;
+    dragSrcWidth.current = 0;
+
+    if (from !== null && from !== dropIndex) {
+      reorderTabs(from, dropIndex);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -152,9 +223,10 @@ export function ConnectionTabs() {
       onWheel={handleWheel}
       className="flex items-center h-full gap-1 overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2"
     >
-      {tabs.map((tab) => {
+      {tabs.map((tab, index) => {
         const isActive = tab.id === effectiveActiveId;
         const colorDot = tab.color || (tab.isLocal ? "#22c55e" : undefined);
+        const dragOffset = getDragOffset(index);
 
         return (
           <div
@@ -165,18 +237,32 @@ export function ConnectionTabs() {
             role="tab"
             tabIndex={isActive ? 0 : -1}
             aria-selected={isActive}
+            draggable
+            onDragStart={(e) => handleDragStart(e, index)}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, index)}
             onClick={() => handleTabClick(tab.id)}
             onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
             onMouseDown={(e) => handleMouseDown(e, tab.id)}
             className={cn(
-              "group relative flex items-center gap-1.5 h-[32px] px-2.5 pr-1 text-xs font-medium transition-all",
+              "group relative flex items-center gap-1.5 h-[32px] px-2.5 pr-1 text-xs font-medium",
               "rounded-lg shrink-0 outline-none cursor-default",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+              // Use transition-transform for smooth drag shifts; separate from
+              // the other transitions (bg, color) to avoid lag on hover/click.
+              isDragging
+                ? "transition-transform duration-150 ease-out"
+                : "transition-all",
               isActive
                 ? "bg-background text-foreground"
                 : "text-muted-foreground hover:bg-muted/40",
             )}
-            style={{ overflow: "visible" }}
+            style={{
+              overflow: "visible",
+              transform: dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined,
+            }}
             title={tab.name}
           >
             {tab.provider === "neon" ? (

@@ -107,10 +107,6 @@ function ConnectionCard({
   const displayInfo = isUrl
     ? (connection.url ?? "").replace(/:[^:]*@/, ":****@")
     : `${connection.username}@${connection.host}:${connection.port}/${connection.database}`;
-  const displayColor =
-    connection.color && /^#[0-9a-fA-F]{6}$/.test(connection.color)
-      ? connection.color
-      : "#64748b";
   const [copied, setCopied] = useState(false);
   const [isTogglingState, setIsTogglingState] = useState(false);
   const isStatusKnown = Boolean(localDbInfo);
@@ -141,13 +137,7 @@ function ConnectionCard({
   };
 
   return (
-    <div className="group relative flex items-stretch gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-border hover:bg-muted/40">
-      {/* Color accent bar */}
-      <div
-        className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full transition-opacity opacity-40 group-hover:opacity-100"
-        style={{ backgroundColor: displayColor }}
-      />
-
+    <div className="group relative flex items-stretch gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/80">
       {/* Click area — name, provider, info */}
       <button
         type="button"

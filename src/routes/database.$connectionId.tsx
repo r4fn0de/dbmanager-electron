@@ -117,7 +117,7 @@ export function DatabasePageContent({ connectionId, isActive = true }: DatabaseP
 
   const storedTab = tabs.find((t) => t.id === connectionId);
   const [activeSection, setActiveSection] = useState<SidebarSection>(
-    storedTab?.lastSection ?? "tables"
+    storedTab?.lastSection ?? "overview"
   );
   const [selectedSchema, setSelectedSchema] = useState<string>(
     storedTab?.lastSchema ?? "public"

@@ -27,6 +27,7 @@ interface ConnectionTabsState {
   updateTab: (id: string, data: Partial<Omit<ConnectionTab, "id">>) => void;
   setTabSection: (id: string, section: SidebarSection) => void;
   setTabNavState: (id: string, state: { section: SidebarSection; schema?: string; table?: string }) => void;
+  reorderTabs: (fromIndex: number, toIndex: number) => void;
   clearTabs: () => void;
 }
 
@@ -148,6 +149,14 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
               : t,
           ),
         })),
+
+      reorderTabs: (fromIndex, toIndex) =>
+        set((state) => {
+          const next = [...state.tabs];
+          const [moved] = next.splice(fromIndex, 1);
+          next.splice(toIndex, 0, moved);
+          return { tabs: next };
+        }),
 
       clearTabs: () => set({ tabs: [], activeTabId: null }),
     }),
