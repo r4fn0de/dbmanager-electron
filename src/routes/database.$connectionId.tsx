@@ -126,7 +126,7 @@ export function DatabasePageContent({
     connections,
     refetch,
   } = useConnectionsList();
-  const { start: startLocalDb, pause: pauseLocalDb, getStatus: getLocalDbStatus } = useLocalDatabases();
+  const { start: startLocalDb, pause: pauseLocalDb, databases: localDatabases, isLoading: isLoadingLocalDatabases, invalidateCache } = useLocalDatabases();
   const { setTabNavState, updateTab, tabs } = useConnectionTabsStore();
 
   const storedTab = tabs.find((t) => t.id === connectionId);
@@ -236,8 +236,18 @@ export function DatabasePageContent({
   const [isTogglingLocalDb, setIsTogglingLocalDb] = useState(false);
   const [databaseInfo, setDatabaseInfo] = useState<DatabaseInfo | null>(null);
   const [isLoadingDatabaseInfo, setIsLoadingDatabaseInfo] = useState(false);
-  const [localDbStatus, setLocalDbStatus] = useState<LocalDbInfo | null>(null);
-  const [isLoadingLocalDbStatus, setIsLoadingLocalDbStatus] = useState(false);
+  // connection must be defined BEFORE localDbStatus since it references connection?.is_local
+  const connection = useMemo(
+    () => connections.find((c) => c.id === connectionId),
+    [connections, connectionId],
+  );
+  // Use shared cache data for local db status — stays in sync across all tabs
+  const localDbStatus = useMemo(
+    () => connection?.is_local ? localDatabases.find((db) => db.id === connectionId) ?? null : null,
+    [localDatabases, connectionId, connection?.is_local],
+  );
+  // Use shared cache loading state so loading indicator works during refetch
+  const isLoadingLocalDbStatus = isLoadingLocalDatabases;
   const [copyConnFeedback, setCopyConnFeedback] = useState<null | "copied" | "failed">(null);
   const [isCreateTableOpen, setIsCreateTableOpen] = useState(false);
   const [isCreateSchemaOpen, setIsCreateSchemaOpen] = useState(false);
@@ -296,11 +306,6 @@ export function DatabasePageContent({
     return 0;
   }, [isTablesSection, isSidebarVisible, tablesSidebarWidthPx, isSqlEditorSection, sqlSidebarWidthPx]);
 
-  const connection = useMemo(
-    () => connections.find((c) => c.id === connectionId),
-    [connections, connectionId],
-  );
-
   const connectionProvider = useMemo(
     () => connection ? detectConnectionProvider(connection) : undefined,
     [connection],
@@ -358,24 +363,9 @@ export function DatabasePageContent({
     }
   }, [connectionId]);
 
-  const loadLocalDbStatus = useCallback(async () => {
-    if (!connectionId) return;
-    setIsLoadingLocalDbStatus(true);
-    try {
-      const status = await getLocalDbStatus(connectionId);
-      setLocalDbStatus(status);
-    } catch (error) {
-      console.error("Failed to load local db status", error);
-    } finally {
-      setIsLoadingLocalDbStatus(false);
-    }
-  }, [connectionId, getLocalDbStatus]);
-
   // Load local db status immediately on mount and when tab becomes active
-  useEffect(() => {
-    if (!isActive) return;
-    loadLocalDbStatus();
-  }, [isActive]); // loadLocalDbStatus is stable (no reactive deps)
+  // The status is now derived from the shared cache (localDatabases) so it
+  // stays in sync across all tabs automatically.
 
   // Helpers: update state AND persist to store in the same event handler
   // (instead of separate Effects that watch these values — anti-pattern per React docs)
@@ -424,9 +414,8 @@ export function DatabasePageContent({
     });
     if (section === "overview") {
       loadDatabaseInfo();
-      loadLocalDbStatus();
     }
-  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo, loadLocalDbStatus]);
+  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo]);
 
   const changeSchema = useCallback((schema: string) => {
     setSelectedSchema(schema);
@@ -499,8 +488,7 @@ export function DatabasePageContent({
       // refetch (connections list) and loadSchema are independent — run in parallel
       await Promise.all([refetch(), loadSchema()]);
       if (activeSection === "overview") {
-        // loadDatabaseInfo and loadLocalDbStatus are independent — run in parallel
-        await Promise.all([loadDatabaseInfo(), loadLocalDbStatus()]);
+        loadDatabaseInfo();
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to refresh");
@@ -524,7 +512,7 @@ export function DatabasePageContent({
     setIsTogglingLocalDb(true);
     try {
       await startLocalDb(connectionId);
-      await loadLocalDbStatus();
+      invalidateCache(); // Refresh shared cache so all tabs see the update
       toast.success("Database started");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to start database");
@@ -538,7 +526,7 @@ export function DatabasePageContent({
     setIsTogglingLocalDb(true);
     try {
       await pauseLocalDb(connectionId);
-      await loadLocalDbStatus();
+      invalidateCache(); // Refresh shared cache so all tabs see the update
       toast.success("Database paused");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to pause database");

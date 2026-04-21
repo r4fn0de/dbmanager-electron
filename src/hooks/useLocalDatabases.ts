@@ -28,7 +28,8 @@ interface UseLocalDatabasesReturn {
   remove: (id: string, options?: { refresh?: boolean }) => Promise<void>;
   start: (id: string) => Promise<void>;
   pause: (id: string) => Promise<void>;
-  getStatus: (id: string) => Promise<LocalDbInfo | null>;
+  /** Invalidate the local databases cache so all consumers get fresh data */
+  invalidateCache: () => void;
 }
 
 const LOCAL_DBS_QUERY_KEY = ["local-databases"] as const;
@@ -229,14 +230,11 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     [pauseMutateAsync],
   );
 
-  // getStatus fetches from IPC directly — always returns real-time status
-  const getStatus = useCallback(
-    async (id: string): Promise<LocalDbInfo | null> => {
-      const dbs = await ipc.client.db.listLocalDatabases();
-      return dbs.find((d) => d.id === id) ?? null;
-    },
-    [],
-  );
+  // invalidateCache marks the local databases query as stale so all
+  // consumers (including background tabs) get fresh data on next render.
+  const invalidateCache = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+  }, [queryClient]);
 
   return {
     databases,
@@ -248,6 +246,6 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     remove,
     start,
     pause,
-    getStatus,
+    invalidateCache,
   };
 }
