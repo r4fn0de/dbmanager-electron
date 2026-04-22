@@ -64,7 +64,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -1588,13 +1587,12 @@ export function TableDataEditor({
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="h-full overflow-x-auto">
-            <div className="h-full min-w-max overflow-y-auto">
-              <Table
-                className="min-h-full w-max table-fixed text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
-                onKeyDown={handleTableKeyDown}
-                tabIndex={0}
-              >
+          <div className="h-full overflow-auto">
+            <table
+              className="w-max table-fixed caption-bottom text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
+              onKeyDown={handleTableKeyDown}
+              tabIndex={0}
+            >
               <TableHeader className="sticky top-0 z-10 bg-muted/40 border-b-2 border-border">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="sticky left-0 z-[5] w-12 min-w-12 border-r border-border bg-background px-2 py-1 text-center h-8">
@@ -2042,8 +2040,7 @@ export function TableDataEditor({
                 </TableRow>
               )}
               </TableBody>
-            </Table>
-            </div>
+            </table>
           </div>
         )}
       </div>
