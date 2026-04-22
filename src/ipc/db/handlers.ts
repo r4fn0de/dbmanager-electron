@@ -507,6 +507,7 @@ export const waitForDatabase = os
       const protocol = new URL(input.connectionString).protocol.toLowerCase();
       if (protocol === "mysql:") dbType = "mysql";
       else if (protocol === "mariadb:") dbType = "mariadb";
+      else if (protocol === "clickhouse:" || protocol === "clickhouses:") dbType = "clickhouse";
     } catch {
       // default to postgresql
     }

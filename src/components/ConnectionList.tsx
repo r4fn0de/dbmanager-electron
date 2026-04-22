@@ -24,7 +24,10 @@ import {
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
+import { ClickHouse } from "@/components/icons/ClickHouse";
+import { cn } from "@/utils/tailwind";
 import type { Connection, LocalDbInfo } from "@/ipc/db/types";
+import { getClickhouseEffectivePort } from "@/ipc/db/types";
 
 interface ConnectionListProps {
   connections: Connection[];
@@ -39,7 +42,7 @@ interface ConnectionListProps {
   onCloneToLocal?: (connection: Connection) => void;
 }
 
-type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "url" | "direct";
+type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "url" | "direct";
 
 function resolveProviderHost(connection: Connection): string {
   if (connection.url) {
@@ -57,9 +60,10 @@ function detectConnectionProvider(connection: Connection): ConnectionProvider {
   if (host.includes("neon.tech")) return "neon";
   if (host.includes("supabase.co") || host.includes("supabase.com"))
     return "supabase";
-  // Detect by db_type for MySQL/MariaDB
+  // Detect by db_type for MySQL/MariaDB/ClickHouse
   if (connection.db_type === "mysql") return "mysql";
   if (connection.db_type === "mariadb") return "mariadb";
+  if (connection.db_type === "clickhouse") return "clickhouse";
   return connection.url ? "url" : "direct";
 }
 
@@ -70,9 +74,11 @@ function buildConnectionStringFromConnection(connection: Connection): string {
   const password = encodeURIComponent(connection.password);
   const hasPassword = connection.password.length > 0;
   const auth = hasPassword ? `${username}:${password}` : username;
-  const protocol = connection.db_type === "mysql" || connection.db_type === "mariadb" ? "mysql" : "postgresql";
-  const sslParam = protocol === "mysql" ? `ssl=${connection.ssl_mode === "disable" ? "false" : "true"}` : `sslmode=${connection.ssl_mode}`;
-  return `${protocol}://${auth}@${connection.host}:${connection.port}/${connection.database}?${sslParam}`;
+  const protocol = connection.db_type === "mysql" || connection.db_type === "mariadb" ? "mysql" : connection.db_type === "clickhouse" ? (connection.ssl_mode === "require" ? "clickhouses" : "clickhouse") : "postgresql";
+  const port = connection.db_type === "clickhouse" ? getClickhouseEffectivePort(connection.ssl_mode, connection.port) : connection.port;
+  const sslParam = protocol === "mysql" ? `ssl=${connection.ssl_mode === "disable" ? "false" : "true"}` : protocol.startsWith("clickhouse") ? (connection.ssl_mode === "require" ? "ssl=true" : "") : `sslmode=${connection.ssl_mode}`;
+  const queryPart = sslParam ? `?${sslParam}` : "";
+  return `${protocol}://${auth}@${connection.host}:${port}/${connection.database}${queryPart}`;
 }
 
 function connectionCopyValue(connection: Connection): string {
@@ -82,17 +88,19 @@ function connectionCopyValue(connection: Connection): string {
 function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
   switch (provider) {
     case "neon":
-      return <Neon className="h-4 w-4 shrink-0" />;
+      return <Neon className="size-4 shrink-0" />;
     case "supabase":
-      return <Supabase className="h-4 w-4 shrink-0" />;
+      return <Supabase className="size-4 shrink-0" />;
     case "mysql":
-      return <MySql className="h-4 w-4 shrink-0" />;
+      return <MySql className="size-4 shrink-0" />;
     case "mariadb":
-      return <MySql className="h-4 w-4 shrink-0" />;
+      return <MySql className="size-4 shrink-0" />;
+    case "clickhouse":
+      return <ClickHouse className="size-4 shrink-0" />;
     case "url":
-      return <Globe className="h-4 w-4 shrink-0 text-muted-foreground/50" />;
+      return <Globe className="size-4 shrink-0 text-muted-foreground/50" />;
     default:
-      return <Cable className="h-4 w-4 shrink-0 text-muted-foreground/50" />;
+      return <Cable className="size-4 shrink-0 text-muted-foreground/50" />;
   }
 }
 
@@ -151,7 +159,7 @@ function ConnectionCard({
   };
 
   return (
-    <div className="group relative flex items-stretch gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/80">
+    <div className="group relative flex items-stretch gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-muted/60">
       {/* Click area — name, provider, info */}
       <button
         type="button"
@@ -170,18 +178,18 @@ function ConnectionCard({
           )}
           {isLocal && (
             <span
-              className={`inline-flex items-center gap-1 text-[10px] font-medium ${
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] font-medium",
                 isRunning
                   ? "text-emerald-600 dark:text-emerald-400"
                   : "text-muted-foreground"
-              }`}
+              )}
             >
               <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  isRunning
-                    ? "bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]"
-                    : "bg-muted-foreground/40"
-                }`}
+                className={cn(
+                  "inline-block size-1.5 rounded-full",
+                  isRunning ? "bg-emerald-500" : "bg-muted-foreground/40"
+                )}
               />
               {isRunning ? "Running" : "Stopped"}
             </span>
@@ -193,23 +201,23 @@ function ConnectionCard({
       </button>
 
       {/* Action buttons — visible on hover */}
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 self-center">
+      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 self-center">
         {isLocal && (onStartLocal || onPauseLocal) && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon-xs"
                   onClick={handleToggleLocalState}
                   disabled={isTogglingState || !isStatusKnown}
                 />
               }
             >
               {isRunning ? (
-                <Pause className="h-3.5 w-3.5" />
+                <Pause className="size-3" />
               ) : (
-                <Play className="h-3.5 w-3.5" />
+                <Play className="size-3" />
               )}
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4}>
@@ -223,12 +231,12 @@ function ConnectionCard({
               render={
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon-xs"
                   onClick={() => onCloneToLocal(connection)}
                 />
               }
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="size-3" />
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4}>
               Clone to local
@@ -240,15 +248,15 @@ function ConnectionCard({
             render={
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon-xs"
                 onClick={handleCopy}
               />
             }
           >
             {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-500" />
+              <Check className="size-3 text-emerald-500" />
             ) : (
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="size-3" />
             )}
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={4}>
@@ -260,12 +268,12 @@ function ConnectionCard({
             render={
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon-xs"
                 onClick={() => onEdit(connection)}
               />
             }
           >
-            <Pencil className="h-3.5 w-3.5" />
+            <Pencil className="size-3" />
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={4}>
             Edit connection
@@ -276,13 +284,13 @@ function ConnectionCard({
             render={
               <Button
                 variant="ghost"
-                size="icon-sm"
+                size="icon-xs"
                 className="text-muted-foreground hover:text-destructive"
                 onClick={() => onDelete(connection)}
               />
             }
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="size-3" />
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={4}>
             Delete connection
@@ -295,8 +303,8 @@ function ConnectionCard({
 
 function ConnectionCardSkeleton() {
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5">
-      <Skeleton className="h-4 w-4 rounded shrink-0" />
+    <div className="flex items-center gap-3 px-3 py-2">
+      <Skeleton className="size-4 rounded shrink-0" />
       <div className="flex-1 min-w-0 space-y-1">
         <Skeleton className="h-3.5 w-2/5" />
         <Skeleton className="h-2.5 w-3/4" />
@@ -330,9 +338,9 @@ function ConnectionGroup({
 }) {
   if (connections.length === 0) return null;
   return (
-    <div>
-      <div className="flex items-center gap-1.5 mb-1">
-        <Icon className="h-3 w-3 text-muted-foreground/60" />
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1.5 px-3 py-1">
+        <Icon className="size-3 text-muted-foreground/60" />
         <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
           {label}
         </span>
@@ -340,21 +348,19 @@ function ConnectionGroup({
           {connections.length}
         </span>
       </div>
-      <div className="space-y-0.5">
-        {connections.map((conn) => (
-          <ConnectionCard
-            key={conn.id}
-            connection={conn}
-            localDbInfo={conn.is_local ? localDbById?.[conn.id] : undefined}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onSelect={onSelect}
-            onStartLocal={onStartLocal}
-            onPauseLocal={onPauseLocal}
-            onCloneToLocal={onCloneToLocal}
-          />
-        ))}
-      </div>
+      {connections.map((conn) => (
+        <ConnectionCard
+          key={conn.id}
+          connection={conn}
+          localDbInfo={conn.is_local ? localDbById?.[conn.id] : undefined}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onSelect={onSelect}
+          onStartLocal={onStartLocal}
+          onPauseLocal={onPauseLocal}
+          onCloneToLocal={onCloneToLocal}
+        />
+      ))}
     </div>
   );
 }
@@ -383,19 +389,16 @@ export function ConnectionList({
 
   if (connections.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="rounded-full bg-muted/60 p-3 mb-3">
-          <FolderOpen className="h-5 w-5 text-muted-foreground/60" />
-        </div>
-        <p className="text-sm text-muted-foreground mb-1">
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <FolderOpen className="size-5 text-muted-foreground/30 mb-3" />
+        <p className="text-sm text-muted-foreground">
           No connections yet
         </p>
-        <p className="text-xs text-muted-foreground/60 mb-4 max-w-[220px]">
-          Add a database connection (PostgreSQL, MySQL, MariaDB) or create a local instance to get
-          started.
+        <p className="text-xs text-muted-foreground/50 mt-0.5 mb-4 max-w-[240px]">
+          Add a database connection or create a local instance to get started.
         </p>
-        <Button size="sm" onClick={onAdd}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
+        <Button size="sm" className="h-7 text-xs gap-1" onClick={onAdd}>
+          <Plus className="size-3.5" />
           Add Connection
         </Button>
       </div>
@@ -417,7 +420,7 @@ export function ConnectionList({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <ConnectionGroup
         label="Local"
         icon={Server}

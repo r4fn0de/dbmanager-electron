@@ -13,6 +13,7 @@ export const databaseTypeSchema = z.enum([
   "postgresql",
   "mysql",
   "mariadb",
+  "clickhouse",
 ]) as z.ZodType<DatabaseType>;
 
 // Connection schemas

@@ -22,7 +22,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { ConnectionForm } from "@/components/ConnectionForm";
 import { ConnectionList } from "@/components/ConnectionList";
 import {
@@ -316,67 +315,70 @@ function Home() {
       initial={{ paddingLeft: 24 }}
       animate={{ paddingLeft: 0 }}
       exit={{ paddingLeft: 24 }}
-      transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.36, ease: [0.23, 1, 0.32, 1] }}
     >
-      <div className="border-x border-b rounded-lg flex-1 flex flex-col bg-background overflow-hidden">
-        <div className="max-w-2xl mx-auto w-full px-6 py-6 flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col bg-background rounded-xl ring-1 ring-border/40 overflow-hidden">
+        <div className="max-w-3xl mx-auto w-full px-5 py-5 flex-1 flex flex-col min-h-0 gap-5">
           {/* Page header */}
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight">
-                Databases
-              </h1>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {connections.length === 0
-                  ? "Connect to a database to get started"
-                  : [
-                      remoteCount > 0 && `${remoteCount} remote`,
-                      localCount > 0 && `${localCount} local`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-baseline gap-2.5">
+              <h1 className="text-base font-semibold">Databases</h1>
+              {connections.length > 0 && (
+                <span className="text-[11px] text-muted-foreground/70">
+                  {[
+                    remoteCount > 0 && `${remoteCount} remote`,
+                    localCount > 0 && `${localCount} local`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              )}
             </div>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button size="sm" />}>
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                Add
-              </DropdownMenuTrigger>
+              <DropdownMenuTrigger
+                render={
+                  <Button size="sm" className="h-7 text-xs gap-1">
+                    <Plus className="size-3.5" />
+                    Add
+                  </Button>
+                }
+              />
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={handleAdd}>
-                  <Database className="mr-2 h-4 w-4" />
+                  <Database className="mr-2 size-4" />
                   Remote Connection
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleAddLocalDb}>
-                  <HardDrive className="mr-2 h-4 w-4" />
+                  <HardDrive className="mr-2 size-4" />
                   New Local Database
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
 
-          {/* Search */}
+          {/* Search + filter status */}
           {connections.length > 0 && (
-            <div className="relative mb-3">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Search by name, host, or database…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 pl-8 text-xs"
-              />
+            <div className="flex flex-col gap-1.5">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Search by name, host, or database…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-7 pl-8 text-xs"
+                />
+              </div>
+              {searchQuery && connections.length !== filteredConnections.length && (
+                <p className="text-[11px] text-muted-foreground/70">
+                  Showing {filteredConnections.length} of {connections.length}
+                </p>
+              )}
             </div>
           )}
 
-          {/* Filtered count indicator */}
-          {searchQuery && connections.length !== filteredConnections.length && (
-            <p className="text-[11px] text-muted-foreground mb-2">
-              Showing {filteredConnections.length} of {connections.length}
-            </p>
-          )}
-
-          <Separator className="mb-3" />
+          {/* Divider */}
+          <div className="border-t" />
 
           {/* Connection list */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">

@@ -12,7 +12,7 @@ import type { DatabaseType } from "./types";
 // Identifier quoting helpers
 // ---------------------------------------------------------------------------
 
-/** Quote a single identifier. PostgreSQL → "id", MySQL/MariaDB → `id`. */
+/** Quote a single identifier. PostgreSQL/ClickHouse → "id", MySQL/MariaDB → `id`. */
 export function qi(dbType: DatabaseType, identifier: string): string {
   return dbType === "mysql" || dbType === "mariadb"
     ? `\`${identifier}\``

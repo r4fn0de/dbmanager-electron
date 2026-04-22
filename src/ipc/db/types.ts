@@ -1,6 +1,6 @@
 // Types migrated from dblocal - Database connection and schema types
 
-export type DatabaseType = "postgresql" | "mysql" | "mariadb";
+export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse";
 
 export type SslMode =
   | "disable"
@@ -8,6 +8,11 @@ export type SslMode =
   | "require"
   | "verify_ca"
   | "verify_full";
+
+/** Get the effective port for ClickHouse — switches 8123→8443 when SSL is required. */
+export function getClickhouseEffectivePort(sslMode: SslMode, configuredPort: number): number {
+  return sslMode === "require" && configuredPort === 8123 ? 8443 : configuredPort;
+}
 
 export interface Connection {
   id: string;

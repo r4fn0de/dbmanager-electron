@@ -2,18 +2,19 @@ import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import {
   ChevronLeft,
-  Copy,
-  GitGraph,
-  HardDrive,
-  RefreshCw,
-  Settings,
-  Terminal,
 } from "lucide-react";
 import { Database } from "@/components/icons/Database";
 import { Table } from "@/components/icons/Table";
+import { Terminal } from "@/components/icons/Terminal";
+import { Branch } from "@/components/icons/Branch";
+import { Settings } from "@/components/icons/Settings";
+import { Refresh } from "@/components/icons/Refresh";
+import { Copy } from "@/components/icons/Copy";
+import { Server } from "@/components/icons/Server";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
+import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -45,7 +46,7 @@ const NAV_ITEMS: {
   { section: "overview", icon: Database, label: "Overview", shortcut: "1" },
   { section: "tables", icon: Table, label: "Tables", shortcut: "2" },
   { section: "sql-editor", icon: Terminal, label: "SQL Editor", shortcut: "3" },
-  { section: "visualizer", icon: GitGraph, label: "Visualizer", shortcut: "4" },
+  { section: "visualizer", icon: Branch, label: "Visualizer", shortcut: "4" },
   { section: "settings", icon: Settings, label: "Settings", shortcut: "5" },
 ];
 
@@ -54,7 +55,8 @@ function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; is
   if (provider === "supabase") return <Supabase className="h-[18px] w-[18px]" />;
   if (provider === "mysql") return <MySql className="h-[18px] w-[18px]" />;
   if (provider === "mariadb") return <MySql className="h-[18px] w-[18px]" />;
-  if (isLocal) return <HardDrive className="h-[18px] w-[18px] text-emerald-500" />;
+  if (provider === "clickhouse") return <ClickHouse className="h-[18px] w-[18px]" />;
+  if (isLocal) return <Server className="h-[18px] w-[18px] text-emerald-500" />;
   return <Database className="h-[18px] w-[18px] text-muted-foreground" />;
 }
 
@@ -133,12 +135,16 @@ export function DatabaseNavSidebar({
                       transition-all duration-150 outline-none
                       focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
                       ${isActive
-                        ? "bg-white/20 text-foreground"
-                        : "text-foreground/60 hover:bg-white/16 hover:text-foreground"
+                        ? "bg-white/20"
+                        : "hover:bg-white/16"
                       }
                     `}
                   >
-                    <Icon className="h-[18px] w-[18px]" />
+                    <Icon
+                      className={`h-[18px] w-[18px] ${
+                        isActive ? "text-sidebar-primary" : "text-foreground/60"
+                      }`}
+                    />
                   </button>
                 }
               />
@@ -171,7 +177,7 @@ export function DatabaseNavSidebar({
                 onClick={onRefresh}
                 disabled={isRefreshing}
               >
-                <RefreshCw className={`h-[18px] w-[18px] ${isRefreshing ? "animate-spin" : ""}`} />
+                <Refresh className={`h-[18px] w-[18px] ${isRefreshing ? "animate-spin" : ""}`} />
               </Button>
             }
           />

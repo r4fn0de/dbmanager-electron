@@ -11,6 +11,7 @@ import { IPC_CHANNELS, inDevelopment } from "./constants";
 import { getBasePath } from "./utils/path";
 import { localDbManager } from "./ipc/db/local-db-manager";
 import { registerDrivers } from "./ipc/db/registry";
+import { closeAllPools } from "./ipc/db/kysely-factory";
 import { APP_DISPLAY_NAME } from "./appBranding";
 
 function createWindow() {
@@ -139,9 +140,12 @@ app.whenReady().then(async () => {
   }
 });
 
-// Stop all local DB instances on quit (sync — Electron won't await async handlers)
+// Stop all local DB instances and close database pools on quit
+// (sync — Electron won't await async handlers)
 app.on("will-quit", () => {
   localDbManager.stopAllSync();
+  // Close all memoized database pools (pg, mysql, clickhouse)
+  closeAllPools().catch(() => {});
 });
 
 //osX only

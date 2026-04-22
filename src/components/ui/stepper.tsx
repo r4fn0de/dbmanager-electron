@@ -1,5 +1,6 @@
+import { Check } from "lucide-react";
 import { cn } from "@/utils/tailwind";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { createContext, useContext, useMemo, useRef } from "react";
 
 type Direction = "forward" | "backward";
@@ -7,6 +8,7 @@ type Direction = "forward" | "backward";
 const StepperContext = createContext<{
   active: string;
   direction: Direction;
+  steps?: string[];
 } | null>(null);
 
 function useStepperContext() {
@@ -43,15 +45,19 @@ export function Stepper({
   prevActiveRef.current = active;
 
   return (
-    <StepperContext value={useMemo(() => ({ active, direction }), [active, direction])}>
+    <StepperContext value={useMemo(() => ({ active, direction, steps }), [active, direction, steps])}>
       {children}
     </StepperContext>
   );
 }
 
+/**
+ * Pipeline-style step list with animated progress bar.
+ * Steps shown as compact pills connected by a track that fills as you advance.
+ */
 export function StepperList({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex mb-6 -mx-4 justify-between relative h-10 before:absolute before:-z-10 before:inset-0 before:top-1/2 before:-translate-y-1/2 before:h-0.5 before:w-full before:bg-linear-to-r before:from-transparent before:via-muted-foreground/25 before:to-transparent">
+    <div role="list" className="flex items-center gap-0 mb-5">
       {children}
     </div>
   );
@@ -60,62 +66,96 @@ export function StepperList({ children }: { children: React.ReactNode }) {
 export function StepperTrigger({
   children,
   value,
-  number,
 }: {
   children: React.ReactNode;
   value: string;
-  number: number;
 }) {
-  const { active } = useStepperContext();
+  const { active, steps } = useStepperContext();
   const shouldReduceMotion = useReducedMotion();
-  const popScale = shouldReduceMotion ? 1 : 1.08;
+
+  const stepIndex = steps?.indexOf(value) ?? 0;
+  const activeIndex = steps?.indexOf(active) ?? 0;
+  const isCompleted = stepIndex < activeIndex;
+  const isCurrent = active === value;
+
+  // Determine if this is the last step (no connector after it)
+  const isLast = steps ? stepIndex === steps.length - 1 : false;
 
   return (
-    <div className="flex items-center gap-3 bg-background px-4">
-      <motion.div
+    <>
+      <div
+        role="listitem"
+        aria-current={isCurrent ? "step" : undefined}
         className={cn(
-          "flex size-8 items-center justify-center rounded-full border text-sm font-medium transition-colors",
-          active === value
-            ? "bg-primary text-primary-foreground border-transparent"
-            : "bg-background text-muted-foreground border-border",
-        )}
-        // Emil: "Buttons must feel responsive" — tiny scale pop when becoming active
-        // Full transform string for GPU compositing (same pattern as StepperContent)
-        animate={{ transform: active === value ? `scale(${popScale})` : "scale(1)" }}
-        transition={{ transform: { type: "spring", stiffness: 500, damping: 25 } }}
-      >
-        {number}
-      </motion.div>
-      <span
-        className={cn(
-          "text-sm font-medium transition-colors",
-          active === value ? "text-foreground" : "text-muted-foreground",
+          "flex items-center gap-1.5 rounded-md px-2 py-1",
+          isCurrent && "bg-primary/8",
         )}
       >
-        {children}
-      </span>
-    </div>
+        {/* Step indicator: check for completed, dot for current, ring for upcoming */}
+        <motion.div
+          className={cn(
+            "flex size-5 items-center justify-center rounded-full text-[10px] font-semibold transition-colors duration-200",
+            isCompleted && "bg-primary/15 text-primary",
+            isCurrent && "bg-primary text-primary-foreground ring-2 ring-primary/25",
+            !isCompleted && !isCurrent && "bg-muted text-muted-foreground",
+          )}
+          animate={{
+            transform: isCurrent && !shouldReduceMotion ? "scale(1.08)" : "scale(1)",
+          }}
+          transition={{ transform: { type: "spring", stiffness: 500, damping: 25 } }}
+        >
+          {isCompleted ? (
+            <Check className="size-3" strokeWidth={2.5} />
+          ) : (
+            <span>{stepIndex + 1}</span>
+          )}
+        </motion.div>
+
+        {/* Step label */}
+        <span
+          className={cn(
+            "text-xs font-medium transition-colors duration-200 whitespace-nowrap",
+            isCurrent && "text-foreground",
+            isCompleted && "text-muted-foreground",
+            !isCompleted && !isCurrent && "text-muted-foreground/60",
+          )}
+        >
+          {children}
+        </span>
+      </div>
+
+      {/* Connector line between steps */}
+      {!isLast && (
+        <div className="relative flex-1 min-w-[20px] h-px mx-1.5">
+          {/* Background track */}
+          <div className="absolute inset-0 bg-border rounded-full" />
+          {/* Animated fill — fills up to the current step */}
+          <motion.div
+            className="absolute inset-y-0 left-0 bg-primary/40 rounded-full origin-left"
+            initial={{ scaleX: 0 }}
+            animate={{
+              scaleX: isCompleted ? 1 : isCurrent ? 0.35 : 0,
+            }}
+            transition={{ scaleX: { duration: shouldReduceMotion ? 0 : 0.3, ease: EASE_OUT } }}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
 /**
- * Wraps all StepperContent children in a shared AnimatePresence
- * with a layout-animated container that smoothly transitions height.
- *
- * Uses `mode="popLayout"` so the incoming step immediately occupies
- * layout space (preventing dialog height jumps), while the outgoing
- * step exits as a brief overlay. Subtle blur on exit masks the overlap,
- * making the crossfade feel like a single smooth transformation.
+ * Smooth height container. Layout spring animates height when steps change.
+ * No AnimatePresence — old step unmounts instantly, new step fades in.
+ * This avoids overlap/ghosting from popLayout and looks clean (Linear-style).
  */
 export function StepperBody({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
       layout
-      transition={{ layout: { type: "spring", stiffness: 400, damping: 30 } }}
+      transition={{ layout: { type: "spring", stiffness: 500, damping: 35 } }}
     >
-      <AnimatePresence mode="popLayout">
-        {children}
-      </AnimatePresence>
+      {children}
     </motion.div>
   );
 }
@@ -127,46 +167,15 @@ export function StepperContent({
   value: string;
   children: React.ReactNode;
 }) {
-  const { active, direction } = useStepperContext();
-  const shouldReduceMotion = useReducedMotion();
+  const { active } = useStepperContext();
 
   if (active !== value) return null;
 
-  // Slide direction — forward slides in from right, backward from left.
-  // Reduced motion: skip spatial transforms, keep opacity for comprehension.
-  const slideX = shouldReduceMotion ? 0 : (direction === "forward" ? 12 : -12);
-  const enterScale = shouldReduceMotion ? 1 : 0.95;
-  const exitScale = shouldReduceMotion ? 1 : 0.97;
-  const exitBlur = shouldReduceMotion ? "blur(0px)" : "blur(2px)";
-
-  // Use full `transform` strings instead of shorthand `x`/`scale` props.
-  // Emil: "Framer Motion shorthand x/y/scale use rAF on the main thread.
-  // Full transform strings are GPU-composited and stay smooth under load."
   return (
     <motion.div
-      key={value}
-      className="relative z-[1]"
-      initial={{
-        opacity: 0,
-        transform: `translateX(${slideX}px) scale(${enterScale})`,
-      }}
-      animate={{
-        opacity: 1,
-        transform: "translateX(0px) scale(1)",
-        filter: "blur(0px)",
-      }}
-      exit={{
-        opacity: 0,
-        transform: `translateX(0px) scale(${exitScale})`,
-        filter: exitBlur,
-      }}
-      transition={{
-        // Strong ease-out — starts fast, feels responsive (easing.dev)
-        opacity: { duration: 0.15, ease: EASE_OUT },
-        transform: { duration: 0.2, ease: EASE_OUT },
-        // Blur resolves fast — exit is naturally quicker since transform has no slide
-        filter: { duration: 0.1 },
-      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
     >
       {children}
     </motion.div>

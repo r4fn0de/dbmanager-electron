@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "url" | "direct";
+export type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "url" | "direct";
 export type ConnectionTabChrome = "tables-sidebar" | "sql-sidebar";
 
 export type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
@@ -68,9 +68,10 @@ export function detectConnectionProvider(conn: {
     return "supabase";
   }
 
-  // Detect by db_type for MySQL/MariaDB
+  // Detect by db_type for MySQL/MariaDB/ClickHouse
   if (conn.db_type === "mysql") return "mysql";
   if (conn.db_type === "mariadb") return "mariadb";
+  if (conn.db_type === "clickhouse") return "clickhouse";
 
   return conn.url ? "url" : "direct";
 }

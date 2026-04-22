@@ -38,6 +38,7 @@ class DriverRegistry {
         const protocol = new URL(config.url).protocol.toLowerCase();
         if (protocol === "mysql:") return "mysql";
         if (protocol === "mariadb:") return "mariadb";
+        if (protocol === "clickhouse:" || protocol === "clickhouses:") return "clickhouse";
         if (protocol === "postgres:" || protocol === "postgresql:") return "postgresql";
       } catch {
         // fall through
@@ -62,4 +63,7 @@ export async function registerDrivers(): Promise<void> {
   const { createMysqlDriver, createMariadbDriver } = await import("./mysql-client");
   driverRegistry.register(createMysqlDriver());
   driverRegistry.register(createMariadbDriver());
+
+  const { createClickhouseDriver } = await import("./clickhouse-client");
+  driverRegistry.register(createClickhouseDriver());
 }

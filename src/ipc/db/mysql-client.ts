@@ -7,6 +7,7 @@
 import mysql from "mysql2/promise";
 import type { DatabaseType, SslMode } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
+import { getMysqlPool } from "./kysely-factory";
 import {
   buildAddColumnSql,
   buildAlterColumnTypeSql,
@@ -151,15 +152,20 @@ function mapMySqlType(columnType: string): string {
 // Helper: open a mysql2 connection, run a function, then close it.
 // ---------------------------------------------------------------------------
 
+/**
+ * Run a function with a single connection from the memoized pool.
+ * Replaces the old `withConnection` that created a new connection each time.
+ */
 async function withConnection<T>(
   connectionString: string,
-  fn: (conn: mysql.Connection) => Promise<T>,
+  fn: (conn: mysql.PoolConnection) => Promise<T>,
 ): Promise<T> {
-  const conn = await mysql.createConnection(connectionString);
+  const pool = await getMysqlPool(connectionString);
+  const conn = await pool.getConnection();
   try {
     return await fn(conn);
   } finally {
-    await conn.end().catch(() => undefined);
+    conn.release();
   }
 }
 

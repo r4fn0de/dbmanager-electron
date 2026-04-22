@@ -47,6 +47,7 @@ import {
   setColumnNullable,
 } from "@/hooks/db-actions";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import { getClickhouseEffectivePort } from "@/ipc/db/types";
 import {
   buildConnectionTab,
   detectConnectionProvider,
@@ -546,9 +547,11 @@ export function DatabasePageContent({
   const buildConnStr = useCallback(() => {
     if (!connection) return "";
     if (connection.url) return connection.url;
-    const protocol = connection.db_type === "mysql" || connection.db_type === "mariadb" ? "mysql" : "postgres";
-    const sslParam = protocol === "mysql" ? `ssl=${connection.ssl_mode === "disable" ? "false" : "true"}` : `sslmode=${connection.ssl_mode}`;
-    return `${protocol}://${connection.username}:${connection.password}@${connection.host}:${connection.port}/${connection.database}?${sslParam}`;
+    const protocol = connection.db_type === "mysql" || connection.db_type === "mariadb" ? "mysql" : connection.db_type === "clickhouse" ? (connection.ssl_mode === "require" ? "clickhouses" : "clickhouse") : "postgres";
+    const port = connection.db_type === "clickhouse" ? getClickhouseEffectivePort(connection.ssl_mode, connection.port) : connection.port;
+    const sslParam = protocol === "mysql" ? `ssl=${connection.ssl_mode === "disable" ? "false" : "true"}` : protocol.startsWith("clickhouse") ? (connection.ssl_mode === "require" ? "ssl=true" : "") : `sslmode=${connection.ssl_mode}`;
+    const queryPart = sslParam ? `?${sslParam}` : "";
+    return `${protocol}://${connection.username}:${connection.password}@${connection.host}:${port}/${connection.database}${queryPart}`;
   }, [connection]);
 
   const handleCopyConnectionString = async () => {
