@@ -1,0 +1,9 @@
+{
+  "profile": "openai",
+  "env": {
+    "OPENAI_BASE_URL": "https://agentrouter.org/v1",
+    "OPENAI_MODEL": "claude-opus-4-6, glm-5.1",
+    "OPENAI_API_KEY": "sk-lRRVFNGj9dAVIF1ij0pm2GzP2tyoTT65eMmkx0VONccSbmEx"
+  },
+  "createdAt": "2026-04-22T19:03:53.707Z"
+}

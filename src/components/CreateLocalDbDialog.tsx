@@ -51,7 +51,7 @@ const POSTGRES_VERSIONS = [
 
 const ENGINE_OPTIONS: { value: LocalDbEngine; label: string; icon: React.ReactNode; description: string }[] = [
   { value: "postgresql", label: "PostgreSQL", icon: <PostgreSql className="size-4 shrink-0" />, description: "Embedded PostgreSQL server" },
-  { value: "sqlite", label: "SQLite", icon: <Sqlite className="size-4 shrink-0" />, description: "File-based, no server needed" },
+  { value: "sqlite", label: "SQLite", icon: <Sqlite className="h-4 w-auto shrink-0" />, description: "File-based, no server needed" },
 ];
 
 const DEFAULT_FORM_DATA: CreateLocalDbInput = {
