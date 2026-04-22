@@ -408,25 +408,38 @@ export function DatabasePageContent({
 
   // Helpers: update state AND persist to store in the same event handler
   // (instead of separate Effects that watch these values — anti-pattern per React docs)
-  // React Query para carregar detalhes das tabelas incrementalmente
-  const visualizerQueryKey = useMemo(
-    () => ["visualizer", connectionId, selectedSchema],
-    [connectionId, selectedSchema]
+  // Fetch table details (with columns) for the selected schema.
+  // Used by both the schema visualizer AND the AI context builder.
+  // Always enabled when the tab is active so the AI has column info from
+  // the start. React Query caches this for 5 minutes so switching to
+  // the visualizer is instant.
+  const selectedSchemaDetailsQueryKey = useMemo(
+    () => ["selected-schema-details", connectionId, selectedSchema, tables.length] as const,
+    [connectionId, selectedSchema, tables.length],
   );
 
-  const { data: visualizerTables = [], isLoading: isLoadingVisualizer } = useQuery({
-    queryKey: visualizerQueryKey,
+  const {
+    data: selectedSchemaDetails = [],
+    isLoading: isLoadingSchemaDetails,
+  } = useQuery({
+    queryKey: selectedSchemaDetailsQueryKey,
     queryFn: async () => {
-      const schemaTables = tables.filter((t) => t.schema === selectedSchema);
+      const schemaTables = tables
+        .filter((t) => t.schema === selectedSchema)
+        .slice(0, 50); // Cap at 50 tables to avoid excessive IPC on large databases
       const details = await Promise.all(
         schemaTables.map((t) => getTableDetails(connectionId, t.schema, t.name))
       );
       return details;
     },
-    enabled: isActive && isVisualizerSection && tables.length > 0,
+    enabled: isActive && tables.length > 0 && selectedSchema.length > 0,
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
+
+  // Alias for the visualizer — same data, clearer name in that context
+  const visualizerTables = selectedSchemaDetails;
+  const isLoadingVisualizer = isLoadingSchemaDetails;
 
   // Pré-carregar dados do visualizer quando o schema muda ou quando está na seção tables
   useEffect(() => {
@@ -631,6 +644,43 @@ export function DatabasePageContent({
     return group[1].filter((table) => table.name.toLowerCase().includes(needle));
   }, [selectedSchema, tablesBySchema, tableSearch]);
 
+  // Build a concise schema context string for the AI assistant.
+  // Includes table names grouped by schema, and column names/types for the
+  // selected schema (where the user is most likely to write queries).
+  // Other schemas list table names only to keep context compact.
+  const schemaContextForAi = useMemo(() => {
+    if (tables.length === 0) return undefined;
+    const lines: string[] = ["Schemas: " + schemas.join(", ")];
+
+    // Build a lookup of table name → details for the selected schema
+    const detailMap = new Map<string, SchemaTableDetails>();
+    for (const d of selectedSchemaDetails) {
+      detailMap.set(d.name, d);
+    }
+
+    for (const [schema, schemaTables] of tablesBySchema) {
+      if (schema === selectedSchema && selectedSchemaDetails.length > 0) {
+        // Selected schema: include column names and types
+        for (const t of schemaTables) {
+          const detail = detailMap.get(t.name);
+          if (detail) {
+            const cols = detail.columns
+              .map((c) => `${c.name} ${c.data_type}${c.is_nullable ? "?" : ""}`)
+              .join(", ");
+            lines.push(`${schema}.${t.name}(${cols})`);
+          } else {
+            lines.push(`${schema}.${t.name}`);
+          }
+        }
+      } else {
+        // Other schemas: table names only
+        const tableNames = schemaTables.map((t) => t.name).join(", ");
+        lines.push(`${schema}: ${tableNames}`);
+      }
+    }
+    return lines.join("\n");
+  }, [tables, schemas, tablesBySchema, selectedSchema, selectedSchemaDetails]);
+
   const selectedTableRef = useMemo(() => {
     if (!selectedTableKey) return null;
     const dotIdx = selectedTableKey.indexOf(".");
@@ -687,6 +737,11 @@ export function DatabasePageContent({
           queryKey: ["table-details", connectionId],
         });
       }
+      // Also invalidate the consolidated schema-details query used by
+      // the AI context builder and visualizer, so they refresh after DDL.
+      queryClient.invalidateQueries({
+        queryKey: ["selected-schema-details", connectionId],
+      });
     },
     [connectionId, queryClient],
   );
@@ -998,6 +1053,8 @@ export function DatabasePageContent({
                 executeQuery={executeQuery}
                 showWorkspaceSidebar={true}
                 onWorkspaceSidebarResize={setSqlSidebarWidthPx}
+                dbType={connection.db_type || "postgresql"}
+                schemaContext={schemaContextForAi}
                 loadRequest={initialSqlQuery ? {
                   key: `query:${Date.now()}`,
                   title: "Query",

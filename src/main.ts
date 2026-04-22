@@ -12,6 +12,7 @@ import { getBasePath } from "./utils/path";
 import { localDbManager } from "./ipc/db/local-db-manager";
 import { registerDrivers } from "./ipc/db/registry";
 import { closeAllPools } from "./ipc/db/kysely-factory";
+import { registerAiStreamingHandlers } from "./ipc/ai";
 import { APP_DISPLAY_NAME } from "./appBranding";
 
 function createWindow() {
@@ -169,6 +170,8 @@ app.whenReady().then(async () => {
     await setupORPC();
     // Register database drivers (PostgreSQL, MySQL, MariaDB)
     await registerDrivers();
+    // Register AI streaming chat handlers (IPC event-based)
+    registerAiStreamingHandlers();
     // Hydrate local databases (auto-start instances that were running before)
     await localDbManager.hydrate();
   } catch (error) {

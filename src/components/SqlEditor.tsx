@@ -1,5 +1,6 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import {
+  Bot,
   Clock,
   FileCode2,
   Loader2,
@@ -7,14 +8,18 @@ import {
   Play,
   Save,
   Search,
+  Sparkles,
   Star,
   Trash2,
+  Wand2,
   X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { QueryResults } from "@/components/QueryResults";
+import { AiChatPanel } from "@/components/AiChatPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
@@ -34,11 +39,13 @@ import {
   type SqlHistoryEntry,
   type SqlSavedQuery,
 } from "@/hooks/useSqlWorkspace";
+import { fixSql, updateSql } from "@/hooks/ai-actions";
 import { formatDuration } from "@/lib/utils";
 import { cn } from "@/utils/tailwind";
 import "@/lib/monaco-loader";
 import type {
   Connection,
+  DatabaseType,
   QueryResult,
 } from "@/ipc/db/types";
 
@@ -55,6 +62,10 @@ interface SqlEditorProps {
     sql: string;
     connectionId: null | string;
   } | null;
+  /** Active database type for AI context */
+  dbType?: DatabaseType;
+  /** Schema context string for AI — table/column names so the AI can write accurate SQL from the start */
+  schemaContext?: string;
 }
 
 const DEFAULT_SQL = `/*
@@ -273,6 +284,8 @@ export function SqlEditor({
   showWorkspaceSidebar = true,
   onWorkspaceSidebarResize,
   loadRequest = null,
+  dbType = "postgresql",
+  schemaContext,
 }: SqlEditorProps) {
   const {
     savedQueries,
@@ -349,6 +362,11 @@ export function SqlEditor({
   const editorRef = useRef<MonacoEditor | null>(null);
   const executionAbort = useRef<AbortController | null>(null);
 
+  // AI panel state
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [isFixingSql, setIsFixingSql] = useState(false);
+  const [isUpdatingSql, setIsUpdatingSql] = useState(false);
+
   const selectedConnectionMeta = useMemo(() => {
     const found = connections.find((conn) => conn.id === selectedConnection);
     return {
@@ -423,6 +441,47 @@ export function SqlEditor({
   const setSql = useCallback((sql: string) => {
     setDoc((current) => ({ ...current, sql, updatedAt: nowIso() }));
   }, []);
+
+  // AI: Insert SQL into editor (from AI chat) — strip markdown fences if present
+  const handleInsertSqlFromAi = useCallback((sql: string) => {
+    const cleaned = sql.trim().replace(/^```sql?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+    setSql(cleaned);
+  }, [setSql]);
+
+  // AI: Fix SQL — send current SQL + last error to AI for correction
+  const handleFixSql = useCallback(async () => {
+    if (!selectedConnection || !doc.sql.trim() || !lastError) return;
+    setIsFixingSql(true);
+    try {
+      const result = await fixSql(doc.sql, lastError, dbType);
+      if (result.sql && result.sql.trim()) {
+        setSql(result.sql);
+        toast.success("SQL fixed by AI");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to fix SQL");
+    } finally {
+      setIsFixingSql(false);
+    }
+  }, [selectedConnection, doc.sql, lastError, dbType, setSql]);
+
+  // AI: Update SQL — modify SQL based on natural language instruction
+  const handleUpdateSql = useCallback(async () => {
+    const prompt = window.prompt("What would you like to change in the SQL?");
+    if (!prompt?.trim() || !selectedConnection || !doc.sql.trim()) return;
+    setIsUpdatingSql(true);
+    try {
+      const result = await updateSql(doc.sql, prompt.trim(), dbType);
+      if (result.sql && result.sql.trim()) {
+        setSql(result.sql);
+        toast.success("SQL updated by AI");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update SQL");
+    } finally {
+      setIsUpdatingSql(false);
+    }
+  }, [selectedConnection, doc.sql, dbType, setSql]);
 
   const setTitle = useCallback((title: string) => {
     setDoc((current) => ({ ...current, title, updatedAt: nowIso() }));
@@ -911,8 +970,10 @@ export function SqlEditor({
           </ResizablePanel>
         )}
         {showWorkspaceSidebar && <ResizableHandle withHandle />}
-        <ResizablePanel id="sql-editor" className="min-h-0">
-        <section className="h-full min-h-0 flex flex-col">
+        <ResizablePanel id="sql-editor" className="min-h-0 min-w-0">
+        <section className="h-full min-h-0 flex">
+          {/* Main editor area */}
+          <div className="flex-1 min-w-0 flex flex-col">
           {/* ── Editor toolbar (single row) ──────────────────── */}
           <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1">
             {/* Query title */}
@@ -958,6 +1019,72 @@ export function SqlEditor({
             <span className="max-w-[260px] truncate text-xs text-foreground/70">
               {selectedConnectionMeta.label || "No connection selected"}
             </span>
+
+            {/* AI actions */}
+            <div className="flex items-center gap-1 shrink-0">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setIsAiChatOpen(!isAiChatOpen)}
+                      className={cn("gap-1", isAiChatOpen && "bg-primary/10 text-primary")}
+                    >
+                      <Bot className="size-3" />
+                      AI Chat
+                    </Button>
+                  }
+                />
+                <TooltipContent>Toggle AI assistant panel</TooltipContent>
+              </Tooltip>
+              {lastError && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => void handleFixSql()}
+                        disabled={isFixingSql || !doc.sql.trim()}
+                        className="gap-1 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                      >
+                        {isFixingSql ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="size-3" />
+                        )}
+                        Fix SQL
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>Fix SQL with AI</TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => void handleUpdateSql()}
+                      disabled={isUpdatingSql || !doc.sql.trim()}
+                      className="gap-1"
+                    >
+                      {isUpdatingSql ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <Wand2 className="size-3" />
+                      )}
+                      Edit
+                    </Button>
+                  }
+                />
+                <TooltipContent>Modify SQL with natural language</TooltipContent>
+              </Tooltip>
+            </div>
+
+            <Separator orientation="vertical" className="h-4" />
 
             {/* Run button */}
             <div className="ml-auto flex items-center gap-2 shrink-0">
@@ -1084,6 +1211,16 @@ export function SqlEditor({
             </section>
             </ResizablePanel>
           </ResizablePanelGroup>
+          </div>
+
+          {/* AI Chat sidebar panel */}
+          <AiChatPanel
+            connectionId={selectedConnection}
+            dbType={dbType}
+            schemaContext={schemaContext}
+            isOpen={isAiChatOpen}
+            onInsertSql={handleInsertSqlFromAi}
+          />
         </section>
         </ResizablePanel>
       </ResizablePanelGroup>

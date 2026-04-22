@@ -24,6 +24,10 @@
   "author": "ROG <luanroger.dev@gmail.com>",
   "license": "MIT",
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.71",
+    "@ai-sdk/google": "^3.0.64",
+    "@ai-sdk/openai": "^3.0.53",
+    "@ai-sdk/react": "^3.0.170",
     "@base-ui/react": "^1.4.0",
     "@clickhouse/client": "^1.18.3",
     "@dagrejs/dagre": "^3.0.0",
@@ -42,12 +46,14 @@
     "@tanstack/react-router-devtools": "^1.166.11",
     "@tanstack/react-virtual": "^3.13.24",
     "@xyflow/react": "^12.10.2",
+    "ai": "^6.0.168",
     "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-store": "^11.0.2",
     "embedded-postgres": "18.3.0-beta.17",
     "embla-carousel-react": "^8.6.0",
     "i18next": "^25.10.5",
@@ -113,6 +119,7 @@
     "typescript": "^5.9.3",
     "ultracite": "^7.3.2",
     "vite": "^8.0.4",
+    "vite-bundle-visualizer": "^1.2.1",
     "vitest": "^4.1.2"
   },
   "overrides": {

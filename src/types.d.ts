@@ -12,6 +12,24 @@ declare global {
     electron?: {
       platform?: string;
       setNativeThemeSource?: (themeSource: "system" | "light" | "dark") => void;
+      aiChat?: {
+        start: (input: {
+          chatId: string;
+          connectionId: string;
+          dbType: string;
+          schemaContext?: string;
+          messages: Array<{ role: string; content: string }>;
+        }) => void;
+        abort: (chatId: string) => void;
+        onChunk: (callback: (chunk: AiChatChunk) => void) => () => void;
+        onDone: (callback: (result: { chatId: string; finishReason: string; usage?: unknown }) => void) => () => void;
+        onError: (callback: (error: { chatId: string; message: string }) => void) => () => void;
+      };
     };
   }
+
+  type AiChatChunk =
+    | { type: "text"; text: string }
+    | { type: "tool-call"; toolName: string; args: unknown }
+    | { type: "tool-result"; toolName: string; result: unknown };
 }
