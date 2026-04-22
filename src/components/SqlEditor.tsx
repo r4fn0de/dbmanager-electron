@@ -8,7 +8,6 @@ import {
   Save,
   Search,
   Star,
-  Terminal,
   Trash2,
   X,
 } from "lucide-react";
@@ -32,7 +31,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useSqlWorkspace,
-  type SqlExecutionLog,
   type SqlHistoryEntry,
   type SqlSavedQuery,
 } from "@/hooks/useSqlWorkspace";
@@ -65,9 +63,9 @@ Try creating a sample table and querying it.
 SELECT now() as server_time;`;
 
 const MAX_HISTORY_PREVIEW = 140;
-const MAX_LOGS = 200;
 const MAX_HISTORY_RESULT_ROWS = 50;
 const MAX_HISTORY_RESULT_COLUMNS = 30;
+const DANGEROUS_SQL_KEYWORDS = ["DELETE", "UPDATE", "DROP", "RENAME", "TRUNCATE", "ALTER"] as const;
 
 type MonacoEditor = Parameters<OnMount>[0];
 
@@ -76,6 +74,16 @@ interface SqlDocument {
   title: string;
   sql: string;
   updatedAt: string;
+}
+
+interface SqlRunResult {
+  id: string;
+  query: string;
+  status: "success" | "error";
+  result: QueryResult | null;
+  error: string | null;
+  durationMs: number;
+  rowCount: number;
 }
 
 const MONACO_OPTIONS = {
@@ -93,6 +101,147 @@ function previewSql(sql: string): string {
   const normalized = sql.replace(/\s+/g, " ").trim();
   if (normalized.length <= MAX_HISTORY_PREVIEW) return normalized;
   return `${normalized.slice(0, MAX_HISTORY_PREVIEW)}...`;
+}
+
+function hasDangerousSqlKeywords(sql: string): boolean {
+  const uncommentedLines = sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+  const dangerousKeywordsPattern = DANGEROUS_SQL_KEYWORDS
+    .map((keyword) => `\\b${keyword}\\b`)
+    .join("|");
+  return new RegExp(dangerousKeywordsPattern, "gi").test(uncommentedLines);
+}
+
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let dollarTag: string | null = null;
+
+  const pushCurrent = () => {
+    const trimmed = current.trim();
+    if (trimmed) statements.push(trimmed);
+    current = "";
+  };
+
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const next = i + 1 < sql.length ? sql[i + 1] : "";
+
+    if (inLineComment) {
+      current += ch;
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+
+    if (inBlockComment) {
+      current += ch;
+      if (ch === "*" && next === "/") {
+        current += next;
+        i++;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (dollarTag) {
+      if (sql.startsWith(dollarTag, i)) {
+        current += dollarTag;
+        i += dollarTag.length - 1;
+        dollarTag = null;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+
+    if (inSingleQuote) {
+      current += ch;
+      if (ch === "'" && next === "'") {
+        current += next;
+        i++;
+      } else if (ch === "'") {
+        inSingleQuote = false;
+      }
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      current += ch;
+      if (ch === '"' && next === '"') {
+        current += next;
+        i++;
+      } else if (ch === '"') {
+        inDoubleQuote = false;
+      }
+      continue;
+    }
+
+    if (inBacktick) {
+      current += ch;
+      if (ch === "`") inBacktick = false;
+      continue;
+    }
+
+    if (ch === "-" && next === "-") {
+      current += ch + next;
+      i++;
+      inLineComment = true;
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      current += ch + next;
+      i++;
+      inBlockComment = true;
+      continue;
+    }
+
+    if (ch === "$") {
+      const match = sql.slice(i).match(/^\$[a-z_]\w*\$|^\$\$/i);
+      if (match) {
+        const tag = match[0];
+        current += tag;
+        i += tag.length - 1;
+        dollarTag = tag;
+        continue;
+      }
+    }
+
+    if (ch === "'") {
+      current += ch;
+      inSingleQuote = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      current += ch;
+      inDoubleQuote = true;
+      continue;
+    }
+
+    if (ch === "`") {
+      current += ch;
+      inBacktick = true;
+      continue;
+    }
+
+    if (ch === ";") {
+      pushCurrent();
+      continue;
+    }
+
+    current += ch;
+  }
+
+  pushCurrent();
+  return statements;
 }
 
 function nowIso() {
@@ -114,14 +263,6 @@ function toHistoryResultPreview(result: QueryResult): {
     rows,
     row_count: result.row_count,
   };
-}
-
-function newLogId(): string {
-  const g = globalThis as { crypto?: { randomUUID?: () => string } };
-  return (
-    g.crypto?.randomUUID?.() ??
-    `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
 }
 
 export function SqlEditor({
@@ -151,9 +292,6 @@ export function SqlEditor({
 
   const [activeSidebarTab, setActiveSidebarTab] = useState<"saved" | "history">(
     "saved",
-  );
-  const [activeResultTab, setActiveResultTab] = useState<"result" | "logs">(
-    "result",
   );
   const [searchText, setSearchText] = useState("");
 
@@ -201,7 +339,8 @@ export function SqlEditor({
   const [lastResult, setLastResult] = useState<QueryResult | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastDurationMs, setLastDurationMs] = useState<number | undefined>();
-  const [logs, setLogs] = useState<SqlExecutionLog[]>([]);
+  const [runResults, setRunResults] = useState<SqlRunResult[]>([]);
+  const [activeRunResultId, setActiveRunResultId] = useState<string | null>(null);
 
   const { resolvedTheme } = useTheme();
   const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "vs";
@@ -266,20 +405,20 @@ export function SqlEditor({
     );
   }, [history, searchText]);
 
-  const appendLog = useCallback(
-    (entry: Omit<SqlExecutionLog, "id" | "createdAt">) => {
-      setLogs((current) => {
-        const next: SqlExecutionLog = {
-          id: newLogId(),
-          createdAt: nowIso(),
-          ...entry,
-        };
-        const merged = [next, ...current];
-        return merged.length > MAX_LOGS ? merged.slice(0, MAX_LOGS) : merged;
-      });
-    },
-    [],
-  );
+  const activeRunResult = useMemo(() => {
+    if (runResults.length === 0) return null;
+    if (!activeRunResultId) return runResults[0];
+    return runResults.find((item) => item.id === activeRunResultId) ?? runResults[0];
+  }, [activeRunResultId, runResults]);
+  const runResultStats = useMemo(() => {
+    const total = runResults.length;
+    const success = runResults.filter((item) => item.status === "success").length;
+    return {
+      total,
+      success,
+      error: total - success,
+    };
+  }, [runResults]);
 
   const setSql = useCallback((sql: string) => {
     setDoc((current) => ({ ...current, sql, updatedAt: nowIso() }));
@@ -316,13 +455,39 @@ export function SqlEditor({
 
       setLastDurationMs(entry.durationMs);
       if (entry.status === "success") {
+        const resultId = `history-${entry.id}`;
+        const previewResult: QueryResult = entry.resultPreview ?? {
+          columns: [],
+          rows: [],
+          row_count: entry.rowCount,
+        };
+        setRunResults([{
+          id: resultId,
+          query: entry.executedSql,
+          status: "success",
+          result: previewResult,
+          error: null,
+          durationMs: entry.durationMs,
+          rowCount: entry.rowCount,
+        }]);
+        setActiveRunResultId(resultId);
         setLastError(null);
-        setLastResult(entry.resultPreview ?? null);
-        setActiveResultTab("result");
+        setLastResult(previewResult);
       } else {
+        const resultId = `history-${entry.id}`;
+        const errorMessage = entry.errorMessage ?? "Query failed";
+        setRunResults([{
+          id: resultId,
+          query: entry.executedSql,
+          status: "error",
+          result: null,
+          error: errorMessage,
+          durationMs: entry.durationMs,
+          rowCount: 0,
+        }]);
+        setActiveRunResultId(resultId);
         setLastResult(null);
-        setLastError(entry.errorMessage ?? "Query failed");
-        setActiveResultTab("logs");
+        setLastError(errorMessage);
       }
 
       if (entry.connectionId !== selectedConnection) {
@@ -349,12 +514,8 @@ export function SqlEditor({
         title: persisted.title,
         updatedAt: persisted.updatedAt,
       }));
-      appendLog({
-        level: "success",
-        message: `Saved query: ${persisted.title}`,
-      });
     }
-  }, [appendLog, doc.id, doc.sql, doc.title, saveQuery, selectedConnection]);
+  }, [doc.id, doc.sql, doc.title, saveQuery, selectedConnection]);
 
   const runSql = useCallback(async () => {
     if (!selectedConnection || !doc.sql.trim()) return;
@@ -370,74 +531,123 @@ export function SqlEditor({
     const sqlToRun = selectedText.length > 0 ? selectedText : doc.sql;
     if (!sqlToRun.trim()) return;
 
+    const statements = splitSqlStatements(sqlToRun);
+    if (statements.length === 0) return;
+
+    const hasDangerous = statements.some((statement) =>
+      hasDangerousSqlKeywords(statement)
+    );
+    if (hasDangerous) {
+      const confirmed = window.confirm(
+        "This SQL contains potentially destructive operations (DELETE/UPDATE/DROP/etc). Do you want to continue?"
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
     const controller = new AbortController();
     executionAbort.current = controller;
 
     setIsExecuting(true);
     setLastError(null);
-    setActiveResultTab("result");
+    setRunResults([]);
+    setActiveRunResultId(null);
 
     const startedAt = performance.now();
-    appendLog({ level: "info", message: "Running query..." });
+
+    let hadError = false;
+    let lastErrorMessage: string | null = null;
+    let lastSuccessResult: QueryResult | null = null;
+    const collectedResults: SqlRunResult[] = [];
 
     try {
-      const result = await executeQuery(selectedConnection, sqlToRun);
-      if (controller.signal.aborted) return;
-      const durationMs = performance.now() - startedAt;
+      for (let index = 0; index < statements.length; index++) {
+        if (controller.signal.aborted) return;
+        const statement = statements[index];
+        const runStart = performance.now();
 
-      setLastResult(result);
-      setLastError(null);
-      setLastDurationMs(durationMs);
+        try {
+          const result = await executeQuery(selectedConnection, statement);
+          if (controller.signal.aborted) return;
+          const durationMs = performance.now() - runStart;
+          const runResult: SqlRunResult = {
+            id: `${nowIso()}-${index}-ok`,
+            query: statement,
+            status: "success",
+            result,
+            error: null,
+            durationMs,
+            rowCount: result.row_count,
+          };
+          collectedResults.push(runResult);
+          setRunResults([...collectedResults]);
+          setActiveRunResultId(runResult.id);
 
-      appendLog({
-        level: "success",
-        message: `Query completed (${result.row_count} rows)`,
-        durationMs,
-        rowCount: result.row_count,
-      });
+          lastSuccessResult = result;
 
-      await appendHistory({
-        connectionId: selectedConnection,
-        sqlPreview: previewSql(sqlToRun),
-        executedSql: sqlToRun,
-        status: "success",
-        rowCount: result.row_count,
-        durationMs,
-        createdAt: nowIso(),
-        resultPreview: toHistoryResultPreview(result),
-      });
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      const durationMs = performance.now() - startedAt;
-      const message = err instanceof Error ? err.message : "Unknown error";
+          await appendHistory({
+            connectionId: selectedConnection,
+            sqlPreview: previewSql(statement),
+            executedSql: statement,
+            status: "success",
+            rowCount: result.row_count,
+            durationMs,
+            createdAt: nowIso(),
+            resultPreview: toHistoryResultPreview(result),
+          });
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          const durationMs = performance.now() - runStart;
+          const message = err instanceof Error ? err.message : "Unknown error";
+          const runResult: SqlRunResult = {
+            id: `${nowIso()}-${index}-err`,
+            query: statement,
+            status: "error",
+            result: null,
+            error: message,
+            durationMs,
+            rowCount: 0,
+          };
+          collectedResults.push(runResult);
+          setRunResults([...collectedResults]);
+          setActiveRunResultId(runResult.id);
+          hadError = true;
+          lastErrorMessage = message;
 
-      setLastError(message);
-      setLastDurationMs(durationMs);
-      appendLog({
-        level: "error",
-        message,
-        durationMs,
-      });
+          await appendHistory({
+            connectionId: selectedConnection,
+            sqlPreview: previewSql(statement),
+            executedSql: statement,
+            status: "error",
+            rowCount: 0,
+            durationMs,
+            createdAt: nowIso(),
+            errorMessage: message,
+          });
+        }
+      }
 
-      await appendHistory({
-        connectionId: selectedConnection,
-        sqlPreview: previewSql(sqlToRun),
-        executedSql: sqlToRun,
-        status: "error",
-        rowCount: 0,
-        durationMs,
-        createdAt: nowIso(),
-        errorMessage: message,
-      });
+      const totalDurationMs = performance.now() - startedAt;
+      setLastDurationMs(totalDurationMs);
+      setLastResult(lastSuccessResult);
 
-      setActiveResultTab("logs");
+      if (hadError) {
+        setLastError(
+          statements.length > 1
+            ? `One or more queries failed.${lastErrorMessage ? ` Last error: ${lastErrorMessage}` : ""}`
+            : (lastErrorMessage ?? "Query failed")
+        );
+      } else {
+        setLastError(null);
+      }
     } finally {
       if (executionAbort.current === controller) {
         executionAbort.current = null;
       }
       setIsExecuting(false);
     }
-  }, [appendHistory, appendLog, doc.sql, executeQuery, selectedConnection]);
+  }, [appendHistory, doc.sql, executeQuery, selectedConnection]);
 
   const handleEditorMount = useCallback<OnMount>((mounted) => {
     editorRef.current = mounted;
@@ -550,91 +760,93 @@ export function SqlEditor({
               </TabsList>
 
               {/* Saved queries */}
-              <ScrollArea className="flex-1 min-h-0">
-                <div className="px-2 py-1.5">
-                  <div className="space-y-0.5">
-                    {filteredSaved.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="group/saved rounded-md px-2.5 py-[7px] hover:bg-muted/50 transition-colors relative"
-                      >
-                        <button
-                          type="button"
-                          className="w-full text-left pr-12"
-                          onClick={() => hydrateFromSaved(entry)}
+              <TabsContent value="saved" className="min-h-0 flex flex-col flex-1">
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="px-2 py-1.5">
+                    <div className="space-y-0.5">
+                      {filteredSaved.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="group/saved rounded-md px-2.5 py-[7px] hover:bg-muted/50 transition-colors relative"
                         >
-                          <p className="text-[13px] font-medium truncate leading-tight">
-                            {entry.title}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground truncate font-mono leading-4 mt-0.5">
-                            {previewSql(entry.sql)}
-                          </p>
-                        </button>
-                        {/* Hover-reveal actions */}
-                        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/saved:opacity-100 transition-opacity">
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  onClick={() => {
-                                    const next = window.prompt(
-                                      "Rename query",
-                                      entry.title,
-                                    );
-                                    if (next?.trim()) {
-                                      void renameQuery(entry.id, next.trim());
-                                    }
-                                  }}
-                                  className="text-muted-foreground hover:text-foreground"
-                                >
-                                  <Pencil className="size-3" />
-                                </Button>
-                              }
-                            />
-                            <TooltipContent>Rename query</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  onClick={() => void deleteQuery(entry.id)}
-                                  className="text-muted-foreground hover:text-destructive"
-                                >
-                                  <Trash2 className="size-3" />
-                                </Button>
-                              }
-                            />
-                            <TooltipContent>Delete query</TooltipContent>
-                          </Tooltip>
+                          <button
+                            type="button"
+                            className="w-full text-left pr-12"
+                            onClick={() => hydrateFromSaved(entry)}
+                          >
+                            <p className="text-[13px] font-medium truncate leading-tight">
+                              {entry.title}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground truncate font-mono leading-4 mt-0.5">
+                              {previewSql(entry.sql)}
+                            </p>
+                          </button>
+                          {/* Hover-reveal actions */}
+                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/saved:opacity-100 transition-opacity">
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => {
+                                      const next = window.prompt(
+                                        "Rename query",
+                                        entry.title,
+                                      );
+                                      if (next?.trim()) {
+                                        void renameQuery(entry.id, next.trim());
+                                      }
+                                    }}
+                                    className="text-muted-foreground hover:text-foreground"
+                                  >
+                                    <Pencil className="size-3" />
+                                  </Button>
+                                }
+                              />
+                              <TooltipContent>Rename query</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => void deleteQuery(entry.id)}
+                                    className="text-muted-foreground hover:text-destructive"
+                                  >
+                                    <Trash2 className="size-3" />
+                                  </Button>
+                                }
+                              />
+                              <TooltipContent>Delete query</TooltipContent>
+                            </Tooltip>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {filteredSaved.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                      <Star className="size-4 text-muted-foreground/50 mb-2" />
-                      <p className="text-xs text-muted-foreground">
-                        {searchText ? "No matches found" : "No saved queries"}
-                      </p>
-                      {searchText && (
-                        <p className="text-[11px] text-muted-foreground/60 mt-1">
-                          Press ⌘S to save queries
-                        </p>
-                      )}
+                      ))}
                     </div>
-                  )}
-                </div>
-              </ScrollArea>
+
+                    {filteredSaved.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                        <Star className="size-4 text-muted-foreground/50 mb-2" />
+                        <p className="text-xs text-muted-foreground">
+                          {searchText ? "No matches found" : "No saved queries"}
+                        </p>
+                        {searchText && (
+                          <p className="text-[11px] text-muted-foreground/60 mt-1">
+                            Press ⌘S to save queries
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
 
               {/* History */}
               <TabsContent
                 value="history"
-                className="min-h-0 flex flex-col"
+                className="min-h-0 flex flex-col flex-1"
               >
                 <ScrollArea className="flex-1 min-h-0">
                   <div className="px-2 py-1.5">
@@ -702,10 +914,10 @@ export function SqlEditor({
         <ResizablePanel id="sql-editor" className="min-h-0">
         <section className="h-full min-h-0 flex flex-col">
           {/* ── Editor toolbar (single row) ──────────────────── */}
-          <div className="flex items-center gap-2 border-b px-3 py-1.5">
+          <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1">
             {/* Query title */}
             <Input
-              className="h-7 w-[180px] rounded-md border-transparent bg-transparent px-1.5 font-medium text-sm hover:bg-muted/60 focus:bg-background focus:border-border transition-colors"
+              className="h-7 w-[180px] rounded-md border-0 bg-transparent px-1.5 font-medium text-sm hover:bg-muted/60 focus:bg-muted focus-visible:ring-0 transition-colors"
               value={doc.title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Untitled query"
@@ -734,25 +946,36 @@ export function SqlEditor({
               </TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation="vertical" className="h-4" />
 
             {/* Current connection (fixed by page context) */}
             <span
               className={cn(
-                "inline-block size-2 rounded-full shrink-0",
+                "inline-block size-[7px] rounded-full shrink-0",
                 selectedConnection ? "bg-emerald-500" : "bg-muted-foreground/40"
               )}
             />
-            <span className="max-w-[260px] truncate text-xs text-muted-foreground">
+            <span className="max-w-[260px] truncate text-xs text-foreground/70">
               {selectedConnectionMeta.label || "No connection selected"}
             </span>
 
             {/* Run button */}
             <div className="ml-auto flex items-center gap-2 shrink-0">
               {isExecuting && (
-                <span className="text-xs text-muted-foreground font-mono animate-pulse">
-                  Running…
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-mono animate-pulse">
+                    Running…
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      executionAbort.current?.abort();
+                    }}
+                  >
+                    Stop
+                  </Button>
+                </div>
               )}
               <Tooltip>
                 <TooltipTrigger
@@ -804,80 +1027,61 @@ export function SqlEditor({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel id="sql-results-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
-            <Tabs
-              value={activeResultTab}
-              onValueChange={(value) =>
-                setActiveResultTab(value as "result" | "logs")
-              }
-              className="h-full min-h-0 flex flex-col"
-            >
-              <div className="border-b px-3 py-2 shrink-0">
-                <TabsList>
-                  <TabsTrigger value="result">Result</TabsTrigger>
-                  <TabsTrigger value="logs">Logs</TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="result" className="min-h-0 overflow-auto px-3 pb-3">
-                <QueryResults result={lastResult} error={lastError} durationMs={lastDurationMs} />
-              </TabsContent>
-
-              <TabsContent value="logs" className="min-h-0 overflow-auto px-3 py-2">
-                <div className="space-y-0.5">
-                  {logs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40 transition-colors"
-                    >
-                      {/* Level indicator dot */}
-                      <span
-                        className={cn(
-                          "mt-1 inline-block size-1.5 rounded-full shrink-0",
-                          log.level === "error"
-                            ? "bg-destructive/60"
-                            : log.level === "success"
-                              ? "bg-emerald-500"
-                              : "bg-muted-foreground/40"
-                        )}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs leading-4">{log.message}</p>
-                          <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">
-                            {new Date(log.createdAt).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        {(log.durationMs !== undefined ||
-                          log.rowCount !== undefined) && (
-                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
-                            {log.durationMs !== undefined && (
-                              <span>{formatDuration(log.durationMs)}</span>
-                            )}
-                            {log.durationMs !== undefined &&
-                              log.rowCount !== undefined && (
-                                <span className="opacity-30">·</span>
-                              )}
-                            {log.rowCount !== undefined && (
-                              <span>{log.rowCount} rows</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {logs.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-                      <Terminal className="size-6 mb-2 opacity-20" />
-                      <p className="text-xs font-medium">No logs yet</p>
-                      <p className="text-[11px] mt-1 opacity-50">
-                        Execute a query to see activity here
-                      </p>
+            <section className="h-full min-h-0 flex flex-col">
+              {(runResultStats.total > 0 || lastResult || lastError) && (
+                <div className="border-b px-3 py-2 shrink-0 flex items-center justify-end gap-3">
+                  {runResultStats.total > 0 && (
+                    <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
+                      {runResultStats.total} total · {runResultStats.success} ok · {runResultStats.error} err
                     </div>
                   )}
                 </div>
-              </TabsContent>
-            </Tabs>
+              )}
+              <div className="min-h-0 overflow-auto px-3 pb-3 pt-2">
+                {runResults.length > 1 ? (
+                  <Tabs
+                    value={activeRunResult?.id ?? runResults[0]?.id}
+                    onValueChange={setActiveRunResultId}
+                    className="h-full min-h-0 flex flex-col"
+                  >
+                    <ScrollArea className="border-b py-1">
+                      <TabsList variant="line" className="w-max">
+                        {runResults.map((item, index) => (
+                          <TabsTrigger
+                            key={item.id}
+                            value={item.id}
+                            title={item.query}
+                            className={cn(
+                              item.status === "error" && "text-destructive"
+                            )}
+                          >
+                            Result {index + 1}
+                            <span className="ml-1 text-[10px] opacity-70">
+                              · {formatDuration(item.durationMs)}
+                            </span>
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </ScrollArea>
+                    {runResults.map((item) => (
+                      <TabsContent key={item.id} value={item.id} className="min-h-0 overflow-auto pt-3">
+                        <QueryResults
+                          result={item.result}
+                          error={item.error}
+                          durationMs={item.durationMs}
+                        />
+                      </TabsContent>
+                    ))}
+                  </Tabs>
+                ) : (
+                  <QueryResults
+                    result={activeRunResult?.result ?? lastResult}
+                    error={activeRunResult?.error ?? lastError}
+                    durationMs={activeRunResult?.durationMs ?? lastDurationMs}
+                  />
+                )}
+              </div>
+            </section>
             </ResizablePanel>
           </ResizablePanelGroup>
         </section>

@@ -139,11 +139,24 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
         })),
 
       updateTab: (id, data) =>
-        set((state) => ({
-          tabs: state.tabs.map((t) =>
-            t.id === id ? { ...t, ...data } : t,
-          ),
-        })),
+        set((state) => {
+          let changed = false;
+          const tabs = state.tabs.map((t) => {
+            if (t.id !== id) return t;
+
+            for (const [key, value] of Object.entries(data)) {
+              if ((t as Record<string, unknown>)[key] !== value) {
+                changed = true;
+                break;
+              }
+            }
+
+            return changed ? { ...t, ...data } : t;
+          });
+
+          if (!changed) return state;
+          return { tabs };
+        }),
 
       setTabSection: (id, section) =>
         set((state) => ({

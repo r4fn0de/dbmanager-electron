@@ -13,7 +13,6 @@ import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
 import { ClickHouse } from "@/components/icons/ClickHouse";
-import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Tooltip,
@@ -88,7 +87,7 @@ export function DatabaseNavSidebar({
             render={
               <button
                 type="button"
-                className="group relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-foreground/10"
+                className="group relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-foreground/15"
                 onClick={() => navigate({ to: "/" })}
               >
                 {colorDot && (
@@ -131,8 +130,8 @@ export function DatabaseNavSidebar({
                     className={cn(
                       "group relative flex size-9 items-center justify-center rounded-lg transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       isActive
-                        ? "bg-foreground/15"
-                        : "hover:bg-foreground/10"
+                        ? "bg-foreground/20"
+                        : "hover:bg-foreground/15"
                     )}
                   >
                     <Icon
@@ -166,15 +165,17 @@ export function DatabaseNavSidebar({
         <Tooltip>
           <TooltipTrigger
             render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 text-foreground hover:text-foreground hover:bg-foreground/10"
+              <button
+                type="button"
                 onClick={onRefresh}
                 disabled={isRefreshing}
+                className={cn(
+                  "flex size-9 items-center justify-center rounded-lg transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 hover:bg-foreground/15",
+                  isRefreshing && "opacity-50 cursor-not-allowed"
+                )}
               >
-                <Refresh className={cn("size-[18px]", isRefreshing && "animate-spin")} />
-              </Button>
+                <Refresh className={cn("size-[18px] text-foreground/60", isRefreshing && "animate-spin")} />
+              </button>
             }
           />
           <TooltipContent side="right" sideOffset={8}>Refresh</TooltipContent>
@@ -182,21 +183,17 @@ export function DatabaseNavSidebar({
         <Tooltip>
           <TooltipTrigger
             render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "size-9 transition-colors",
-                  copyFeedback === "copied"
-                    ? "text-emerald-500"
-                    : copyFeedback === "failed"
-                      ? "text-destructive"
-                      : "text-foreground hover:text-foreground hover:bg-foreground/10"
-                )}
+              <button
+                type="button"
                 onClick={onCopyConnection}
+                className={cn(
+                  "flex size-9 items-center justify-center rounded-lg transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 hover:bg-foreground/15",
+                  copyFeedback === "copied" && "text-emerald-500",
+                  copyFeedback === "failed" && "text-destructive"
+                )}
               >
-                <Copy className="size-[18px]" />
-              </Button>
+                <Copy className="size-[18px] text-foreground/60" />
+              </button>
             }
           />
           <TooltipContent side="right" sideOffset={8}>
@@ -210,10 +207,8 @@ export function DatabaseNavSidebar({
         <Tooltip>
           <TooltipTrigger
             render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 text-foreground hover:text-foreground hover:bg-foreground/10"
+              <button
+                type="button"
                 onClick={() => {
                   if (onBackToConnections) {
                     onBackToConnections();
@@ -221,9 +216,10 @@ export function DatabaseNavSidebar({
                   }
                   navigate({ to: "/" });
                 }}
+                className="flex size-9 items-center justify-center rounded-lg transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 hover:bg-foreground/15"
               >
-                <ChevronLeft className="size-[18px]" />
-              </Button>
+                <ChevronLeft className="size-[18px] text-foreground/60" />
+              </button>
             }
           />
           <TooltipContent side="right" sideOffset={8}>Back to connections</TooltipContent>

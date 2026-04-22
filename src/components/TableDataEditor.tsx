@@ -83,6 +83,7 @@ import type {
   TableRowsResponse,
   TableSort,
 } from "@/ipc/db/types";
+import { cn } from "@/lib/utils";
 
 interface TableDataEditorProps {
   connectionId: string;
@@ -144,6 +145,14 @@ function normalizeDisplay(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function getCellTitle(value: unknown): string | undefined {
+  // Avoid expensive JSON serialization for every rendered cell.
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
 }
 
 function compareSortValues(a: unknown, b: unknown): number {
@@ -291,6 +300,9 @@ export function TableDataEditor({
   isSidebarVisible = true,
   onToggleSidebar,
 }: TableDataEditorProps) {
+  const pressableClass =
+    "transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97]";
+
   const tableRef = useMemo<TableRef>(
     () => ({ connectionId, schema: table.schema, table: table.name }),
     [connectionId, table.name, table.schema],
@@ -374,6 +386,10 @@ export function TableDataEditor({
 
   const [fkOptions, setFkOptions] = useState<FkLookupResponse | null>(null);
   const [isLoadingFk, setIsLoadingFk] = useState(false);
+  const fkLookupRequestIdRef = useRef(0);
+  const fkDebounceTimeoutRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
 
   const [pendingTruncate, setPendingTruncate] = useState(false);
   const [pendingBatchDelete, setPendingBatchDelete] = useState(false);
@@ -394,6 +410,10 @@ export function TableDataEditor({
     startX: number;
     startWidth: number;
   } | null>(null);
+  const resizeRafRef = useRef<number | null>(null);
+  const pendingResizeRef = useRef<{ column: string; width: number } | null>(
+    null,
+  );
 
   // Keyboard navigation – focused cell
   const [focusedCell, setFocusedCell] = useState<{
@@ -612,9 +632,11 @@ export function TableDataEditor({
       const fk = findFkForColumn(columnName);
       if (!fk) {
         setFkOptions(null);
+        setIsLoadingFk(false);
         return;
       }
 
+      const requestId = ++fkLookupRequestIdRef.current;
       setIsLoadingFk(true);
       try {
         const response = await tableFkLookup({
@@ -624,15 +646,37 @@ export function TableDataEditor({
           page: 0,
           pageSize: 8,
         });
-        setFkOptions(response);
+        if (requestId === fkLookupRequestIdRef.current) {
+          setFkOptions(response);
+        }
       } catch {
-        setFkOptions(null);
+        if (requestId === fkLookupRequestIdRef.current) {
+          setFkOptions(null);
+        }
       } finally {
-        setIsLoadingFk(false);
+        if (requestId === fkLookupRequestIdRef.current) {
+          setIsLoadingFk(false);
+        }
       }
     },
     [findFkForColumn, tableFkLookup, tableRef],
   );
+
+  const loadFkOptionsDebounced = useCallback(
+    (columnName: string, query: string) => {
+      if (fkDebounceTimeoutRef.current) clearTimeout(fkDebounceTimeoutRef.current);
+      fkDebounceTimeoutRef.current = setTimeout(() => {
+        void loadFkOptions(columnName, query);
+      }, 180);
+    },
+    [loadFkOptions],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (fkDebounceTimeoutRef.current) clearTimeout(fkDebounceTimeoutRef.current);
+    };
+  }, []);
 
   const beginEditExistingCell = useCallback(
     (
@@ -672,9 +716,12 @@ export function TableDataEditor({
   };
 
   const cancelEditing = () => {
+    if (fkDebounceTimeoutRef.current) clearTimeout(fkDebounceTimeoutRef.current);
+    fkLookupRequestIdRef.current += 1; // invalidate stale async responses
     setEditingCell(null);
     setEditingValue("");
     setFkOptions(null);
+    setIsLoadingFk(false);
   };
 
   const keepCaretNavigationInsideInlineInput = (
@@ -1034,13 +1081,28 @@ export function TableDataEditor({
         if (!resizeState) return;
         const delta = e.clientX - resizeState.startX;
         const newWidth = Math.max(60, resizeState.startWidth + delta);
-        setColumnWidths((prev) => ({
-          ...prev,
-          [resizeState.column]: newWidth,
-        }));
+        pendingResizeRef.current = { column: resizeState.column, width: newWidth };
+        if (resizeRafRef.current !== null) return;
+        resizeRafRef.current = requestAnimationFrame(() => {
+          const pending = pendingResizeRef.current;
+          resizeRafRef.current = null;
+          if (!pending) return;
+          setColumnWidths((prev) => {
+            if (prev[pending.column] === pending.width) return prev;
+            return {
+              ...prev,
+              [pending.column]: pending.width,
+            };
+          });
+        });
       };
       const handleMouseUp = () => {
         resizeRef.current = null;
+        pendingResizeRef.current = null;
+        if (resizeRafRef.current !== null) {
+          cancelAnimationFrame(resizeRafRef.current);
+          resizeRafRef.current = null;
+        }
         document.removeEventListener("mousemove", handleMouseMove);
         document.removeEventListener("mouseup", handleMouseUp);
         document.body.style.cursor = "";
@@ -1053,6 +1115,16 @@ export function TableDataEditor({
     },
     [],
   );
+
+  useEffect(() => {
+    return () => {
+      if (resizeRafRef.current !== null) {
+        cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = null;
+      }
+      pendingResizeRef.current = null;
+    };
+  }, []);
 
   // ── Keyboard navigation ───────────────────────────────────────
   const allNavigableCells = useMemo(() => {
@@ -1203,7 +1275,10 @@ export function TableDataEditor({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    className="text-muted-foreground hover:text-foreground"
+                    className={cn(
+                      "text-muted-foreground hover:text-foreground",
+                      pressableClass,
+                    )}
                     onClick={onToggleSidebar}
                   >
                     {isSidebarVisible ? (
@@ -1220,13 +1295,23 @@ export function TableDataEditor({
             </Tooltip>
           )}
 
-          <Button variant="default" size="sm" onClick={handleAddDraftRecord}>
+          <Button
+            variant="default"
+            size="sm"
+            className={pressableClass}
+            onClick={handleAddDraftRecord}
+          >
             <Plus className="h-3.5 w-3.5" />
             Add row
           </Button>
 
           {onRequestAddColumn && (
-            <Button variant="outline" size="sm" onClick={onRequestAddColumn}>
+            <Button
+              variant="outline"
+              size="sm"
+              className={pressableClass}
+              onClick={onRequestAddColumn}
+            >
               <Plus className="h-3.5 w-3.5" />
               Column
             </Button>
@@ -1235,6 +1320,7 @@ export function TableDataEditor({
           <Button
             variant={showFilters ? "secondary" : "outline"}
             size="sm"
+            className={pressableClass}
             onClick={() => setShowFilters((v) => !v)}
           >
             <Filter className="h-3.5 w-3.5" />
@@ -1243,7 +1329,13 @@ export function TableDataEditor({
 
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={<Button variant="outline" size="sm" />}
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={pressableClass}
+                />
+              }
             >
               <Columns3 className="h-3.5 w-3.5" />
               Columns
@@ -1296,7 +1388,13 @@ export function TableDataEditor({
               </Select>
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={<Button variant="outline" size="sm" />}
+                  render={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={pressableClass}
+                    />
+                  }
                 >
                   Column DDL
                 </DropdownMenuTrigger>
@@ -1353,6 +1451,7 @@ export function TableDataEditor({
             <Button
               variant="destructive"
               size="sm"
+              className={pressableClass}
               onClick={() => setPendingBatchDelete(true)}
               disabled={primaryKey.length === 0}
             >
@@ -1377,7 +1476,10 @@ export function TableDataEditor({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
+            className={cn(
+              "text-muted-foreground hover:text-foreground",
+              pressableClass,
+            )}
             onClick={() =>
               queryClient.invalidateQueries({
                 queryKey: [
@@ -1394,7 +1496,14 @@ export function TableDataEditor({
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(
+                    "text-muted-foreground hover:text-foreground",
+                    pressableClass,
+                  )}
+                />
               }
             >
               <Download className="h-3.5 w-3.5" />
@@ -1411,7 +1520,10 @@ export function TableDataEditor({
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-muted-foreground hover:text-destructive"
+            className={cn(
+              "text-muted-foreground hover:text-destructive",
+              pressableClass,
+            )}
             onClick={() => {
               setPendingTruncate(true);
               setConfirmText("");
@@ -1473,7 +1585,7 @@ export function TableDataEditor({
               onKeyDown={handleTableKeyDown}
               tabIndex={0}
             >
-              <TableHeader className="sticky top-0 z-10 bg-muted/40 backdrop-blur-sm border-b-2 border-border">
+              <TableHeader className="sticky top-0 z-10 bg-muted/40 border-b-2 border-border">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="sticky left-0 z-[5] w-12 min-w-12 border-r border-border bg-background px-2 py-1 text-center h-8">
                   <div className="flex items-center justify-center">
@@ -1510,7 +1622,7 @@ export function TableDataEditor({
                     >
                       <button
                         type="button"
-                        className="w-full h-full text-left cursor-pointer pr-2"
+                        className="w-full h-full text-left cursor-pointer pr-2 overflow-hidden"
                         onClick={() => {
                           setSort((current) => {
                             if (current[0]?.column !== columnName) {
@@ -1525,17 +1637,31 @@ export function TableDataEditor({
                           });
                         }}
                       >
-                        <span className="font-semibold text-foreground/90">
-                          {columnName}
-                        </span>
-                        <span className="ml-1.5 text-[10px] font-normal text-muted-foreground/70">
-                          {column?.data_type}
-                        </span>
-                        {sorted && (
-                          <span className="ml-1 text-[10px] font-medium text-primary">
-                            {sorted === "asc" ? "↑" : "↓"}
+                        <div className="flex items-center min-w-0 gap-1">
+                          <span
+                            className="min-w-0 flex-1 basis-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground/90"
+                            title={
+                              column?.data_type
+                                ? `${columnName} (${column.data_type})`
+                                : columnName
+                            }
+                          >
+                            {columnName}
                           </span>
-                        )}
+                          {column?.data_type ? (
+                            <span
+                              className="min-w-0 max-w-[42%] truncate whitespace-nowrap text-[10px] font-normal text-muted-foreground/70"
+                              title={column.data_type}
+                            >
+                              {column.data_type}
+                            </span>
+                          ) : null}
+                          {sorted && (
+                            <span className="shrink-0 text-[10px] font-medium text-primary">
+                              {sorted === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
+                        </div>
                       </button>
                       {/* Resize handle */}
                       <div
@@ -1594,7 +1720,7 @@ export function TableDataEditor({
                               value={editingValue}
                               onChange={(event) => {
                                 setEditingValue(event.target.value);
-                                void loadFkOptions(
+                                loadFkOptionsDebounced(
                                   columnName,
                                   event.target.value,
                                 );
@@ -1736,7 +1862,7 @@ export function TableDataEditor({
                           key={`${rowKey}:${columnName}`}
                           className={`group/cell relative font-mono align-middle truncate border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocused ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
                           style={{ width, minWidth: width, maxWidth: width }}
-                          title={normalizeDisplay(effectiveValue)}
+                          title={getCellTitle(effectiveValue)}
                           onDoubleClick={() =>
                             beginEditExistingCell(rowKey, row, columnName)
                           }
@@ -1755,7 +1881,7 @@ export function TableDataEditor({
                                 value={editingValue}
                                 onChange={(event) => {
                                   setEditingValue(event.target.value);
-                                  void loadFkOptions(
+                                  loadFkOptionsDebounced(
                                     columnName,
                                     event.target.value,
                                   );
@@ -1916,6 +2042,7 @@ export function TableDataEditor({
           <Button
             variant="outline"
             size="icon-sm"
+            className={pressableClass}
             onClick={() => setPage((current) => Math.max(current - 1, 0))}
             disabled={page === 0 || isLoading}
           >
@@ -1927,6 +2054,7 @@ export function TableDataEditor({
           <Button
             variant="outline"
             size="icon-sm"
+            className={pressableClass}
             onClick={() => setPage((current) => current + 1)}
             disabled={isLoading || page + 1 >= totalPages}
           >
@@ -1940,6 +2068,7 @@ export function TableDataEditor({
               key={size}
               variant={pageSize === size ? "secondary" : "outline"}
               size="sm"
+              className={pressableClass}
               onClick={() => {
                 setPageSize(size);
                 setPage(0);
@@ -1954,6 +2083,7 @@ export function TableDataEditor({
           <Button
             variant="outline"
             size="sm"
+            className={pressableClass}
             onClick={discardDrafts}
             disabled={!hasDraftChanges || isSaving}
           >
@@ -1963,6 +2093,7 @@ export function TableDataEditor({
           <Button
             variant="default"
             size="sm"
+            className={pressableClass}
             onClick={() => void saveAllChanges()}
             disabled={!hasDraftChanges || isSaving}
           >

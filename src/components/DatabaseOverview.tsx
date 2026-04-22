@@ -1,19 +1,16 @@
 import {
   ChevronRight,
-  Copy,
   Database,
-  Eye,
-  EyeOff,
   HardDrive,
   Loader2,
   Lock,
   Pause,
   Play,
   RefreshCw,
-  Server,
   Table2,
   Terminal,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Connection,
@@ -21,9 +18,9 @@ import type {
   LocalDbInfo,
   SchemaSummary,
 } from "@/ipc/db/types";
+import { cn } from "@/utils/tailwind";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -62,27 +59,40 @@ function StatCard({
   isLoading?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5">
-      {Icon && (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted/60">
-          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-        </div>
-      )}
-      <div className="min-w-0">
+    <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/10 px-3 py-2.5 hover:bg-muted/20 transition-colors">
+      <div className="flex items-center justify-between">
+        {Icon && <Icon className="size-3.5 text-muted-foreground/40" />}
         {isLoading ? (
-          <Skeleton className="mb-0.5 h-4 w-12" />
+          <Skeleton className="h-4 w-10" />
         ) : (
           <p className="font-heading text-sm font-semibold tabular-nums leading-none">
             {value}
           </p>
         )}
-        <p className="mt-0.5 text-[11px] text-muted-foreground leading-none">
-          {label}
-        </p>
       </div>
+      <p className="text-[11px] text-muted-foreground leading-none">
+        {label}
+      </p>
     </div>
   );
 }
+
+/* ── Animation variants (Emil: GPU-only, never scale(0), ≤300ms) ── */
+const containerVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.05 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.22, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] },
+  },
+};
 
 export function DatabaseOverview({
   connection,
@@ -101,7 +111,6 @@ export function DatabaseOverview({
   copyConnectionStringFeedback,
   onCopyConnectionString,
 }: DatabaseOverviewProps) {
-  const [showConnectionString, setShowConnectionString] = useState(false);
   const [displayInfoCopyFeedback, setDisplayInfoCopyFeedback] = useState<
     null | "copied" | "failed"
   >(null);
@@ -149,14 +158,6 @@ export function DatabaseOverview({
       : null;
   const isLocal = connection.is_local === true;
   const isRunning = localDbStatus?.running ?? false;
-  const externalEndpoint =
-    localDbStatus?.external_host && localDbStatus?.external_port
-      ? `${localDbStatus.external_host}:${localDbStatus.external_port}`
-      : null;
-  const maskedConnectionString = useMemo(() => {
-    if (!connectionString) return null;
-    return connectionString.replace(/(\/\/[^:/?#]+:)([^@]*)(@)/, "$1****$3");
-  }, [connectionString]);
   const displayInfo = useMemo(() => {
     if (connection.url) {
       return connection.url.replace(/:[^:]*@/, ":****@");
@@ -201,21 +202,43 @@ export function DatabaseOverview({
     isDisplayInfoHovered || isDisplayInfoTooltipPinned;
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="mx-auto max-w-2xl px-6 py-8 space-y-8">
-        {/* Header */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
+    <motion.div
+      className="h-full overflow-auto"
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+    >
+      <div className="mx-auto max-w-2xl px-6 py-8 space-y-6">
+        <motion.div variants={itemVariants} className="space-y-3">
+          {/* Name row with status */}
+          <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               {colorBadge && (
                 <span
-                  className="inline-block h-3 w-3 rounded-full shrink-0 ring-2 ring-muted-foreground/10"
+                  className="inline-block size-3 rounded-full shrink-0 ring-2 ring-muted-foreground/10"
                   style={{ backgroundColor: colorBadge }}
                 />
               )}
-              <h1 className="font-heading text-xl font-semibold tracking-tight truncate">
-                {connection.name}
-              </h1>
+              <div className="min-w-0">
+                <h1 className="font-heading text-xl font-semibold tracking-tight truncate">
+                  {connection.name}
+                </h1>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span
+                      className={cn(
+                        "inline-block size-1.5 rounded-full",
+                        isLoadingDatabaseInfo ? "bg-amber-500" : "bg-emerald-500"
+                      )}
+                    />
+                    {isLoadingDatabaseInfo ? "Loading" : "Connected"}
+                  </span>
+                  <span className="text-muted-foreground/30">·</span>
+                  <span className="text-[11px] text-muted-foreground font-mono">
+                    {connection.host}:{connection.port}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
               {connection.is_local && (
@@ -247,6 +270,8 @@ export function DatabaseOverview({
               </Badge>
             </div>
           </div>
+
+          {/* Connection info */}
           <TooltipProvider delay={0}>
             <Tooltip open={isDisplayInfoTooltipOpen}>
               <TooltipTrigger
@@ -276,160 +301,84 @@ export function DatabaseOverview({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onNewQuery}
-              className="gap-1.5 h-7 text-xs"
-            >
-              <Terminal className="h-3 w-3" />
-              Query
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onViewTables}
-              className="gap-1.5 h-7 text-xs"
-            >
-              <Table2 className="h-3 w-3" />
-              Tables
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onTestConnection}
-              className="gap-1.5 h-7 text-xs text-muted-foreground"
-            >
-              <RefreshCw className="h-3 w-3" />
-            </Button>
-            {isLocal && (
+
+          {/* Actions */}
+          <div className="flex items-center gap-1.5 pt-1">
+            <motion.div whileTap={{ scale: 0.97 }}>
+              <Button
+                size="sm"
+                onClick={onNewQuery}
+                className="gap-1.5 h-7 text-xs"
+              >
+                <Terminal className="size-3.5" />
+                New query
+              </Button>
+            </motion.div>
+            <motion.div whileTap={{ scale: 0.97 }}>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={onViewTables}
+                className="gap-1.5 h-7 text-xs"
+              >
+                <Table2 className="size-3.5" />
+                Tables
+              </Button>
+            </motion.div>
+            <motion.div whileTap={{ scale: 0.97 }}>
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={isRunning ? onPauseLocalDb : onStartLocalDb}
-                className="gap-1.5 h-7 text-xs"
-                disabled={isLoadingLocalDbStatus || isTogglingLocalDbStatus}
+                onClick={onTestConnection}
+                className="h-7 w-7 p-0 text-muted-foreground"
+                title="Test connection"
               >
-                {isTogglingLocalDbStatus ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {isRunning ? "Stopping..." : "Starting..."}
-                  </>
-                ) : isRunning ? (
-                  <>
-                    <Pause className="h-3 w-3" />
-                    Pause
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-3 w-3" />
-                    Start
-                  </>
-                )}
+                <RefreshCw className="size-3.5" />
               </Button>
+            </motion.div>
+            {isLocal && (
+              <motion.div whileTap={{ scale: 0.97 }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={isRunning ? onPauseLocalDb : onStartLocalDb}
+                  className="gap-1.5 h-7 text-xs"
+                  disabled={isLoadingLocalDbStatus || isTogglingLocalDbStatus}
+                >
+                  {isTogglingLocalDbStatus ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" />
+                      {isRunning ? "Stopping..." : "Starting..."}
+                    </>
+                  ) : isRunning ? (
+                    <>
+                      <Pause className="size-3" />
+                      Pause
+                    </>
+                  ) : (
+                    <>
+                      <Play className="size-3" />
+                      Start
+                    </>
+                  )}
+                </Button>
+              </motion.div>
             )}
           </div>
-        </div>
+        </motion.div>
 
-        <Separator />
-
-        {/* Local DB Status */}
-        {isLocal && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Server className="h-3.5 w-3.5 text-muted-foreground" />
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Local Instance
-              </p>
-            </div>
-
-            <div className="rounded-lg border bg-muted/10 p-4 space-y-4">
-              {/* Status indicators */}
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ring-border">
-                  <span
-                    className={`inline-block h-1.5 w-1.5 rounded-full ${
-                      isRunning ? "bg-emerald-500" : "bg-amber-500"
-                    }`}
-                  />
-                  {isLoadingLocalDbStatus
-                    ? "Loading..."
-                    : isRunning
-                      ? "Running"
-                      : "Paused"}
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  <span className="text-muted-foreground/70">External</span>{" "}
-                  {isLoadingLocalDbStatus
-                    ? "Loading..."
-                    : localDbStatus?.externally_connectable
-                      ? "Connectable"
-                      : "Unavailable"}
-                </span>
-                {externalEndpoint && (
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    {externalEndpoint}
-                  </span>
-                )}
-              </div>
-
-              {/* Connection string */}
-              {connectionString && (
-                <div className="space-y-1.5">
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Connection string
-                  </p>
-                  <div className="flex items-center gap-1.5">
-                    <code className="flex-1 min-w-0 truncate rounded-md border bg-muted/30 px-2.5 py-1.5 font-mono text-xs leading-relaxed">
-                      {showConnectionString
-                        ? connectionString
-                        : (maskedConnectionString ?? connectionString)}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 w-7 p-0 shrink-0"
-                      onClick={() => setShowConnectionString((value) => !value)}
-                    >
-                      {showConnectionString ? (
-                        <EyeOff className="h-3 w-3" />
-                      ) : (
-                        <Eye className="h-3 w-3" />
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 w-7 p-0 shrink-0"
-                      onClick={onCopyConnectionString}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  {copyConnectionStringFeedback && (
-                    <p className="text-[11px] text-muted-foreground">
-                      {copyConnectionStringFeedback === "copied"
-                        ? "Connection string copied."
-                        : "Failed to copy connection string."}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Stats */}
-        <div className="space-y-3">
+        <motion.div variants={itemVariants} className="space-y-3">
           <div className="flex items-center gap-2">
-            <Database className="h-3.5 w-3.5 text-muted-foreground" />
+            <Database className="size-3.5 text-muted-foreground" />
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Overview
             </p>
           </div>
           <div
-            className={`grid grid-cols-2 gap-2 ${tablesWithRls > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
+            className={cn(
+              "grid grid-cols-2 gap-2",
+              tablesWithRls > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"
+            )}
           >
             <StatCard label="Schemas" value={totalSchemas} icon={Database} />
             <StatCard label="Tables" value={totalTables} icon={Table2} />
@@ -443,54 +392,48 @@ export function DatabaseOverview({
               isLoading={isLoadingDatabaseInfo}
             />
           </div>
-        </div>
+        </motion.div>
 
         {/* Server info */}
         {(isLoadingDatabaseInfo || databaseInfo) && (
-          <div className="space-y-3">
+          <motion.div variants={itemVariants} className="space-y-3">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Server
             </p>
             {isLoadingDatabaseInfo ? (
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 <Skeleton className="h-3 w-24" />
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="h-3 w-28" />
               </div>
             ) : databaseInfo ? (
-              <div className="rounded-lg border bg-muted/10 divide-y">
-                <div className="grid grid-cols-3 divide-x">
-                  <div className="px-3 py-2.5">
-                    <p className="text-[11px] text-muted-foreground">Version</p>
-                    <p className="font-mono text-xs font-medium text-foreground">
-                      {shortVersion ?? databaseInfo.version}
-                    </p>
-                  </div>
-                  <div className="px-3 py-2.5">
-                    <p className="text-[11px] text-muted-foreground">
-                      Encoding
-                    </p>
-                    <p className="font-mono text-xs font-medium text-foreground">
-                      {databaseInfo.encoding}
-                    </p>
-                  </div>
-                  <div className="px-3 py-2.5">
-                    <p className="text-[11px] text-muted-foreground">
-                      Timezone
-                    </p>
-                    <p className="font-mono text-xs font-medium text-foreground">
-                      {databaseInfo.timezone}
-                    </p>
-                  </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground/60">Version</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {shortVersion ?? databaseInfo.version}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground/60">Encoding</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {databaseInfo.encoding}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground/60">Timezone</span>
+                  <span className="font-mono font-medium text-foreground">
+                    {databaseInfo.timezone}
+                  </span>
                 </div>
               </div>
             ) : null}
-          </div>
+          </motion.div>
         )}
 
         {/* Schema list */}
         {schemasWithCounts.length > 0 && (
-          <div className="space-y-3">
+          <motion.div variants={itemVariants} className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Schemas
@@ -502,13 +445,21 @@ export function DatabaseOverview({
                 {schemasWithCounts.length}
               </Badge>
             </div>
-            <div className="rounded-lg border bg-muted/10 divide-y">
-              {schemasWithCounts.map((schema) => (
-                <button
+            <div className="divide-y divide-border/50 border-y border-border/50">
+              {schemasWithCounts.map((schema, i) => (
+                <motion.button
                   key={schema.name}
                   type="button"
                   onClick={() => onViewTables()}
-                  className="group w-full flex items-center gap-2.5 py-2.5 px-3 first:rounded-t-lg last:rounded-b-lg hover:bg-muted/30 transition-colors text-left text-sm"
+                  className="group w-full flex items-center gap-2.5 py-2 px-3 text-left text-sm hover:bg-muted/30 transition-colors"
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    duration: 0.18,
+                    delay: i * 0.03,
+                    ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+                  }}
+                  whileTap={{ scale: 0.995 }}
                 >
                   <span className="flex-1 truncate font-medium">
                     {schema.name}
@@ -517,15 +468,15 @@ export function DatabaseOverview({
                     {schema.count}
                   </span>
                   {schema.rlsCount > 0 && (
-                    <Lock className="h-2.5 w-2.5 text-cyan-500/60" />
+                    <Lock className="size-2.5 text-cyan-500/60" />
                   )}
-                  <ChevronRight className="h-3 w-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
-                </button>
+                  <ChevronRight className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
+                </motion.button>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

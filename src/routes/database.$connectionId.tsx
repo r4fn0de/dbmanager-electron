@@ -161,6 +161,10 @@ export function DatabasePageContent({
   const [tablesSidebarWidthPx, setTablesSidebarWidthPx] = useState(280);
   const [sqlSidebarWidthPx, setSqlSidebarWidthPx] = useState(280);
   const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const resizeRafRef = useRef<number | null>(null);
+  const tablesSidebarWidthRef = useRef(tablesSidebarWidthPx);
+  const layoutPersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tabWidthUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const toggleSidebar = useCallback(() => {
     const panel = sidebarPanelRef.current;
@@ -186,6 +190,9 @@ export function DatabasePageContent({
   useEffect(() => {
     return () => {
       if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+      if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
+      if (layoutPersistTimeoutRef.current) clearTimeout(layoutPersistTimeoutRef.current);
+      if (tabWidthUpdateTimeoutRef.current) clearTimeout(tabWidthUpdateTimeoutRef.current);
     };
   }, []);
 
@@ -198,7 +205,17 @@ export function DatabasePageContent({
   const handleSidebarResize = useCallback(
     (panelSize: { asPercentage: number; inPixels: number }) => {
       const visible = panelSize.asPercentage !== 0;
-      setTablesSidebarWidthPx(panelSize.inPixels);
+      // Keep transient high-frequency width in a ref; only commit state at most once per frame
+      // and only when width changes meaningfully to avoid expensive rerenders while dragging.
+      const nextWidth = panelSize.inPixels;
+      if (Math.abs(nextWidth - tablesSidebarWidthRef.current) >= 8) {
+        tablesSidebarWidthRef.current = nextWidth;
+        if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = requestAnimationFrame(() => {
+          setTablesSidebarWidthPx(tablesSidebarWidthRef.current);
+          resizeRafRef.current = null;
+        });
+      }
       if (sidebarVisibleRef.current !== visible) {
         setIsSidebarVisible(visible);
       }
@@ -224,9 +241,12 @@ export function DatabasePageContent({
   }, [connectionId]);
   const persistLayout = useCallback(
     (layout: Layout) => {
-      try {
-        localStorage.setItem(`db-tables-layout:${connectionId}`, JSON.stringify(layout));
-      } catch { /* quota exceeded or private mode */ }
+      if (layoutPersistTimeoutRef.current) clearTimeout(layoutPersistTimeoutRef.current);
+      layoutPersistTimeoutRef.current = setTimeout(() => {
+        try {
+          localStorage.setItem(`db-tables-layout:${connectionId}`, JSON.stringify(layout));
+        } catch { /* quota exceeded or private mode */ }
+      }, 120);
     },
     [connectionId],
   );
@@ -348,8 +368,18 @@ export function DatabasePageContent({
   }, [loadSchema, isActive]);
 
   useEffect(() => {
-    updateTab(connectionId, { chrome: tabChrome, chromeWidthPx: tabChromeWidthPx });
-  }, [connectionId, tabChrome, tabChromeWidthPx, updateTab]);
+    updateTab(connectionId, { chrome: tabChrome });
+  }, [connectionId, tabChrome, updateTab]);
+
+  useEffect(() => {
+    if (tabWidthUpdateTimeoutRef.current) clearTimeout(tabWidthUpdateTimeoutRef.current);
+    tabWidthUpdateTimeoutRef.current = setTimeout(() => {
+      updateTab(connectionId, { chromeWidthPx: tabChromeWidthPx });
+    }, 120);
+    return () => {
+      if (tabWidthUpdateTimeoutRef.current) clearTimeout(tabWidthUpdateTimeoutRef.current);
+    };
+  }, [connectionId, tabChromeWidthPx, updateTab]);
 
   const loadDatabaseInfo = useCallback(async () => {
     if (!connectionId) return;
