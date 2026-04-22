@@ -88,7 +88,7 @@ export function DatabaseNavSidebar({
                 className="group relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-foreground/15"
                 onClick={() => navigate({ to: "/" })}
               >
-                {colorDot && (
+                {colorDot && !connection.is_local && (
                   <span
                     className="absolute inset-0 rounded-lg ring-1 ring-inset opacity-30 group-hover:opacity-50 transition-opacity"
                     style={{ borderColor: colorDot }}

@@ -139,8 +139,29 @@ export function DatabasePageContent({
     storedTab?.lastTable ?? null
   );
 
-  const [tables, setTables] = useState<SchemaTableSummary[]>([]);
-  const [schemas, setSchemas] = useState<string[]>([]);
+  // Schema data via React Query — enables caching, stale-while-revalidate,
+  // and sharing with route loader prefetch (same pattern as conar).
+  // Previously used useState+useEffect which ran AFTER mount (visible loading)
+  // and couldn't be prefetched or shared.
+  const schemaSummaryQueryKey = useMemo(
+    () => ["schema-summary", connectionId] as const,
+    [connectionId],
+  );
+
+  const {
+    data: schemaSummaryData,
+    isLoading: isLoadingSchema,
+    refetch: refetchSchema,
+  } = useQuery({
+    queryKey: schemaSummaryQueryKey,
+    queryFn: () => getSchemaSummary(connectionId),
+    enabled: isActive,
+    staleTime: 60_000, // Schema structure rarely changes — 1 min staleTime
+    gcTime: 5 * 60_000,
+  });
+
+  const schemas = schemaSummaryData?.schemas ?? [];
+  const tables = schemaSummaryData?.tables ?? [];
   const [initialSqlQuery, setInitialSqlQuery] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
 
@@ -222,7 +243,6 @@ export function DatabasePageContent({
     } catch { /* quota exceeded or private mode */ }
   }, [isSidebarVisible, connectionId]);
 
-  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<null | "copied" | "failed">(null);
   const [isTogglingLocalDb, setIsTogglingLocalDb] = useState(false);
@@ -314,28 +334,17 @@ export function DatabasePageContent({
     }
   }, [connection, connectionId]);
 
-  const loadSchema = useCallback(async () => {
-    if (!connectionId) return;
-    setIsLoading(true);
-    try {
-      const summary = await getSchemaSummary(connectionId);
-      setSchemas(summary.schemas);
-      setTables(summary.tables);
-      if (summary.schemas.length > 0 && !selectedSchema) {
-        setSelectedSchema(summary.schemas[0]);
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load schema");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [connectionId, selectedSchema]);
-
+  // Auto-select first schema when schemas load and none is selected
   useEffect(() => {
-    // Only load schema when the tab is active — skip IPC calls for background tabs
-    if (!isActive) return;
-    loadSchema();
-  }, [loadSchema, isActive]);
+    if (schemas.length > 0 && !storedTab?.lastSchema && selectedSchema === (storedTab?.lastSchema ?? "public")) {
+      const defaultSchema = schemas.includes("public") ? "public" : schemas[0];
+      if (selectedSchema !== defaultSchema) {
+        setSelectedSchema(defaultSchema);
+      }
+    }
+  }, [schemas, storedTab?.lastSchema, selectedSchema]);
+
+  const isLoading = isLoadingSchema;
 
   useEffect(() => {
     updateTab(connectionId, { chrome: tabChrome });
@@ -402,7 +411,11 @@ export function DatabasePageContent({
       );
       return details;
     },
-    enabled: isActive && tables.length > 0 && selectedSchema.length > 0,
+    // Only load schema details when visualizer or SQL editor needs them — not on mount.
+    // This eliminates the 50-parallel getTableDetails calls that fired on
+    // every page load even when the user was just browsing tables.
+    enabled: isActive && tables.length > 0 && selectedSchema.length > 0 &&
+      (activeSection === "visualizer" || activeSection === "sql-editor"),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
@@ -411,21 +424,9 @@ export function DatabasePageContent({
   const visualizerTables = selectedSchemaDetails;
   const isLoadingVisualizer = isLoadingSchemaDetails;
 
-  // Pré-carregar dados do visualizer quando o schema muda ou quando está na seção tables
-  useEffect(() => {
-    if (!isActive || !connectionId || tables.length === 0) return;
-    // Pré-carrega em background quando na seção tables ou overview
-    if (activeSection === "tables" || activeSection === "overview") {
-      const schemaTables = tables.filter((t) => t.schema === selectedSchema);
-      for (const table of schemaTables.slice(0, 10)) {
-        queryClient.prefetchQuery({
-          queryKey: ["table-details", connectionId, table.schema, table.name],
-          queryFn: () => getTableDetails(connectionId, table.schema, table.name),
-          staleTime: 5 * 60 * 1000,
-        });
-      }
-    }
-  }, [isActive, connectionId, tables, selectedSchema, activeSection, queryClient]);
+  // Prefetch table details on hover (handled by prefetchTableDetails callback below).
+  // The old useEffect that prefetched 10 tables on mount has been removed —
+  // hover-based prefetch is more efficient and doesn't fire unnecessary IPC calls.
 
   const changeSection = useCallback((section: SidebarSection) => {
     setActiveSection(section);
@@ -507,8 +508,10 @@ export function DatabasePageContent({
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      // refetch (connections list) and loadSchema are independent — run in parallel
-      await Promise.all([refetch(), loadSchema()]);
+      // refetch (connections list) and refetchSchema are independent — run in parallel
+      await Promise.all([refetch(), refetchSchema()]);
+      // Invalidate schema details cache so visualizer/AI gets fresh data
+      queryClient.invalidateQueries({ queryKey: ["selected-schema-details", connectionId] });
       if (activeSection === "overview") {
         loadDatabaseInfo();
       }
@@ -744,11 +747,11 @@ export function DatabasePageContent({
   );
 
   const handleDdlSuccess = useCallback(async () => {
-    await loadSchema();
+    await refetchSchema();
     // Invalidate all cached table details for this connection — safest default
     // since DDL can affect any table.
     invalidateTableDetails();
-  }, [loadSchema, invalidateTableDetails]);
+  }, [refetchSchema, invalidateTableDetails]);
 
   // Prefetch table details AND first page of rows on hover — gives near-instant
   // navigation when the user clicks a table they've already hovered over.

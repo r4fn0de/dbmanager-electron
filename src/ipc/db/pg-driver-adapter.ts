@@ -10,7 +10,7 @@
  */
 import type { DatabaseType, SslMode } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
-import { getPgKysely } from "./kysely-factory";
+import { getPgKysely, getPgPool } from "./kysely-factory";
 import {
   buildPgConnectionString,
   buildPgWhereClause,
@@ -253,22 +253,127 @@ export function createPostgresDriver(): DatabaseDriver {
     },
 
     async getTableDetails(connectionString, schema, table) {
-      const fullSchema = await this.getSchema(connectionString);
-      const tableInfo = fullSchema.tables.find(
-        (t) => t.schema === schema && t.name === table,
-      );
-      if (!tableInfo) {
-        throw new Error(`Table ${schema}.${table} not found`);
+      const db = getPgKysely(connectionString);
+
+      try {
+        // 1. Columns for this specific table only
+        const columns = await db
+          .withSchema("information_schema")
+          .selectFrom("columns")
+          .select([
+            "column_name",
+            "data_type",
+            "udt_name",
+            "is_nullable",
+            "column_default",
+          ])
+          .where("table_schema", "=", schema)
+          .where("table_name", "=", table)
+          .orderBy("ordinal_position")
+          .execute();
+
+        // 2. Indexes for this specific table
+        const indexes = await db
+          .withSchema("pg_catalog")
+          .selectFrom("pg_indexes")
+          .select(["indexname", "indexdef"])
+          .where("schemaname", "=", schema)
+          .where("tablename", "=", table)
+          .execute();
+
+        // 3. Foreign keys for this specific table
+        const foreignKeys = await db
+          .withSchema("information_schema")
+          .selectFrom("table_constraints as tc")
+          .innerJoin("key_column_usage as kcu", (join) =>
+            join
+              .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+          )
+          .innerJoin("constraint_column_usage as ccu", (join) =>
+            join
+              .onRef("ccu.constraint_name", "=", "tc.constraint_name")
+              .onRef("ccu.constraint_schema", "=", "tc.constraint_schema"),
+          )
+          .select([
+            "kcu.column_name",
+            "ccu.table_schema as foreign_table_schema",
+            "ccu.table_name as foreign_table_name",
+            "ccu.column_name as foreign_column_name",
+          ])
+          .where("tc.constraint_type", "=", "FOREIGN KEY")
+          .where("tc.table_schema", "=", schema)
+          .where("tc.table_name", "=", table)
+          .execute();
+
+        // 4. RLS check — use raw SQL since Kysely lacks types for pg_catalog tables
+        const pool = getPgPool(connectionString);
+        const rlsResult = await pool.query(
+          `SELECT c.relrowsecurity AS has_rls FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = $1 AND c.relname = $2`,
+          [schema, table],
+        );
+        const hasRls = rlsResult.rows.length > 0 && rlsResult.rows[0].has_rls === true;
+
+        // 5. RLS policies — only if RLS is enabled
+        let rlsPolicies: Array<{ name: string; kind: string; roles: string[]; using_expr: string | null; with_check_expr: string | null }> = [];
+        if (hasRls) {
+          const policyResult = await pool.query(
+            `SELECT p.polname AS policy_name, p.polcmd AS policy_cmd, p.polpermissive AS is_permissive FROM pg_policy p JOIN pg_class c ON p.polrelid = c.oid JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = $1 AND c.relname = $2`,
+            [schema, table],
+          );
+
+          const cmdMap: Record<string, string> = { r: "SELECT", a: "INSERT", w: "UPDATE", d: "DELETE", "*": "ALL" };
+          rlsPolicies = policyResult.rows.map((row) => ({
+            name: String(row.policy_name),
+            kind: cmdMap[String(row.policy_cmd)] ?? "UNKNOWN",
+            roles: [],
+            using_expr: null,
+            with_check_expr: null,
+          }));
+        }
+
+        // Build structured result — indexes are already typed from pg_indexes query
+        const indexResults = indexes.map((row) => {
+          const indexdef = (row as unknown as { indexdef: string }).indexdef;
+          const isUnique = indexdef.includes("UNIQUE");
+          const isPrimary = indexdef.includes("PRIMARY KEY");
+          const columnMatch = indexdef.match(/\(([^)]+)\)/);
+          const columnNames = columnMatch
+            ? columnMatch[1].split(",").map((c: string) => c.trim())
+            : [];
+          return {
+            name: (row as unknown as { indexname: string }).indexname,
+            is_unique: isUnique,
+            is_primary: isPrimary,
+            column_names: columnNames,
+          };
+        });
+
+        return {
+          name: table,
+          schema,
+          has_rls: hasRls,
+          columns: columns.map((c) => ({
+            name: c.column_name,
+            data_type: c.data_type,
+            udt_name: c.udt_name ?? null,
+            is_nullable: c.is_nullable === "YES",
+            column_default: c.column_default ?? null,
+          })),
+          indexes: indexResults,
+          foreign_keys: foreignKeys.map((fk) => ({
+            name: `${table}_${fk.column_name}_fkey`,
+            column_name: fk.column_name,
+            referenced_schema: fk.foreign_table_schema ?? undefined,
+            referenced_table: fk.foreign_table_name,
+            referenced_column: fk.foreign_column_name,
+          })),
+          rls_policies: rlsPolicies,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL table details error for ${schema}.${table}: ${msg}`);
       }
-      return {
-        name: tableInfo.name,
-        schema: tableInfo.schema,
-        has_rls: tableInfo.has_rls,
-        columns: tableInfo.columns,
-        indexes: tableInfo.indexes,
-        foreign_keys: tableInfo.foreign_keys,
-        rls_policies: tableInfo.rls_policies,
-      };
     },
 
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {

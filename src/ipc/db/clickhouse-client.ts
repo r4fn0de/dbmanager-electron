@@ -273,34 +273,75 @@ export function createClickhouseDriver(): DatabaseDriver {
     },
 
     async getSchemaSummary(connectionString) {
-      const schema = await this.getSchema(connectionString);
-      return {
-        schemas: schema.schemas,
-        tables: schema.tables.map((t) => ({
-          name: t.name,
-          schema: t.schema,
-          has_rls: false,
-        })),
-      };
+      const client = await getClickhouseClient(connectionString);
+      try {
+        // 1. Schemas (databases) — lightweight query, no column data
+        const schemasResult = await client.query({
+          query: `SELECT name AS schema_name FROM system.databases WHERE name NOT IN (${CH_SYSTEM_DATABASES.map((d) => `'${d}'`).join(", ")}) ORDER BY name`,
+          format: "JSONEachRow",
+        });
+        const schemaRows = await schemasResult.json() as Array<{ schema_name: string }>;
+
+        // 2. Tables — just schema + name, no column/index data
+        const tablesResult = await client.query({
+          query: `SELECT database, name FROM system.tables WHERE database NOT IN (${CH_SYSTEM_DATABASES.map((d) => `'${d}'`).join(", ")}) AND engine NOT IN ('View', 'MaterializedView', 'Dictionary') ORDER BY database, name`,
+          format: "JSONEachRow",
+        });
+        const tableRows = await tablesResult.json() as Array<{ database: string; name: string }>;
+
+        return {
+          schemas: schemaRows.map((r) => r.schema_name),
+          tables: tableRows.map((t) => ({
+            name: t.name,
+            schema: t.database,
+            has_rls: false,
+          })),
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`ClickHouse schema summary error: ${msg}`);
+      }
     },
 
     async getTableDetails(connectionString, schema, table) {
-      const fullSchema = await this.getSchema(connectionString);
-      const tableInfo = fullSchema.tables.find(
-        (t) => t.schema === schema && t.name === table,
-      );
-      if (!tableInfo) {
-        throw new Error(`Table ${schema}.${table} not found`);
+      const client = await getClickhouseClient(connectionString);
+
+      try {
+        // 1. Columns for this specific table only
+        const columnsResult = await client.query({
+          query: `SELECT name AS column_name, type AS data_type, type AS udt_name, default_kind, default_expression FROM system.columns WHERE database = ${escVal(schema)} AND table = ${escVal(table)} ORDER BY position`,
+          format: "JSONEachRow",
+        });
+        const columnRows = await columnsResult.json() as Array<{
+          column_name: string; data_type: string; udt_name: string;
+          default_kind: string; default_expression: string;
+        }>;
+
+        const columns = columnRows.map((row) => {
+          const isNullable = row.data_type.startsWith("Nullable(");
+          const defaultExpr = row.default_kind === "DEFAULT" ? row.default_expression : row.default_kind === "MATERIALIZED" ? row.default_expression : null;
+          return {
+            name: row.column_name,
+            data_type: mapClickhouseType(row.data_type),
+            udt_name: row.data_type, // Store raw ClickHouse type for display
+            is_nullable: isNullable,
+            column_default: defaultExpr,
+          };
+        });
+
+        return {
+          name: table,
+          schema,
+          has_rls: false,
+          columns,
+          indexes: [], // ClickHouse indexes are materialized, not traditional
+          foreign_keys: [], // ClickHouse doesn't have foreign keys
+          rls_policies: [],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`ClickHouse table details error for ${schema}.${table}: ${msg}`);
       }
-      return {
-        name: tableInfo.name,
-        schema: tableInfo.schema,
-        has_rls: tableInfo.has_rls,
-        columns: tableInfo.columns,
-        indexes: tableInfo.indexes,
-        foreign_keys: tableInfo.foreign_keys,
-        rls_policies: tableInfo.rls_policies,
-      };
     },
 
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {

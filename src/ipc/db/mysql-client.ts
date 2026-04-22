@@ -477,22 +477,106 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
     },
 
     async getTableDetails(connectionString, schema, table) {
-      const fullSchema = await this.getSchema(connectionString);
-      const tableInfo = fullSchema.tables.find(
-        (t) => t.schema === schema && t.name === table,
-      );
-      if (!tableInfo) {
-        throw new Error(`Table ${schema}.${table} not found`);
+      const db = await getMysqlKysely(connectionString);
+
+      try {
+        // 1. Columns for this specific table only
+        const columnRows = await db
+          .selectFrom("columns")
+          .select([
+            "COLUMN_NAME",
+            "DATA_TYPE",
+            "COLUMN_TYPE",
+            "IS_NULLABLE",
+            "COLUMN_DEFAULT",
+          ])
+          .where("TABLE_SCHEMA", "=", schema)
+          .where("TABLE_NAME", "=", table)
+          .orderBy("ORDINAL_POSITION")
+          .execute();
+
+        const columns = columnRows.map((c) => ({
+          name: c.COLUMN_NAME,
+          data_type: c.DATA_TYPE,
+          udt_name: c.COLUMN_TYPE ?? null,
+          is_nullable: c.IS_NULLABLE === "YES",
+          column_default: c.COLUMN_DEFAULT,
+        }));
+
+        // 2. Indexes for this specific table
+        const indexRows = await db
+          .selectFrom("statistics")
+          .select([
+            "INDEX_NAME",
+            "COLUMN_NAME",
+            "NON_UNIQUE",
+          ])
+          .where("TABLE_SCHEMA", "=", schema)
+          .where("TABLE_NAME", "=", table)
+          .orderBy("INDEX_NAME")
+          .orderBy("SEQ_IN_INDEX")
+          .execute();
+
+        const indexMap = new Map<string, { columns: string[]; isUnique: boolean; isPrimary: boolean }>();
+        for (const row of indexRows) {
+          if (!indexMap.has(row.INDEX_NAME)) {
+            indexMap.set(row.INDEX_NAME, {
+              columns: [],
+              isUnique: row.NON_UNIQUE === 0,
+              isPrimary: row.INDEX_NAME === "PRIMARY",
+            });
+          }
+          indexMap.get(row.INDEX_NAME)!.columns.push(row.COLUMN_NAME);
+        }
+        const indexes = Array.from(indexMap.entries()).map(([name, idx]) => ({
+          name,
+          is_unique: idx.isUnique,
+          is_primary: idx.isPrimary,
+          column_names: idx.columns,
+        }));
+
+        // 3. Foreign keys for this specific table
+        const fkRows = await db
+          .selectFrom("key_column_usage as kcu")
+          .innerJoin("table_constraints as tc", (join) =>
+            join
+              .onRef("tc.CONSTRAINT_NAME", "=", "kcu.CONSTRAINT_NAME")
+              .onRef("tc.CONSTRAINT_SCHEMA", "=", "kcu.CONSTRAINT_SCHEMA"),
+          )
+          .select([
+            "kcu.CONSTRAINT_NAME",
+            "kcu.COLUMN_NAME",
+            "kcu.REFERENCED_TABLE_SCHEMA",
+            "kcu.REFERENCED_TABLE_NAME",
+            "kcu.REFERENCED_COLUMN_NAME",
+          ])
+          .where("tc.CONSTRAINT_TYPE", "=", "FOREIGN KEY")
+          .where("kcu.TABLE_SCHEMA", "=", schema)
+          .where("kcu.TABLE_NAME", "=", table)
+          .where("kcu.REFERENCED_TABLE_NAME", "is not", null)
+          .execute();
+
+        const foreignKeys = fkRows.map((r) => ({
+          name: r.CONSTRAINT_NAME,
+          column_name: r.COLUMN_NAME,
+          referenced_schema: r.REFERENCED_TABLE_SCHEMA ?? undefined,
+          referenced_table: r.REFERENCED_TABLE_NAME!,
+          referenced_column: r.REFERENCED_COLUMN_NAME!,
+        }));
+
+        return {
+          name: table,
+          schema,
+          has_rls: false,
+          columns,
+          indexes,
+          foreign_keys: foreignKeys,
+          rls_policies: [],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`MySQL table details error for ${schema}.${table}: ${msg}`);
       }
-      return {
-        name: tableInfo.name,
-        schema: tableInfo.schema,
-        has_rls: tableInfo.has_rls,
-        columns: tableInfo.columns,
-        indexes: tableInfo.indexes,
-        foreign_keys: tableInfo.foreign_keys,
-        rls_policies: tableInfo.rls_policies,
-      };
     },
 
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {

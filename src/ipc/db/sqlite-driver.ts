@@ -292,34 +292,76 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getSchemaSummary(connectionString) {
-      const schema = await this.getSchema(connectionString);
+      const db = getDb(connectionString);
+
+      // SQLite has a single "main" schema — no need for full introspection
+      const schemas = ["main"];
+      const tableRows = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .all() as Array<{ name: string }>;
+
       return {
-        schemas: schema.schemas,
-        tables: schema.tables.map((t) => ({
+        schemas,
+        tables: tableRows.map((t) => ({
           name: t.name,
-          schema: t.schema,
+          schema: "main",
           has_rls: false,
         })),
       };
     },
 
     async getTableDetails(connectionString, schema, table) {
-      const fullSchema = await this.getSchema(connectionString);
-      const tableInfo = fullSchema.tables.find(
-        (t) => t.schema === schema && t.name === table,
-      );
-      if (!tableInfo) {
-        throw new Error(`Table ${schema}.${table} not found`);
+      const db = getDb(connectionString);
+
+      try {
+        // 1. Columns for this specific table only
+        const colInfo = db.pragma(`table_info("${table}")`) as unknown as SqliteColumnInfo[];
+        const columns = colInfo.map((c) => ({
+          name: c.name,
+          data_type: c.type || "TEXT",
+          udt_name: c.type || null,
+          is_nullable: c.notnull === 0,
+          column_default: c.dflt_value,
+        }));
+
+        // 2. Indexes for this specific table
+        const indexList = db.pragma(`index_list("${table}")`) as unknown as SqliteIndexInfo[];
+        const indexes = indexList
+          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
+          .map((idx) => {
+            const idxCols = db.pragma(`index_xinfo("${idx.name}")`) as unknown as SqliteIndexColumn[];
+            return {
+              name: idx.name,
+              is_unique: idx.unique === 1,
+              is_primary: idx.origin === "pk",
+              column_names: idxCols
+                .filter((ic) => ic.cid >= 0 && ic.name)
+                .map((ic) => ic.name!),
+            };
+          });
+
+        // 3. Foreign keys for this specific table
+        const fkList = db.pragma(`foreign_key_list("${table}")`) as unknown as SqliteForeignKey[];
+        const foreignKeys = fkList.map((fk) => ({
+          name: `${table}_${fk.from}_fkey`,
+          column_name: fk.from,
+          referenced_schema: "main",
+          referenced_table: fk.table,
+          referenced_column: fk.to,
+        }));
+
+        return {
+          name: table,
+          schema: "main",
+          has_rls: false,
+          columns,
+          indexes,
+          foreign_keys: foreignKeys,
+          rls_policies: [],
+        };
+      } catch (err) {
+        throw new Error(`SQLite table details error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
       }
-      return {
-        name: tableInfo.name,
-        schema: tableInfo.schema,
-        has_rls: tableInfo.has_rls,
-        columns: tableInfo.columns,
-        indexes: tableInfo.indexes,
-        foreign_keys: tableInfo.foreign_keys,
-        rls_policies: tableInfo.rls_policies,
-      };
     },
 
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
