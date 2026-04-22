@@ -50,6 +50,7 @@
     "embla-carousel-react": "^8.6.0",
     "i18next": "^25.10.5",
     "input-otp": "^1.4.2",
+    "kysely": "^0.28.16",
     "lucide-react": "^1.7.0",
     "motion": "^12.38.0",
     "mysql2": "^3.22.2",

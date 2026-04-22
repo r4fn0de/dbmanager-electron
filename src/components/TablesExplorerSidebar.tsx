@@ -45,6 +45,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/utils/tailwind";
 import type { SchemaTableSummary } from "@/ipc/db/types";
 
 /** Parsed table reference (schema.name) */
@@ -117,7 +118,7 @@ export function TablesExplorerSidebar({
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold tracking-tight text-foreground">Explorer</span>
             {isLoading ? (
-              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+              <Loader2 className="size-3 animate-spin text-muted-foreground" />
             ) : !isLoading && filteredTables.length > 0 ? (
               <Badge variant="secondary" className="font-mono text-[10px] h-4 px-1.5 leading-none">
                 {filteredTables.length}
@@ -136,22 +137,22 @@ export function TablesExplorerSidebar({
                   />
                 }
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="bottom">
                 <DropdownMenuItem onClick={onCreateSchema}>
-                  <Database className="h-3.5 w-3.5" />
+                  <Database className="size-3.5" />
                   Create schema
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onCreateTable}>
-                  <Table2 className="h-3.5 w-3.5" />
+                  <Table2 className="size-3.5" />
                   Create table
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={onCreateIndex}
                   disabled={!selectedTableRef}
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Pencil className="size-3.5" />
                   Create index
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -159,7 +160,7 @@ export function TablesExplorerSidebar({
                   onClick={onImportCsv}
                   disabled={!selectedTableRef}
                 >
-                  <Terminal className="h-3.5 w-3.5" />
+                  <Terminal className="size-3.5" />
                   Import CSV
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -188,7 +189,7 @@ export function TablesExplorerSidebar({
                 return (
                   <SelectItem key={s} value={s} className="text-xs">
                     <div className="flex items-center gap-2">
-                      <Database className="h-3 w-3 text-muted-foreground" />
+                      <Database className="size-3 text-muted-foreground" />
                       <span className="font-mono">{s}</span>
                       <Badge variant="secondary" className="ml-auto font-mono text-[10px] h-4 px-1">
                         {count}
@@ -205,7 +206,7 @@ export function TablesExplorerSidebar({
       {/* Search + Filter Bar */}
       <div className="px-3 pb-2 shrink-0">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
           <Input
             type="text"
             placeholder="Filter tables..."
@@ -219,13 +220,13 @@ export function TablesExplorerSidebar({
               className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => onTableSearchChange("")}
             >
-              <X className="h-3 w-3" />
+              <X className="size-3" />
             </button>
           )}
         </div>
       </div>
 
-      <Separator className="opacity-50" />
+      <Separator className="bg-border/30" />
 
       {/* Table list */}
       <ScrollArea className="flex-1 min-h-0">
@@ -234,14 +235,14 @@ export function TablesExplorerSidebar({
             <div className="space-y-2 px-1 py-1">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-2.5 px-2 py-2">
-                  <Skeleton className="h-3.5 w-3.5 rounded-sm shrink-0" />
+                  <Skeleton className="size-3.5 rounded-sm shrink-0" />
                   <Skeleton className="h-3 w-24" />
                 </div>
               ))}
             </div>
           ) : filteredTables.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-              <FileSearch className="h-4 w-4 text-muted-foreground/50 mb-2" />
+              <FileSearch className="size-4 text-muted-foreground/50 mb-2" />
               <p className="text-xs text-muted-foreground">
                 {tableSearch ? "No matches found" : "No tables"}
               </p>
@@ -265,18 +266,20 @@ export function TablesExplorerSidebar({
                           onFocus={() =>
                             onPrefetchTable(table.schema, table.name)
                           }
-                          className={`group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100 ${
+                          className={cn(
+                            "group w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-left transition-colors duration-100",
                             isActive
                               ? "bg-accent text-accent-foreground"
                               : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
-                          }`}
+                          )}
                         >
                           <Table2
-                            className={`h-3.5 w-3.5 shrink-0 transition-colors ${
+                            className={cn(
+                              "size-3.5 shrink-0 transition-colors",
                               isActive
                                 ? "text-accent-foreground"
                                 : "text-muted-foreground group-hover:text-foreground/70"
-                            }`}
+                            )}
                           />
                           <span className="flex-1 truncate text-[13px] font-medium leading-tight">
                             {table.name}
@@ -284,14 +287,14 @@ export function TablesExplorerSidebar({
                           {table.has_rls ? (
                             <Tooltip>
                               <TooltipTrigger className="inline-flex shrink-0">
-                                <Lock className="h-3 w-3 text-cyan-500 shrink-0" />
+                                <Lock className="size-3 text-cyan-500 shrink-0" />
                               </TooltipTrigger>
                               <TooltipContent side="bottom" sideOffset={4}>RLS enabled</TooltipContent>
                             </Tooltip>
                           ) : (
                             <Tooltip>
                               <TooltipTrigger className="inline-flex shrink-0">
-                                <LockOpen className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                                <LockOpen className="size-3 text-muted-foreground/40 shrink-0" />
                               </TooltipTrigger>
                               <TooltipContent side="bottom" sideOffset={4}>RLS disabled</TooltipContent>
                             </Tooltip>
@@ -308,7 +311,7 @@ export function TablesExplorerSidebar({
                           })
                         }
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil className="size-3.5" />
                         Rename table
                       </ContextMenuItem>
                       {table.has_rls && (
@@ -320,7 +323,7 @@ export function TablesExplorerSidebar({
                             })
                           }
                         >
-                          <LockKeyhole className="h-3.5 w-3.5" />
+                          <LockKeyhole className="size-3.5" />
                           View RLS policies
                         </ContextMenuItem>
                       )}
@@ -334,7 +337,7 @@ export function TablesExplorerSidebar({
                           })
                         }
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="size-3.5" />
                         Drop table
                       </ContextMenuItem>
                     </ContextMenuContent>

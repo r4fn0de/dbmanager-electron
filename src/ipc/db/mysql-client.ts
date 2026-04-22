@@ -188,6 +188,11 @@ function parseMysqlUrl(url: string): mysql.ConnectionOptions {
   }
 }
 
+/** Escape and quote a MySQL identifier (wrap in backticks, double internal backticks). */
+function escId(name: string): string {
+  return "`" + name.replace(/`/g, "``") + "`";
+}
+
 // ---------------------------------------------------------------------------
 // MySQL Driver implementation
 // ---------------------------------------------------------------------------
@@ -685,16 +690,258 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
       return sql;
     },
 
-    // ── Clone / Export (stubs — MySQL full export not yet implemented) ─
+    // ── Clone / Export ──────────────────────────────────────────────
 
-    async exportSchemaDdl() {
-      // TODO: implement MySQL schema export
-      return { scripts: [], tableRowCounts: [] };
+    async exportSchemaDdl(connectionString: string) {
+      return withConnection(connectionString, async (conn) => {
+        const scripts: Array<{ type: string; schema: string; name: string; sql: string; dependsOn?: string[] }> = [];
+        const tableRowCounts: Array<{ schema: string; table: string; rowCount: number }> = [];
+
+        const excludedDbs = "'mysql','information_schema','performance_schema','sys'";
+
+        // 1. Export databases (MySQL "schemas")
+        const [dbRows] = await conn.query(
+          `SELECT SCHEMA_NAME FROM information_schema.schemata WHERE SCHEMA_NAME NOT IN (${excludedDbs}) ORDER BY SCHEMA_NAME`,
+        );
+        for (const row of dbRows as Array<{ SCHEMA_NAME: string }>) {
+          scripts.push({
+            type: "schema",
+            schema: row.SCHEMA_NAME,
+            name: row.SCHEMA_NAME,
+            sql: `CREATE DATABASE IF NOT EXISTS ${escId(row.SCHEMA_NAME)};`,
+          });
+        }
+
+        // 2. Get table metadata (ENGINE, TABLE_COLLATION, AUTO_INCREMENT, TABLE_ROWS)
+        const [tableMetaRows] = await conn.query(
+          `SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, TABLE_COLLATION, AUTO_INCREMENT, TABLE_ROWS FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN (${excludedDbs}) AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME`,
+        );
+        const tableMeta = new Map<string, { engine: string | null; collation: string | null; autoIncrement: number | null; rowCount: number }>();
+        for (const row of tableMetaRows as Array<{
+          TABLE_SCHEMA: string; TABLE_NAME: string; ENGINE: string | null;
+          TABLE_COLLATION: string | null; AUTO_INCREMENT: number | null; TABLE_ROWS: number | null;
+        }>) {
+          tableMeta.set(`${row.TABLE_SCHEMA}.${row.TABLE_NAME}`, {
+            engine: row.ENGINE,
+            collation: row.TABLE_COLLATION,
+            autoIncrement: row.AUTO_INCREMENT,
+            rowCount: Number(row.TABLE_ROWS ?? 0),
+          });
+        }
+
+        // 3. Get columns for all tables
+        // Note: EXPRESSION column only exists in MySQL 8.0+ (not 5.7 / MariaDB)
+        let colRows: Array<{
+          TABLE_SCHEMA: string; TABLE_NAME: string; COLUMN_NAME: string;
+          COLUMN_TYPE: string; IS_NULLABLE: string; COLUMN_DEFAULT: string | null;
+          EXTRA: string; EXPRESSION: string | null;
+        }>;
+        try {
+          const [rows] = await conn.query(
+            `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, EXPRESSION FROM information_schema.columns WHERE TABLE_SCHEMA NOT IN (${excludedDbs}) ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
+          );
+          colRows = rows as typeof colRows;
+        } catch {
+          // Fallback for MySQL 5.7 / MariaDB which don't have the EXPRESSION column
+          const [rows] = await conn.query(
+            `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, NULL AS EXPRESSION FROM information_schema.columns WHERE TABLE_SCHEMA NOT IN (${excludedDbs}) ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
+          );
+          colRows = rows as typeof colRows;
+        }
+        const tableColumns = new Map<string, Array<{
+          COLUMN_NAME: string; COLUMN_TYPE: string; IS_NULLABLE: string;
+          COLUMN_DEFAULT: string | null; EXTRA: string; EXPRESSION: string | null;
+        }>>();
+        for (const row of colRows) {
+          const key = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}`;
+          if (!tableColumns.has(key)) tableColumns.set(key, []);
+          tableColumns.get(key)!.push(row);
+        }
+
+        // 4. Get primary keys
+        const [pkRows] = await conn.query(
+          `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME FROM information_schema.key_column_usage WHERE CONSTRAINT_NAME = 'PRIMARY' AND TABLE_SCHEMA NOT IN (${excludedDbs}) ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
+        );
+        const tablePKs = new Map<string, string[]>();
+        for (const row of pkRows as Array<{ TABLE_SCHEMA: string; TABLE_NAME: string; COLUMN_NAME: string }>) {
+          const key = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}`;
+          if (!tablePKs.has(key)) tablePKs.set(key, []);
+          tablePKs.get(key)!.push(row.COLUMN_NAME);
+        }
+
+        // 5. Build CREATE TABLE statements (skip views — handled in step 8)
+        for (const [tableKey, columns] of tableColumns) {
+          if (!tableMeta.has(tableKey)) continue; // Views don't have tableMeta entries
+          const [schema, tableName] = tableKey.split(".");
+          const pkCols = tablePKs.get(tableKey) || [];
+          const meta = tableMeta.get(tableKey);
+
+          const columnDefs: string[] = [];
+          for (const col of columns) {
+            // Skip generated columns (STORED/VIRTUAL) — would need GENERATION_EXPRESSION
+            if (/\bSTORED GENERATED\b|\bVIRTUAL GENERATED\b/i.test(col.EXTRA)) continue;
+
+            let def = `  ${escId(col.COLUMN_NAME)} ${col.COLUMN_TYPE}`;
+            if (col.IS_NULLABLE === "NO") def += " NOT NULL";
+            if (col.EXTRA.includes("auto_increment")) {
+              def += " AUTO_INCREMENT";
+            } else if (col.EXPRESSION) {
+              // MySQL 8.0+ expression defaults e.g. (uuid())
+              def += ` DEFAULT ${col.EXPRESSION}`;
+            } else if (col.COLUMN_DEFAULT !== null) {
+              def += ` DEFAULT ${col.COLUMN_DEFAULT}`;
+            }
+            // ON UPDATE clause (e.g., ON UPDATE CURRENT_TIMESTAMP)
+            const onUpdateMatch = col.EXTRA.match(/on update\s+(\S+)/i);
+            if (onUpdateMatch) def += ` ON UPDATE ${onUpdateMatch[1]}`;
+            columnDefs.push(def);
+          }
+
+          if (pkCols.length > 0) {
+            columnDefs.push(`  PRIMARY KEY (${pkCols.map((c) => escId(c)).join(", ")})`);
+          }
+
+          // Table options
+          const options: string[] = [];
+          if (meta?.engine) options.push(`ENGINE=${meta.engine}`);
+          if (meta?.autoIncrement) options.push(`AUTO_INCREMENT=${meta.autoIncrement}`);
+          if (meta?.collation) {
+            const charset = meta.collation.split("_")[0];
+            options.push(`DEFAULT CHARSET=${charset}`);
+            options.push(`COLLATE=${meta.collation}`);
+          }
+
+          const optionsStr = options.length > 0 ? ` ${options.join(" ")}` : "";
+          scripts.push({
+            type: "table",
+            schema,
+            name: tableName,
+            sql: `CREATE TABLE IF NOT EXISTS ${escId(schema)}.${escId(tableName)} (\n${columnDefs.join(",\n")}\n)${optionsStr};`,
+          });
+        }
+
+        // 6. Get indexes (excluding PRIMARY KEY) — grouped in JS to avoid GROUP_CONCAT truncation
+        const [idxRows] = await conn.query(
+          `SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, COLUMN_NAME, NON_UNIQUE FROM information_schema.statistics WHERE TABLE_SCHEMA NOT IN (${excludedDbs}) AND INDEX_NAME != 'PRIMARY' ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX`,
+        );
+        const indexMap = new Map<string, { schema: string; table: string; name: string; columns: string[]; isUnique: boolean }>();
+        for (const row of idxRows as Array<{
+          TABLE_SCHEMA: string; TABLE_NAME: string; INDEX_NAME: string; COLUMN_NAME: string; NON_UNIQUE: number;
+        }>) {
+          const key = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}.${row.INDEX_NAME}`;
+          if (!indexMap.has(key)) {
+            indexMap.set(key, {
+              schema: row.TABLE_SCHEMA,
+              table: row.TABLE_NAME,
+              name: row.INDEX_NAME,
+              columns: [],
+              isUnique: row.NON_UNIQUE === 0,
+            });
+          }
+          indexMap.get(key)!.columns.push(row.COLUMN_NAME);
+        }
+        for (const [, idx] of indexMap) {
+          const unique = idx.isUnique ? "UNIQUE " : "";
+          const cols = idx.columns.map((c) => escId(c)).join(", ");
+          // Note: MySQL does not support CREATE INDEX IF NOT EXISTS; MariaDB 10.5.2+ does.
+          scripts.push({
+            type: "index",
+            schema: idx.schema,
+            name: idx.name,
+            sql: `CREATE ${unique}INDEX ${escId(idx.name)} ON ${escId(idx.schema)}.${escId(idx.table)} (${cols});`,
+          });
+        }
+
+        // 7. Get foreign keys (grouped by constraint for multi-column FKs)
+        //    Join REFERENTIAL_CONSTRAINTS for ON DELETE / ON UPDATE actions
+        const [fkRows] = await conn.query(
+          `SELECT kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.CONSTRAINT_NAME, rc.DELETE_RULE, rc.UPDATE_RULE FROM information_schema.key_column_usage kcu JOIN information_schema.table_constraints tc ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA WHERE tc.CONSTRAINT_TYPE = 'FOREIGN KEY' AND kcu.TABLE_SCHEMA NOT IN (${excludedDbs}) AND kcu.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION`,
+        );
+        const fkMap = new Map<string, {
+          schema: string; table: string; constraintName: string;
+          columns: string[]; refSchema: string; refTable: string; refColumns: string[];
+          deleteRule: string; updateRule: string;
+        }>();
+        for (const row of fkRows as Array<{
+          TABLE_SCHEMA: string; TABLE_NAME: string; COLUMN_NAME: string;
+          REFERENCED_TABLE_SCHEMA: string; REFERENCED_TABLE_NAME: string;
+          REFERENCED_COLUMN_NAME: string; CONSTRAINT_NAME: string;
+          DELETE_RULE: string | null; UPDATE_RULE: string | null;
+        }>) {
+          const key = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}.${row.CONSTRAINT_NAME}`;
+          if (!fkMap.has(key)) {
+            fkMap.set(key, {
+              schema: row.TABLE_SCHEMA,
+              table: row.TABLE_NAME,
+              constraintName: row.CONSTRAINT_NAME,
+              columns: [],
+              refSchema: row.REFERENCED_TABLE_SCHEMA,
+              refTable: row.REFERENCED_TABLE_NAME,
+              refColumns: [],
+              deleteRule: row.DELETE_RULE ?? "RESTRICT",
+              updateRule: row.UPDATE_RULE ?? "RESTRICT",
+            });
+          }
+          fkMap.get(key)!.columns.push(row.COLUMN_NAME);
+          fkMap.get(key)!.refColumns.push(row.REFERENCED_COLUMN_NAME);
+        }
+        for (const [, fk] of fkMap) {
+          const cols = fk.columns.map((c) => escId(c)).join(", ");
+          const refCols = fk.refColumns.map((c) => escId(c)).join(", ");
+          let fkSql = `ALTER TABLE ${escId(fk.schema)}.${escId(fk.table)} ADD CONSTRAINT ${escId(fk.constraintName)} FOREIGN KEY (${cols}) REFERENCES ${escId(fk.refSchema)}.${escId(fk.refTable)} (${refCols})`;
+          if (fk.deleteRule && fk.deleteRule !== "RESTRICT") fkSql += ` ON DELETE ${fk.deleteRule}`;
+          if (fk.updateRule && fk.updateRule !== "RESTRICT") fkSql += ` ON UPDATE ${fk.updateRule}`;
+          scripts.push({
+            type: "constraint",
+            schema: fk.schema,
+            name: fk.constraintName,
+            sql: `${fkSql};`,
+            dependsOn: [`${fk.refSchema}.${fk.refTable}`],
+          });
+        }
+
+        // 8. Get views
+        const [viewRows] = await conn.query(
+          `SELECT TABLE_SCHEMA, TABLE_NAME, VIEW_DEFINITION FROM information_schema.views WHERE TABLE_SCHEMA NOT IN (${excludedDbs}) ORDER BY TABLE_SCHEMA, TABLE_NAME`,
+        );
+        for (const row of viewRows as Array<{ TABLE_SCHEMA: string; TABLE_NAME: string; VIEW_DEFINITION: string }>) {
+          scripts.push({
+            type: "view",
+            schema: row.TABLE_SCHEMA,
+            name: row.TABLE_NAME,
+            sql: `CREATE OR REPLACE VIEW ${escId(row.TABLE_SCHEMA)}.${escId(row.TABLE_NAME)} AS ${row.VIEW_DEFINITION};`,
+          });
+        }
+
+        // 9. Row counts (approximate from information_schema — fast, no per-table COUNT)
+        for (const [tableKey, meta] of tableMeta) {
+          const [schema, tableName] = tableKey.split(".");
+          tableRowCounts.push({ schema, table: tableName, rowCount: meta.rowCount });
+        }
+
+        return { scripts, tableRowCounts };
+      });
     },
 
-    async exportTableData() {
-      // TODO: implement MySQL data export
-      return { rows: [], columns: [], hasMore: false, totalExported: 0 };
+    async exportTableData(connectionString: string, schema: string, table: string, batchSize: number, offset: number) {
+      return withConnection(connectionString, async (conn) => {
+        const [rows] = await conn.query(
+          `SELECT * FROM ${escId(schema)}.${escId(table)} LIMIT ? OFFSET ?`,
+          [batchSize + 1, offset],
+        );
+
+        const rowArr = rows as Record<string, unknown>[];
+        const hasMore = rowArr.length > batchSize;
+        const resultRows = hasMore ? rowArr.slice(0, batchSize) : rowArr;
+        const columns = resultRows.length > 0 ? Object.keys(resultRows[0]) : [];
+
+        return {
+          rows: resultRows,
+          columns,
+          hasMore,
+          totalExported: offset + resultRows.length,
+        };
+      });
     },
 
     async executeBatchDdl(connectionString, statements, _throwOnError) {

@@ -37,6 +37,7 @@ import {
   type SqlSavedQuery,
 } from "@/hooks/useSqlWorkspace";
 import { formatDuration } from "@/lib/utils";
+import { cn } from "@/utils/tailwind";
 import "@/lib/monaco-loader";
 import type {
   Connection,
@@ -493,10 +494,10 @@ export function SqlEditor({
               {/* Title Row */}
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <FileCode2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <FileCode2 className="size-3.5 text-muted-foreground" />
                   <span className="text-xs font-semibold tracking-tight text-foreground">Workspace</span>
                   {isExecuting ? (
-                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    <Loader2 className="size-3 animate-spin text-muted-foreground" />
                   ) : (
                     savedQueries.length > 0 && (
                       <span className="text-[10px] text-muted-foreground tabular-nums">
@@ -509,7 +510,7 @@ export function SqlEditor({
 
               {/* Search Bar */}
               <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
                 <Input
                   ref={searchInputRef}
                   value={searchText}
@@ -523,7 +524,7 @@ export function SqlEditor({
                     className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setSearchText("")}
                   >
-                    <X className="h-3 w-3" />
+                    <X className="size-3" />
                   </button>
                 )}
               </div>
@@ -539,11 +540,11 @@ export function SqlEditor({
             >
               <TabsList variant="line" className="mx-3 shrink-0">
                 <TabsTrigger value="saved" className="gap-1.5 text-xs">
-                  <Star className="h-3 w-3" />
+                  <Star className="size-3" />
                   Saved
                 </TabsTrigger>
                 <TabsTrigger value="history" className="gap-1.5 text-xs">
-                  <Clock className="h-3 w-3" />
+                  <Clock className="size-3" />
                   History
                 </TabsTrigger>
               </TabsList>
@@ -588,7 +589,7 @@ export function SqlEditor({
                                   }}
                                   className="text-muted-foreground hover:text-foreground"
                                 >
-                                  <Pencil className="h-3 w-3" />
+                                  <Pencil className="size-3" />
                                 </Button>
                               }
                             />
@@ -603,7 +604,7 @@ export function SqlEditor({
                                   onClick={() => void deleteQuery(entry.id)}
                                   className="text-muted-foreground hover:text-destructive"
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Trash2 className="size-3" />
                                 </Button>
                               }
                             />
@@ -616,7 +617,7 @@ export function SqlEditor({
 
                   {filteredSaved.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                      <Star className="h-4 w-4 text-muted-foreground/50 mb-2" />
+                      <Star className="size-4 text-muted-foreground/50 mb-2" />
                       <p className="text-xs text-muted-foreground">
                         {searchText ? "No matches found" : "No saved queries"}
                       </p>
@@ -647,11 +648,10 @@ export function SqlEditor({
                         >
                           {/* Status indicator */}
                           <span
-                            className={`mt-1 inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
-                              entry.status === "success"
-                                ? "bg-emerald-500"
-                                : "bg-destructive/60"
-                            }`}
+                            className={cn(
+                              "mt-1 inline-block size-1.5 rounded-full shrink-0",
+                              entry.status === "success" ? "bg-emerald-500" : "bg-destructive/60"
+                            )}
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-medium truncate leading-tight">
@@ -680,7 +680,7 @@ export function SqlEditor({
 
                     {filteredHistory.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <Clock className="h-4 w-4 text-muted-foreground/50 mb-2" />
+                        <Clock className="size-4 text-muted-foreground/50 mb-2" />
                         <p className="text-xs text-muted-foreground">
                           {searchText ? "No matches found" : "No history yet"}
                         </p>
@@ -720,7 +720,7 @@ export function SqlEditor({
                     onClick={() => void saveCurrentQuery()}
                     className="gap-1"
                   >
-                    <Save className="h-3 w-3" />
+                    <Save className="size-3" />
                     Save
                   </Button>
                 }
@@ -738,11 +738,10 @@ export function SqlEditor({
 
             {/* Current connection (fixed by page context) */}
             <span
-              className={`inline-block h-2 w-2 rounded-full shrink-0 ${
-                selectedConnection
-                  ? "bg-emerald-500"
-                  : "bg-muted-foreground/40"
-              }`}
+              className={cn(
+                "inline-block size-2 rounded-full shrink-0",
+                selectedConnection ? "bg-emerald-500" : "bg-muted-foreground/40"
+              )}
             />
             <span className="max-w-[260px] truncate text-xs text-muted-foreground">
               {selectedConnectionMeta.label || "No connection selected"}
@@ -765,9 +764,9 @@ export function SqlEditor({
                       className="gap-1.5"
                     >
                       {isExecuting ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="size-3.5 animate-spin" />
                       ) : (
-                        <Play className="h-3.5 w-3.5" />
+                        <Play className="size-3.5" />
                       )}
                       Run
                     </Button>
@@ -832,13 +831,14 @@ export function SqlEditor({
                     >
                       {/* Level indicator dot */}
                       <span
-                        className={`mt-1 inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
+                        className={cn(
+                          "mt-1 inline-block size-1.5 rounded-full shrink-0",
                           log.level === "error"
                             ? "bg-destructive/60"
                             : log.level === "success"
                               ? "bg-emerald-500"
                               : "bg-muted-foreground/40"
-                        }`}
+                        )}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -868,7 +868,7 @@ export function SqlEditor({
 
                   {logs.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
-                      <Terminal className="h-6 w-6 mb-2 opacity-20" />
+                      <Terminal className="size-6 mb-2 opacity-20" />
                       <p className="text-xs font-medium">No logs yet</p>
                       <p className="text-[11px] mt-1 opacity-50">
                         Execute a query to see activity here

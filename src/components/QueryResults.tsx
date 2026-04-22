@@ -2,7 +2,6 @@ import {
   Copy,
   Download,
   Expand,
-  Table2,
   Terminal,
   X,
 } from "lucide-react";
@@ -17,6 +16,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { QueryResult } from "@/ipc/db/types";
 import { formatDuration } from "@/lib/utils";
+import { cn } from "@/utils/tailwind";
 
 interface QueryResultsProps {
   result: QueryResult | null;
@@ -124,7 +124,7 @@ function CellExpandDialog({
             className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 hover:text-foreground relative z-[2]"
             title="Expand cell"
           >
-            <Expand className="h-3 w-3" />
+            <Expand className="size-3" />
           </button>
         )}
       />
@@ -150,22 +150,23 @@ function CellExpandDialog({
               onClick={() => copyToClipboard(text)}
               title="Copy value"
             >
-              <Copy className="h-3 w-3" />
+              <Copy className="size-3" />
             </Button>
             <Button
               variant="ghost"
               size="icon-xs"
               onClick={() => setOpen(false)}
             >
-              <X className="h-3 w-3" />
+              <X className="size-3" />
             </Button>
           </div>
         </div>
         <ScrollArea className="max-h-[320px]">
           <pre
-            className={`p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-all ${
-              isNull ? "italic text-muted-foreground" : ""
-            }`}
+            className={cn(
+              "p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-all",
+              isNull && "italic text-muted-foreground"
+            )}
           >
             {isNull ? "NULL" : text}
           </pre>
@@ -201,7 +202,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
     return (
       <div className="border-l-2 border-destructive/50 bg-destructive/5 px-3 py-2">
         <div className="flex items-center gap-2">
-          <X className="h-3.5 w-3.5 text-destructive shrink-0" />
+          <X className="size-3.5 text-destructive shrink-0" />
           <code className="font-mono text-xs text-destructive/90 leading-5 break-all">
             {error}
           </code>
@@ -219,7 +220,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   if (!result) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/60">
-        <Terminal className="h-5 w-5 mb-2 opacity-40" />
+        <Terminal className="size-5 mb-2 text-muted-foreground/40" />
         <p className="text-xs">No results yet</p>
       </div>
     );
@@ -283,7 +284,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
             onClick={() => exportAsCsv(result)}
             title="Export as CSV"
           >
-            <Download className="h-3 w-3" />
+            <Download className="size-3" />
             CSV
           </Button>
           <Button
@@ -292,7 +293,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
             onClick={() => exportAsJson(result)}
             title="Export as JSON"
           >
-            <Download className="h-3 w-3" />
+            <Download className="size-3" />
             JSON
           </Button>
         </div>
@@ -339,10 +340,10 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
               {result.rows.map((row, rowIdx) => (
                 <tr
                   key={rowIdx}
-                  className="border-b border-border/30 last:border-b-0 hover:bg-muted/20"
+                  className="border-b border-border/30 last:border-b-0 hover:bg-muted/40"
                 >
                   {/* Row number */}
-                  <td className="h-6 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] text-muted-foreground/40 border-r border-border/20 bg-muted/10">
+                  <td className="h-6 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] text-muted-foreground/60 border-r border-border/30 bg-muted/10">
                     {rowIdx + 1}
                   </td>
                   {row.map((cell, cellIdx) => {
@@ -358,17 +359,15 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
                     return (
                       <td
                         key={cellIdx}
-                        className={`group/cell h-6 px-3 font-mono text-xs whitespace-nowrap max-w-[240px] truncate border-r border-border/20 last:border-r-0 relative ${
-                          isNull
-                            ? "italic text-muted-foreground/40"
-                            : isNum
-                              ? "text-right tabular-nums text-muted-foreground"
-                              : isBool
-                                ? "text-center"
-                                : isJson
-                                  ? "text-muted-foreground/70"
-                                  : "text-muted-foreground"
-                        } ${isCopied ? "bg-primary/10" : ""}`}
+                        className={cn(
+                          "group/cell h-6 px-3 font-mono text-xs whitespace-nowrap max-w-[240px] truncate border-r border-border/30 last:border-r-0 relative",
+                          isNull && "italic text-muted-foreground/60",
+                          isNum && "text-right tabular-nums text-foreground/90",
+                          isBool && "text-center",
+                          isJson && "text-muted-foreground",
+                          !isNull && !isNum && !isBool && !isJson && "text-foreground/90",
+                          isCopied && "bg-primary/10"
+                        )}
                         title={text}
                       >
                         <div className="flex items-center justify-between gap-1">
@@ -378,11 +377,12 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
                             ) : isBool ? (
                               <Badge
                                 variant={cell === true ? "outline" : "secondary"}
-                                className={`h-4 rounded font-mono text-[10px] px-1.5 leading-none ${
+                                className={cn(
+                                  "h-4 rounded font-mono text-[10px] px-1.5 leading-none",
                                   cell === true
                                     ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                                     : "border-destructive/30 text-destructive/70"
-                                }`}
+                                )}
                               >
                                 {String(cell)}
                               </Badge>

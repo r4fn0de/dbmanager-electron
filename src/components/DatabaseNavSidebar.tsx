@@ -1,8 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import {
-  ChevronLeft,
-} from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { Database } from "@/components/icons/Database";
 import { Table } from "@/components/icons/Table";
 import { Terminal } from "@/components/icons/Terminal";
@@ -22,6 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/utils/tailwind";
 import type { ConnectionProvider, SidebarSection } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 
@@ -51,13 +50,13 @@ const NAV_ITEMS: {
 ];
 
 function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; isLocal?: boolean }) {
-  if (provider === "neon") return <Neon className="h-[18px] w-[18px]" />;
-  if (provider === "supabase") return <Supabase className="h-[18px] w-[18px]" />;
-  if (provider === "mysql") return <MySql className="h-[18px] w-[18px]" />;
-  if (provider === "mariadb") return <MySql className="h-[18px] w-[18px]" />;
-  if (provider === "clickhouse") return <ClickHouse className="h-[18px] w-[18px]" />;
-  if (isLocal) return <Server className="h-[18px] w-[18px] text-emerald-500" />;
-  return <Database className="h-[18px] w-[18px] text-muted-foreground" />;
+  if (provider === "neon") return <Neon className="size-[18px]" />;
+  if (provider === "supabase") return <Supabase className="size-[18px]" />;
+  if (provider === "mysql") return <MySql className="size-[18px]" />;
+  if (provider === "mariadb") return <MySql className="size-[18px]" />;
+  if (provider === "clickhouse") return <ClickHouse className="size-[18px]" />;
+  if (isLocal) return <Server className="size-[18px] text-emerald-500" />;
+  return <Database className="size-[18px] text-foreground/60" />;
 }
 
 export function DatabaseNavSidebar({
@@ -76,27 +75,26 @@ export function DatabaseNavSidebar({
 
   return (
     <motion.aside
-      className="min-h-0 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground/90 overflow-hidden"
-      initial={{ width: 0, x: -10 }}
-      animate={{ width: 48, x: 0 }}
-      exit={{ width: 0, x: -10 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      className="min-h-0 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground overflow-hidden w-12"
+      initial={{ x: -48, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: -48, opacity: 0 }}
+      transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
     >
       {/* ── Connection identity ────────────────────────────── */}
-      <div className="flex flex-col items-center gap-1 pl-[1px] pr-1.5 mb-1">
+      <div className="flex flex-col items-center gap-1 px-1.5 mb-1">
         <Tooltip>
           <TooltipTrigger
             render={
               <button
                 type="button"
-                className="group relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-white/10"
+                className="group relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-foreground/10"
                 onClick={() => navigate({ to: "/" })}
               >
-                {/* Color ring */}
                 {colorDot && (
                   <span
                     className="absolute inset-0 rounded-lg ring-1 ring-inset opacity-30 group-hover:opacity-50 transition-opacity"
-                    style={{ backgroundColor: "transparent", borderColor: colorDot }}
+                    style={{ borderColor: colorDot }}
                   />
                 )}
                 <ProviderIcon provider={provider} isLocal={connection.is_local} />
@@ -107,7 +105,7 @@ export function DatabaseNavSidebar({
             <div className="flex items-center gap-1.5">
               <span className="font-medium">{connection.name}</span>
               {provider && (
-                <span className="text-[11px] text-foreground/55">
+                <span className="text-[11px] text-muted-foreground">
                   {provider}
                 </span>
               )}
@@ -117,10 +115,10 @@ export function DatabaseNavSidebar({
       </div>
 
       {/* Separator */}
-      <div className="w-6 h-px bg-white/25 my-1 pl-[1px] pr-1.5" />
+      <div className="w-6 h-px bg-border/30 my-1" />
 
       {/* ── Navigation ─────────────────────────────────────── */}
-      <nav className="flex flex-col gap-0.5 pl-[1px] pr-1.5">
+      <nav className="flex flex-col items-center gap-0.5 px-1.5">
         {NAV_ITEMS.map(({ section, icon: Icon, label, shortcut }) => {
           const isActive = activeSection === section;
           return (
@@ -130,20 +128,18 @@ export function DatabaseNavSidebar({
                   <button
                     type="button"
                     onClick={() => onSectionChange(section)}
-                    className={`
-                      group relative flex h-9 w-9 items-center justify-center rounded-lg
-                      transition-all duration-150 outline-none
-                      focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1
-                      ${isActive
-                        ? "bg-white/20"
-                        : "hover:bg-white/16"
-                      }
-                    `}
+                    className={cn(
+                      "group relative flex size-9 items-center justify-center rounded-lg transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      isActive
+                        ? "bg-foreground/15"
+                        : "hover:bg-foreground/10"
+                    )}
                   >
                     <Icon
-                      className={`h-[18px] w-[18px] ${
-                        isActive ? "text-sidebar-primary" : "text-foreground/60"
-                      }`}
+                      className={cn(
+                        "size-[18px]",
+                        isActive ? "text-foreground" : "text-foreground/60"
+                      )}
                     />
                   </button>
                 }
@@ -163,21 +159,21 @@ export function DatabaseNavSidebar({
       <div className="flex-1" />
 
       {/* Separator */}
-      <div className="w-6 h-px bg-white/15 my-1 pl-[1px] pr-1.5" />
+      <div className="w-6 h-px bg-border/30 my-1" />
 
       {/* ── Bottom actions ─────────────────────────────────── */}
-      <div className="flex flex-col gap-0.5 pl-[1px] pr-1.5">
+      <div className="flex flex-col items-center gap-0.5 px-1.5">
         <Tooltip>
           <TooltipTrigger
             render={
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 text-foreground/60 hover:text-foreground/95 hover:bg-white/10"
+                className="size-9 text-foreground hover:text-foreground hover:bg-foreground/10"
                 onClick={onRefresh}
                 disabled={isRefreshing}
               >
-                <Refresh className={`h-[18px] w-[18px] ${isRefreshing ? "animate-spin" : ""}`} />
+                <Refresh className={cn("size-[18px]", isRefreshing && "animate-spin")} />
               </Button>
             }
           />
@@ -189,16 +185,17 @@ export function DatabaseNavSidebar({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`h-9 w-9 transition-colors ${
+                className={cn(
+                  "size-9 transition-colors",
                   copyFeedback === "copied"
                     ? "text-emerald-500"
                     : copyFeedback === "failed"
                       ? "text-destructive"
-                      : "text-foreground/60 hover:text-foreground/95 hover:bg-white/10"
-                }`}
+                      : "text-foreground hover:text-foreground hover:bg-foreground/10"
+                )}
                 onClick={onCopyConnection}
               >
-                <Copy className="h-[18px] w-[18px]" />
+                <Copy className="size-[18px]" />
               </Button>
             }
           />
@@ -208,7 +205,7 @@ export function DatabaseNavSidebar({
         </Tooltip>
 
         {/* Separator */}
-        <div className="w-6 h-px bg-white/15 my-1" />
+        <div className="w-6 h-px bg-border/50 my-1" />
 
         <Tooltip>
           <TooltipTrigger
@@ -216,7 +213,7 @@ export function DatabaseNavSidebar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 text-foreground/60 hover:text-foreground/95 hover:bg-white/10"
+                className="size-9 text-foreground hover:text-foreground hover:bg-foreground/10"
                 onClick={() => {
                   if (onBackToConnections) {
                     onBackToConnections();
@@ -225,7 +222,7 @@ export function DatabaseNavSidebar({
                   navigate({ to: "/" });
                 }}
               >
-                <ChevronLeft className="h-[18px] w-[18px]" />
+                <ChevronLeft className="size-[18px]" />
               </Button>
             }
           />
