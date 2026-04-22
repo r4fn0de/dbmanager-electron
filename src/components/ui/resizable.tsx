@@ -49,3 +49,4 @@ function ResizableHandle({
 
 export { ResizableHandle, ResizablePanel, ResizablePanelGroup };
 export type { PanelImperativeHandle, GroupImperativeHandle, Layout } from "react-resizable-panels";
+export { useDefaultLayout } from "react-resizable-panels";

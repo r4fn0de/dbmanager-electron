@@ -5,7 +5,7 @@ import {
   Pause,
   Play,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   type PanelImperativeHandle,
-  type Layout,
+  useDefaultLayout,
 } from "@/components/ui/resizable";
 import {
   Tooltip,
@@ -159,10 +159,15 @@ export function DatabasePageContent({
   const [tablesSidebarWidthPx, setTablesSidebarWidthPx] = useState(280);
   const [sqlSidebarWidthPx, setSqlSidebarWidthPx] = useState(280);
   const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const resizeRafRef = useRef<number | null>(null);
   const tablesSidebarWidthRef = useRef(tablesSidebarWidthPx);
-  const layoutPersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const tabWidthUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Layout persistence via useDefaultLayout (same pattern as conar)
+  // onLayoutChanged fires AFTER drag ends — no debouncing needed
+  const tablesLayout = useDefaultLayout({
+    id: `db-tables-layout-${connectionId}`,
+    storage: localStorage,
+  });
 
   const toggleSidebar = useCallback(() => {
     const panel = sidebarPanelRef.current;
@@ -188,8 +193,6 @@ export function DatabasePageContent({
   useEffect(() => {
     return () => {
       if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
-      if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
-      if (layoutPersistTimeoutRef.current) clearTimeout(layoutPersistTimeoutRef.current);
       if (tabWidthUpdateTimeoutRef.current) clearTimeout(tabWidthUpdateTimeoutRef.current);
     };
   }, []);
@@ -200,20 +203,11 @@ export function DatabasePageContent({
   sidebarVisibleRef.current = isSidebarVisible;
 
   // Sync isSidebarVisible when sidebar panel resizes (including collapse/expand)
+  // Width is only updated on layout change (after drag), not per-pixel
   const handleSidebarResize = useCallback(
     (panelSize: { asPercentage: number; inPixels: number }) => {
       const visible = panelSize.asPercentage !== 0;
-      // Keep transient high-frequency width in a ref; only commit state at most once per frame
-      // and only when width changes meaningfully to avoid expensive rerenders while dragging.
-      const nextWidth = panelSize.inPixels;
-      if (Math.abs(nextWidth - tablesSidebarWidthRef.current) >= 8) {
-        tablesSidebarWidthRef.current = nextWidth;
-        if (resizeRafRef.current !== null) cancelAnimationFrame(resizeRafRef.current);
-        resizeRafRef.current = requestAnimationFrame(() => {
-          setTablesSidebarWidthPx(tablesSidebarWidthRef.current);
-          resizeRafRef.current = null;
-        });
-      }
+      tablesSidebarWidthRef.current = panelSize.inPixels;
       if (sidebarVisibleRef.current !== visible) {
         setIsSidebarVisible(visible);
       }
@@ -227,27 +221,6 @@ export function DatabasePageContent({
       localStorage.setItem(`db-tables-sidebar-visible:${connectionId}`, String(isSidebarVisible));
     } catch { /* quota exceeded or private mode */ }
   }, [isSidebarVisible, connectionId]);
-
-  // Persist sidebar width across sessions via localStorage
-  const savedLayout = useMemo(() => {
-    try {
-      const raw = localStorage.getItem(`db-tables-layout:${connectionId}`);
-      return raw ? (JSON.parse(raw) as Layout) : undefined;
-    } catch {
-      return undefined;
-    }
-  }, [connectionId]);
-  const persistLayout = useCallback(
-    (layout: Layout) => {
-      if (layoutPersistTimeoutRef.current) clearTimeout(layoutPersistTimeoutRef.current);
-      layoutPersistTimeoutRef.current = setTimeout(() => {
-        try {
-          localStorage.setItem(`db-tables-layout:${connectionId}`, JSON.stringify(layout));
-        } catch { /* quota exceeded or private mode */ }
-      }, 120);
-    },
-    [connectionId],
-  );
 
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -889,9 +862,7 @@ export function DatabasePageContent({
           )}
         </AnimatePresence>
 
-        <motion.div
-          layout
-          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        <div
           className="border-x border-b rounded-md flex-1 flex min-h-0 bg-background overflow-hidden"
         >
           {/* Main Content Area */}
@@ -899,10 +870,14 @@ export function DatabasePageContent({
           {isTablesSection && (
             <ResizablePanelGroup
               className="flex-1 min-w-0"
-              defaultLayout={isSidebarVisible ? savedLayout : undefined}
-              onLayoutChanged={(layout: Layout) => {
+              defaultLayout={isSidebarVisible ? tablesLayout.defaultLayout : undefined}
+              onLayoutChanged={(layout) => {
                 // Don't persist layout while sidebar is collapsed — avoids saving [0, 100]
-                if (isSidebarVisible) persistLayout(layout);
+                if (isSidebarVisible) {
+                  tablesLayout.onLayoutChanged(layout);
+                  // Update tab chrome width after drag ends (not per-pixel)
+                  setTablesSidebarWidthPx(tablesSidebarWidthRef.current);
+                }
               }}
             >
               {/* Tables Sidebar — always mounted, collapses to 0 for smooth animation */}
@@ -1144,7 +1119,7 @@ export function DatabasePageContent({
             </Suspense>
           )}
         </div>
-        </motion.div>
+        </div>
       </div>
       {/* Lazy-loaded DDL dialogs — Suspense boundary for all of them */}
       <Suspense fallback={null}>

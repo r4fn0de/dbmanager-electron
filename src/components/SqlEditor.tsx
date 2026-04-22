@@ -29,6 +29,7 @@ import {
   ResizablePanelGroup,
   type Layout,
   type GroupImperativeHandle,
+  useDefaultLayout,
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,7 +41,7 @@ import {
   type SqlSavedQuery,
 } from "@/hooks/useSqlWorkspace";
 import { fixSql } from "@/hooks/ai-actions";
-import { debounce, formatDuration } from "@/lib/utils";
+import { formatDuration } from "@/lib/utils";
 import {
   buildExplainSql,
   formatSql,
@@ -321,48 +322,16 @@ export function SqlEditor({
   );
   const [searchText, setSearchText] = useState("");
 
-  // Persist sidebar width across sessions via localStorage
-  const savedSidebarLayout = useMemo(() => {
-    if (!selectedConnection) return undefined;
-    try {
-      const raw = localStorage.getItem(`sql-sidebar-layout:${selectedConnection}`);
-      return raw ? (JSON.parse(raw) as Layout) : undefined;
-    } catch {
-      return undefined;
-    }
-  }, [selectedConnection]);
-  // Debounced: avoids localStorage.setItem on every pixel during drag
-  const persistSidebarLayout = useMemo(
-    () => debounce((layout: Layout) => {
-      if (!selectedConnection) return;
-      try {
-        localStorage.setItem(`sql-sidebar-layout:${selectedConnection}`, JSON.stringify(layout));
-      } catch { /* quota exceeded or private mode */ }
-    }, 150),
-    [selectedConnection],
-  );
-
-
-  // Persist editor/results vertical split across sessions
-  const savedEditorSplitLayout = useMemo(() => {
-    if (!selectedConnection) return undefined;
-    try {
-      const raw = localStorage.getItem(`sql-editor-split:${selectedConnection}`);
-      return raw ? (JSON.parse(raw) as Layout) : undefined;
-    } catch {
-      return undefined;
-    }
-  }, [selectedConnection]);
-  // Debounced: avoids localStorage.setItem on every pixel during drag
-  const persistEditorSplitLayout = useMemo(
-    () => debounce((layout: Layout) => {
-      if (!selectedConnection) return;
-      try {
-        localStorage.setItem(`sql-editor-split:${selectedConnection}`, JSON.stringify(layout));
-      } catch { /* quota exceeded or private mode */ }
-    }, 150),
-    [selectedConnection],
-  );
+  // Layout persistence via useDefaultLayout (same pattern as conar)
+  // onLayoutChanged fires AFTER drag ends — no debouncing needed
+  const sidebarLayout = useDefaultLayout({
+    id: `sql-sidebar-${selectedConnection ?? "default"}`,
+    storage: localStorage,
+  });
+  const editorSplitLayout = useDefaultLayout({
+    id: `sql-editor-split-${selectedConnection ?? "default"}`,
+    storage: localStorage,
+  });
 
 
   const [isExecuting, setIsExecuting] = useState(false);
@@ -378,8 +347,9 @@ export function SqlEditor({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<MonacoEditor | null>(null);
   const executionAbort = useRef<AbortController | null>(null);
-  const sidebarRafRef = useRef<number | null>(null);
   const monacoResizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Track sidebar pixel width in a ref (cheap, no setState) — read on layout change
+  const sidebarWidthRef = useRef<number>(0);
 
   // AI panel state
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
@@ -387,34 +357,20 @@ export function SqlEditor({
   // EXPLAIN state (driven by keyboard shortcuts only, no toolbar button)
   const [isExplaining, setIsExplaining] = useState(false);
 
-  // Persist AI chat panel width across sessions
+  // AI chat layout persistence — skip saving when chat is closed
   const AI_CHAT_DEFAULT_SIZE = 30; // percentage
-  const savedAiChatLayout = useMemo(() => {
-    if (!selectedConnection) return undefined;
-    try {
-      const raw = localStorage.getItem(`sql-ai-chat-layout:${selectedConnection}`);
-      return raw ? (JSON.parse(raw) as Layout) : undefined;
-    } catch {
-      return undefined;
-    }
-  }, [selectedConnection]);
-  // Debounced: avoids localStorage.setItem on every pixel during drag
-  const persistAiChatLayout = useMemo(
-    () => debounce((layout: Layout) => {
+  const aiChatLayoutStore = useDefaultLayout({
+    id: `sql-ai-chat-${selectedConnection ?? "default"}`,
+    storage: localStorage,
+  });
+  const persistAiChatLayout = useCallback(
+    (layout: Layout) => {
       // Only persist when AI chat is open — avoid saving collapsed state
-      if (!selectedConnection || !isAiChatOpen) return;
-      try {
-        localStorage.setItem(`sql-ai-chat-layout:${selectedConnection}`, JSON.stringify(layout));
-      } catch { /* quota exceeded or private mode */ }
-    }, 150),
-    [selectedConnection, isAiChatOpen],
+      if (!isAiChatOpen) return;
+      aiChatLayoutStore.onLayoutChanged(layout);
+    },
+    [aiChatLayoutStore.onLayoutChanged, isAiChatOpen],
   );
-  // Cancel all pending debounce timers on unmount or when dependencies change
-  useEffect(() => () => {
-    persistSidebarLayout.cancel();
-    persistEditorSplitLayout.cancel();
-    persistAiChatLayout.cancel();
-  }, [persistSidebarLayout, persistEditorSplitLayout, persistAiChatLayout]);
 
   // Group ref for atomic setLayout() — opens/closes AI chat without remounting the editor
   const aiChatGroupRef = useRef<GroupImperativeHandle>(null);
@@ -427,7 +383,7 @@ export function SqlEditor({
       // Only setLayout when triggered by toolbar/close button — not when user dragged to expand
       // (dragging already sets the correct size; setLayout would override it)
       if (aiChatToggleSource.current === "button") {
-        const targetSize = savedAiChatLayout?.["sql-ai-chat"] ?? AI_CHAT_DEFAULT_SIZE;
+        const targetSize = aiChatLayoutStore.defaultLayout?.["sql-ai-chat"] ?? AI_CHAT_DEFAULT_SIZE;
         aiChatGroupRef.current?.setLayout({
           "sql-editor-main": 100 - targetSize,
           "sql-ai-chat": targetSize,
@@ -438,7 +394,7 @@ export function SqlEditor({
       aiChatGroupRef.current?.setLayout({ "sql-editor-main": 100, "sql-ai-chat": 0 });
     }
     aiChatToggleSource.current = "resize"; // reset for next time
-  }, [isAiChatOpen, savedAiChatLayout]);
+  }, [isAiChatOpen, aiChatLayoutStore.defaultLayout]);
 
   // Compute initial layout for the AI chat panel group
   // When chat starts closed, force the chat panel to 0% to avoid a flash on mount
@@ -446,8 +402,8 @@ export function SqlEditor({
     if (!isAiChatOpen) {
       return { "sql-editor-main": 100, "sql-ai-chat": 0 };
     }
-    return savedAiChatLayout ?? { "sql-editor-main": 100 - AI_CHAT_DEFAULT_SIZE, "sql-ai-chat": AI_CHAT_DEFAULT_SIZE };
-  }, [isAiChatOpen, savedAiChatLayout]); // eslint-disable-line react-hooks/exhaustive-deps — defaultLayout is mount-only but we need isAiChatOpen for initial render
+    return aiChatLayoutStore.defaultLayout ?? { "sql-editor-main": 100 - AI_CHAT_DEFAULT_SIZE, "sql-ai-chat": AI_CHAT_DEFAULT_SIZE };
+  }, [isAiChatOpen, aiChatLayoutStore.defaultLayout]); // eslint-disable-line react-hooks/exhaustive-deps — defaultLayout is mount-only but we need isAiChatOpen for initial render
 
   // ── Autocomplete: register Monaco completion provider on mount, update schema data ──
   useEffect(() => {
@@ -489,13 +445,11 @@ export function SqlEditor({
   }, [loadRequest?.key]);
 
   useEffect(() => {
-    // Clean up on unmount: abort in-flight execution, disconnect Monaco ResizeObserver,
-    // and cancel any pending sidebar RAF
+    // Clean up on unmount: abort in-flight execution, disconnect Monaco ResizeObserver
     return () => {
       executionAbort.current?.abort();
       monacoResizeObserverRef.current?.disconnect();
       monacoResizeObserverRef.current = null;
-      if (sidebarRafRef.current !== null) cancelAnimationFrame(sidebarRafRef.current);
     };
   }, []);
 
@@ -963,8 +917,15 @@ export function SqlEditor({
     >
       <ResizablePanelGroup
         className="h-full min-h-0"
-        defaultLayout={savedSidebarLayout}
-        onLayoutChanged={persistSidebarLayout}
+        defaultLayout={sidebarLayout.defaultLayout}
+        onLayoutChanged={(layout) => {
+          sidebarLayout.onLayoutChanged(layout);
+          // Update parent width only after drag ends (onLayoutChanged fires post-drag)
+          // using the ref populated by onResize — avoids per-pixel setState during drag.
+          if (onWorkspaceSidebarResize && sidebarWidthRef.current > 0) {
+            onWorkspaceSidebarResize(sidebarWidthRef.current);
+          }
+        }}
       >
         {showWorkspaceSidebar && (            <ResizablePanel
             id="sql-sidebar"
@@ -972,13 +933,8 @@ export function SqlEditor({
             minSize="15%"
             maxSize="40%"
             onResize={(size) => {
-              // RAF-throttle: coalesce rapid resize events into one update per frame
-              if (sidebarRafRef.current !== null) cancelAnimationFrame(sidebarRafRef.current);
-              const px = size.inPixels;
-              sidebarRafRef.current = requestAnimationFrame(() => {
-                sidebarRafRef.current = null;
-                onWorkspaceSidebarResize?.(px);
-              });
+              // Track width in ref only (cheap, no setState) — read on layout change
+              sidebarWidthRef.current = size.inPixels;
             }}
             className="min-h-0 bg-sidebar"
           >
@@ -1349,8 +1305,8 @@ export function SqlEditor({
           <ResizablePanelGroup
             orientation="vertical"
             className="flex-1 min-h-0"
-            defaultLayout={savedEditorSplitLayout}
-            onLayoutChanged={persistEditorSplitLayout}
+            defaultLayout={editorSplitLayout.defaultLayout}
+            onLayoutChanged={editorSplitLayout.onLayoutChanged}
           >
             <ResizablePanel id="sql-editor-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
               <div
