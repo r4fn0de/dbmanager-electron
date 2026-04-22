@@ -1657,7 +1657,7 @@ export function TableDataEditor({
                             </span>
                           ) : null}
                           {sorted && (
-                            <span className="shrink-0 text-[10px] font-medium text-primary">
+                            <span className="shrink-0 text-[10px] font-medium text-slate-600 dark:text-slate-300">
                               {sorted === "asc" ? "↑" : "↓"}
                             </span>
                           )}

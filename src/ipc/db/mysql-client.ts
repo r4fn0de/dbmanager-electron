@@ -1,13 +1,16 @@
 /**
- * MySQLDriver — implements DatabaseDriver for MySQL and MariaDB.
+ * MySQLDriver — implements DatabaseDriver for MySQL and MariaDB using Kysely.
  *
- * Uses the `mysql2/promise` package for async connection handling.
- * The driver is registered for both "mysql" and "mariadb" DatabaseTypes.
+ * Schema introspection (getSchema, getSchemaSummary) uses Kysely query builder
+ * for type safety against known information_schema tables.
+ * listRows uses raw pool for data/count queries (dynamic table names need
+ * proper identifier quoting), but uses Kysely for PK/FK introspection queries.
+ * DDL uses shared builders (ddl-sql.ts) executed via pool.
  */
 import mysql from "mysql2/promise";
 import type { DatabaseType, SslMode } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
-import { getMysqlPool } from "./kysely-factory";
+import { getMysqlPool, getMysqlKysely } from "./kysely-factory";
 import {
   buildAddColumnSql,
   buildAlterColumnTypeSql,
@@ -33,7 +36,7 @@ const MARIADB_DB_TYPE = "mariadb" as DatabaseType;
 // Server version detection & IF NOT EXISTS capability
 // ---------------------------------------------------------------------------
 
-interface ServerVersion {
+export interface ServerVersion {
   major: number;
   minor: number;
   patch: number;
@@ -48,7 +51,7 @@ const serverVersionCache = new Map<string, ServerVersion>();
  * Parse a MySQL/MariaDB version string (e.g. "8.0.35", "10.6.12-MariaDB")
  * into a structured ServerVersion.
  */
-function parseServerVersion(versionStr: string): ServerVersion {
+export function parseServerVersion(versionStr: string): ServerVersion {
   const isMariaDb = /mariadb/i.test(versionStr);
   const match = versionStr.match(/(\d+)\.(\d+)\.(\d+)/);
   if (!match) {
@@ -82,14 +85,14 @@ async function getServerVersion(connectionString: string): Promise<ServerVersion
 }
 
 /** Compare server version: ver >= major.minor.patch */
-function versionGte(ver: ServerVersion, major: number, minor: number, patch: number): boolean {
+export function versionGte(ver: ServerVersion, major: number, minor: number, patch: number): boolean {
   if (ver.major !== major) return ver.major > major;
   if (ver.minor !== minor) return ver.minor > minor;
   return ver.patch >= patch;
 }
 
 /** MySQL 8.0.29+ and MariaDB 10.0.2+ support ADD COLUMN IF NOT EXISTS. */
-function supportsAddColumnIfNotExists(ver: ServerVersion, dbType: DatabaseType): boolean {
+export function supportsAddColumnIfNotExists(ver: ServerVersion, dbType: DatabaseType): boolean {
   if (dbType === "mariadb" || ver.isMariaDb) {
     return versionGte(ver, 10, 0, 2);
   }
@@ -97,7 +100,7 @@ function supportsAddColumnIfNotExists(ver: ServerVersion, dbType: DatabaseType):
 }
 
 /** No MySQL version supports CREATE INDEX IF NOT EXISTS; MariaDB 10.5.2+ does. */
-function supportsCreateIndexIfNotExists(ver: ServerVersion, dbType: DatabaseType): boolean {
+export function supportsCreateIndexIfNotExists(ver: ServerVersion, dbType: DatabaseType): boolean {
   if (dbType === "mariadb" || ver.isMariaDb) {
     return versionGte(ver, 10, 5, 2);
   }
@@ -109,7 +112,7 @@ function supportsCreateIndexIfNotExists(ver: ServerVersion, dbType: DatabaseType
 // Type mapping — MySQL data types → display types
 // ---------------------------------------------------------------------------
 
-function mapMySqlType(columnType: string): string {
+export function mapMySqlType(columnType: string): string {
   const t = (columnType ?? "").toLowerCase();
   const map: Record<string, string> = {
     varchar: "string",
@@ -189,7 +192,7 @@ function parseMysqlUrl(url: string): mysql.ConnectionOptions {
 }
 
 /** Escape and quote a MySQL identifier (wrap in backticks, double internal backticks). */
-function escId(name: string): string {
+export function escId(name: string): string {
   return "`" + name.replace(/`/g, "``") + "`";
 }
 
@@ -289,19 +292,36 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
     },
 
     async getSchema(connectionString) {
-      return withConnection(connectionString, async (conn) => {
-        // MySQL uses "databases" instead of "schemas" — we map them.
-        const [schemaRows] = await conn.query(
-          "SELECT SCHEMA_NAME FROM information_schema.schemata WHERE SCHEMA_NAME NOT IN ('mysql','information_schema','performance_schema','sys') ORDER BY SCHEMA_NAME",
-        );
-        const schemas = (schemaRows as Array<{ SCHEMA_NAME: string }>).map((r) => r.SCHEMA_NAME);
+      const db = await getMysqlKysely(connectionString);
 
-        const [tableRows] = await conn.query(
-          `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
-           FROM information_schema.columns
-           WHERE TABLE_SCHEMA NOT IN ('mysql','information_schema','performance_schema','sys')
-           ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
-        );
+      try {
+        // 1. Schemas — Kysely query against information_schema.schemata
+        const excludedSchemas = ["mysql", "information_schema", "performance_schema", "sys"];
+        const schemaRows = await db
+          .selectFrom("schemata")
+          .select("SCHEMA_NAME")
+          .where("SCHEMA_NAME", "not in", excludedSchemas)
+          .orderBy("SCHEMA_NAME")
+          .execute();
+        const schemas = schemaRows.map((r) => r.SCHEMA_NAME);
+
+        // 2. Columns — Kysely query against information_schema.columns
+        const columnRows = await db
+          .selectFrom("columns")
+          .select([
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "DATA_TYPE",
+            "COLUMN_TYPE",
+            "IS_NULLABLE",
+            "COLUMN_DEFAULT",
+          ])
+          .where("TABLE_SCHEMA", "not in", excludedSchemas)
+          .orderBy("TABLE_SCHEMA")
+          .orderBy("TABLE_NAME")
+          .orderBy("ORDINAL_POSITION")
+          .execute();
 
         // Build tables map
         const tablesMap = new Map<string, {
@@ -314,11 +334,7 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
           rls_policies: Array<{ name: string; kind: string; roles: string[]; using_expr: string | null; with_check_expr: string | null }>;
         }>();
 
-        for (const row of tableRows as Array<{
-          TABLE_SCHEMA: string; TABLE_NAME: string; COLUMN_NAME: string;
-          DATA_TYPE: string; COLUMN_TYPE: string; IS_NULLABLE: string;
-          COLUMN_DEFAULT: string | null;
-        }>) {
+        for (const row of columnRows) {
           const key = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}`;
           if (!tablesMap.has(key)) {
             tablesMap.set(key, {
@@ -340,18 +356,25 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
           });
         }
 
-        // Indexes
-        const [indexRows] = await conn.query(
-          `SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, COLUMN_NAME, NON_UNIQUE
-           FROM information_schema.statistics
-           WHERE TABLE_SCHEMA NOT IN ('mysql','information_schema','performance_schema','sys')
-           ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX`,
-        );
+        // 3. Indexes — Kysely query against information_schema.statistics
+        const indexRows = await db
+          .selectFrom("statistics")
+          .select([
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "INDEX_NAME",
+            "COLUMN_NAME",
+            "NON_UNIQUE",
+          ])
+          .where("TABLE_SCHEMA", "not in", excludedSchemas)
+          .orderBy("TABLE_SCHEMA")
+          .orderBy("TABLE_NAME")
+          .orderBy("INDEX_NAME")
+          .orderBy("SEQ_IN_INDEX")
+          .execute();
+
         const indexMap = new Map<string, { columns: string[]; isUnique: boolean; isPrimary: boolean }>();
-        for (const row of indexRows as Array<{
-          TABLE_SCHEMA: string; TABLE_NAME: string; INDEX_NAME: string;
-          COLUMN_NAME: string; NON_UNIQUE: number;
-        }>) {
+        for (const row of indexRows) {
           const iKey = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}.${row.INDEX_NAME}`;
           if (!indexMap.has(iKey)) {
             indexMap.set(iKey, {
@@ -377,27 +400,39 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
           }
         }
 
-        // Foreign keys
-        const [fkRows] = await conn.query(
-          `SELECT CONSTRAINT_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, CONSTRAINT_NAME
-           FROM information_schema.key_column_usage
-           WHERE REFERENCED_TABLE_SCHEMA IS NOT NULL
-             AND TABLE_SCHEMA NOT IN ('mysql','information_schema','performance_schema','sys')`,
-        );
-        for (const row of fkRows as Array<{
-          CONSTRAINT_SCHEMA: string; TABLE_NAME: string; COLUMN_NAME: string;
-          REFERENCED_TABLE_SCHEMA: string; REFERENCED_TABLE_NAME: string;
-          REFERENCED_COLUMN_NAME: string; CONSTRAINT_NAME: string;
-        }>) {
+        // 4. Foreign keys — Kysely query joining key_column_usage with table_constraints
+        //    to ensure only actual FOREIGN KEY constraints are included (not UNIQUE, etc.)
+        const fkRows = await db
+          .selectFrom("key_column_usage as kcu")
+          .innerJoin("table_constraints as tc", (join) =>
+            join
+              .onRef("tc.CONSTRAINT_NAME", "=", "kcu.CONSTRAINT_NAME")
+              .onRef("tc.CONSTRAINT_SCHEMA", "=", "kcu.CONSTRAINT_SCHEMA"),
+          )
+          .select([
+            "kcu.CONSTRAINT_SCHEMA",
+            "kcu.TABLE_NAME",
+            "kcu.COLUMN_NAME",
+            "kcu.REFERENCED_TABLE_SCHEMA",
+            "kcu.REFERENCED_TABLE_NAME",
+            "kcu.REFERENCED_COLUMN_NAME",
+            "kcu.CONSTRAINT_NAME",
+          ])
+          .where("tc.CONSTRAINT_TYPE", "=", "FOREIGN KEY")
+          .where("kcu.REFERENCED_TABLE_SCHEMA", "is not", null)
+          .where("kcu.TABLE_SCHEMA", "not in", excludedSchemas)
+          .execute();
+
+        for (const row of fkRows) {
           const tKey = `${row.CONSTRAINT_SCHEMA}.${row.TABLE_NAME}`;
           const table = tablesMap.get(tKey);
           if (table) {
             table.foreign_keys.push({
               name: row.CONSTRAINT_NAME,
               column_name: row.COLUMN_NAME,
-              referenced_schema: row.REFERENCED_TABLE_SCHEMA,
-              referenced_table: row.REFERENCED_TABLE_NAME,
-              referenced_column: row.REFERENCED_COLUMN_NAME,
+              referenced_schema: row.REFERENCED_TABLE_SCHEMA ?? undefined,
+              referenced_table: row.REFERENCED_TABLE_NAME!,
+              referenced_column: row.REFERENCED_COLUMN_NAME!,
             });
           }
         }
@@ -406,23 +441,43 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
           schemas,
           tables: Array.from(tablesMap.values()),
         };
-      });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`MySQL schema error: ${msg}`);
+      }
     },
 
     async getSchemaSummary(connectionString) {
-      const schema = await driver.getSchema(connectionString);
+      const db = await getMysqlKysely(connectionString);
+      const excludedSchemas = ["mysql", "information_schema", "performance_schema", "sys"];
+
+      const schemaRows = await db
+        .selectFrom("schemata")
+        .select("SCHEMA_NAME")
+        .where("SCHEMA_NAME", "not in", excludedSchemas)
+        .orderBy("SCHEMA_NAME")
+        .execute();
+
+      const tableRows = await db
+        .selectFrom("tables")
+        .select(["TABLE_SCHEMA", "TABLE_NAME"])
+        .where("TABLE_SCHEMA", "not in", excludedSchemas)
+        .orderBy("TABLE_SCHEMA")
+        .orderBy("TABLE_NAME")
+        .execute();
+
       return {
-        schemas: schema.schemas,
-        tables: schema.tables.map((t) => ({
-          name: t.name,
-          schema: t.schema,
-          has_rls: t.has_rls,
+        schemas: schemaRows.map((r) => r.SCHEMA_NAME),
+        tables: tableRows.map((t) => ({
+          name: t.TABLE_NAME,
+          schema: t.TABLE_SCHEMA,
+          has_rls: false,
         })),
       };
     },
 
     async getTableDetails(connectionString, schema, table) {
-      const fullSchema = await driver.getSchema(connectionString);
+      const fullSchema = await this.getSchema(connectionString);
       const tableInfo = fullSchema.tables.find(
         (t) => t.schema === schema && t.name === table,
       );
@@ -499,33 +554,44 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
         );
         const totalEstimate = Number((countRows as Array<{ cnt: bigint }>)[0]?.cnt ?? 0);
 
-        // Primary key
-        const [pkRows] = await conn.query(
-          `SELECT COLUMN_NAME FROM information_schema.key_column_usage
-           WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
-           ORDER BY ORDINAL_POSITION`,
-          [schema, table],
-        );
-        const primaryKey = (pkRows as Array<{ COLUMN_NAME: string }>).map((r) => r.COLUMN_NAME);
+        // Primary key — Kysely query against information_schema.key_column_usage
+        const db = await getMysqlKysely(connectionString);
+        const pkRows = await db
+          .selectFrom("key_column_usage")
+          .select("COLUMN_NAME")
+          .where("TABLE_SCHEMA", "=", schema)
+          .where("TABLE_NAME", "=", table)
+          .where("CONSTRAINT_NAME", "=", "PRIMARY")
+          .orderBy("ORDINAL_POSITION")
+          .execute();
+        const primaryKey = pkRows.map((r) => r.COLUMN_NAME);
 
-        // Foreign keys
-        const [fkRows] = await conn.query(
-          `SELECT kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, tc.CONSTRAINT_NAME
-           FROM information_schema.key_column_usage kcu
-           JOIN information_schema.table_constraints tc ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
-           WHERE tc.CONSTRAINT_TYPE = 'FOREIGN KEY' AND kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND kcu.REFERENCED_TABLE_NAME IS NOT NULL`,
-          [schema, table],
-        );
-        const foreignKeys = (fkRows as Array<{
-          COLUMN_NAME: string; REFERENCED_TABLE_SCHEMA: string;
-          REFERENCED_TABLE_NAME: string; REFERENCED_COLUMN_NAME: string;
-          CONSTRAINT_NAME: string;
-        }>).map((r) => ({
+        // Foreign keys — Kysely query with join to table_constraints
+        const fkRows = await db
+          .selectFrom("key_column_usage as kcu")
+          .innerJoin("table_constraints as tc", (join) =>
+            join
+              .onRef("tc.CONSTRAINT_NAME", "=", "kcu.CONSTRAINT_NAME")
+              .onRef("tc.CONSTRAINT_SCHEMA", "=", "kcu.CONSTRAINT_SCHEMA"),
+          )
+          .select([
+            "kcu.COLUMN_NAME",
+            "kcu.REFERENCED_TABLE_SCHEMA",
+            "kcu.REFERENCED_TABLE_NAME",
+            "kcu.REFERENCED_COLUMN_NAME",
+            "tc.CONSTRAINT_NAME",
+          ])
+          .where("tc.CONSTRAINT_TYPE", "=", "FOREIGN KEY")
+          .where("kcu.TABLE_SCHEMA", "=", schema)
+          .where("kcu.TABLE_NAME", "=", table)
+          .where("kcu.REFERENCED_TABLE_NAME", "is not", null)
+          .execute();
+        const foreignKeys = fkRows.map((r) => ({
           name: r.CONSTRAINT_NAME,
           column_name: r.COLUMN_NAME,
-          referenced_schema: r.REFERENCED_TABLE_SCHEMA,
-          referenced_table: r.REFERENCED_TABLE_NAME,
-          referenced_column: r.REFERENCED_COLUMN_NAME,
+          referenced_schema: r.REFERENCED_TABLE_SCHEMA!,
+          referenced_table: r.REFERENCED_TABLE_NAME!,
+          referenced_column: r.REFERENCED_COLUMN_NAME!,
         }));
 
         const rowArr = rows as Record<string, unknown>[];

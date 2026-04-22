@@ -813,7 +813,7 @@ export function DatabasePageContent({
         <motion.div
           layout
           transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-          className="border-x border-b rounded-lg flex-1 flex min-h-0 bg-background overflow-hidden"
+          className="border-x border-b rounded-md flex-1 flex min-h-0 bg-background overflow-hidden"
         >
           {/* Main Content Area */}
           <div className="flex-1 min-w-0 flex flex-col min-h-0">

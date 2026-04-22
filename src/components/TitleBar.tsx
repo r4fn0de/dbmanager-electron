@@ -80,7 +80,7 @@ export function TitleBar() {
           <div className="w-[78px] shrink-0 h-full draglayer" />
           {tabsSlot}
           <div className="ml-auto flex items-center no-drag pl-2">
-            <ThemeToggle />
+            <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors" />
           </div>
         </div>
       </div>
@@ -100,7 +100,7 @@ export function TitleBar() {
 
         <div className="flex items-center shrink-0 no-drag">
           <div className="flex items-center px-2">
-            <ThemeToggle />
+            <ThemeToggle className="inline-flex size-8 items-center justify-center rounded-none text-foreground/75 hover:text-foreground hover:bg-muted transition-colors" />
           </div>
           <Button
             variant="ghost"

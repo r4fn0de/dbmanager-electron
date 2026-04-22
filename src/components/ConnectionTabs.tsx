@@ -265,8 +265,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
               "transition-colors duration-150",
               isActive
-                ? "text-foreground shadow-[0_1px_0_rgba(0,0,0,0.02)]"
-                : "text-muted-foreground",
+                ? "text-slate-900 dark:text-foreground"
+                : "text-slate-600 hover:text-slate-900 dark:text-muted-foreground dark:hover:text-foreground",
               !isActive &&
                 "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60",
               gooeyFilterId &&
@@ -308,24 +308,24 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
 
             <div className="relative z-10 flex w-full min-w-0 -translate-y-[2px] items-center justify-start gap-1.5 pl-3 pr-3">
               {tab.provider === "neon" ? (
-                <Neon className="h-3.5 w-3.5 shrink-0" />
+                <Neon className="size-3.5 shrink-0" />
               ) : tab.provider === "supabase" ? (
-                <Supabase className="h-3.5 w-3.5 shrink-0" />
+                <Supabase className="size-3.5 shrink-0" />
               ) : tab.provider === "mysql" || tab.provider === "mariadb" ? (
-                <MySql className="h-3.5 w-3.5 shrink-0" />
+                <MySql className="size-3.5 shrink-0" />
               ) : tab.provider === "clickhouse" ? (
-                <ClickHouse className="h-3.5 w-3.5 shrink-0" />
+                <ClickHouse className="size-3.5 shrink-0" />
               ) : tab.isLocal ? (
-                <HardDrive className="h-3 w-3 shrink-0 text-green-500" />
+                <HardDrive className="size-3 shrink-0 text-emerald-500" />
               ) : colorDot ? (
                 <span
-                  className="h-2 w-2 rounded-full shrink-0"
+                  className="size-2 rounded-full shrink-0"
                   style={{ backgroundColor: colorDot }}
                 />
               ) : tab.provider === "url" ? (
-                <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <Globe className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
               ) : (
-                <Server className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <Server className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
               )}
 
               <div className="relative min-w-0 flex-1 pr-1 transition-[padding-right] duration-150 group-hover:pr-5">
@@ -348,14 +348,14 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               onClick={(e) => handleClose(e, tab.id)}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                "absolute right-1.5 top-[calc(50%-2px)] -translate-y-1/2 z-10 inline-flex h-5 w-5 items-center justify-center rounded-sm p-0.5 transition-opacity outline-none",
+                "absolute right-1.5 top-[calc(50%-2px)] -translate-y-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 transition-opacity outline-none",
                 "focus-visible:ring-2 focus-visible:ring-ring",
-                "hover:bg-muted hover:text-foreground",
-                "opacity-0 group-hover:opacity-70 hover:!opacity-100 focus-visible:opacity-100",
+                "text-slate-500 hover:bg-muted hover:text-slate-900 dark:text-muted-foreground dark:hover:text-foreground",
+                "opacity-0 group-hover:opacity-80 hover:!opacity-100 focus-visible:opacity-100",
               )}
               aria-label={`Close ${tab.name}`}
             >
-              <X className="h-3 w-3" />
+              <X className="size-3" />
             </button>
           </Reorder.Item>
         );

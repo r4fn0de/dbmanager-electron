@@ -2,14 +2,19 @@
  * PostgresDriver — implements DatabaseDriver for PostgreSQL using Kysely.
  *
  * Uses memoized pg Pool via kysely-factory for all operations.
- * Data queries use Kysely query builder for type safety.
+ * Schema introspection (getSchema, getSchemaSummary) uses Kysely query builder
+ * for type safety against known information_schema tables.
+ * listRows uses raw pool for data/count queries (dynamic table names need
+ * proper identifier quoting, and we need result.fields for column type info),
+ * but uses Kysely for PK/FK introspection queries.
  * DDL uses shared builders (ddl-sql.ts) executed via pool.
  * Export/clone operations use the pool directly for complex SQL.
  */
-import type { DatabaseType, SslMode } from "./types";
+import type { DatabaseType, SslMode, TableFilter } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
-import { getPgPool } from "./kysely-factory";
+import { getPgPool, getPgKysely } from "./kysely-factory";
 import { buildConnectionString as buildPgConnectionString } from "./pg-client";
+// Kysely imports are used via getPgKysely() for schema introspection queries
 import {
   buildAddColumnSql,
   buildAlterColumnTypeSql,
@@ -26,6 +31,70 @@ import {
 } from "./ddl-sql";
 
 const DB_TYPE = "postgresql" as DatabaseType;
+
+/** Escape a PostgreSQL identifier (double-quote). */
+export function pgEscId(id: string): string {
+  return `"${id.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Build PostgreSQL WHERE clause from filters with positional parameter placeholders.
+ * Returns conditions array and params array — caller prepends LIMIT/OFFSET params
+ * and adjusts `startIdx` accordingly (data query: startIdx=3, count query: startIdx=1).
+ */
+export function buildPgWhereClause(
+  filters: Array<{ column: string; operator: string; value?: unknown }>,
+  startIdx: number,
+): { conditions: string[]; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  for (const rawF of filters) {
+    const f = rawF as TableFilter;
+    const col = pgEscId(f.column);
+    const idx = params.length + startIdx;
+
+    switch (f.operator) {
+      case "eq":
+        if (f.value == null) conditions.push(`${col} IS NULL`);
+        else { conditions.push(`${col} = $${idx}`); params.push(f.value); }
+        break;
+      case "neq":
+        if (f.value == null) conditions.push(`${col} IS NOT NULL`);
+        else { conditions.push(`${col} != $${idx}`); params.push(f.value); }
+        break;
+      case "contains":
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`%${String(f.value ?? "")}%`);
+        break;
+      case "starts_with":
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`${String(f.value ?? "")}%`);
+        break;
+      case "ends_with":
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`%${String(f.value ?? "")}`);
+        break;
+      case "gt":
+        conditions.push(`${col} > $${idx}`); params.push(f.value); break;
+      case "gte":
+        conditions.push(`${col} >= $${idx}`); params.push(f.value); break;
+      case "lt":
+        conditions.push(`${col} < $${idx}`); params.push(f.value); break;
+      case "lte":
+        conditions.push(`${col} <= $${idx}`); params.push(f.value); break;
+      case "is_null":
+        conditions.push(`${col} IS NULL`); break;
+      case "is_not_null":
+        conditions.push(`${col} IS NOT NULL`); break;
+      default:
+        conditions.push(`${col}::text ILIKE $${idx}`);
+        params.push(`%${String(f.value ?? "")}%`);
+    }
+  }
+
+  return { conditions, params };
+}
 
 export function createPostgresDriver(): DatabaseDriver {
   return {
@@ -105,30 +174,72 @@ export function createPostgresDriver(): DatabaseDriver {
     },
 
     async getSchema(connectionString) {
-      const pool = getPgPool(connectionString);
+      const db = getPgKysely(connectionString);
 
       try {
-        // Schemas — use raw pool for information_schema queries to avoid Kysely type complexity
-        const schemasResult = await pool.query(
-          `SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema' ORDER BY schema_name`,
-        );
+        // 1. Schemas — Kysely query against information_schema.schemata
+        const schemas = await db
+          .selectFrom("schemata")
+          .select("schema_name")
+          .where("schema_name", "not like", "pg_%")
+          .where("schema_name", "!=", "information_schema")
+          .orderBy("schema_name")
+          .execute();
 
-        // Columns
-        const columnsResult = await pool.query(
-          `SELECT table_schema, table_name, column_name, data_type, udt_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema NOT LIKE 'pg_%' AND table_schema != 'information_schema' ORDER BY table_schema, table_name, ordinal_position`,
-        );
+        // 2. Columns — Kysely query against information_schema.columns
+        const columns = await db
+          .selectFrom("columns")
+          .select([
+            "table_schema",
+            "table_name",
+            "column_name",
+            "data_type",
+            "udt_name",
+            "is_nullable",
+            "column_default",
+          ])
+          .where("table_schema", "not like", "pg_%")
+          .where("table_schema", "!=", "information_schema")
+          .orderBy("table_schema")
+          .orderBy("table_name")
+          .orderBy("ordinal_position")
+          .execute();
 
-        // Indexes
-        const indexesResult = await pool.query(`
-          SELECT schemaname, tablename, indexname, indexdef
-          FROM pg_indexes
-          WHERE schemaname NOT LIKE 'pg_%' AND schemaname != 'information_schema'
-        `);
+        // 3. Indexes — Kysely query against pg_indexes
+        const indexes = await db
+          .selectFrom("pg_indexes")
+          .select(["schemaname", "tablename", "indexname", "indexdef"])
+          .where("schemaname", "not like", "pg_%")
+          .where("schemaname", "!=", "information_schema")
+          .execute();
 
-        // Foreign keys
-        const foreignKeysResult = await pool.query(
-          `SELECT tc.table_schema, tc.table_name, kcu.column_name, ccu.table_schema AS foreign_table_schema, ccu.table_name AS foreign_table_name, ccu.column_name AS foreign_column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name WHERE tc.constraint_type = 'FOREIGN KEY'`,
-        );
+        // 4. Foreign keys — Kysely query with schema-qualified joins
+        // Note: include constraint_schema in joins to avoid cross-schema name collisions
+        // Also filter out system schemas so we don't return FKs from pg_catalog etc.
+        const foreignKeys = await db
+          .selectFrom("table_constraints as tc")
+          .innerJoin("key_column_usage as kcu", (join) =>
+            join
+              .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+          )
+          .innerJoin("constraint_column_usage as ccu", (join) =>
+            join
+              .onRef("ccu.constraint_name", "=", "tc.constraint_name")
+              .onRef("ccu.constraint_schema", "=", "tc.constraint_schema"),
+          )
+          .select([
+            "tc.table_schema",
+            "tc.table_name",
+            "kcu.column_name",
+            "ccu.table_schema as foreign_table_schema",
+            "ccu.table_name as foreign_table_name",
+            "ccu.column_name as foreign_column_name",
+          ])
+          .where("tc.constraint_type", "=", "FOREIGN KEY")
+          .where("tc.table_schema", "not like", "pg_%")
+          .where("tc.table_schema", "!=", "information_schema")
+          .execute();
 
         // Build tables map
         const tablesMap = new Map<string, {
@@ -141,12 +252,12 @@ export function createPostgresDriver(): DatabaseDriver {
           rls_policies: Array<{ name: string; kind: string; roles: string[]; using_expr: string | null; with_check_expr: string | null }>;
         }>();
 
-        for (const row of columnsResult.rows) {
+        for (const row of columns) {
           const key = `${row.table_schema}.${row.table_name}`;
           if (!tablesMap.has(key)) {
             tablesMap.set(key, {
-              name: row.table_name as string,
-              schema: row.table_schema as string,
+              name: row.table_name,
+              schema: row.table_schema,
               columns: [],
               indexes: [],
               foreign_keys: [],
@@ -155,15 +266,15 @@ export function createPostgresDriver(): DatabaseDriver {
             });
           }
           tablesMap.get(key)!.columns.push({
-            name: row.column_name as string,
-            data_type: row.data_type as string,
-            udt_name: (row.udt_name as string) ?? null,
+            name: row.column_name,
+            data_type: row.data_type,
+            udt_name: row.udt_name ?? null,
             is_nullable: row.is_nullable === "YES",
-            column_default: (row.column_default as string | null) ?? null,
+            column_default: row.column_default ?? null,
           });
         }
 
-        for (const row of indexesResult.rows) {
+        for (const row of indexes) {
           const key = `${row.schemaname}.${row.tablename}`;
           const table = tablesMap.get(key);
           if (table) {
@@ -172,7 +283,7 @@ export function createPostgresDriver(): DatabaseDriver {
             const columnMatch = row.indexdef.match(/\(([^)]+)\)/);
             const columnNames = columnMatch
               ? columnMatch[1].split(",").map((c: string) => c.trim())
-              : ([] as string[]);
+              : [];
             table.indexes.push({
               name: row.indexname,
               is_unique: isUnique,
@@ -182,22 +293,22 @@ export function createPostgresDriver(): DatabaseDriver {
           }
         }
 
-        for (const row of foreignKeysResult.rows) {
+        for (const row of foreignKeys) {
           const key = `${row.table_schema}.${row.table_name}`;
           const table = tablesMap.get(key);
           if (table) {
             table.foreign_keys.push({
               name: `${row.table_name}_${row.column_name}_fkey`,
-              column_name: row.column_name as string,
-              referenced_schema: row.foreign_table_schema as string | undefined,
-              referenced_table: row.foreign_table_name as string,
-              referenced_column: row.foreign_column_name as string,
+              column_name: row.column_name,
+              referenced_schema: row.foreign_table_schema ?? undefined,
+              referenced_table: row.foreign_table_name,
+              referenced_column: row.foreign_column_name,
             });
           }
         }
 
         return {
-          schemas: schemasResult.rows.map((r: Record<string, unknown>) => r.schema_name as string),
+          schemas: schemas.map((r) => r.schema_name),
           tables: Array.from(tablesMap.values()),
         };
       } catch (err) {
@@ -207,21 +318,30 @@ export function createPostgresDriver(): DatabaseDriver {
     },
 
     async getSchemaSummary(connectionString) {
-      const pool = getPgPool(connectionString);
+      const db = getPgKysely(connectionString);
 
-      const schemasResult = await pool.query(
-        `SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema' ORDER BY schema_name`,
-      );
+      const schemas = await db
+        .selectFrom("schemata")
+        .select("schema_name")
+        .where("schema_name", "not like", "pg_%")
+        .where("schema_name", "!=", "information_schema")
+        .orderBy("schema_name")
+        .execute();
 
-      const tablesResult = await pool.query(
-        `SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT LIKE 'pg_%' AND table_schema != 'information_schema' ORDER BY table_schema, table_name`,
-      );
+      const tables = await db
+        .selectFrom("tables")
+        .select(["table_schema", "table_name"])
+        .where("table_schema", "not like", "pg_%")
+        .where("table_schema", "!=", "information_schema")
+        .orderBy("table_schema")
+        .orderBy("table_name")
+        .execute();
 
       return {
-        schemas: schemasResult.rows.map((r: Record<string, unknown>) => r.schema_name as string),
-        tables: tablesResult.rows.map((t: Record<string, unknown>) => ({
-          name: t.table_name as string,
-          schema: t.table_schema as string,
+        schemas: schemas.map((r) => r.schema_name),
+        tables: tables.map((t) => ({
+          name: t.table_name,
+          schema: t.table_schema,
           has_rls: false,
         })),
       };
@@ -247,153 +367,94 @@ export function createPostgresDriver(): DatabaseDriver {
     },
 
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
+      const db = getPgKysely(connectionString);
       const pool = getPgPool(connectionString);
-      const client = await pool.connect();
-      try {
-        const conditions: string[] = [];
-        const params: unknown[] = [];
+      const offset = (page - 1) * pageSize;
 
-        if (filters) {
-          for (const f of filters) {
-            const col = `"${f.column.replaceAll('"', '""')}"`;
-            const idx = params.length + 3; // $1=LIMIT, $2=OFFSET, filters start at $3
+      // ── Data query ──────────────────────────────────────────────────
+      // Use raw pool for data queries because:
+      // 1. Table names are dynamic and need proper identifier quoting (pgEscId)
+      // 2. We need result.fields with dataTypeID for accurate column type mapping
+      const { conditions, params } = buildPgWhereClause(filters ?? [], 3); // $1=LIMIT, $2=OFFSET, filters start at $3
+      const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+      const orderBy = sort && sort.length > 0
+        ? ` ORDER BY ${sort.map((s) => `${pgEscId(s.column)} ${s.direction.toUpperCase()}`).join(", ")}`
+        : "";
 
-            switch (f.operator) {
-              case "eq":
-                if (f.value == null) conditions.push(`${col} IS NULL`);
-                else { conditions.push(`${col} = $${idx}`); params.push(f.value); }
-                break;
-              case "neq":
-                if (f.value == null) conditions.push(`${col} IS NOT NULL`);
-                else { conditions.push(`${col} != $${idx}`); params.push(f.value); }
-                break;
-              case "contains":
-                conditions.push(`${col}::text ILIKE $${idx}`);
-                params.push(`%${String(f.value ?? "")}%`);
-                break;
-              case "starts_with":
-                conditions.push(`${col}::text ILIKE $${idx}`);
-                params.push(`${String(f.value ?? "")}%`);
-                break;
-              case "ends_with":
-                conditions.push(`${col}::text ILIKE $${idx}`);
-                params.push(`%${String(f.value ?? "")}`);
-                break;
-              case "gt": conditions.push(`${col} > $${idx}`); params.push(f.value); break;
-              case "gte": conditions.push(`${col} >= $${idx}`); params.push(f.value); break;
-              case "lt": conditions.push(`${col} < $${idx}`); params.push(f.value); break;
-              case "lte": conditions.push(`${col} <= $${idx}`); params.push(f.value); break;
-              case "is_null": conditions.push(`${col} IS NULL`); break;
-              case "is_not_null": conditions.push(`${col} IS NOT NULL`); break;
-              default:
-                conditions.push(`${col}::text ILIKE $${idx}`);
-                params.push(`%${String(f.value ?? "")}%`);
-            }
-          }
-        }
+      const rowsResult = await pool.query(
+        `SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}${where}${orderBy} LIMIT $1 OFFSET $2`,
+        [pageSize, offset, ...params],
+      );
 
-        const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-        const orderBy = sort && sort.length > 0
-          ? ` ORDER BY ${sort.map((s) => `"${s.column.replaceAll('"', '""')}" ${s.direction.toUpperCase()}`).join(", ")}`
-          : "";
-        const offset = (page - 1) * pageSize;
+      // ── Count query ────────────────────────────────────────────────
+      const countClause = buildPgWhereClause(filters ?? [], 1); // No LIMIT/OFFSET, filters start at $1
+      const countWhere = countClause.conditions.length > 0 ? ` WHERE ${countClause.conditions.join(" AND ")}` : "";
+      const countResult = await pool.query(
+        `SELECT COUNT(*) FROM ${pgEscId(schema)}.${pgEscId(table)}${countWhere}`,
+        countClause.params,
+      );
+      const totalEstimate = parseInt(countResult.rows[0].count, 10);
 
-        const rowsResult = await client.query(
-          `SELECT * FROM "${schema}"."${table}"${where}${orderBy} LIMIT $1 OFFSET $2`,
-          [pageSize, offset, ...params],
-        );
+      // ── PK/FK introspection — Kysely queries against information_schema ──
+      const pkRows = await db
+        .selectFrom("table_constraints as tc")
+        .innerJoin("key_column_usage as kcu", (join) =>
+          join
+            .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+            .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+        )
+        .select("kcu.column_name")
+        .where("tc.constraint_type", "=", "PRIMARY KEY")
+        .where("tc.table_schema", "=", schema)
+        .where("tc.table_name", "=", table)
+        .execute();
+      const primaryKey = pkRows.map((r) => r.column_name);
 
-        // Count query — filters start at $1
-        const countConditions: string[] = [];
-        const countParams: unknown[] = [];
-        if (filters) {
-          for (const f of filters) {
-            const col = `"${f.column.replaceAll('"', '""')}"`;
-            const idx = countParams.length + 1;
-            switch (f.operator) {
-              case "eq":
-                if (f.value == null) countConditions.push(`${col} IS NULL`);
-                else { countConditions.push(`${col} = $${idx}`); countParams.push(f.value); }
-                break;
-              case "neq":
-                if (f.value == null) countConditions.push(`${col} IS NOT NULL`);
-                else { countConditions.push(`${col} != $${idx}`); countParams.push(f.value); }
-                break;
-              case "contains":
-                countConditions.push(`${col}::text ILIKE $${idx}`);
-                countParams.push(`%${String(f.value ?? "")}%`);
-                break;
-              case "starts_with":
-                countConditions.push(`${col}::text ILIKE $${idx}`);
-                countParams.push(`${String(f.value ?? "")}%`);
-                break;
-              case "ends_with":
-                countConditions.push(`${col}::text ILIKE $${idx}`);
-                countParams.push(`%${String(f.value ?? "")}`);
-                break;
-              case "gt": countConditions.push(`${col} > $${idx}`); countParams.push(f.value); break;
-              case "gte": countConditions.push(`${col} >= $${idx}`); countParams.push(f.value); break;
-              case "lt": countConditions.push(`${col} < $${idx}`); countParams.push(f.value); break;
-              case "lte": countConditions.push(`${col} <= $${idx}`); countParams.push(f.value); break;
-              case "is_null": countConditions.push(`${col} IS NULL`); break;
-              case "is_not_null": countConditions.push(`${col} IS NOT NULL`); break;
-              default:
-                countConditions.push(`${col}::text ILIKE $${idx}`);
-                countParams.push(`%${String(f.value ?? "")}%`);
-            }
-          }
-        }
-        const countWhere = countConditions.length > 0 ? ` WHERE ${countConditions.join(" AND ")}` : "";
-        const countResult = await client.query(
-          `SELECT COUNT(*) FROM "${schema}"."${table}"${countWhere}`,
-          countParams,
-        );
-        const totalEstimate = parseInt(countResult.rows[0].count, 10);
+      const fkRows = await db
+        .selectFrom("table_constraints as tc")
+        .innerJoin("key_column_usage as kcu", (join) =>
+          join
+            .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+            .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+        )
+        .innerJoin("constraint_column_usage as ccu", (join) =>
+          join
+            .onRef("ccu.constraint_name", "=", "tc.constraint_name")
+            .onRef("ccu.constraint_schema", "=", "tc.constraint_schema"),
+        )
+        .select([
+          "tc.constraint_name as name",
+          "kcu.column_name",
+          "ccu.table_schema as referenced_schema",
+          "ccu.table_name as referenced_table",
+          "ccu.column_name as referenced_column",
+        ])
+        .where("tc.constraint_type", "=", "FOREIGN KEY")
+        .where("tc.table_schema", "=", schema)
+        .where("tc.table_name", "=", table)
+        .execute();
+      const foreignKeys = fkRows.map((r) => ({
+        name: r.name,
+        column_name: r.column_name,
+        referenced_schema: r.referenced_schema,
+        referenced_table: r.referenced_table,
+        referenced_column: r.referenced_column,
+      }));
 
-        // Primary key
-        const pkResult = await client.query(
-          `SELECT kcu.column_name
-           FROM information_schema.table_constraints tc
-           JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-           WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = $1 AND tc.table_name = $2`,
-          [schema, table],
-        );
-        const primaryKey = pkResult.rows.map((r: { column_name: string }) => r.column_name);
+      // ── Column metadata — from pg result fields (accurate type mapping) ──
+      const columns = rowsResult.fields.map((f) => ({
+        name: f.name,
+        type_name: mapPgType(f.dataTypeID),
+      }));
 
-        // Foreign keys
-        const fkResult = await client.query(
-          `SELECT tc.constraint_name as name, kcu.column_name,
-                  ccu.table_schema as referenced_schema, ccu.table_name as referenced_table, ccu.column_name as referenced_column
-           FROM information_schema.table_constraints tc
-           JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-           JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
-           WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1 AND tc.table_name = $2`,
-          [schema, table],
-        );
-        const foreignKeys = fkResult.rows.map((r: { name: string; column_name: string; referenced_schema: string; referenced_table: string; referenced_column: string }) => ({
-          name: r.name,
-          column_name: r.column_name,
-          referenced_schema: r.referenced_schema,
-          referenced_table: r.referenced_table,
-          referenced_column: r.referenced_column,
-        }));
-
-        const columns = rowsResult.fields.map((f) => ({
-          name: f.name,
-          type_name: mapPgType(f.dataTypeID),
-        }));
-
-        return {
-          columns,
-          rows: rowsResult.rows,
-          primaryKey,
-          foreignKeys,
-          pageInfo: { page, pageSize },
-          totalEstimate,
-        };
-      } finally {
-        client.release();
-      }
+      return {
+        columns,
+        rows: rowsResult.rows,
+        primaryKey,
+        foreignKeys,
+        pageInfo: { page, pageSize },
+        totalEstimate,
+      };
     },
 
     // ── DDL ─────────────────────────────────────────────────────────
@@ -486,8 +547,6 @@ export function createPostgresDriver(): DatabaseDriver {
     // These use the pool directly for complex SQL that Kysely doesn't help with.
 
     async exportSchemaDdl(connectionString) {
-      // Import the existing implementation — it uses pg Client directly,
-      // but we adapt it to use the pool.
       const { exportSchemaDdl: pgExport } = await import("./pg-client");
       return pgExport(connectionString);
     },
@@ -518,7 +577,7 @@ export function createPostgresDriver(): DatabaseDriver {
 // Type mapping — pg dataTypeID → display type
 // ---------------------------------------------------------------------------
 
-function mapPgType(dataTypeID: number): string {
+export function mapPgType(dataTypeID: number): string {
   const typeMap: Record<number, string> = {
     16: "boolean",      // bool
     17: "binary",       // bytea
