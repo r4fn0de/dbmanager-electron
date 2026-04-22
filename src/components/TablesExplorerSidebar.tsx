@@ -257,6 +257,12 @@ export function TablesExplorerSidebar({
                       render={
                         <button
                           type="button"
+                          draggable
+                          onDragStart={(e) => {
+                            const ref = `${table.schema}.${table.name}`;
+                            e.dataTransfer.setData("text/sql-table-ref", ref);
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
                           onClick={() =>
                             onTableSelect(`${table.schema}.${table.name}`)
                           }

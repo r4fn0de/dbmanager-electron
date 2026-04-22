@@ -678,6 +678,33 @@ export function DatabasePageContent({
     return lines.join("\n");
   }, [tables, schemas, tablesBySchema, selectedSchema, selectedSchemaDetails]);
 
+  // Schema completion data for Monaco autocomplete in SQL editor.
+  // NOTE: Only the selected schema has column details loaded (via selectedSchemaDetails).
+  // Tables in other schemas will have empty columns[] — they'll still show table names
+  // in autocomplete but dot-completion won't suggest columns for them. This is a
+  // deliberate tradeoff to avoid loading details for all schemas at once (which
+  // could be expensive on databases with many schemas/tables).
+  const schemaCompletionData = useMemo(() => {
+    // Build a lookup of "schema.name" → details for loaded schemas
+    const detailMap = new Map<string, SchemaTableDetails>();
+    for (const d of selectedSchemaDetails) {
+      detailMap.set(`${d.schema}.${d.name}`, d);
+    }
+
+    const completionTables = tables.map((t) => {
+      const detail = detailMap.get(`${t.schema}.${t.name}`);
+      return {
+        schema: t.schema,
+        name: t.name,
+        columns: detail
+          ? detail.columns.map((c) => ({ name: c.name, dataType: c.data_type }))
+          : [],
+      };
+    });
+
+    return { schemas, tables: completionTables };
+  }, [tables, schemas, selectedSchemaDetails]);
+
   const selectedTableRef = useMemo(() => {
     if (!selectedTableKey) return null;
     const dotIdx = selectedTableKey.indexOf(".");
@@ -1052,6 +1079,7 @@ export function DatabasePageContent({
                 onWorkspaceSidebarResize={setSqlSidebarWidthPx}
                 dbType={connection.db_type || "postgresql"}
                 schemaContext={schemaContextForAi}
+                schemaCompletionData={schemaCompletionData}
                 loadRequest={initialSqlQuery ? {
                   key: `query:${Date.now()}`,
                   title: "Query",

@@ -10,7 +10,6 @@ import {
   Sparkles,
   Star,
   Trash2,
-  Wand2,
   X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -29,6 +28,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   type Layout,
+  type GroupImperativeHandle,
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,9 +39,19 @@ import {
   type SqlHistoryEntry,
   type SqlSavedQuery,
 } from "@/hooks/useSqlWorkspace";
-import { fixSql, updateSql } from "@/hooks/ai-actions";
-import { formatDuration } from "@/lib/utils";
+import { fixSql } from "@/hooks/ai-actions";
+import { debounce, formatDuration } from "@/lib/utils";
+import {
+  buildExplainSql,
+  formatSql,
+  registerSqlCompletion,
+  disposeSqlCompletion,
+  updateSchemaData,
+  supportsExplainAnalyze,
+  type SchemaCompletionData,
+} from "@/lib/monaco-sql-setup";
 import { cn } from "@/utils/tailwind";
+import * as monaco from "monaco-editor";
 import "@/lib/monaco-loader";
 import type {
   Connection,
@@ -66,6 +76,8 @@ interface SqlEditorProps {
   dbType?: DatabaseType;
   /** Schema context string for AI — table/column names so the AI can write accurate SQL from the start */
   schemaContext?: string;
+  /** Schema data for autocomplete — table names, column names, schemas */
+  schemaCompletionData?: SchemaCompletionData;
 }
 
 const DEFAULT_SQL = `/*
@@ -103,7 +115,7 @@ const MONACO_OPTIONS = {
   lineNumbers: "on",
   roundedSelection: false,
   scrollBeyondLastLine: false,
-  automaticLayout: true,
+  automaticLayout: false, // We use ResizeObserver + debounced layout() instead of 100ms polling
   padding: { top: 12 },
   tabSize: 2,
 } as const;
@@ -286,6 +298,7 @@ export function SqlEditor({
   loadRequest = null,
   dbType = "postgresql",
   schemaContext,
+  schemaCompletionData,
 }: SqlEditorProps) {
   const {
     savedQueries,
@@ -318,15 +331,17 @@ export function SqlEditor({
       return undefined;
     }
   }, [selectedConnection]);
-  const persistSidebarLayout = useCallback(
-    (layout: Layout) => {
+  // Debounced: avoids localStorage.setItem on every pixel during drag
+  const persistSidebarLayout = useMemo(
+    () => debounce((layout: Layout) => {
       if (!selectedConnection) return;
       try {
         localStorage.setItem(`sql-sidebar-layout:${selectedConnection}`, JSON.stringify(layout));
       } catch { /* quota exceeded or private mode */ }
-    },
+    }, 150),
     [selectedConnection],
   );
+
 
   // Persist editor/results vertical split across sessions
   const savedEditorSplitLayout = useMemo(() => {
@@ -338,15 +353,17 @@ export function SqlEditor({
       return undefined;
     }
   }, [selectedConnection]);
-  const persistEditorSplitLayout = useCallback(
-    (layout: Layout) => {
+  // Debounced: avoids localStorage.setItem on every pixel during drag
+  const persistEditorSplitLayout = useMemo(
+    () => debounce((layout: Layout) => {
       if (!selectedConnection) return;
       try {
         localStorage.setItem(`sql-editor-split:${selectedConnection}`, JSON.stringify(layout));
       } catch { /* quota exceeded or private mode */ }
-    },
+    }, 150),
     [selectedConnection],
   );
+
 
   const [isExecuting, setIsExecuting] = useState(false);
   const [lastResult, setLastResult] = useState<QueryResult | null>(null);
@@ -361,11 +378,88 @@ export function SqlEditor({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<MonacoEditor | null>(null);
   const executionAbort = useRef<AbortController | null>(null);
+  const sidebarRafRef = useRef<number | null>(null);
+  const monacoResizeObserverRef = useRef<ResizeObserver | null>(null);
 
   // AI panel state
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [isFixingSql, setIsFixingSql] = useState(false);
-  const [isUpdatingSql, setIsUpdatingSql] = useState(false);
+  // EXPLAIN state (driven by keyboard shortcuts only, no toolbar button)
+  const [isExplaining, setIsExplaining] = useState(false);
+
+  // Persist AI chat panel width across sessions
+  const AI_CHAT_DEFAULT_SIZE = 30; // percentage
+  const savedAiChatLayout = useMemo(() => {
+    if (!selectedConnection) return undefined;
+    try {
+      const raw = localStorage.getItem(`sql-ai-chat-layout:${selectedConnection}`);
+      return raw ? (JSON.parse(raw) as Layout) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [selectedConnection]);
+  // Debounced: avoids localStorage.setItem on every pixel during drag
+  const persistAiChatLayout = useMemo(
+    () => debounce((layout: Layout) => {
+      // Only persist when AI chat is open — avoid saving collapsed state
+      if (!selectedConnection || !isAiChatOpen) return;
+      try {
+        localStorage.setItem(`sql-ai-chat-layout:${selectedConnection}`, JSON.stringify(layout));
+      } catch { /* quota exceeded or private mode */ }
+    }, 150),
+    [selectedConnection, isAiChatOpen],
+  );
+  // Cancel all pending debounce timers on unmount or when dependencies change
+  useEffect(() => () => {
+    persistSidebarLayout.cancel();
+    persistEditorSplitLayout.cancel();
+    persistAiChatLayout.cancel();
+  }, [persistSidebarLayout, persistEditorSplitLayout, persistAiChatLayout]);
+
+  // Group ref for atomic setLayout() — opens/closes AI chat without remounting the editor
+  const aiChatGroupRef = useRef<GroupImperativeHandle>(null);
+  // Tracks whether the toggle came from the toolbar button (vs. user dragging)
+  const aiChatToggleSource = useRef<"button" | "resize">("resize");
+
+  // Collapse/expand AI chat panel imperatively when toggled
+  useEffect(() => {
+    if (isAiChatOpen) {
+      // Only setLayout when triggered by toolbar/close button — not when user dragged to expand
+      // (dragging already sets the correct size; setLayout would override it)
+      if (aiChatToggleSource.current === "button") {
+        const targetSize = savedAiChatLayout?.["sql-ai-chat"] ?? AI_CHAT_DEFAULT_SIZE;
+        aiChatGroupRef.current?.setLayout({
+          "sql-editor-main": 100 - targetSize,
+          "sql-ai-chat": targetSize,
+        });
+      }
+    } else {
+      // Closing always collapses the panel regardless of source
+      aiChatGroupRef.current?.setLayout({ "sql-editor-main": 100, "sql-ai-chat": 0 });
+    }
+    aiChatToggleSource.current = "resize"; // reset for next time
+  }, [isAiChatOpen, savedAiChatLayout]);
+
+  // Compute initial layout for the AI chat panel group
+  // When chat starts closed, force the chat panel to 0% to avoid a flash on mount
+  const aiChatGroupDefaultLayout = useMemo((): Layout | undefined => {
+    if (!isAiChatOpen) {
+      return { "sql-editor-main": 100, "sql-ai-chat": 0 };
+    }
+    return savedAiChatLayout ?? { "sql-editor-main": 100 - AI_CHAT_DEFAULT_SIZE, "sql-ai-chat": AI_CHAT_DEFAULT_SIZE };
+  }, [isAiChatOpen, savedAiChatLayout]); // eslint-disable-line react-hooks/exhaustive-deps — defaultLayout is mount-only but we need isAiChatOpen for initial render
+
+  // ── Autocomplete: register Monaco completion provider on mount, update schema data ──
+  useEffect(() => {
+    registerSqlCompletion();
+    return () => disposeSqlCompletion();
+  }, []);
+
+  useEffect(() => {
+    if (schemaCompletionData) {
+      updateSchemaData(schemaCompletionData);
+    }
+  }, [schemaCompletionData]);
 
   const selectedConnectionMeta = useMemo(() => {
     const found = connections.find((conn) => conn.id === selectedConnection);
@@ -395,9 +489,13 @@ export function SqlEditor({
   }, [loadRequest?.key]);
 
   useEffect(() => {
-    // Abort any in-flight execution on unmount.
+    // Clean up on unmount: abort in-flight execution, disconnect Monaco ResizeObserver,
+    // and cancel any pending sidebar RAF
     return () => {
       executionAbort.current?.abort();
+      monacoResizeObserverRef.current?.disconnect();
+      monacoResizeObserverRef.current = null;
+      if (sidebarRafRef.current !== null) cancelAnimationFrame(sidebarRafRef.current);
     };
   }, []);
 
@@ -448,6 +546,83 @@ export function SqlEditor({
     setSql(cleaned);
   }, [setSql]);
 
+  // ── Format SQL (Prettify) — driven by keyboard shortcut only (⌘⇧F), no toolbar button ──
+  const handleFormatSql = useCallback(() => {
+    const editorInstance = editorRef.current;
+    if (!editorInstance) return;
+    const sql = editorInstance.getValue();
+    if (!sql.trim()) return;
+    const formatted = formatSql(sql, dbType);
+    if (formatted === sql) return;
+    // Use executeEdits to preserve undo history (unlike setValue/setSql which reset it)
+    const model = editorInstance.getModel();
+    if (model) {
+      editorInstance.executeEdits("sql-format", [{
+        range: model.getFullModelRange(),
+        text: formatted,
+      }]);
+      toast.success("SQL formatted");
+    }
+  }, [dbType]);
+
+  // ── EXPLAIN Query ────────────────────────────────────────────────
+  const handleExplainSql = useCallback(async (analyze: boolean = false) => {
+    if (!selectedConnection || !doc.sql.trim()) return;
+    if (isExecuting) return;
+
+    const editorInstance = editorRef.current;
+    const selection = editorInstance?.getSelection();
+    const model = editorInstance?.getModel();
+    const selectedText =
+      selection && model ? model.getValueInRange(selection).trim() : "";
+    const sqlToExplain = selectedText.length > 0 ? selectedText : doc.sql;
+    if (!sqlToExplain.trim()) return;
+
+    // EXPLAIN ANALYZE actually executes the query — warn for destructive SQL
+    if (analyze && hasDangerousSqlKeywords(sqlToExplain)) {
+      const confirmed = window.confirm(
+        "EXPLAIN ANALYZE will actually execute this query, which contains potentially destructive operations (DELETE/UPDATE/DROP/etc). Continue?"
+      );
+      if (!confirmed) return;
+    }
+
+    const explainSql = buildExplainSql(sqlToExplain, dbType, analyze);
+    setIsExplaining(true);
+    try {
+      const result = await executeQuery(selectedConnection, explainSql);
+      const resultId = `explain-${nowIso()}`;
+      setRunResults([{
+        id: resultId,
+        query: explainSql,
+        status: "success",
+        result,
+        error: null,
+        durationMs: 0,
+        rowCount: result.row_count,
+      }]);
+      setActiveRunResultId(resultId);
+      setLastResult(result);
+      setLastError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "EXPLAIN failed";
+      const resultId = `explain-${nowIso()}`;
+      setRunResults([{
+        id: resultId,
+        query: explainSql,
+        status: "error",
+        result: null,
+        error: message,
+        durationMs: 0,
+        rowCount: 0,
+      }]);
+      setActiveRunResultId(resultId);
+      setLastError(message);
+      setLastResult(null);
+    } finally {
+      setIsExplaining(false);
+    }
+  }, [selectedConnection, doc.sql, dbType, isExecuting, executeQuery]);
+
   // AI: Fix SQL — send current SQL + last error to AI for correction
   const handleFixSql = useCallback(async () => {
     if (!selectedConnection || !doc.sql.trim() || !lastError) return;
@@ -464,24 +639,6 @@ export function SqlEditor({
       setIsFixingSql(false);
     }
   }, [selectedConnection, doc.sql, lastError, dbType, setSql]);
-
-  // AI: Update SQL — modify SQL based on natural language instruction
-  const handleUpdateSql = useCallback(async () => {
-    const prompt = window.prompt("What would you like to change in the SQL?");
-    if (!prompt?.trim() || !selectedConnection || !doc.sql.trim()) return;
-    setIsUpdatingSql(true);
-    try {
-      const result = await updateSql(doc.sql, prompt.trim(), dbType);
-      if (result.sql && result.sql.trim()) {
-        setSql(result.sql);
-        toast.success("SQL updated by AI");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update SQL");
-    } finally {
-      setIsUpdatingSql(false);
-    }
-  }, [selectedConnection, doc.sql, dbType, setSql]);
 
   const setTitle = useCallback((title: string) => {
     setDoc((current) => ({ ...current, title, updatedAt: nowIso() }));
@@ -708,9 +865,71 @@ export function SqlEditor({
     }
   }, [appendHistory, doc.sql, executeQuery, selectedConnection]);
 
+  // Refs to always access latest handlers from Monaco actions (avoids stale closure)
+  const handleFormatSqlRef = useRef(handleFormatSql);
+  handleFormatSqlRef.current = handleFormatSql;
+  const handleExplainSqlRef = useRef(handleExplainSql);
+  handleExplainSqlRef.current = handleExplainSql;
+
   const handleEditorMount = useCallback<OnMount>((mounted) => {
     editorRef.current = mounted;
-  }, []);
+
+    // ResizeObserver + RAF-throttled layout() replaces automaticLayout:true polling.
+    // automaticLayout uses a 100ms MutationObserver that triggers relayout on every
+    // DOM mutation during resize — very expensive. ResizeObserver only fires when the
+    // container actually changes size, and RAF coalesces layout calls into one per frame.
+    const container = mounted.getDomNode()?.parentElement;
+    if (container) {
+      let rafId: number | null = null;
+      const observer = new ResizeObserver(() => {
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          mounted.layout();
+        });
+      });
+      observer.observe(container);
+      monacoResizeObserverRef.current = observer;
+    }
+
+    // Register Monaco editor actions (format, explain)
+    // These use refs to avoid stale closures — the actual handler logic lives in the callbacks above.
+    mounted.addAction({
+      id: "sql-format",
+      label: "Format SQL",
+      keybindings: [
+        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+      ],
+      run: () => {
+        handleFormatSqlRef.current();
+      },
+    });
+
+    mounted.addAction({
+      id: "sql-explain",
+      label: "EXPLAIN Query",
+      keybindings: [
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE,
+      ],
+      run: () => {
+        void handleExplainSqlRef.current(false);
+      },
+    });
+
+    // EXPLAIN ANALYZE — only available for databases that support it
+    if (supportsExplainAnalyze(dbType)) {
+      mounted.addAction({
+        id: "sql-explain-analyze",
+        label: "EXPLAIN ANALYZE Query",
+        keybindings: [
+          monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE,
+        ],
+        run: () => {
+          void handleExplainSqlRef.current(true);
+        },
+      });
+    }
+  }, [dbType]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -753,7 +972,13 @@ export function SqlEditor({
             minSize="15%"
             maxSize="40%"
             onResize={(size) => {
-              onWorkspaceSidebarResize?.(size.inPixels);
+              // RAF-throttle: coalesce rapid resize events into one update per frame
+              if (sidebarRafRef.current !== null) cancelAnimationFrame(sidebarRafRef.current);
+              const px = size.inPixels;
+              sidebarRafRef.current = requestAnimationFrame(() => {
+                sidebarRafRef.current = null;
+                onWorkspaceSidebarResize?.(px);
+              });
             }}
             className="min-h-0 bg-sidebar"
           >
@@ -971,9 +1196,15 @@ export function SqlEditor({
         )}
         {showWorkspaceSidebar && <ResizableHandle withHandle />}
         <ResizablePanel id="sql-editor" className="min-h-0 min-w-0">
-        <section className="h-full min-h-0 flex">
-          {/* Main editor area */}
-          <div className="flex-1 min-w-0 flex flex-col">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="h-full min-h-0"
+          defaultLayout={aiChatGroupDefaultLayout}
+          onLayoutChanged={persistAiChatLayout}
+          groupRef={aiChatGroupRef}
+        >
+          <ResizablePanel id="sql-editor-main" defaultSize={`${100 - AI_CHAT_DEFAULT_SIZE}%`} minSize="40%" className="min-h-0 min-w-0">
+          <div className="h-full min-w-0 flex flex-col">
           {/* ── Editor toolbar (single row) ──────────────────── */}
           <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1">
             {/* Query title */}
@@ -1020,7 +1251,7 @@ export function SqlEditor({
               {selectedConnectionMeta.label || "No connection selected"}
             </span>
 
-            {/* AI actions */}
+            {/* AI Chat */}
             <div className="flex items-center gap-1 shrink-0">
               <Tooltip>
                 <TooltipTrigger
@@ -1028,7 +1259,10 @@ export function SqlEditor({
                     <Button
                       variant="ghost"
                       size="xs"
-                      onClick={() => setIsAiChatOpen(!isAiChatOpen)}
+                      onClick={() => {
+                        aiChatToggleSource.current = "button";
+                        setIsAiChatOpen(!isAiChatOpen);
+                      }}
                       className={cn("gap-1", isAiChatOpen && "bg-primary/10 text-primary")}
                     >
                       <Bot className="size-3" />
@@ -1061,27 +1295,6 @@ export function SqlEditor({
                   <TooltipContent>Fix SQL with AI</TooltipContent>
                 </Tooltip>
               )}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => void handleUpdateSql()}
-                      disabled={isUpdatingSql || !doc.sql.trim()}
-                      className="gap-1"
-                    >
-                      {isUpdatingSql ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : (
-                        <Wand2 className="size-3" />
-                      )}
-                      Edit
-                    </Button>
-                  }
-                />
-                <TooltipContent>Modify SQL with natural language</TooltipContent>
-              </Tooltip>
             </div>
 
             <Separator orientation="vertical" className="h-4" />
@@ -1140,7 +1353,36 @@ export function SqlEditor({
             onLayoutChanged={persistEditorSplitLayout}
           >
             <ResizablePanel id="sql-editor-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
-              <div className="h-full min-h-0">
+              <div
+                className="h-full min-h-0"
+                onDragOver={(e) => {
+                  if (e.dataTransfer?.types.includes("text/sql-table-ref")) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                  }
+                }}
+                onDrop={(e) => {
+                  const tableRef = e.dataTransfer?.getData("text/sql-table-ref");
+                  if (tableRef) {
+                    e.preventDefault();
+                    const sql = `SELECT *\nFROM ${tableRef}\nLIMIT 100;`;
+                    const editorInstance = editorRef.current;
+                    if (editorInstance) {
+                      const selection = editorInstance.getSelection();
+                      const range = selection ?? editorInstance.getModel()?.getFullModelRange();
+                      if (range) {
+                        editorInstance.executeEdits("drag-drop-table", [{
+                          range,
+                          text: sql,
+                          forceMoveMarkers: true,
+                        }]);
+                        return;
+                      }
+                    }
+                    setSql(sql);
+                  }
+                }}
+              >
               <LazyMonacoEditor
                 height="100%"
                 defaultLanguage="sql"
@@ -1212,16 +1454,49 @@ export function SqlEditor({
             </ResizablePanel>
           </ResizablePanelGroup>
           </div>
+          </ResizablePanel>
 
-          {/* AI Chat sidebar panel */}
-          <AiChatPanel
-            connectionId={selectedConnection}
-            dbType={dbType}
-            schemaContext={schemaContext}
-            isOpen={isAiChatOpen}
-            onInsertSql={handleInsertSqlFromAi}
+          {/* AI Chat sidebar panel — always rendered; collapsed/expanded via imperative panelRef */}
+          <ResizableHandle
+            withHandle
+            className={cn(
+              "bg-border/50 hover:bg-border transition-colors duration-150",
+              !isAiChatOpen && "pointer-events-none opacity-0",
+            )}
           />
-        </section>
+          <ResizablePanel
+            id="sql-ai-chat"
+            defaultSize={`${AI_CHAT_DEFAULT_SIZE}%`}
+            minSize="15%"
+            maxSize="40%"
+            collapsible
+            collapsedSize={0}
+            onResize={(size, _id, prevSize) => {
+              // Sync isAiChatOpen state only when crossing the collapsed/expanded threshold
+              const wasCollapsed = prevSize ? prevSize.asPercentage === 0 : false;
+              const isCollapsed = size.asPercentage === 0;
+              if (wasCollapsed !== isCollapsed) {
+                aiChatToggleSource.current = "resize";
+                setIsAiChatOpen(!isCollapsed);
+              }
+            }}
+            className="min-h-0 min-w-0"
+          >
+            {isAiChatOpen && (
+              <AiChatPanel
+                connectionId={selectedConnection}
+                dbType={dbType}
+                schemaContext={schemaContext}
+                isOpen={isAiChatOpen}
+                onInsertSql={handleInsertSqlFromAi}
+                onClose={() => {
+                  aiChatToggleSource.current = "button";
+                  setIsAiChatOpen(false);
+                }}
+              />
+            )}
+          </ResizablePanel>
+        </ResizablePanelGroup>
         </ResizablePanel>
       </ResizablePanelGroup>
     </section>

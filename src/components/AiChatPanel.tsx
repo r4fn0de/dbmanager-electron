@@ -6,8 +6,8 @@
  */
 import {
   Bot,
-  ChevronDown,
   Loader2,
+  PanelRight,
   Send,
   Square,
   Trash2,
@@ -16,8 +16,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +40,8 @@ interface AiChatPanelProps {
   isOpen: boolean;
   /** Callback to insert SQL into the editor */
   onInsertSql?: (sql: string) => void;
+  /** Callback when panel is closed */
+  onClose?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ function ChatMessage({
 
         {/* Message text */}
         {message.content && (
-          <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+          <div className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
             {message.content}
           </div>
         )}
@@ -172,6 +172,7 @@ export function AiChatPanel({
   schemaContext,
   isOpen,
   onInsertSql,
+  onClose,
 }: AiChatPanelProps) {
   const { messages, isLoading, error, sendMessage, abort, clearMessages } =
     useAiChat({
@@ -194,7 +195,11 @@ export function AiChatPanel({
   // Focus input when panel opens
   useEffect(() => {
     if (isOpen) {
-      inputRef.current?.focus();
+      // Small delay to allow animation to start
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
@@ -213,7 +218,14 @@ export function AiChatPanel({
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex h-full flex-col bg-background border-l border-border/50">
+    <div
+      className={cn(
+        "flex h-full flex-col bg-background",
+        "motion-safe:animate-in motion-safe:slide-in-from-right-full",
+        "motion-safe:duration-200 motion-safe:ease-out"
+      )}
+      style={{ width: "100%" }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 shrink-0">
         <div className="flex items-center gap-2">
@@ -230,11 +242,30 @@ export function AiChatPanel({
                   onClick={clearMessages}
                   disabled={isEmpty}
                   className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
-                />
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
               }
             />
             <TooltipContent>Clear chat</TooltipContent>
           </Tooltip>
+          {onClose && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={onClose}
+                    className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
+                  >
+                    <PanelRight className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent>Close panel</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
 
