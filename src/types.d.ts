@@ -29,7 +29,7 @@ declare global {
   }
 
   type AiChatChunk =
-    | { type: "text"; text: string }
-    | { type: "tool-call"; toolName: string; args: unknown }
-    | { type: "tool-result"; toolName: string; result: unknown };
+    | { chatId: string; type: "text"; text: string }
+    | { chatId: string; type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
+    | { chatId: string; type: "tool-result"; toolCallId: string; toolName: string; result: unknown };
 }

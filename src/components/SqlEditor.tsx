@@ -1,4 +1,3 @@
-import Editor, { type OnMount } from "@monaco-editor/react";
 import {
   Bot,
   Clock,
@@ -23,6 +22,7 @@ import { AiChatPanel } from "@/components/AiChatPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { LazyMonacoEditor, type OnMount } from "@/components/LazyMonacoEditor";
 
 import {
   ResizableHandle,
@@ -1141,12 +1141,12 @@ export function SqlEditor({
           >
             <ResizablePanel id="sql-editor-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
               <div className="h-full min-h-0">
-              <Editor
+              <LazyMonacoEditor
                 height="100%"
                 defaultLanguage="sql"
                 value={doc.sql}
                 onMount={handleEditorMount}
-                onChange={(value) => setSql(value || "")}
+                onChange={(value: string | undefined) => setSql(value || "")}
                 theme={monacoTheme}
                 options={MONACO_OPTIONS}
               />

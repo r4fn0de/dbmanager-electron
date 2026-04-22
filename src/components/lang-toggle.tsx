@@ -7,15 +7,16 @@ export default function LangToggle() {
   const { i18n } = useTranslation();
   const currentLang = i18n.language;
 
-  function onValueChange(value: string) {
+  function onValueChange(groupValue: string[]) {
+    const value = groupValue[0];
+    if (!value) return;
     setAppLanguage(value, i18n);
   }
 
   return (
     <ToggleGroup
       onValueChange={onValueChange}
-      type="single"
-      value={currentLang}
+      value={[currentLang]}
     >
       {langs.map((lang) => (
         <ToggleGroupItem

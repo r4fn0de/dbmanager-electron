@@ -17,8 +17,9 @@ export interface AiChatMessage {
   content: string;
   /** Tool calls made by the assistant during this message */
   toolCalls?: Array<{
+    toolCallId: string;
     toolName: string;
-    args: unknown;
+    input: unknown;
     result?: unknown;
   }>;
   /** Whether this message is currently being streamed */
@@ -76,6 +77,8 @@ export function useAiChat({
     if (!aiChat) return;
 
     const unsubChunk = aiChat.onChunk((chunk: AiChatChunk) => {
+      if (chunk.chatId !== chatIdRef.current) return;
+
       if (chunk.type === "text") {
         setMessages((prev) => {
           const id = assistantIdRef.current;
@@ -96,7 +99,11 @@ export function useAiChat({
                   ...msg,
                   toolCalls: [
                     ...(msg.toolCalls ?? []),
-                    { toolName: chunk.toolName, args: chunk.args },
+                    {
+                      toolCallId: chunk.toolCallId,
+                      toolName: chunk.toolName,
+                      input: chunk.input,
+                    },
                   ],
                 }
               : msg,
@@ -109,7 +116,9 @@ export function useAiChat({
           return prev.map((msg) => {
             if (msg.id !== id || !msg.toolCalls) return msg;
             const updated = [...msg.toolCalls];
-            const callIdx = updated.length - 1;
+            const callIdx = updated.findIndex(
+              (call) => call.toolCallId === chunk.toolCallId,
+            );
             if (callIdx >= 0) {
               updated[callIdx] = { ...updated[callIdx], result: chunk.result };
             }
@@ -119,7 +128,9 @@ export function useAiChat({
       }
     });
 
-    const unsubDone = aiChat.onDone(() => {
+    const unsubDone = aiChat.onDone(({ chatId }) => {
+      if (chatId !== chatIdRef.current) return;
+
       setMessages((prev) => {
         const id = assistantIdRef.current;
         if (!id) return prev;
@@ -132,7 +143,9 @@ export function useAiChat({
     });
 
     const unsubError = aiChat.onError(
-      ({ message }: { chatId: string; message: string }) => {
+      ({ chatId, message }: { chatId: string; message: string }) => {
+        if (chatId !== chatIdRef.current) return;
+
         setError(message);
         setIsLoading(false);
         // Remove the streaming assistant message if it exists

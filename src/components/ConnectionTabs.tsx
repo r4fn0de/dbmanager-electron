@@ -29,8 +29,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     useConnectionTabsStore();
   const suppressClickRef = useRef(false);
   const navigate = useNavigate();
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const tabRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const containerRef = useRef<HTMLUListElement | null>(null);
+  const tabRefs = useRef<Record<string, HTMLLIElement | null>>({});
   const matchRoute = useMatchRoute();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -188,7 +188,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     };
   }, [measureActiveTabOverlap, pathname, tabs.length]);
 
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLUListElement>) => {
     const el = containerRef.current;
     if (!el) return;
     if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
@@ -242,7 +242,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             dragConstraints={containerRef}
             whileDrag={{ zIndex: 40 }}
             transition={{ type: "spring", stiffness: 550, damping: 42, mass: 0.7 }}
-            ref={(el) => {
+            ref={(el: HTMLLIElement | null) => {
               tabRefs.current[tab.id] = el;
             }}
             role="tab"

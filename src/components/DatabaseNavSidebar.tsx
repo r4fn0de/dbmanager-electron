@@ -5,7 +5,6 @@ import { Database } from "@/components/icons/Database";
 import { Table } from "@/components/icons/Table";
 import { Terminal } from "@/components/icons/Terminal";
 import { Branch } from "@/components/icons/Branch";
-import { Settings } from "@/components/icons/Settings";
 import { Refresh } from "@/components/icons/Refresh";
 import { Copy } from "@/components/icons/Copy";
 import { Server } from "@/components/icons/Server";
@@ -45,7 +44,6 @@ const NAV_ITEMS: {
   { section: "tables", icon: Table, label: "Tables", shortcut: "2" },
   { section: "sql-editor", icon: Terminal, label: "SQL Editor", shortcut: "3" },
   { section: "visualizer", icon: Branch, label: "Visualizer", shortcut: "4" },
-  { section: "settings", icon: Settings, label: "Settings", shortcut: "5" },
 ];
 
 function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; isLocal?: boolean }) {

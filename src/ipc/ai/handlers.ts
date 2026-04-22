@@ -30,8 +30,9 @@ export const aiGetSettings = os.handler(async () => {
 export const aiUpdateSettings = os
   .input(
     z.object({
-      provider: z.string().optional(),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]).optional(),
       model: z.string().optional(),
+      openaiCompatibleBaseURL: z.string().optional(),
     }),
   )
   .handler(async ({ input }) => {
@@ -41,7 +42,7 @@ export const aiUpdateSettings = os
 export const aiSetApiKey = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google"]),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
       key: z.string(),
     }),
   )
@@ -53,7 +54,7 @@ export const aiSetApiKey = os
 export const aiGetApiKey = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google"]),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
     }),
   )
   .handler(async ({ input }) => {

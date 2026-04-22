@@ -128,14 +128,15 @@ async function handleChatStart(
           window.webContents.send(AI_IPC_CHANNELS.CHAT_CHUNK, {
             chatId,
             type: "tool-call",
+            toolCallId: event.chunk.toolCallId,
             toolName: event.chunk.toolName,
-            // AI SDK v6: static tool calls use 'args', dynamic use 'input'
-            args: 'args' in event.chunk ? event.chunk.args : event.chunk.input,
+            input: event.chunk.input,
           });
         } else if (event.chunk.type === "tool-result") {
           window.webContents.send(AI_IPC_CHANNELS.CHAT_CHUNK, {
             chatId,
             type: "tool-result",
+            toolCallId: event.chunk.toolCallId,
             toolName: event.chunk.toolName,
             // AI SDK v6: tool result uses 'output'
             result: event.chunk.output,

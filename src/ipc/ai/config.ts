@@ -8,25 +8,29 @@ import Store from "electron-store";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 
 // ---------------------------------------------------------------------------
 // Settings storage
 // ---------------------------------------------------------------------------
 
-interface AiSettings {
-  /** Selected provider name (openai | anthropic | google) */
+export interface AiSettings {
+  /** Selected provider name */
   provider: string;
   /** Selected model ID (e.g. "gpt-4o", "claude-sonnet-4-5") */
   model: string;
   /** API keys per provider */
   apiKeys: Record<string, string>;
+  /** Base URL for OpenAI-compatible provider */
+  openaiCompatibleBaseURL: string;
 }
 
 const defaults: AiSettings = {
   provider: "openai",
   model: "gpt-4o-mini",
   apiKeys: {},
+  openaiCompatibleBaseURL: "http://localhost:1234/v1",
 };
 
 const store = new Store<AiSettings>({
@@ -42,24 +46,34 @@ const store = new Store<AiSettings>({
 // Provider registry — maps provider name → AI SDK model factory
 // ---------------------------------------------------------------------------
 
-export type AiProviderName = "openai" | "anthropic" | "google";
+export type AiProviderName =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "openai-compatible";
 
 interface ProviderEntry {
   label: string;
   /** Factory: given a model ID + API key, returns a LanguageModel instance */
-  modelFactory: (modelId: string, apiKey: string) => LanguageModel;
+  modelFactory: (options: {
+    modelId: string;
+    apiKey?: string;
+    settings: AiSettings;
+  }) => LanguageModel;
   defaultModel: string;
   /** Available models for this provider */
   models: { id: string; label: string }[];
+  allowCustomModel?: boolean;
+  requiresApiKey?: boolean;
 }
 
 const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   openai: {
     label: "OpenAI",
     // AI SDK v6: createOpenAI({ apiKey }) returns a callable provider
-    modelFactory: (modelId, apiKey) =>
-      createOpenAI({ apiKey })(modelId),
+    modelFactory: ({ modelId, apiKey }) => createOpenAI({ apiKey })(modelId),
     defaultModel: "gpt-4o-mini",
+    requiresApiKey: true,
     models: [
       { id: "gpt-4o", label: "GPT-4o" },
       { id: "gpt-4o-mini", label: "GPT-4o Mini" },
@@ -68,9 +82,10 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   },
   anthropic: {
     label: "Anthropic",
-    modelFactory: (modelId, apiKey) =>
+    modelFactory: ({ modelId, apiKey }) =>
       createAnthropic({ apiKey })(modelId),
     defaultModel: "claude-sonnet-4-5-20250514",
+    requiresApiKey: true,
     models: [
       { id: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5" },
       { id: "claude-haiku-4-5-20250514", label: "Claude Haiku 4.5" },
@@ -78,15 +93,57 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   },
   google: {
     label: "Google",
-    modelFactory: (modelId, apiKey) =>
+    modelFactory: ({ modelId, apiKey }) =>
       createGoogleGenerativeAI({ apiKey })(modelId),
     defaultModel: "gemini-2.0-flash",
+    requiresApiKey: true,
     models: [
       { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
       { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
     ],
   },
+  "openai-compatible": {
+    label: "OpenAI-Compatible",
+    modelFactory: ({ modelId, apiKey, settings }) => {
+      const provider = createOpenAICompatible({
+        name: "openai-compatible",
+        baseURL: settings.openaiCompatibleBaseURL,
+        ...(apiKey ? { apiKey } : {}),
+      });
+      return provider.chatModel(modelId);
+    },
+    defaultModel: "gpt-4o-mini",
+    allowCustomModel: true,
+    requiresApiKey: false,
+    models: [
+      { id: "gpt-4o-mini", label: "GPT-4o Mini (example)" },
+      { id: "meta-llama/Llama-3-70b-chat-hf", label: "Llama 3 70B (example)" },
+    ],
+  },
 };
+
+function isProviderName(value: string): value is AiProviderName {
+  return value in PROVIDERS;
+}
+
+function isModelAllowedForProvider(
+  providerName: AiProviderName,
+  modelId: string,
+): boolean {
+  if (PROVIDERS[providerName].allowCustomModel) {
+    return modelId.trim().length > 0;
+  }
+  return PROVIDERS[providerName].models.some((m) => m.id === modelId);
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -98,14 +155,47 @@ export function getAiSettings(): AiSettings {
     provider: store.get("provider", defaults.provider),
     model: store.get("model", defaults.model),
     apiKeys: store.get("apiKeys", defaults.apiKeys),
+    openaiCompatibleBaseURL: store.get(
+      "openaiCompatibleBaseURL",
+      defaults.openaiCompatibleBaseURL,
+    ),
   };
 }
 
 /** Update AI settings */
 export function updateAiSettings(input: Partial<AiSettings>): AiSettings {
-  if (input.provider) store.set("provider", input.provider);
-  if (input.model) store.set("model", input.model);
+  const current = getAiSettings();
+  const nextProviderRaw = input.provider ?? current.provider;
+
+  if (!isProviderName(nextProviderRaw)) {
+    throw new Error(`Invalid AI provider '${nextProviderRaw}'.`);
+  }
+
+  const nextOpenAICompatibleBaseURL =
+    input.openaiCompatibleBaseURL?.trim() ?? current.openaiCompatibleBaseURL;
+
+  if (!isValidHttpUrl(nextOpenAICompatibleBaseURL)) {
+    throw new Error(
+      "Invalid OpenAI-compatible base URL. Use a valid http(s) URL.",
+    );
+  }
+
+  const nextProvider: AiProviderName = nextProviderRaw;
+  const nextModel = input.model
+    ?? (input.provider ? PROVIDERS[nextProvider].defaultModel : current.model);
+
+  if (nextModel && !isModelAllowedForProvider(nextProvider, nextModel)) {
+    throw new Error(
+      `Model '${nextModel}' is not available for provider '${nextProvider}'.`,
+    );
+  }
+
+  if (input.provider) store.set("provider", nextProvider);
+  if (input.model || input.provider) store.set("model", nextModel);
   if (input.apiKeys) store.set("apiKeys", input.apiKeys);
+  if (input.openaiCompatibleBaseURL) {
+    store.set("openaiCompatibleBaseURL", nextOpenAICompatibleBaseURL);
+  }
   return getAiSettings();
 }
 
@@ -124,24 +214,46 @@ export function getApiKey(provider: AiProviderName): string {
 /** Get the currently configured LanguageModel instance */
 export function getCurrentModel(): LanguageModel {
   const settings = getAiSettings();
-  const providerName = settings.provider as AiProviderName;
+  if (!isProviderName(settings.provider)) {
+    throw new Error(`Invalid AI provider '${settings.provider}' in settings.`);
+  }
+
+  const providerName = settings.provider;
   const provider = PROVIDERS[providerName];
   const apiKey = settings.apiKeys[providerName];
 
-  if (!apiKey) {
+  if (provider.requiresApiKey !== false && !apiKey) {
     throw new Error(
       `API key not configured for ${provider?.label ?? providerName}. ` +
       "Set it in Settings → AI.",
     );
   }
 
-  const modelId = settings.model || provider.defaultModel;
-  return provider.modelFactory(modelId, apiKey);
+  if (
+    providerName === "openai-compatible" &&
+    !isValidHttpUrl(settings.openaiCompatibleBaseURL)
+  ) {
+    throw new Error(
+      "OpenAI-compatible base URL is invalid. Set it in Settings → AI.",
+    );
+  }
+
+  const modelId = isModelAllowedForProvider(providerName, settings.model)
+    ? settings.model
+    : provider.defaultModel;
+  return provider.modelFactory({ modelId, apiKey, settings });
 }
 
 /** Check if AI is configured (has at least one API key) */
 export function isAiConfigured(): boolean {
+  const settings = getAiSettings();
   const apiKeys = store.get("apiKeys", {});
+  if (
+    settings.provider === "openai-compatible" &&
+    settings.openaiCompatibleBaseURL.trim().length > 0
+  ) {
+    return true;
+  }
   return Object.values(apiKeys).some((k) => k && k.trim().length > 0);
 }
 
@@ -152,6 +264,7 @@ export function getProvidersInfo() {
     current: {
       provider: settings.provider,
       model: settings.model,
+      openaiCompatibleBaseURL: settings.openaiCompatibleBaseURL,
     },
     providers: Object.entries(PROVIDERS).map(([name, entry]) => ({
       name,

@@ -5,9 +5,7 @@
  * query data, enabling context-aware SQL generation.
  *
  * Uses a FACTORY PATTERN: `createAiTools(connectionId)` returns the tool set
- * with `connectionId` baked into the closure. The AI SDK's `ToolExecutionOptions`
- * does NOT forward `experimental_context` to tool execute functions, so we
- * cannot rely on the second parameter to carry custom data.
+ * with `connectionId` baked into the closure.
  */
 import { tool } from "ai";
 import { z } from "zod";
@@ -48,6 +46,13 @@ function isValidIdentifier(id: string): boolean {
   return /^[a-zA-Z_][a-zA-Z0-9_$]*$/.test(id);
 }
 
+const SENSITIVE_COLUMN_PATTERN =
+  /(password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key|refresh[_-]?token|credential|private[_-]?key|ssn|cpf)/i;
+
+function isSensitiveColumnName(columnName: string): boolean {
+  return SENSITIVE_COLUMN_PATTERN.test(columnName);
+}
+
 // ---------------------------------------------------------------------------
 // Factory — creates tool set with connectionId in closure
 // ---------------------------------------------------------------------------
@@ -56,8 +61,7 @@ function isValidIdentifier(id: string): boolean {
  * Create the AI tool set for a specific connection.
  *
  * MUST be called with the connectionId before passing to streamText/generateText.
- * The connectionId is captured in each tool's execute closure — the AI SDK does
- * NOT forward `experimental_context` to tool execute functions.
+ * The connectionId is captured in each tool's execute closure.
  */
 export function createAiTools(connectionId: string) {
   /**
@@ -152,6 +156,9 @@ export function createAiTools(connectionId: string) {
         .describe("Specific columns to select. Omit for all columns."),
       limit: z
         .number()
+        .int()
+        .min(1)
+        .max(20)
         .optional()
         .describe("Maximum rows to return (default 10, max 20)"),
     }),
@@ -169,12 +176,33 @@ export function createAiTools(connectionId: string) {
       }
 
       const { driver, connStr } = await resolveConnection(connectionId);
-      const limit = Math.min(rawLimit ?? 10, 20);
+      const limit = rawLimit ?? 10;
+      const tableDetails = await driver.getTableDetails(connStr, schemaName, tableName);
+      const allColumns = tableDetails.columns.map((c) => c.name);
+      const allowedColumns = allColumns.filter((col) => !isSensitiveColumnName(col));
 
-      // Build column selection with validated identifiers
-      const cols = selectColumns && selectColumns.length > 0
-        ? selectColumns.map((c) => `"${c}"`).join(", ")
-        : "*";
+      let finalColumns: string[];
+      if (selectColumns && selectColumns.length > 0) {
+        const requested = new Set(selectColumns);
+        const unknownColumns = [...requested].filter((col) => !allColumns.includes(col));
+        if (unknownColumns.length > 0) {
+          return `Unknown column(s): ${unknownColumns.join(", ")}. Use the columns tool first to inspect valid names.`;
+        }
+
+        const blockedColumns = [...requested].filter((col) => isSensitiveColumnName(col));
+        if (blockedColumns.length > 0) {
+          return `Refusing to query sensitive column(s): ${blockedColumns.join(", ")}.`;
+        }
+
+        finalColumns = [...requested];
+      } else {
+        if (allowedColumns.length === 0) {
+          return "No non-sensitive columns available to sample in this table.";
+        }
+        finalColumns = allowedColumns;
+      }
+
+      const cols = finalColumns.map((c) => `"${c}"`).join(", ");
 
       const sql = `SELECT ${cols} FROM "${schemaName}"."${tableName}" LIMIT ${limit}`;
 

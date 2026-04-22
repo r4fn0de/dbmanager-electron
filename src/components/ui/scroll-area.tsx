@@ -9,18 +9,24 @@ function ScrollArea({
   ...props
 }: ScrollAreaPrimitive.Root.Props) {
   const [isScrolling, setIsScrolling] = React.useState(false)
-  const timeoutRef = React.useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleScroll = React.useCallback(() => {
     setIsScrolling(true)
-    clearTimeout(timeoutRef.current)
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
     timeoutRef.current = setTimeout(() => {
       setIsScrolling(false)
     }, 800)
   }, [])
 
   React.useEffect(() => {
-    return () => clearTimeout(timeoutRef.current)
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
   }, [])
 
   return (

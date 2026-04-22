@@ -19,6 +19,7 @@ export interface AiProvidersInfo {
   current: {
     provider: string;
     model: string;
+    openaiCompatibleBaseURL: string;
   };
   providers: Array<{
     name: string;
@@ -73,8 +74,9 @@ export async function getAiSettings(): Promise<AiProvidersInfo> {
 }
 
 export async function updateAiSettings(input: {
-  provider?: string;
+  provider?: "openai" | "anthropic" | "google" | "openai-compatible";
   model?: string;
+  openaiCompatibleBaseURL?: string;
 }): Promise<void> {
   try {
     await ipc.client.ai.updateSettings(input);
@@ -86,7 +88,7 @@ export async function updateAiSettings(input: {
 }
 
 export async function setAiApiKey(
-  provider: "openai" | "anthropic" | "google",
+  provider: "openai" | "anthropic" | "google" | "openai-compatible",
   key: string,
 ): Promise<{ success: boolean }> {
   try {
@@ -99,7 +101,7 @@ export async function setAiApiKey(
 }
 
 export async function getAiApiKey(
-  provider: "openai" | "anthropic" | "google",
+  provider: "openai" | "anthropic" | "google" | "openai-compatible",
 ): Promise<AiApiKeyInfo> {
   try {
     return await ipc.client.ai.getApiKey({ provider });

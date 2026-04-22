@@ -4,7 +4,7 @@ import { persist } from "zustand/middleware";
 export type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "url" | "direct";
 export type ConnectionTabChrome = "tables-sidebar" | "sql-sidebar";
 
-export type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
+export type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer";
 
 export interface ConnectionTab {
   id: string;
@@ -144,8 +144,9 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
           const tabs = state.tabs.map((t) => {
             if (t.id !== id) return t;
 
-            for (const [key, value] of Object.entries(data)) {
-              if ((t as Record<string, unknown>)[key] !== value) {
+            const keys = Object.keys(data) as Array<keyof Omit<ConnectionTab, "id">>;
+            for (const key of keys) {
+              if (!Object.is(t[key], data[key])) {
                 changed = true;
                 break;
               }

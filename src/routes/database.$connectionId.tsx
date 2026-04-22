@@ -4,7 +4,6 @@ import {
   Loader2,
   Pause,
   Play,
-  Settings,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -82,14 +81,13 @@ const CreateIndexDialog = lazy(() => import("@/components/TableDdlDialogs").then
 const ImportCsvDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.ImportCsvDialog })));
 const RlsPoliciesDialog = lazy(() => import("@/components/RlsPoliciesDialog").then((m) => ({ default: m.RlsPoliciesDialog })));
 
-type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "settings";
+type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer";
 
 const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
   "1": "overview",
   "2": "tables",
   "3": "sql-editor",
   "4": "visualizer",
-  "5": "settings",
 };
 
 export const Route = createFileRoute("/database/$connectionId")({
@@ -315,7 +313,6 @@ export function DatabasePageContent({
   const isSqlEditorSection = activeSection === "sql-editor";
   const isOverviewSection = activeSection === "overview";
   const isVisualizerSection = activeSection === "visualizer";
-  const isSettingsSection = activeSection === "settings";
   const tabChrome = useMemo<ConnectionTabChrome | undefined>(() => {
     if (isTablesSection && isSidebarVisible) return "tables-sidebar";
     if (isSqlEditorSection) return "sql-sidebar";
@@ -1117,16 +1114,6 @@ export function DatabasePageContent({
                 )}
               </div>
             </Suspense>
-          )}
-          {isSettingsSection && (
-            <div className="flex-1 flex items-center justify-center p-8">
-              <div className="text-center max-w-md">
-                <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-sm text-muted-foreground">
-                  Connection settings will be managed here.
-                </p>
-              </div>
-            </div>
           )}
         </div>
         </motion.div>

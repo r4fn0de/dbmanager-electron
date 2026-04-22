@@ -50,7 +50,7 @@ interface AiChatPanelProps {
 
 function ToolCallBadge({ name }: { name: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
+      <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none transition-colors duration-150">
       <Wrench className="size-2.5" />
       {name}
     </span>
@@ -82,7 +82,7 @@ function ChatMessage({
       {/* Avatar */}
       <div
         className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold",
+          "flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold transition-colors duration-150",
           isUser
             ? "bg-foreground/10 text-foreground"
             : "bg-primary/10 text-primary",
@@ -119,7 +119,7 @@ function ChatMessage({
 
         {/* Streaming cursor */}
         {message.isStreaming && message.content && (
-          <span className="inline-block w-1.5 h-4 bg-primary/60 animate-pulse rounded-sm align-text-bottom ml-0.5" />
+          <span className="inline-block w-1.5 h-4 bg-primary/60 motion-safe:animate-pulse rounded-sm align-text-bottom ml-0.5" />
         )}
 
         {/* SQL code blocks with insert action */}
@@ -133,7 +133,7 @@ function ChatMessage({
                 <Button
                   variant="ghost"
                   size="xs"
-                  className="absolute top-1 right-1 opacity-0 group-hover/sql:opacity-100 transition-opacity"
+                  className="absolute top-1 right-1 opacity-0 group-hover/sql:opacity-100 transition-all duration-150 ease-out active:scale-[0.97]"
                   onClick={() => onInsertSql(sql)}
                 >
                   Insert
@@ -229,7 +229,7 @@ export function AiChatPanel({
                   size="icon-xs"
                   onClick={clearMessages}
                   disabled={isEmpty}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
                 />
               }
             />
@@ -258,7 +258,7 @@ export function AiChatPanel({
                   key={s}
                   type="button"
                   onClick={() => sendMessage(s)}
-                  className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
+                  className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-all duration-150 ease-out active:scale-[0.97]"
                 >
                   {s}
                 </button>
@@ -280,7 +280,7 @@ export function AiChatPanel({
 
       {/* Error banner */}
       {error && (
-        <div className="mx-3 mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400">
+        <div className="mx-3 mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
           {error}
         </div>
       )}
@@ -300,13 +300,13 @@ export function AiChatPanel({
             disabled={!connectionId}
             className="h-8 text-xs"
           />
-          {isLoading ? (
+              {isLoading ? (
             <Button
               type="button"
               variant="ghost"
               size="icon"
               onClick={abort}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
+              className="shrink-0 text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
             >
               <Square className="size-3.5" />
             </Button>
@@ -315,7 +315,7 @@ export function AiChatPanel({
               type="submit"
               size="icon"
               disabled={!input.trim() || !connectionId}
-              className="shrink-0"
+              className="shrink-0 transition-transform duration-150 ease-out active:scale-[0.97]"
             >
               <Send className="size-3.5" />
             </Button>

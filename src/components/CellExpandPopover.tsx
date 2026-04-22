@@ -1,9 +1,9 @@
-import Editor from "@monaco-editor/react";
+import type * as monaco from "monaco-editor";
 import { AlertCircle, Check, Dices, Minus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import "@/lib/monaco-loader";
+import { LazyMonacoEditor } from "@/components/LazyMonacoEditor";
 import {
   Popover,
   PopoverContent,
@@ -672,13 +672,13 @@ export function CellExpandPopover({
       case "json":
         return (
           <div className="overflow-hidden rounded-md border">
-            <Editor
+            <LazyMonacoEditor
               height="260px"
               defaultLanguage="json"
               value={draft}
-              onChange={(value) => updateDraft(value ?? "")}
+              onChange={(value: string | undefined) => updateDraft(value ?? "")}
               onMount={(editor) => {
-                editor.onKeyDown((event) => {
+                editor.onKeyDown((event: monaco.IKeyboardEvent) => {
                   const isCmdEnter =
                     (event.metaKey || event.ctrlKey) && event.keyCode === 3;
                   const isEsc = event.keyCode === 9;
@@ -711,15 +711,15 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-1">
             <div className="overflow-hidden rounded-md border">
-              <Editor
+              <LazyMonacoEditor
                 height="240px"
                 // `plaintext` porque o valor pode ser literal PG `{1,2,3}`,
                 // que não é JSON válido — syntax highlighting de JSON ficaria vermelho.
                 defaultLanguage="plaintext"
                 value={draft}
-                onChange={(value) => updateDraft(value ?? "")}
+                onChange={(value: string | undefined) => updateDraft(value ?? "")}
                 onMount={(editor) => {
-                  editor.onKeyDown((event) => {
+                  editor.onKeyDown((event: monaco.IKeyboardEvent) => {
                     const isCmdEnter =
                       (event.metaKey || event.ctrlKey) && event.keyCode === 3;
                     const isEsc = event.keyCode === 9;

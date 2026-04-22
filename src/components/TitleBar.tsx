@@ -6,6 +6,7 @@ import {
   useConnectionTabSync,
 } from "@/components/ConnectionTabs";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { SettingsDialog } from "@/components/SettingsDialog";
 import GooeySvgFilter from "@/components/ui/gooey-svg-filter";
 import { Button } from "@/components/ui/button";
 
@@ -80,6 +81,7 @@ export function TitleBar() {
           <div className="w-[78px] shrink-0 h-full draglayer" />
           {tabsSlot}
           <div className="ml-auto flex items-center no-drag pl-2">
+            <SettingsDialog />
             <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors" />
           </div>
         </div>
@@ -99,7 +101,8 @@ export function TitleBar() {
         </div>
 
         <div className="flex items-center shrink-0 no-drag">
-          <div className="flex items-center px-2">
+          <div className="flex items-center px-2 gap-0.5">
+            <SettingsDialog />
             <ThemeToggle className="inline-flex size-8 items-center justify-center rounded-none text-foreground/75 hover:text-foreground hover:bg-muted transition-colors" />
           </div>
           <Button

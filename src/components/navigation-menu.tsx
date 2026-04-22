@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import {
   NavigationMenu as NavigationMenuBase,
   NavigationMenuItem,
-  NavigationMenuLink,
   NavigationMenuList,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
@@ -16,21 +15,22 @@ export default function NavigationMenu() {
     <NavigationMenuBase className="px-2 text-muted-foreground">
       <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link to="/">{t("titleHomePage")}</Link>
-          </NavigationMenuLink>
+          <Link to="/" className={navigationMenuTriggerStyle()}>
+            {t("titleHomePage")}
+          </Link>
         </NavigationMenuItem>
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link to="/second">{t("titleSecondPage")}</Link>
-          </NavigationMenuLink>
+          <Link to="/second" className={navigationMenuTriggerStyle()}>
+            {t("titleSecondPage")}
+          </Link>
         </NavigationMenuItem>
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <ExternalLink href="https://docs.luanroger.dev/electron-shadcn">
-              {t("documentation")}
-            </ExternalLink>
-          </NavigationMenuLink>
+          <ExternalLink
+            href="https://docs.luanroger.dev/electron-shadcn"
+            className={navigationMenuTriggerStyle()}
+          >
+            {t("documentation")}
+          </ExternalLink>
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenuBase>
