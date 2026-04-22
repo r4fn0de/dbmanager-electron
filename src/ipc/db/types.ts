@@ -1,6 +1,6 @@
 // Types migrated from dblocal - Database connection and schema types
 
-export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse";
+export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite";
 
 export type SslMode =
   | "disable"
@@ -41,6 +41,9 @@ export type ConnectionInput = Omit<Connection, "id"> & {
   db_type?: DatabaseType;
 };
 
+/** Engine type for local databases — determines how the instance is managed. */
+export type LocalDbEngine = "postgresql" | "sqlite";
+
 export interface LocalDbInfo {
   id: string;
   name: string;
@@ -49,7 +52,12 @@ export interface LocalDbInfo {
   running: boolean;
   port: number | null;
   connection_string: string;
+  /** Which engine powers this local DB. */
+  engine: LocalDbEngine;
+  /** @deprecated Use engine instead. Kept for backward compat. */
   postgres_version?: string;
+  /** SQLite-specific: absolute path to the .db file on disk. */
+  file_path?: string;
   externally_connectable: boolean;
   external_host: string;
   external_port: number | null;

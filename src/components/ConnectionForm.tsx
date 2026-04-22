@@ -36,6 +36,7 @@ import { PostgreSql } from "@/components/icons/PostgreSql";
 import { MySql } from "@/components/icons/MySql";
 import { MariaDb } from "@/components/icons/MariaDb";
 import { ClickHouse } from "@/components/icons/ClickHouse";
+import { Sqlite } from "@/components/icons/Sqlite";
 import type { Connection, ConnectionInput, DatabaseType, SslMode } from "@/ipc/db/types";
 import { cn } from "@/utils/tailwind";
 
@@ -48,14 +49,15 @@ const DB_TYPE_OPTIONS: {
   label: string;
   icon: React.ReactNode;
 }[] = [
-  { value: "postgresql", label: "PostgreSQL", icon: <PostgreSql className="size-4 shrink-0" /> },
-  { value: "mysql", label: "MySQL", icon: <MySql className="size-4 shrink-0" /> },
-  { value: "mariadb", label: "MariaDB", icon: <MariaDb className="size-4 shrink-0" /> },
-  { value: "clickhouse", label: "ClickHouse", icon: <ClickHouse className="size-4 shrink-0" /> },
+  { value: "postgresql", label: "PostgreSQL", icon: <PostgreSql className="size-3 shrink-0" /> },
+  { value: "mysql", label: "MySQL", icon: <MySql className="size-3 shrink-0" /> },
+  { value: "mariadb", label: "MariaDB", icon: <MariaDb className="size-3 shrink-0" /> },
+  { value: "clickhouse", label: "ClickHouse", icon: <ClickHouse className="size-3 shrink-0" /> },
+  { value: "sqlite", label: "SQLite", icon: <Sqlite className="size-3 shrink-0" /> },
 ];
 
 const SSL_MODES: { value: SslMode; label: string; dbTypes: DatabaseType[] }[] = [
-  { value: "disable", label: "Disable", dbTypes: ["postgresql", "mysql", "mariadb", "clickhouse"] },
+  { value: "disable", label: "Disable", dbTypes: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"] },
   { value: "prefer", label: "Prefer", dbTypes: ["postgresql", "mysql", "mariadb"] },
   { value: "require", label: "Require", dbTypes: ["postgresql", "mysql", "mariadb", "clickhouse"] },
   { value: "verify_ca", label: "Verify CA", dbTypes: ["postgresql", "mysql", "mariadb"] },
@@ -67,6 +69,7 @@ const DB_DEFAULTS: Record<DatabaseType, { port: number; database: string; userna
   mysql: { port: 3306, database: "mysql", username: "root" },
   mariadb: { port: 3306, database: "mysql", username: "root" },
   clickhouse: { port: 8123, database: "default", username: "default" },
+  sqlite: { port: 0, database: "main", username: "" },
 };
 
 const COLOR_OPTIONS = [
@@ -117,6 +120,7 @@ function extractFromUrl(connectionUrl: string): {
     else if (protocol === "mysql:") dbType = "mysql";
     else if (protocol === "mariadb:") dbType = "mariadb";
     else if (protocol === "clickhouse:" || protocol === "clickhouses:") dbType = "clickhouse";
+    else if (protocol === "sqlite:") dbType = "sqlite";
     if (!dbType) return { dbType: null, host: null, port: null, database: null, username: null, password: null, sslMode: null };
 
     const host = url.hostname || null;
@@ -182,17 +186,17 @@ function UrlInput({
   if (detected.database) items.push(detected.database);
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex min-w-0 flex-col gap-2.5">
       <Textarea
         ref={textareaRef}
         id="connection-url"
         rows={2}
-        className="min-h-[64px] resize-none rounded-lg border-border bg-muted/15 font-mono text-xs leading-relaxed transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
+        className="min-h-[64px] w-full max-w-full resize-none break-all [overflow-wrap:anywhere] whitespace-pre-wrap rounded-lg border-border bg-muted/15 font-mono text-xs leading-relaxed transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
         placeholder={`${dbType}://user:password@host:${DB_DEFAULTS[dbType].port}/database`}
         value={urlValue}
         onChange={(e) => onUrlChange(e.target.value)}
       />
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground/70">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground/70">
         <span>Supported:</span>
         {DB_TYPE_OPTIONS.map((opt) => (
           <span key={opt.value} className="inline-flex items-center gap-1">
@@ -232,8 +236,15 @@ function DetailsFields({
     if (["postgres", "mysql", "mariadb", "default"].includes(formData.database)) {
       onUpdateField("database", defaults.database);
     }
-    if (["postgres", "root", "default"].includes(formData.username)) {
+    if (["postgres", "root", "default", ""].includes(formData.username)) {
       onUpdateField("username", defaults.username);
+    }
+    // SQLite doesn't use host/port — set sensible defaults
+    if (newType === "sqlite") {
+      onUpdateField("host", "");
+      onUpdateField("port", 0);
+    } else if (formData.host === "") {
+      onUpdateField("host", "localhost");
     }
   };
 
@@ -261,107 +272,126 @@ function DetailsFields({
         })}
       </div>
 
-      <div className="grid grid-cols-[1fr_76px] gap-2.5">
+      {/* SQLite: file-based, no host/port/user/password needed */}
+      {dbType === "sqlite" ? (
         <div className="flex flex-col gap-1">
-          <Label htmlFor="conn-host" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Host
+          <Label htmlFor="conn-database" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Database File Path
           </Label>
           <Input
-            id="conn-host"
-            placeholder="localhost"
-            value={formData.host}
-            onChange={(e) => onUpdateField("host", e.target.value)}
+            id="conn-database"
+            placeholder="/path/to/database.db"
+            value={formData.database}
+            onChange={(e) => onUpdateField("database", e.target.value)}
             className="h-7 font-mono text-xs"
           />
+          <p className="text-[11px] text-muted-foreground">
+            SQLite is file-based — enter the path to the .db file or it will be created automatically.
+          </p>
         </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="conn-port" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Port
-          </Label>
-          <Input
-            id="conn-port"
-            type="number"
-            min={1}
-            max={65535}
-            value={formData.port}
-            onChange={(e) =>
-              onUpdateField("port", Number.parseInt(e.target.value, 10) || DB_DEFAULTS[dbType].port)
-            }
-            className="h-7 font-mono text-xs"
-          />
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="conn-database" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-          Database
-        </Label>
-        <Input
-          id="conn-database"
-          placeholder={DB_DEFAULTS[dbType].database}
-          value={formData.database}
-          onChange={(e) => onUpdateField("database", e.target.value)}
-          className="h-7 font-mono text-xs"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2.5">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="conn-username" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Username
-          </Label>
-          <Input
-            id="conn-username"
-            placeholder={DB_DEFAULTS[dbType].username}
-            value={formData.username}
-            onChange={(e) => onUpdateField("username", e.target.value)}
-            className="h-7 font-mono text-xs"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="conn-password" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Password
-          </Label>
-          <div className="relative">
+      ) : (<>
+        <div className="grid grid-cols-[1fr_76px] gap-2.5">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="conn-host" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              Host
+            </Label>
             <Input
-              id="conn-password"
-              type={showPassword ? "text" : "password"}
-              placeholder="••••••••"
-              value={formData.password}
-              onChange={(e) => onUpdateField("password", e.target.value)}
-              className="h-7 pr-8 font-mono text-xs"
+              id="conn-host"
+              placeholder="localhost"
+              value={formData.host}
+              onChange={(e) => onUpdateField("host", e.target.value)}
+              className="h-7 font-mono text-xs"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {showPassword ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-            </button>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="conn-port" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              Port
+            </Label>
+            <Input
+              id="conn-port"
+              type="number"
+              min={1}
+              max={65535}
+              value={formData.port}
+              onChange={(e) =>
+                onUpdateField("port", Number.parseInt(e.target.value, 10) || DB_DEFAULTS[dbType].port)
+              }
+              className="h-7 font-mono text-xs"
+            />
           </div>
         </div>
-      </div>
 
-      <div className="flex flex-col gap-1">
-        <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-          SSL
-        </Label>
-        <Select
-          value={formData.ssl_mode}
-          onValueChange={(value) => onUpdateField("ssl_mode", value as SslMode)}
-        >
-          <SelectTrigger className="h-7 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SSL_MODES.filter((mode) => mode.dbTypes.includes(dbType)).map((mode) => (
-              <SelectItem key={mode.value} value={mode.value}>
-                {mode.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="conn-database" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Database
+          </Label>
+          <Input
+            id="conn-database"
+            placeholder={DB_DEFAULTS[dbType].database}
+            value={formData.database}
+            onChange={(e) => onUpdateField("database", e.target.value)}
+            className="h-7 font-mono text-xs"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="conn-username" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              Username
+            </Label>
+            <Input
+              id="conn-username"
+              placeholder={DB_DEFAULTS[dbType].username}
+              value={formData.username}
+              onChange={(e) => onUpdateField("username", e.target.value)}
+              className="h-7 font-mono text-xs"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="conn-password" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              Password
+            </Label>
+            <div className="relative">
+              <Input
+                id="conn-password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={(e) => onUpdateField("password", e.target.value)}
+                className="h-7 pr-8 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showPassword ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            SSL
+          </Label>
+          <Select
+            value={formData.ssl_mode}
+            onValueChange={(value) => onUpdateField("ssl_mode", value as SslMode)}
+          >
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SSL_MODES.filter((mode) => mode.dbTypes.includes(dbType)).map((mode) => (
+                <SelectItem key={mode.value} value={mode.value}>
+                  {mode.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </>)}
     </div>
   );
 }
@@ -636,12 +666,12 @@ export function ConnectionForm({
                 <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                   Connection
                 </span>
-                <div className="flex gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
+                <div className="flex max-w-full gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
                   <button
                     type="button"
                     onClick={() => setInputMode("url")}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
+                      "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
                       inputMode === "url"
                         ? "bg-background text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground",
@@ -654,7 +684,7 @@ export function ConnectionForm({
                     type="button"
                     onClick={() => setInputMode("details")}
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
+                      "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
                       inputMode === "details"
                         ? "bg-background text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground",

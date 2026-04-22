@@ -1,6 +1,6 @@
 import EmbeddedPostgres from "embedded-postgres";
 import { app } from "electron";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, mkdirSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -8,8 +8,10 @@ import { createConnection } from "node:net";
 import { createRequire } from "node:module";
 import { platform, arch } from "node:os";
 import { spawnSync } from "node:child_process";
+import BetterSqlite3 from "better-sqlite3";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
-import type { LocalDbInfo } from "./types";
+import { buildSqliteConnectionString, closeDb as closeSqliteDb, closeAllSqliteDbs } from "./sqlite-driver";
+import type { LocalDbInfo, LocalDbEngine } from "./types";
 
 /** ESM-compatible require for resolving module paths */
 const runtimeRequire = createRequire(
@@ -26,16 +28,27 @@ interface LocalDbMeta {
   port: number;
   postgres_version: string;
   auto_start: boolean;
+  /** Engine type — determines how the instance is managed. */
+  engine: LocalDbEngine;
+  /** SQLite-specific: absolute path to the .db file on disk. */
+  file_path?: string;
 }
 
-/** Running instance tracking */
+/** Running instance tracking — PostgreSQL only (SQLite has no process) */
 interface RunningInstance {
   pg: EmbeddedPostgres;
   meta: LocalDbMeta;
 }
 
+/** SQLite open handle tracking */
+interface SqliteHandle {
+  db: BetterSqlite3.Database;
+  meta: LocalDbMeta;
+}
+
 const STORAGE_FILE = "local-databases.json";
 const DATA_SUBDIR = "local-dbs";
+const SQLITE_SUBDIR = "local-dbs/sqlite";
 
 /** Map (platform, arch) to the @embedded-postgres package name */
 function getPlatformPackageName(): string {
@@ -75,6 +88,7 @@ function getInstanceDataDir(id: string): string {
 
 export class LocalDbManager {
   private runningInstances: Map<string, RunningInstance> = new Map();
+  private sqliteHandles: Map<string, SqliteHandle> = new Map();
   private metaCache: LocalDbMeta[] | null = null;
 
   // ── Persistence ─────────────────────────────────────────────
@@ -88,17 +102,26 @@ export class LocalDbManager {
       if (!meta?.id || seenIds.has(meta.id)) continue;
       if (!Number.isFinite(meta.port)) continue;
 
-      // Self-heal stale metadata when data directory was manually removed
-      // or when a previous failed clone left dangling entries.
-      const dataDir = getInstanceDataDir(meta.id);
-      if (!existsSync(dataDir)) continue;
+      const engine = meta.engine ?? "postgresql";
 
-      // Keep only one configured DB per port to prevent perpetual auto-start
-      // conflicts (legacy duplicated metadata can happen after failed flows).
-      if (usedPorts.has(meta.port)) continue;
+      if (engine === "sqlite") {
+        // Self-heal stale SQLite metadata when the .db file was manually removed
+        const filePath = meta.file_path ?? join(getBaseDataDir(), "sqlite", `${meta.id}.db`);
+        if (!existsSync(filePath)) continue;
+        // SQLite uses port 0 — skip the per-port uniqueness check
+      } else {
+        // Self-heal stale PostgreSQL metadata when data directory was manually removed
+        // or when a previous failed clone left dangling entries.
+        const dataDir = getInstanceDataDir(meta.id);
+        if (!existsSync(dataDir)) continue;
+
+        // Keep only one configured DB per port to prevent perpetual auto-start
+        // conflicts (legacy duplicated metadata can happen after failed flows).
+        if (usedPorts.has(meta.port)) continue;
+        usedPorts.add(meta.port);
+      }
 
       seenIds.add(meta.id);
-      usedPorts.add(meta.port);
       normalized.push(meta);
     }
 
@@ -130,18 +153,27 @@ export class LocalDbManager {
   // ── Helpers ─────────────────────────────────────────────────
 
   private metaToInfo(meta: LocalDbMeta, running: boolean): LocalDbInfo {
+    const isSqlite = meta.engine === "sqlite";
+    const filePath = meta.file_path ?? (isSqlite ? join(getBaseDataDir(), "sqlite", `${meta.id}.db`) : undefined);
+
+    const connectionString = isSqlite && filePath
+      ? buildSqliteConnectionString(filePath)
+      : `postgresql://${encodeURIComponent(meta.username)}:${encodeURIComponent(meta.password)}@localhost:${meta.port}/${meta.database_name}`;
+
     return {
       id: meta.id,
       name: meta.name,
       database_name: meta.database_name,
       username: meta.username,
       running,
-      port: running ? meta.port : null,
-      connection_string: `postgresql://${encodeURIComponent(meta.username)}:${encodeURIComponent(meta.password)}@localhost:${meta.port}/${meta.database_name}`,
-      postgres_version: meta.postgres_version,
+      port: isSqlite ? null : (running ? meta.port : null),
+      connection_string: connectionString,
+      engine: meta.engine ?? "postgresql",
+      postgres_version: meta.engine === "postgresql" ? meta.postgres_version : undefined,
+      file_path: filePath,
       externally_connectable: running,
-      external_host: "localhost",
-      external_port: running ? meta.port : null,
+      external_host: isSqlite ? "" : "localhost",
+      external_port: isSqlite ? null : (running ? meta.port : null),
       auto_start: meta.auto_start,
     };
   }
@@ -312,6 +344,24 @@ export class LocalDbManager {
     port: number;
     postgresVersion: string;
     autoStart: boolean;
+    engine: LocalDbEngine;
+  }): Promise<LocalDbInfo> {
+    const engine = input.engine ?? "postgresql";
+
+    if (engine === "sqlite") {
+      return this.createSqlite(input);
+    }
+    return this.createPostgres(input);
+  }
+
+  private async createPostgres(input: {
+    name: string;
+    databaseName: string;
+    username: string;
+    password: string;
+    port: number;
+    postgresVersion: string;
+    autoStart: boolean;
   }): Promise<LocalDbInfo> {
     // Check that embedded-postgres binaries are available before attempting creation
     this.checkBinariesAvailable();
@@ -347,6 +397,7 @@ export class LocalDbManager {
       port,
       postgres_version: input.postgresVersion || "16.13.0",
       auto_start: input.autoStart,
+      engine: "postgresql",
     };
 
     // Create and start the embedded postgres instance
@@ -409,13 +460,75 @@ export class LocalDbManager {
     return this.metaToInfo(meta, true);
   }
 
+  private async createSqlite(input: {
+    name: string;
+    databaseName: string;
+    username: string;
+    password: string;
+    port: number;
+    postgresVersion: string;
+    autoStart: boolean;
+  }): Promise<LocalDbInfo> {
+    const id = randomUUID();
+
+    // Ensure the SQLite data directory exists
+    const sqliteDir = join(getBaseDataDir(), "sqlite");
+    mkdirSync(sqliteDir, { recursive: true });
+
+    const filePath = join(sqliteDir, `${id}.db`);
+
+    const meta: LocalDbMeta = {
+      id,
+      name: input.name,
+      database_name: input.databaseName || "main",
+      username: "", // SQLite has no username
+      password: "", // SQLite has no password
+      port: 0, // SQLite has no port
+      postgres_version: "", // N/A for SQLite
+      auto_start: input.autoStart,
+      engine: "sqlite",
+      file_path: filePath,
+    };
+
+    // Create the SQLite database file
+    try {
+      const db = new BetterSqlite3(filePath);
+      db.pragma("journal_mode = WAL");
+      db.pragma("foreign_keys = ON");
+      // Keep handle open for "running" state
+      this.sqliteHandles.set(id, { db, meta });
+    } catch (err) {
+      throw new Error(
+        `Failed to create local SQLite database: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    // Persist metadata
+    const list = await this.loadMetaList();
+    list.push(meta);
+    await this.saveMetaList(list);
+
+    return this.metaToInfo(meta, true);
+  }
+
   async start(id: string): Promise<void> {
     // Already running?
-    if (this.runningInstances.has(id)) return;
+    if (this.runningInstances.has(id) || this.sqliteHandles.has(id)) return;
 
     const list = await this.loadMetaList();
     const meta = list.find((m) => m.id === id);
     if (!meta) throw new Error(`Local database ${id} not found`);
+
+    const engine = meta.engine ?? "postgresql";
+
+    if (engine === "sqlite") {
+      return this.startSqlite(meta);
+    }
+    return this.startPostgres(meta);
+  }
+
+  private async startPostgres(meta: LocalDbMeta): Promise<void> {
+    const id = meta.id;
 
     // Check port availability before starting
     if (!(await this.isPortAvailable(meta.port))) {
@@ -468,29 +581,86 @@ export class LocalDbManager {
     this.runningInstances.set(id, { pg, meta });
   }
 
-  async stop(id: string): Promise<void> {
-    const instance = this.runningInstances.get(id);
-    if (!instance) return;
+  private startSqlite(meta: LocalDbMeta): void {
+    const id = meta.id;
+    const filePath = meta.file_path ?? join(getBaseDataDir(), "sqlite", `${id}.db`);
 
-    try {
-      await instance.pg.stop();
-    } catch (err) {
-      console.error(`[local-db:${id}] Error stopping:`, err);
+    if (!existsSync(filePath)) {
+      throw new Error(
+        `Local SQLite database file not found. The database may have been deleted manually.`,
+      );
     }
 
-    this.runningInstances.delete(id);
+    try {
+      const db = new BetterSqlite3(filePath);
+      db.pragma("journal_mode = WAL");
+      db.pragma("foreign_keys = ON");
+      this.sqliteHandles.set(id, { db, meta });
+    } catch (err) {
+      throw new Error(
+        `Failed to start local SQLite database: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  async stop(id: string): Promise<void> {
+    // Stop PostgreSQL instance
+    const instance = this.runningInstances.get(id);
+    if (instance) {
+      try {
+        await instance.pg.stop();
+      } catch (err) {
+        console.error(`[local-db:${id}] Error stopping:`, err);
+      }
+      this.runningInstances.delete(id);
+      return;
+    }
+
+    // Stop SQLite instance (close local handle + driver cache handle)
+    const sqliteHandle = this.sqliteHandles.get(id);
+    if (sqliteHandle) {
+      try {
+        sqliteHandle.db.close();
+      } catch (err) {
+        console.error(`[local-db:${id}] Error closing SQLite:`, err);
+      }
+      this.sqliteHandles.delete(id);
+      // Also close the driver-level cached handle to avoid WAL/write lock conflicts
+      const filePath = sqliteHandle.meta.file_path ?? join(getBaseDataDir(), "sqlite", `${id}.db`);
+      closeSqliteDb(buildSqliteConnectionString(filePath));
+    }
   }
 
   async delete(id: string): Promise<void> {
     // Stop if running
     await this.stop(id);
 
-    // Remove data directory
-    const dataDir = getInstanceDataDir(id);
-    try {
-      rmSync(dataDir, { recursive: true, force: true });
-    } catch (err) {
-      console.error(`[local-db:${id}] Error removing data dir:`, err);
+    // Also close the cached driver handle if present
+    const meta = (await this.loadMetaList()).find((m) => m.id === id);
+    if (meta) {
+      const engine = meta.engine ?? "postgresql";
+      if (engine === "sqlite") {
+        const filePath = meta.file_path ?? join(getBaseDataDir(), "sqlite", `${id}.db`);
+        const connStr = buildSqliteConnectionString(filePath);
+        closeSqliteDb(connStr);
+        // Remove the SQLite file
+        try {
+          rmSync(filePath, { force: true });
+          // Also remove WAL/SHM files
+          try { rmSync(`${filePath}-wal`, { force: true }); } catch { /* ignore */ }
+          try { rmSync(`${filePath}-shm`, { force: true }); } catch { /* ignore */ }
+        } catch (err) {
+          console.error(`[local-db:${id}] Error removing SQLite file:`, err);
+        }
+      } else {
+        // Remove PostgreSQL data directory
+        const dataDir = getInstanceDataDir(id);
+        try {
+          rmSync(dataDir, { recursive: true, force: true });
+        } catch (err) {
+          console.error(`[local-db:${id}] Error removing data dir:`, err);
+        }
+      }
     }
 
     // Remove from metadata
@@ -502,7 +672,7 @@ export class LocalDbManager {
   async list(): Promise<LocalDbInfo[]> {
     const list = await this.loadMetaList();
     return list.map((meta) =>
-      this.metaToInfo(meta, this.runningInstances.has(meta.id)),
+      this.metaToInfo(meta, this.runningInstances.has(meta.id) || this.sqliteHandles.has(meta.id)),
     );
   }
 
@@ -510,7 +680,7 @@ export class LocalDbManager {
     const list = await this.loadMetaList();
     const meta = list.find((m) => m.id === id);
     if (!meta) return null;
-    return this.metaToInfo(meta, this.runningInstances.has(id));
+    return this.metaToInfo(meta, this.runningInstances.has(id) || this.sqliteHandles.has(id));
   }
 
   // ── Hydration (reconnect auto-start instances on app launch) ─
@@ -520,12 +690,19 @@ export class LocalDbManager {
     for (const meta of list) {
       if (!meta.auto_start) continue;
 
-      const dataDir = getInstanceDataDir(meta.id);
-      if (!existsSync(dataDir)) continue;
+      const engine = meta.engine ?? "postgresql";
+
+      if (engine === "sqlite") {
+        const filePath = meta.file_path ?? join(getBaseDataDir(), "sqlite", `${meta.id}.db`);
+        if (!existsSync(filePath)) continue;
+      } else {
+        const dataDir = getInstanceDataDir(meta.id);
+        if (!existsSync(dataDir)) continue;
+      }
 
       try {
         await this.start(meta.id);
-        console.log(`[local-db] Auto-started: ${meta.name} (${meta.id})`);
+        console.log(`[local-db] Auto-started: ${meta.name} (${meta.id}) [${engine}]`);
       } catch (err) {
         console.error(
           `[local-db] Failed to auto-start ${meta.name}:`,
@@ -537,6 +714,7 @@ export class LocalDbManager {
 
   /** Stop all running instances synchronously (call on app quit) */
   stopAllSync(): void {
+    // Stop PostgreSQL instances
     for (const [id, instance] of this.runningInstances) {
       try {
         // Access the internal child process to kill it synchronously.
@@ -558,12 +736,25 @@ export class LocalDbManager {
       }
       this.runningInstances.delete(id);
     }
+
+    // Close SQLite handles (both manager-level and driver-cached)
+    for (const [id, handle] of this.sqliteHandles) {
+      try {
+        handle.db.close();
+      } catch (err) {
+        console.error(`[local-db:${id}] Error closing SQLite:`, err);
+      }
+      this.sqliteHandles.delete(id);
+    }
+    // Also close all driver-level cached handles to release WAL/write locks
+    closeAllSqliteDbs();
   }
 
   /** Stop all running instances (async, best-effort on quit) */
   async stopAll(): Promise<void> {
-    const ids = [...this.runningInstances.keys()];
-    for (const id of ids) {
+    const pgIds = [...this.runningInstances.keys()];
+    const sqliteIds = [...this.sqliteHandles.keys()];
+    for (const id of [...pgIds, ...sqliteIds]) {
       try {
         await this.stop(id);
       } catch {

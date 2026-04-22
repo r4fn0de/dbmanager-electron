@@ -9,3 +9,7 @@ export async function maximizeWindow() {
 export async function closeWindow() {
   await ipc.client.window.closeWindow();
 }
+
+export async function setUnsavedChanges(scope: string, dirty: boolean) {
+  await ipc.client.window.setUnsavedChanges({ scope, dirty });
+}

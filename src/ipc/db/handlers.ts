@@ -48,6 +48,11 @@ import {
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import { driverRegistry } from "./registry";
 import { localDbManager } from "./local-db-manager";
+import {
+  tableFkLookupRuntime,
+  tableSaveChangesRuntime,
+  tableTruncateRuntime,
+} from "./table-data-runtime";
 import { randomUUID } from "crypto";
 import type { DriverConnectionConfig } from "./driver";
 import type { DatabaseType } from "./types";
@@ -224,21 +229,39 @@ export const tableListRows = os
 export const tableSaveChanges = os
   .input(saveChangesInputSchema)
   .handler(async ({ input }): Promise<SaveChangesResponse> => {
-    console.log("Save changes:", input);
-    return { inserted: 0, updated: 0, deleted: 0 };
+    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const dbType = resolveDbType(connection);
+    return await tableSaveChangesRuntime(dbType, connStr, input);
   });
 
 export const tableTruncate = os
   .input(tableTruncateSchema)
   .handler(async ({ input }): Promise<void> => {
-    console.log("Truncate table:", input.tableRef);
+    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const dbType = resolveDbType(connection);
+    await tableTruncateRuntime(
+      dbType,
+      connStr,
+      input.tableRef.schema,
+      input.tableRef.table,
+    );
   });
 
 export const tableFkLookup = os
   .input(fkLookupInputSchema)
   .handler(async ({ input }): Promise<FkLookupResponse> => {
-    console.log("FK lookup:", input);
-    return { options: [], hasMore: false };
+    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const dbType = resolveDbType(connection);
+    const driver = driverRegistry.get(dbType);
+    return await tableFkLookupRuntime({
+      dbType,
+      connectionString: connStr,
+      input,
+      getTableDetails: (connectionString, schema, table) =>
+        driver.getTableDetails(connectionString, schema, table),
+      listRows: (connectionString, schema, table, page, pageSize, sort, filters) =>
+        driver.listRows(connectionString, schema, table, page, pageSize, sort, filters),
+    });
   });
 
 export const getDatabaseInfo = os
@@ -390,15 +413,18 @@ export const createLocalDatabase = os
   .input(createLocalDatabaseSchema)
   .handler(async ({ input }): Promise<LocalDbInfo> => {
     try {
-      const password = input.password?.trim() || LOCAL_DB_DEFAULT_PASSWORD;
+      const engine = input.engine ?? "postgresql";
+      const isSqlite = engine === "sqlite";
+      const password = isSqlite ? "" : (input.password?.trim() || LOCAL_DB_DEFAULT_PASSWORD);
       return await localDbManager.create({
         name: input.name,
-        databaseName: input.databaseName || "postgres",
-        username: input.username || "postgres",
+        databaseName: input.databaseName || (isSqlite ? "main" : "postgres"),
+        username: isSqlite ? "" : (input.username || "postgres"),
         password,
-        port: input.port || 5432,
-        postgresVersion: input.postgresVersion || "16.13.0",
+        port: isSqlite ? 0 : (input.port || 5432),
+        postgresVersion: isSqlite ? "" : (input.postgresVersion || "16.13.0"),
         autoStart: input.autoStart ?? true,
+        engine,
       });
     } catch (err) {
       console.error("[db] createLocalDatabase failed:", err);

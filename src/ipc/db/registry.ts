@@ -40,6 +40,7 @@ class DriverRegistry {
         if (protocol === "mariadb:") return "mariadb";
         if (protocol === "clickhouse:" || protocol === "clickhouses:") return "clickhouse";
         if (protocol === "postgres:" || protocol === "postgresql:") return "postgresql";
+        if (protocol === "sqlite:") return "sqlite";
       } catch {
         // fall through
       }
@@ -66,4 +67,7 @@ export async function registerDrivers(): Promise<void> {
 
   const { createClickhouseDriver } = await import("./clickhouse-client");
   driverRegistry.register(createClickhouseDriver());
+
+  const { createSqliteDriver } = await import("./sqlite-driver");
+  driverRegistry.register(createSqliteDriver());
 }

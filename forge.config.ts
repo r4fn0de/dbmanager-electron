@@ -11,7 +11,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     icon: "./icons/app-icon",
     asar: {
-      unpack: "{**/node_modules/embedded-postgres/**,**/node_modules/@embedded-postgres/**}",
+      unpack: "{**/node_modules/embedded-postgres/**,**/node_modules/@embedded-postgres/**,**/node_modules/better-sqlite3/**}",
     },
   },
   rebuildConfig: {},

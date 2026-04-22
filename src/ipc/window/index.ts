@@ -1,7 +1,13 @@
-import { closeWindow, maximizeWindow, minimizeWindow } from "./hadlers";
+import {
+  closeWindow,
+  maximizeWindow,
+  minimizeWindow,
+  setUnsavedChanges,
+} from "./hadlers";
 
 export const window = {
   minimizeWindow,
   maximizeWindow,
   closeWindow,
+  setUnsavedChanges,
 };

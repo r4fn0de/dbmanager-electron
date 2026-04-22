@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/manager";
-import type { LocalDbInfo } from "@/ipc/db/types";
+import type { LocalDbInfo, LocalDbEngine } from "@/ipc/db/types";
 
 interface CreateLocalDbOptions {
   name: string;
@@ -11,6 +11,7 @@ interface CreateLocalDbOptions {
   port?: number;
   postgresVersion?: string;
   autoStart?: boolean;
+  engine?: LocalDbEngine;
 }
 
 export interface LocalDbStorageInfo {
@@ -87,6 +88,7 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
         port: input.port,
         postgresVersion: input.postgresVersion,
         autoStart: input.autoStart,
+        engine: input.engine,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: LOCAL_DBS_QUERY_KEY });

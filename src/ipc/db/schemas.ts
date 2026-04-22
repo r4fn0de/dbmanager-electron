@@ -14,6 +14,7 @@ export const databaseTypeSchema = z.enum([
   "mysql",
   "mariadb",
   "clickhouse",
+  "sqlite",
 ]) as z.ZodType<DatabaseType>;
 
 // Connection schemas
@@ -239,6 +240,8 @@ export const tableTruncateSchema = z.object({
 });
 
 // Local DB schemas
+export const localDbEngineSchema = z.enum(["postgresql", "sqlite"]) as z.ZodType<import("./types").LocalDbEngine>;
+
 export const createLocalDatabaseSchema = z.object({
   name: z.string(),
   databaseName: z.string().optional(),
@@ -247,6 +250,8 @@ export const createLocalDatabaseSchema = z.object({
   port: z.number().optional(),
   postgresVersion: z.string().optional(),
   autoStart: z.boolean().optional(),
+  /** Engine type for the local DB. Defaults to "postgresql" for backward compat. */
+  engine: localDbEngineSchema.optional().default("postgresql"),
 });
 
 // Clone to Local schemas

@@ -12,7 +12,7 @@ import type { DatabaseType } from "./types";
 // Identifier quoting helpers
 // ---------------------------------------------------------------------------
 
-/** Quote a single identifier. PostgreSQL/ClickHouse → "id", MySQL/MariaDB → `id`. */
+/** Quote a single identifier. PostgreSQL/ClickHouse/SQLite → "id", MySQL/MariaDB → `id`. */
 export function qi(dbType: DatabaseType, identifier: string): string {
   return dbType === "mysql" || dbType === "mariadb"
     ? `\`${identifier}\``
@@ -65,7 +65,7 @@ export function buildDropTableSql(
   ifExists: boolean,
 ): string {
   const ifExistsClause = ifExists ? "IF EXISTS " : "";
-  // MySQL doesn't support CASCADE in DROP TABLE
+  // MySQL/SQLite don't support CASCADE in DROP TABLE
   const cascadeClause = cascade && dbType === "postgresql" ? " CASCADE" : "";
   return `DROP TABLE ${ifExistsClause}${qt(dbType, schema, tableName)}${cascadeClause}`;
 }
@@ -76,7 +76,7 @@ export function buildRenameTableSql(
   oldName: string,
   newName: string,
 ): string {
-  // MySQL uses RENAME TABLE; PostgreSQL uses ALTER TABLE ... RENAME TO
+  // MySQL uses RENAME TABLE; PostgreSQL/SQLite use ALTER TABLE ... RENAME TO
   if (dbType === "mysql" || dbType === "mariadb") {
     return `RENAME TABLE ${qt(dbType, schema, oldName)} TO ${qt(dbType, schema, newName)}`;
   }
@@ -115,7 +115,7 @@ export function buildDropColumnSql(
   ifExists: boolean,
 ): string {
   const ifExistsClause = ifExists ? "IF EXISTS " : "";
-  // MySQL doesn't support CASCADE for DROP COLUMN
+  // MySQL/SQLite don't support CASCADE for DROP COLUMN
   const cascadeClause = cascade && dbType === "postgresql" ? " CASCADE" : "";
   return `ALTER TABLE ${qt(dbType, schema, table)} DROP COLUMN ${ifExistsClause}${qi(dbType, columnName)}${cascadeClause}`;
 }

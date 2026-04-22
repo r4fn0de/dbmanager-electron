@@ -15,6 +15,7 @@ import type { Pool as MysqlPool } from "mysql2/promise";
 import type { ClickHouseClient } from "@clickhouse/client";
 import type { PgDatabase } from "./kysely-types";
 import type { MysqlDatabase } from "./kysely-types";
+import { closeAllSqliteDbs } from "./sqlite-driver";
 
 // ---------------------------------------------------------------------------
 // Pool cache — one pool per connection string, per engine
@@ -157,4 +158,7 @@ export async function closeAllPools(): Promise<void> {
     await client.close().catch(() => {});
   }
   clickhouseClients.clear();
+
+  // SQLite — close all cached better-sqlite3 handles
+  closeAllSqliteDbs();
 }

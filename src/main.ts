@@ -1,5 +1,5 @@
 import path from "node:path";
-import { app, BrowserWindow, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, nativeTheme } from "electron";
 import { ipcMain } from "electron/main";
 import {
   installExtension,
@@ -61,6 +61,42 @@ function createWindow() {
     ...platformOptions,
   });
   ipcContext.setMainWindow(mainWindow);
+
+  mainWindow.on("close", (event) => {
+    if (!ipcContext.hasUnsavedChanges) return;
+    const unsavedScopes = ipcContext.unsavedScopeKeys;
+    const summarizedScopes = unsavedScopes.slice(0, 3).map((scope) => {
+      if (!scope.startsWith("table:")) return scope;
+      const [, , tableRef] = scope.split(":");
+      return tableRef ?? scope;
+    });
+    const hasMoreScopes = unsavedScopes.length > summarizedScopes.length;
+    const details = [
+      "Closing now may discard pending edits.",
+      "",
+      ...summarizedScopes.map((scope) => `• ${scope}`),
+    ];
+    if (hasMoreScopes) {
+      details.push(`• +${unsavedScopes.length - summarizedScopes.length} more`);
+    }
+    details.push("", "Do you want to quit anyway?");
+
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning",
+      buttons: ["Cancel", "Quit Anyway"],
+      defaultId: 0,
+      cancelId: 0,
+      title: APP_DISPLAY_NAME,
+      message: "You have unsaved changes.",
+      detail: details.join("\n"),
+      noLink: true,
+    });
+    if (choice === 0) {
+      event.preventDefault();
+      return;
+    }
+    ipcContext.clearUnsavedScopes();
+  });
 
   // Força o título da janela para o nome do app
   mainWindow.on("page-title-updated", (event) => {

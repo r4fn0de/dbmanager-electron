@@ -28,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { setUnsavedChanges as setWindowUnsavedChanges } from "@/actions/window";
 import { CellExpandPopover } from "@/components/CellExpandPopover";
 import {
   AlertDialog,
@@ -584,6 +585,14 @@ export function TableDataEditor({
 
   const hasDraftChanges =
     dirtyCounts.inserts + dirtyCounts.updates + dirtyCounts.deletes > 0;
+
+  useEffect(() => {
+    const scope = `table:${connectionId}:${table.schema}.${table.name}`;
+    void setWindowUnsavedChanges(scope, hasDraftChanges);
+    return () => {
+      void setWindowUnsavedChanges(scope, false);
+    };
+  }, [connectionId, table.schema, table.name, hasDraftChanges]);
 
   const columnMap = useMemo(() => {
     const map: Record<string, SchemaColumn> = {};

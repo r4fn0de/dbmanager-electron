@@ -1,4 +1,5 @@
 import { os } from "@orpc/server";
+import z from "zod";
 import { ipcContext } from "../context";
 
 export const minimizeWindow = os
@@ -27,4 +28,15 @@ export const closeWindow = os
     const { window } = context;
 
     window.close();
+  });
+
+export const setUnsavedChanges = os
+  .input(
+    z.object({
+      scope: z.string(),
+      dirty: z.boolean(),
+    }),
+  )
+  .handler(({ input }) => {
+    ipcContext.setUnsavedScope(input.scope, input.dirty);
   });

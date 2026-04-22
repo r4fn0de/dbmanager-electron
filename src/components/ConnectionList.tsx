@@ -171,6 +171,12 @@ function ConnectionCard({
           <span className="font-medium text-sm truncate">
             {connection.name}
           </span>
+          {connection.color && /^#[0-9a-fA-F]{6}$/.test(connection.color) && (
+            <span
+              className="inline-block size-2 rounded-full shrink-0 ring-2 ring-muted-foreground/10"
+              style={{ backgroundColor: connection.color }}
+            />
+          )}
           {connection.tag && (
             <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono">
               {connection.tag}
