@@ -8,11 +8,11 @@ import type {
 import type { DriverConnectionConfig } from "./driver";
 import { getPgPool } from "./kysely-factory";
 
-function escId(id: string): string {
+export function pgEscId(id: string): string {
   return `"${id.replace(/"/g, '""')}"`;
 }
 
-function mapPgType(dataTypeID: number): string {
+export function mapPgType(dataTypeID: number): string {
   const typeMap: Record<number, string> = {
     16: "boolean",
     17: "binary",
@@ -112,7 +112,7 @@ export async function executePgSql(connectionString: string, sql: string): Promi
   await pool.query(sql);
 }
 
-function buildPgWhereClause(
+export function buildPgWhereClause(
   filters: Array<{ column: string; operator: string; value?: unknown }>,
   startIdx: number,
 ): { conditions: string[]; params: unknown[] } {
@@ -121,7 +121,7 @@ function buildPgWhereClause(
 
   for (const rawF of filters) {
     const f = rawF as TableFilter;
-    const col = escId(f.column);
+    const col = pgEscId(f.column);
     const idx = params.length + startIdx;
 
     switch (f.operator) {
@@ -197,11 +197,11 @@ export async function listPgRowsRaw(
   const { conditions, params } = buildPgWhereClause(filters ?? [], 3);
   const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
   const orderBy = sort && sort.length > 0
-    ? ` ORDER BY ${sort.map((s) => `${escId(s.column)} ${s.direction.toUpperCase()}`).join(", ")}`
+    ? ` ORDER BY ${sort.map((s) => `${pgEscId(s.column)} ${s.direction.toUpperCase()}`).join(", ")}`
     : "";
 
   const rowsResult = await pool.query(
-    `SELECT * FROM ${escId(schema)}.${escId(table)}${where}${orderBy} LIMIT $1 OFFSET $2`,
+    `SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}${where}${orderBy} LIMIT $1 OFFSET $2`,
     [pageSize, offset, ...params],
   );
 
@@ -210,7 +210,7 @@ export async function listPgRowsRaw(
     ? ` WHERE ${countClause.conditions.join(" AND ")}`
     : "";
   const countResult = await pool.query(
-    `SELECT COUNT(*) FROM ${escId(schema)}.${escId(table)}${countWhere}`,
+    `SELECT COUNT(*) FROM ${pgEscId(schema)}.${pgEscId(table)}${countWhere}`,
     countClause.params,
   );
 

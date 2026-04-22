@@ -200,7 +200,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   // ── Error state ──────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="border-l-2 border-destructive/50 bg-destructive/5 px-3 py-2">
+      <div className="h-full min-h-0 border-l-2 border-destructive/50 bg-destructive/5 px-3 py-2">
         <div className="flex items-center gap-2">
           <X className="size-3.5 text-destructive shrink-0" />
           <code className="font-mono text-xs text-destructive/90 leading-5 break-all">
@@ -219,7 +219,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   // ── Empty / placeholder state ────────────────────────────────────
   if (!result) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/60">
+      <div className="h-full min-h-0 flex flex-col items-center justify-center py-12 text-muted-foreground/60">
         <Terminal className="size-5 mb-2 text-muted-foreground/40" />
         <p className="text-xs">No results yet</p>
       </div>
@@ -229,7 +229,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   // ── Success but no rows ──────────────────────────────────────────
   if (result.row_count === 0) {
     return (
-      <div className="px-3 py-2">
+      <div className="h-full min-h-0 px-3 py-2">
         <div className="flex items-center gap-2 text-muted-foreground/70">
           <span className="text-[10px] text-emerald-500">✓</span>
           <span className="text-xs">Query executed successfully</span>
@@ -247,7 +247,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   const colCount = result.columns.length;
 
   return (
-    <div>
+    <div className="h-full min-h-0 flex flex-col">
       {/* ── Toolbar header ──────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50">
         <div className="flex items-center gap-1.5">
@@ -300,15 +300,15 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
       </div>
 
       {/* ── Table container ─────────────────────────────────────── */}
-      <ScrollArea className="max-h-[200px]">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="min-w-full">
           <table className="w-full border-collapse text-xs">
             {/* ── Column headers ────────────────────────────────── */}
-            <thead className="sticky top-0 z-10">
-              <tr className="border-b border-border/50 bg-muted/30">
+            <thead className="sticky top-0 z-10 bg-background">
+              <tr className="border-b border-border/50 bg-background">
                 {/* Row # column */}
                 <th
-                  className="h-7 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] font-medium text-muted-foreground/50 border-r border-border/30 bg-muted/20"
+                  className="h-7 w-10 min-w-[2.5rem] px-2 text-center font-mono text-[10px] font-medium text-muted-foreground/50 border-r border-border/30 bg-background"
                   scope="col"
                 >
                   #

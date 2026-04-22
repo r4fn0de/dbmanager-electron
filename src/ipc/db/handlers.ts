@@ -461,7 +461,7 @@ export const findAvailablePort = os.handler(async (): Promise<number> => {
 });
 
 // ---------------------------------------------------------------------------
-// Clone to Local handlers (PostgreSQL-only, use pg-client directly)
+// Clone to Local handlers (PostgreSQL-only, delegated to driver/runtime layer)
 // ---------------------------------------------------------------------------
 
 export const exportSchemaDdl = os
