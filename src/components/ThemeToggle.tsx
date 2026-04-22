@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { Moon, Sun } from "lucide-react";
+import { Sun } from "@/components/icons/Sun";
+import { Moon } from "@/components/icons/Moon";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
 

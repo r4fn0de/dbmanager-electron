@@ -1,10 +1,9 @@
 import { useState } from "react";
+import { HardDrive, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -89,45 +88,77 @@ export function CreateLocalDbDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[450px]">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>New Local Database</DialogTitle>
-            <DialogDescription>
-              Create a new local PostgreSQL database instance.
-            </DialogDescription>
+      <DialogContent className="sm:max-w-[460px] p-0 gap-0">
+        <div className="p-5 pb-0">
+          <DialogHeader className="gap-1">
+            <DialogTitle className="flex items-center gap-2">
+              <HardDrive className="size-4 text-muted-foreground" />
+              New Local Database
+            </DialogTitle>
           </DialogHeader>
+        </div>
 
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
+        <form onSubmit={handleSubmit} className="flex flex-col">
+          <div className="flex flex-col gap-4 p-5">
+            {/* Name */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="local-name" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                Name
+              </Label>
               <Input
-                id="name"
+                id="local-name"
                 placeholder="My Local DB"
                 value={formData.name}
                 onChange={(e) => updateField("name", e.target.value)}
                 required
+                className="h-7"
               />
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="databaseName">Database Name</Label>
-              <Input
-                id="databaseName"
-                placeholder="postgres"
-                value={formData.databaseName}
-                onChange={(e) => updateField("databaseName", e.target.value)}
-                required
-              />
+            {/* Database + Port */}
+            <div className="grid grid-cols-[1fr_80px] gap-2.5">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="local-db" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Database
+                </Label>
+                <Input
+                  id="local-db"
+                  placeholder="postgres"
+                  value={formData.databaseName}
+                  onChange={(e) => updateField("databaseName", e.target.value)}
+                  required
+                  className="h-7 font-mono text-xs"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="local-port" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Port
+                </Label>
+                <Input
+                  id="local-port"
+                  type="number"
+                  min={1024}
+                  max={65535}
+                  value={formData.port}
+                  onChange={(e) =>
+                    updateField("port", Number.parseInt(e.target.value, 10) || 5432)
+                  }
+                  required
+                  className="h-7 font-mono text-xs"
+                />
+              </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="version">PostgreSQL Version</Label>
+            {/* Version */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                Version
+              </Label>
               <Select
                 value={formData.postgresVersion}
                 onValueChange={(value) => updateField("postgresVersion", value || "16.13.0")}
               >
-                <SelectTrigger id="version">
+                <SelectTrigger className="h-7 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -140,64 +171,77 @@ export function CreateLocalDbDialog({
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="username">Username</Label>
+            {/* Username + Password */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="local-user" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Username
+                </Label>
                 <Input
-                  id="username"
+                  id="local-user"
                   placeholder="postgres"
                   value={formData.username}
                   onChange={(e) => updateField("username", e.target.value)}
                   required
+                  className="h-7 font-mono text-xs"
                 />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="password">Password</Label>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="local-password" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Password
+                </Label>
                 <Input
-                  id="password"
+                  id="local-password"
                   type="password"
                   placeholder="Default: postgres"
                   value={formData.password}
                   onChange={(e) => updateField("password", e.target.value)}
+                  className="h-7 font-mono text-xs"
                 />
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="port">Port</Label>
-              <Input
-                id="port"
-                type="number"
-                min={1024}
-                max={65535}
-                value={formData.port}
-                onChange={(e) =>
-                  updateField("port", Number.parseInt(e.target.value, 10) || 5432)
-                }
-                required
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
+            {/* Auto-start */}
+            <div className="flex items-center gap-2.5">
               <Switch
-                id="autoStart"
+                id="local-auto"
                 checked={formData.autoStart}
                 onCheckedChange={(checked) => updateField("autoStart", checked)}
               />
-              <Label htmlFor="autoStart" className="cursor-pointer">
+              <Label htmlFor="local-auto" className="text-xs cursor-pointer">
                 Auto-start on creation
               </Label>
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:justify-end">
-            <Button type="button" variant="outline" onClick={onClose}>
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 border-t bg-muted/50 px-5 py-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              disabled={isCreating}
+              className="h-7 px-2 text-xs"
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={isCreating}>
-              {isCreating ? "Creating..." : "Create Database"}
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isCreating}
+              className="h-7 text-xs gap-1"
+            >
+              {isCreating ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" />
+                  Creating…
+                </>
+              ) : (
+                "Create Database"
+              )}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
