@@ -5,11 +5,13 @@
  * Uses the useAiChat hook to manage streaming chat over Electron IPC.
  */
 import {
+  AlertCircle,
   Bot,
   Check,
+  CircleDashed,
   ChevronDown,
+  Copy,
   Code2,
-  Loader2,
   PanelRight,
   Plus,
   Send,
@@ -18,8 +20,15 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { StickToBottomContext } from "use-stick-to-bottom";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 import {
@@ -31,8 +40,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Message,
+  MessageAction,
   MessageContent,
-} from "@/components/ui/message";
+  MessageResponse,
+  MessageToolbar,
+} from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputActions,
@@ -77,13 +89,63 @@ interface AiChatPanelProps {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function ToolCallBadge({ name }: { name: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
-      <Wrench className="size-2.5" />
-      {name}
-    </span>
-  );
+type ToolCallLike = NonNullable<AiChatMessage["toolCalls"]>[number];
+
+function stringifyPayload(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function compactPreview(value: unknown, max = 128): string {
+  const normalized = stringifyPayload(value).replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
+}
+
+function extractSqlSnippet(value: unknown): string | null {
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) return null;
+    const lowered = text.toLowerCase();
+    if (
+      lowered.includes("select ")
+      || lowered.includes("insert ")
+      || lowered.includes("update ")
+      || lowered.includes("delete ")
+      || lowered.includes("create ")
+      || lowered.includes("alter ")
+      || lowered.includes("drop ")
+      || lowered.includes("with ")
+    ) {
+      return text;
+    }
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["sql", "query", "statement", "ddl", "command"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+function getToolStatus(toolCall: ToolCallLike, isStreaming: boolean): "running" | "success" | "error" {
+  if (isStreaming && toolCall.result === undefined) return "running";
+  if (toolCall.result && typeof toolCall.result === "object") {
+    const result = toolCall.result as Record<string, unknown>;
+    if (typeof result.error === "string" && result.error.trim()) return "error";
+    if (result.success === false || result.ok === false) return "error";
+  }
+  return "success";
 }
 
 function ChatMessage({
@@ -96,11 +158,39 @@ function ChatMessage({
   onInsertSql?: (sql: string) => void;
 }) {
   const isUser = message.role === "user";
+  const [copied, setCopied] = useState(false);
+  const [copiedToolKey, setCopiedToolKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => {
+      setCopied(false);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  useEffect(() => {
+    if (!copiedToolKey) return;
+    const timer = setTimeout(() => {
+      setCopiedToolKey(null);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [copiedToolKey]);
+
+  const handleCopyMessage = useCallback(async () => {
+    if (!message.content) return;
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+    } catch {
+      // Ignore copy failures (clipboard permissions/platform differences).
+    }
+  }, [message.content]);
 
   // ── User message: right-aligned, no avatar ──
   if (isUser) {
     return (
-      <Message className="group/msg w-full px-3 py-2 flex justify-end">
+      <Message from="user" className="group/msg w-full max-w-full px-3 py-2">
         <div className="flex max-w-[85%] min-w-0 flex-col items-end">
           {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview) && (
             <div className="mb-1.5 flex w-full justify-end">
@@ -142,17 +232,118 @@ function ChatMessage({
 
   // ── Assistant message: left-aligned ──
   const contentParts = parseAssistantContent(message.content);
+  const firstSqlBlock = contentParts.find((part) => part.type === "code");
+  const toolCalls = message.toolCalls ?? [];
+  const hasToolCalls = toolCalls.length > 0;
+  const toolDetails = toolCalls
+    .map((tc, index) => {
+      const status = getToolStatus(tc, Boolean(message.isStreaming));
+      const input = stringifyPayload(tc.input);
+      const output = stringifyPayload(tc.result);
+      return [
+        `### ${index + 1}. ${tc.toolName} (${status})`,
+        input ? `**Input**\n\`\`\`json\n${input}\n\`\`\`` : "",
+        output ? `**Output**\n\`\`\`json\n${output}\n\`\`\`` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    })
+    .join("\n\n");
 
   return (
-    <Message className="group/msg w-full px-3 py-2">
+    <Message from="assistant" className="group/msg w-full max-w-full px-3 py-2">
       <div className="min-w-0 flex flex-col gap-1.5">
-          {/* Tool calls */}
-          {message.toolCalls && message.toolCalls.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {message.toolCalls.map((tc, i) => (
-                <ToolCallBadge key={`${tc.toolName}-${i}`} name={tc.toolName} />
-              ))}
-            </div>
+          {hasToolCalls && (
+            <details className="group/tcalls rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs text-foreground marker:content-none">
+                <span className="inline-flex items-center gap-1.5">
+                  <Wrench className="size-3.5 text-primary" />
+                  <span className="font-medium">Tool Calls</span>
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                    {toolCalls.length}
+                  </span>
+                </span>
+                <span className="text-[10px] text-muted-foreground transition-transform duration-150 ease-out group-open/tcalls:rotate-180">
+                  ▼
+                </span>
+              </summary>
+
+              <div className="mt-2 space-y-1.5">
+                {toolCalls.map((tc, index) => {
+                  const status = getToolStatus(tc, Boolean(message.isStreaming));
+                  const statusIcon =
+                    status === "running"
+                      ? <CircleDashed className="size-3.5 animate-spin text-muted-foreground" />
+                      : status === "error"
+                        ? <AlertCircle className="size-3.5 text-destructive" />
+                        : <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />;
+                  const statusLabel = status === "running" ? "Running" : status === "error" ? "Error" : "Done";
+                  const preview = compactPreview(tc.result ?? tc.input);
+                  const sqlFromTool = extractSqlSnippet(tc.result) ?? extractSqlSnippet(tc.input);
+                  const copyValue = stringifyPayload(tc.result ?? tc.input);
+                  const copyKey = `${tc.toolCallId}-${index}`;
+
+                  return (
+                    <div
+                      key={copyKey}
+                      className="group/tool flex items-start justify-between gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-background"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          {statusIcon}
+                          <span className="truncate text-xs font-medium text-foreground">{tc.toolName}</span>
+                          <span className="text-[10px] text-muted-foreground">{statusLabel}</span>
+                        </div>
+                        {preview && (
+                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                            {preview}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-hover/tool:opacity-100 group-focus-within/tool:opacity-100">
+                        <MessageAction
+                          tooltip={copiedToolKey === copyKey ? "Copied" : "Copy tool payload"}
+                          label={copiedToolKey === copyKey ? "Copied" : "Copy tool payload"}
+                          onClick={async () => {
+                            if (!copyValue) return;
+                            try {
+                              await navigator.clipboard.writeText(copyValue);
+                              setCopiedToolKey(copyKey);
+                            } catch {
+                              // Ignore copy failures.
+                            }
+                          }}
+                          disabled={!copyValue}
+                        >
+                          {copiedToolKey === copyKey ? (
+                            <Check className="size-3.5" />
+                          ) : (
+                            <Copy className="size-3.5" />
+                          )}
+                        </MessageAction>
+                        <MessageAction
+                          tooltip="Insert SQL from tool"
+                          label="Insert SQL from tool"
+                          onClick={() => {
+                            if (sqlFromTool && onInsertSql) onInsertSql(sqlFromTool);
+                          }}
+                          disabled={!sqlFromTool || !onInsertSql}
+                        >
+                          <Code2 className="size-3.5" />
+                        </MessageAction>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {toolDetails && (
+                <div className="mt-2 rounded-md border border-border/60 bg-background/70 p-2">
+                  <MessageResponse className="text-xs">{toolDetails}</MessageResponse>
+                </div>
+              )}
+            </details>
           )}
 
           {/* Message content (text + code blocks) */}
@@ -162,10 +353,9 @@ function ChatMessage({
                 part.type === "text" ? (
                   <MessageContent
                     key={`text-${index}`}
-                    markdown
-                    className="!bg-transparent !p-0 text-sm leading-relaxed break-words"
+                    className="!w-full !max-w-none !bg-transparent !p-0 text-sm leading-relaxed break-words"
                   >
-                    {part.content}
+                    <MessageResponse>{part.content}</MessageResponse>
                   </MessageContent>
                 ) : (
                   <div key={`code-${index}`} className="group/sql relative">
@@ -179,9 +369,9 @@ function ChatMessage({
                     </CodeBlock>
                     {onInsertSql && !message.isStreaming && (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="xs"
-                        className="absolute top-1 right-1 opacity-0 transition-all duration-150 ease-out group-hover/sql:opacity-100 active:scale-[0.97]"
+                        className="absolute top-1 right-1 z-10 h-6 bg-background/90 px-2 text-[11px] opacity-0 shadow-sm backdrop-blur transition-all duration-150 ease-out group-hover/sql:opacity-100 group-focus-within/sql:opacity-100 hover:bg-background active:scale-[0.97]"
                         onClick={() => onInsertSql(part.code)}
                       >
                         Insert
@@ -193,12 +383,44 @@ function ChatMessage({
             </div>
           )}
 
-          {/* Streaming indicator */}
+          {!message.isStreaming && (message.content || firstSqlBlock) && (
+            <MessageToolbar className="mt-0 justify-start gap-1.5">
+              <MessageAction
+                tooltip={copied ? "Copied" : "Copy response"}
+                label={copied ? "Copied" : "Copy response"}
+                onClick={handleCopyMessage}
+                disabled={!message.content}
+              >
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              </MessageAction>
+              <MessageAction
+                tooltip="Insert first SQL block"
+                label="Insert first SQL block"
+                onClick={() => {
+                  if (firstSqlBlock?.type === "code" && onInsertSql) {
+                    onInsertSql(firstSqlBlock.code);
+                  }
+                }}
+                disabled={!onInsertSql || !firstSqlBlock}
+              >
+                <Code2 className="size-3.5" />
+              </MessageAction>
+            </MessageToolbar>
+          )}
+
+          {/* Thinking indicator */}
           {message.isStreaming && !message.content && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
+            <div className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/50 [animation-duration:1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
+                <span className="inline-flex size-1.5 rounded-full bg-primary" />
+              </span>
               Thinking…
             </div>
+          )}
+          {/* No-content fallback for completed/aborted messages */}
+          {!message.isStreaming && !message.content && (
+            <p className="px-3 text-xs text-muted-foreground">No response</p>
           )}
 
         </div>
@@ -307,21 +529,16 @@ export function AiChatPanel({
     selection: boolean;
     error: boolean;
   }>({ selection: false, error: false });
-  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const conversationRef = useRef<StickToBottomContext | null>(null);
+  const previousConversationIdRef = useRef<string | null>(null);
+  const previousIsOpenRef = useRef(false);
   const contextDismissTimeoutsRef = useRef<{
     selection?: ReturnType<typeof setTimeout>;
     error?: ReturnType<typeof setTimeout>;
   }>({});
   const titleMorphTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousTitleRef = useRef<string | null>(null);
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
 
   // Focus input when panel opens
   useEffect(() => {
@@ -332,6 +549,30 @@ export function AiChatPanel({
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  // Ensure active conversation opens pinned to the latest message.
+  useEffect(() => {
+    const openedNow = isOpen && !previousIsOpenRef.current;
+    const conversationChanged =
+      isOpen && activeConversationId !== previousConversationIdRef.current;
+
+    previousIsOpenRef.current = isOpen;
+    previousConversationIdRef.current = activeConversationId;
+
+    if (!isOpen || !activeConversationId || (!openedNow && !conversationChanged)) return;
+
+    const t1 = setTimeout(() => {
+      void conversationRef.current?.scrollToBottom();
+    }, 0);
+    const t2 = setTimeout(() => {
+      void conversationRef.current?.scrollToBottom();
+    }, 80);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [activeConversationId, isOpen]);
 
   useEffect(() => {
     setDismissedContext({ selection: false, error: false });
@@ -621,17 +862,14 @@ export function AiChatPanel({
         </div>
       </div>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
-        <div
+      {/* Messages — auto-scroll via StickToBottom */}
+      <Conversation className="flex-1 min-h-0" contextRef={conversationRef}>
+        <ConversationContent
           key={activeConversationId ?? "no-conversation"}
-          className={cn(
-            "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1",
-            "motion-safe:duration-180 motion-safe:[animation-timing-function:cubic-bezier(0.23,1,0.32,1)]",
-          )}
+          className="flex flex-col gap-0 p-0"
         >
           {isEmpty ? (
-            <div className="flex flex-col items-center justify-center h-full px-6 py-8 gap-4">
+            <ConversationEmptyState>
               <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
                 <Bot className="size-5 text-primary" />
               </div>
@@ -653,21 +891,20 @@ export function AiChatPanel({
                   </button>
                 ))}
               </div>
-            </div>
+            </ConversationEmptyState>
           ) : (
-            <div>
-              {messages.map((msg) => (
-                <ChatMessage
-                  key={msg.id}
-                  message={msg}
-                  codeTheme={codeTheme}
-                  onInsertSql={onInsertSql}
-                />
-              ))}
-            </div>
+            messages.map((msg) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                codeTheme={codeTheme}
+                onInsertSql={onInsertSql}
+              />
+            ))
           )}
-        </div>
-      </div>
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
 
       {/* Error banner */}
       {error && (

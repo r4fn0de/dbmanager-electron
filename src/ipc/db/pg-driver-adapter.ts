@@ -10,7 +10,7 @@
  */
 import type { DatabaseType, SslMode } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
-import { getPgKysely, getPgPool } from "./kysely-factory";
+import { getPgKysely } from "./kysely-factory";
 import {
   buildPgConnectionString,
   buildPgWhereClause,
@@ -306,24 +306,36 @@ export function createPostgresDriver(): DatabaseDriver {
           .where("tc.table_name", "=", table)
           .execute();
 
-        // 4. RLS check — use raw SQL since Kysely lacks types for pg_catalog tables
-        const pool = getPgPool(connectionString);
-        const rlsResult = await pool.query(
-          `SELECT c.relrowsecurity AS has_rls FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = $1 AND c.relname = $2`,
-          [schema, table],
-        );
-        const hasRls = rlsResult.rows.length > 0 && rlsResult.rows[0].has_rls === true;
+        // 4. RLS check
+        const rlsRow = await db
+          .withSchema("pg_catalog")
+          .selectFrom("pg_class as c")
+          .innerJoin("pg_namespace as n", "c.relnamespace", "n.oid")
+          .select("c.relrowsecurity as has_rls")
+          .where("n.nspname", "=", schema)
+          .where("c.relname", "=", table)
+          .executeTakeFirst();
+        const hasRls = rlsRow?.has_rls === true;
 
         // 5. RLS policies — only if RLS is enabled
         let rlsPolicies: Array<{ name: string; kind: string; roles: string[]; using_expr: string | null; with_check_expr: string | null }> = [];
         if (hasRls) {
-          const policyResult = await pool.query(
-            `SELECT p.polname AS policy_name, p.polcmd AS policy_cmd, p.polpermissive AS is_permissive FROM pg_policy p JOIN pg_class c ON p.polrelid = c.oid JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = $1 AND c.relname = $2`,
-            [schema, table],
-          );
+          const policyRows = await db
+            .withSchema("pg_catalog")
+            .selectFrom("pg_policy as p")
+            .innerJoin("pg_class as c", "p.polrelid", "c.oid")
+            .innerJoin("pg_namespace as n", "c.relnamespace", "n.oid")
+            .select([
+              "p.polname as policy_name",
+              "p.polcmd as policy_cmd",
+              "p.polpermissive as is_permissive",
+            ])
+            .where("n.nspname", "=", schema)
+            .where("c.relname", "=", table)
+            .execute();
 
           const cmdMap: Record<string, string> = { r: "SELECT", a: "INSERT", w: "UPDATE", d: "DELETE", "*": "ALL" };
-          rlsPolicies = policyResult.rows.map((row) => ({
+          rlsPolicies = policyRows.map((row) => ({
             name: String(row.policy_name),
             kind: cmdMap[String(row.policy_cmd)] ?? "UNKNOWN",
             roles: [],

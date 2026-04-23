@@ -151,6 +151,10 @@ function toPersistedMessage(message: AiChatMessage): AiChatMessage {
     id: message.id,
     role: message.role,
     content: message.content,
+    // Preserve isStreaming so in-memory state keeps the flag during
+    // the streaming lifecycle.  For persisted messages the value is
+    // always undefined/falsy, so no harm storing it.
+    ...(message.isStreaming ? { isStreaming: true } : {}),
     ...(message.contextSnapshot ? { contextSnapshot: message.contextSnapshot } : {}),
     ...(message.toolCalls ? { toolCalls: message.toolCalls } : {}),
   };
@@ -256,7 +260,15 @@ export function useAiChat({
     (nextConversations: AiChatConversation[], nextActiveConversationId: string | null) => {
       if (!connectionIdRef.current) return;
       const storage = readStorage();
-      storage.conversationsByConnection[connectionIdRef.current] = withRetention(nextConversations);
+      // Strip transient fields (e.g. isStreaming) before writing to localStorage
+      // so a crash mid-stream never leaves stale isStreaming:true on rehydration.
+      // nextConversations have already been processed through withRetention.
+      storage.conversationsByConnection[connectionIdRef.current] = nextConversations.map(
+        (conv) => ({
+          ...conv,
+          messages: conv.messages.map(({ isStreaming: _, ...msg }) => msg),
+        }),
+      );
       if (nextActiveConversationId) {
         storage.activeConversationByConnection[connectionIdRef.current] = nextActiveConversationId;
       } else {

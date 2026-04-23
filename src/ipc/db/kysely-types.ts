@@ -26,6 +26,7 @@ export interface PgSystemCatalog {
   pg_enum: PgEnumTable;
   pg_namespace: PgNamespaceTable;
   pg_class: PgClassTable;
+  pg_policy: PgPolicyTable;
   pg_depend: PgDependTable;
   pg_attribute: PgAttributeTable;
 }
@@ -128,6 +129,15 @@ interface PgClassTable {
   relname: string;
   relnamespace: number;
   relkind: string;
+  relrowsecurity: boolean;
+}
+
+interface PgPolicyTable {
+  oid: number;
+  polname: string;
+  polrelid: number;
+  polcmd: string;
+  polpermissive: boolean;
 }
 
 interface PgDependTable {
