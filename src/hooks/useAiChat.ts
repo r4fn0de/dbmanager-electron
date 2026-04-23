@@ -15,6 +15,11 @@ export interface AiChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  /** Optional context snapshot attached to a user message */
+  contextSnapshot?: {
+    selectionPreview?: string;
+    errorPreview?: string;
+  };
   /** Tool calls made by the assistant during this message */
   toolCalls?: Array<{
     toolCallId: string;
@@ -43,7 +48,15 @@ interface UseAiChatReturn {
   /** Last error message */
   error: string | null;
   /** Send a user message and start streaming */
-  sendMessage: (content: string) => void;
+  sendMessage: (
+    content: string,
+    options?: {
+      contextSnapshot?: {
+        selectionPreview?: string;
+        errorPreview?: string;
+      };
+    },
+  ) => void;
   /** Abort the current stream */
   abort: () => void;
   /** Clear all messages */
@@ -166,7 +179,15 @@ export function useAiChat({
   }, []);
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (
+      content: string,
+      options?: {
+        contextSnapshot?: {
+          selectionPreview?: string;
+          errorPreview?: string;
+        };
+      },
+    ) => {
       if (!connectionId || !content.trim()) return;
 
       const aiChat = window.electron?.aiChat;
@@ -182,6 +203,7 @@ export function useAiChat({
         id: nextId(),
         role: "user",
         content: content.trim(),
+        contextSnapshot: options?.contextSnapshot,
       };
 
       // Create placeholder assistant message

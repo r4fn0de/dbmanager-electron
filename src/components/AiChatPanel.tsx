@@ -15,8 +15,10 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 import {
   Message,
   MessageContent,
@@ -76,9 +78,11 @@ function ToolCallBadge({ name }: { name: string }) {
 
 function ChatMessage({
   message,
+  codeTheme,
   onInsertSql,
 }: {
   message: AiChatMessage;
+  codeTheme: string;
   onInsertSql?: (sql: string) => void;
 }) {
   const isUser = message.role === "user";
@@ -88,6 +92,34 @@ function ChatMessage({
     return (
       <Message className="group/msg w-full px-3 py-2 flex justify-end">
         <div className="flex max-w-[85%] min-w-0 flex-col items-end">
+          {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview) && (
+            <div className="mb-1.5 flex w-full justify-end">
+              {message.contextSnapshot?.selectionPreview && (
+                <div className="inline-flex w-[182px] max-w-full min-h-[52px] cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
+                    AI
+                  </span>
+                  <div className="min-w-0 overflow-hidden">
+                    <p className="truncate text-[12px] font-medium text-foreground">
+                      {message.contextSnapshot.selectionPreview}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">Selected Text</p>
+                  </div>
+                </div>
+              )}
+              {!message.contextSnapshot?.selectionPreview && message.contextSnapshot?.errorPreview && (
+                <div className="inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200">
+                  <Code2 className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
+                      {message.contextSnapshot.errorPreview}
+                    </p>
+                    <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80">Last Error</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {message.content && (
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words rounded-lg bg-muted/40 px-3 py-2">
               {message.content}
@@ -99,7 +131,7 @@ function ChatMessage({
   }
 
   // ── Assistant message: left-aligned ──
-  const sqlBlocks = extractSqlBlocks(message.content);
+  const contentParts = parseAssistantContent(message.content);
 
   return (
     <Message className="group/msg w-full px-3 py-2">
@@ -113,14 +145,41 @@ function ChatMessage({
             </div>
           )}
 
-          {/* Message text */}
-          {message.content && (
-            <MessageContent
-              markdown
-              className="!bg-transparent !p-0 text-sm leading-relaxed break-words"
-            >
-              {message.content}
-            </MessageContent>
+          {/* Message content (text + code blocks) */}
+          {contentParts.length > 0 && (
+            <div className="space-y-2">
+              {contentParts.map((part, index) =>
+                part.type === "text" ? (
+                  <MessageContent
+                    key={`text-${index}`}
+                    markdown
+                    className="!bg-transparent !p-0 text-sm leading-relaxed break-words"
+                  >
+                    {part.content}
+                  </MessageContent>
+                ) : (
+                  <div key={`code-${index}`} className="group/sql relative">
+                    <CodeBlock>
+                      <CodeBlockCode
+                        code={part.code}
+                        language={part.language || "sql"}
+                        theme={codeTheme}
+                      />
+                    </CodeBlock>
+                    {onInsertSql && !message.isStreaming && (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="absolute top-1 right-1 opacity-0 transition-all duration-150 ease-out group-hover/sql:opacity-100 active:scale-[0.97]"
+                        onClick={() => onInsertSql(part.code)}
+                      >
+                        Insert
+                      </Button>
+                    )}
+                  </div>
+                ),
+              )}
+            </div>
           )}
 
           {/* Streaming indicator */}
@@ -131,31 +190,6 @@ function ChatMessage({
             </div>
           )}
 
-          {/* Streaming cursor */}
-          {message.isStreaming && message.content && (
-            <span className="ml-0.5 inline-block h-4 w-1.5 rounded-sm bg-primary/60 align-text-bottom motion-safe:animate-pulse" />
-          )}
-
-          {/* SQL code blocks with insert action */}
-          {sqlBlocks.length > 0 && onInsertSql && !message.isStreaming && (
-            <div className="mt-1 space-y-1.5">
-              {sqlBlocks.map((sql, i) => (
-                <div key={i} className="group/sql relative">
-                  <pre className="max-h-32 overflow-x-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-relaxed">
-                    {sql}
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="absolute top-1 right-1 opacity-0 transition-all duration-150 ease-out group-hover/sql:opacity-100 active:scale-[0.97]"
-                    onClick={() => onInsertSql(sql)}
-                  >
-                    Insert
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
     </Message>
   );
@@ -165,15 +199,53 @@ function ChatMessage({
 // Extract SQL code blocks from markdown
 // ---------------------------------------------------------------------------
 
-function extractSqlBlocks(content: string): string[] {
-  const blocks: string[] = [];
-  const regex = /```(?:sql|postgresql|mysql|mariadb)?\s*\n([\s\S]*?)```/gi;
+type AssistantContentPart =
+  | { type: "text"; content: string }
+  | { type: "code"; code: string; language?: string };
+
+function parseAssistantContent(content: string): AssistantContentPart[] {
+  if (!content) return [];
+
+  const parts: AssistantContentPart[] = [];
+  const fenceRegex = /```([\w-]+)?\s*\n([\s\S]*?)```/g;
+  let lastIndex = 0;
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(content)) !== null) {
-    const sql = match[1].trim();
-    if (sql) blocks.push(sql);
+
+  while ((match = fenceRegex.exec(content)) !== null) {
+    const [fullMatch, language, code] = match;
+    const start = match.index;
+
+    if (start > lastIndex) {
+      const textChunk = content.slice(lastIndex, start).trim();
+      if (textChunk) {
+        parts.push({ type: "text", content: textChunk });
+      }
+    }
+
+    const normalizedCode = code?.trim() ?? "";
+    if (normalizedCode) {
+      parts.push({
+        type: "code",
+        code: normalizedCode,
+        language: language?.trim() || undefined,
+      });
+    }
+
+    lastIndex = start + fullMatch.length;
   }
-  return blocks;
+
+  if (lastIndex < content.length) {
+    const trailing = content.slice(lastIndex).trim();
+    if (trailing) {
+      parts.push({ type: "text", content: trailing });
+    }
+  }
+
+  if (parts.length === 0) {
+    parts.push({ type: "text", content });
+  }
+
+  return parts;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +261,9 @@ export function AiChatPanel({
   onInsertSql,
   onClose,
 }: AiChatPanelProps) {
+  const { resolvedTheme } = useTheme();
+  const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
+
   const { messages, isLoading, error, sendMessage, abort, clearMessages } =
     useAiChat({
       connectionId,
@@ -278,11 +353,61 @@ export function AiChatPanel({
     };
   }, []);
 
+  const showSelectionContextChip = Boolean(
+    contextPreview?.selectionPreview && !dismissedContext.selection,
+  );
+  const showErrorContextChip = Boolean(
+    contextPreview?.errorPreview && !dismissedContext.error,
+  );
+
   const handleSubmit = useCallback(() => {
     if (!input.trim() || isLoading) return;
-    sendMessage(input.trim());
+    const contextSnapshot = {
+      selectionPreview:
+        showSelectionContextChip && contextPreview?.selectionPreview
+          ? contextPreview.selectionPreview
+          : undefined,
+      errorPreview:
+        showErrorContextChip && contextPreview?.errorPreview
+          ? contextPreview.errorPreview
+          : undefined,
+    };
+
+    if (showSelectionContextChip) {
+      setExitingContext((prev) => ({ ...prev, selection: true }));
+    }
+    if (showErrorContextChip) {
+      setExitingContext((prev) => ({ ...prev, error: true }));
+    }
+    if (showSelectionContextChip || showErrorContextChip) {
+      setTimeout(() => {
+        if (showSelectionContextChip) {
+          setDismissedContext((prev) => ({ ...prev, selection: true }));
+          setExitingContext((prev) => ({ ...prev, selection: false }));
+        }
+        if (showErrorContextChip) {
+          setDismissedContext((prev) => ({ ...prev, error: true }));
+          setExitingContext((prev) => ({ ...prev, error: false }));
+        }
+      }, 170);
+    }
+
+    sendMessage(input.trim(), {
+      contextSnapshot:
+        contextSnapshot.selectionPreview || contextSnapshot.errorPreview
+          ? contextSnapshot
+          : undefined,
+    });
     setInput("");
-  }, [input, isLoading, sendMessage]);
+  }, [
+    input,
+    isLoading,
+    sendMessage,
+    showSelectionContextChip,
+    showErrorContextChip,
+    contextPreview?.selectionPreview,
+    contextPreview?.errorPreview,
+  ]);
 
   const handleDismissContextChip = useCallback((kind: "selection" | "error") => {
     setExitingContext((prev) => ({ ...prev, [kind]: true }));
@@ -294,13 +419,6 @@ export function AiChatPanel({
       contextDismissTimeoutsRef.current[kind] = undefined;
     }, 180);
   }, []);
-
-  const showSelectionContextChip = Boolean(
-    contextPreview?.selectionPreview && !dismissedContext.selection,
-  );
-  const showErrorContextChip = Boolean(
-    contextPreview?.errorPreview && !dismissedContext.error,
-  );
 
   if (!isOpen) return null;
 
@@ -390,6 +508,7 @@ export function AiChatPanel({
               <ChatMessage
                 key={msg.id}
                 message={msg}
+                codeTheme={codeTheme}
                 onInsertSql={onInsertSql}
               />
             ))}
@@ -419,7 +538,7 @@ export function AiChatPanel({
               {showSelectionContextChip && (
                 <div
                   className={cn(
-                    "inline-flex max-w-full items-center gap-2 rounded-lg bg-background/70 px-2 py-1 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+                    "group/ctx relative inline-flex w-[182px] max-w-full min-h-[52px] cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
                     exitingContext.selection && "-translate-y-1 scale-[0.98] opacity-0",
                     selectionTrend === "grow" && "scale-[1.015]",
                     selectionTrend === "shrink" && "scale-[0.995] opacity-95",
@@ -428,7 +547,7 @@ export function AiChatPanel({
                   <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
                     AI
                   </span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 overflow-hidden">
                     <p
                       key={contextPreview.selectionPreview}
                       className="truncate text-[12px] font-medium text-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
@@ -440,7 +559,7 @@ export function AiChatPanel({
                   <button
                     type="button"
                     aria-label="Remove selected text context"
-                    className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                    className="absolute -right-2 -top-2 rounded-full border border-border/60 bg-background p-0.5 text-muted-foreground opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-foreground group-hover/ctx:opacity-100"
                     onClick={() => handleDismissContextChip("selection")}
                   >
                     <X className="size-3" />
@@ -450,7 +569,7 @@ export function AiChatPanel({
               {showErrorContextChip && (
                 <div
                   className={cn(
-                    "inline-flex max-w-full items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+                    "group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
                     exitingContext.error && "-translate-y-1 scale-[0.98] opacity-0",
                   )}
                 >
@@ -467,7 +586,7 @@ export function AiChatPanel({
                   <button
                     type="button"
                     aria-label="Remove error context"
-                    className="shrink-0 rounded p-0.5 text-amber-700/70 transition-colors hover:text-amber-900 dark:text-amber-300/80 dark:hover:text-amber-200"
+                    className="absolute -right-2 -top-2 rounded-full border border-amber-400/35 bg-background p-0.5 text-amber-700/70 opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-amber-900 group-hover/ctx:opacity-100 dark:text-amber-300/80 dark:hover:text-amber-200"
                     onClick={() => handleDismissContextChip("error")}
                   >
                     <X className="size-3" />
