@@ -196,8 +196,8 @@ function ChatMessage({
   // ── User message: right-aligned, no avatar ──
   if (isUser) {
     return (
-      <Message from="user" className="group/msg w-full max-w-full px-3 py-2">
-        <div className="flex max-w-[85%] min-w-0 flex-col items-end">
+      <Message from="user" className="group/msg w-full max-w-full pl-3 pr-1 py-2">
+        <div className="ml-auto flex max-w-[72%] min-w-0 flex-col items-end">
           {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview) && (
             <div className="mb-1.5 flex w-full justify-end">
               {message.contextSnapshot?.selectionPreview && (
@@ -227,7 +227,7 @@ function ChatMessage({
             </div>
           )}
           {message.content && (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words rounded-lg bg-muted/40 px-3 py-2">
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words rounded-lg backdrop-blur-sm bg-muted/70 px-3 py-2">
               {message.content}
             </p>
           )}
@@ -260,7 +260,7 @@ function ChatMessage({
     <Message from="assistant" className="group/msg w-full max-w-full px-3 py-2">
       <div className="min-w-0 flex flex-col gap-1.5">
           {hasToolCalls && (
-            <details className="group/tcalls rounded-lg border border-border/60 bg-muted/20 px-2 py-1.5">
+            <details className="group/tcalls rounded-lg border border-border/60 backdrop-blur-sm bg-muted/40 px-2 py-1.5">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs text-foreground marker:content-none">
                 <span className="inline-flex items-center gap-1.5">
                   <Wrench className="size-3.5 text-primary" />
@@ -292,7 +292,7 @@ function ChatMessage({
                   return (
                     <div
                       key={copyKey}
-                      className="group/tool flex items-start justify-between gap-2 rounded-md border border-border/50 bg-background/70 px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-background"
+                      className="group/tool flex items-start justify-between gap-2 rounded-md border border-border/50 bg-background/90 px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-background"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -345,7 +345,7 @@ function ChatMessage({
               </div>
 
               {toolDetails && (
-                <div className="mt-2 rounded-md border border-border/60 bg-background/70 p-2">
+                <div className="mt-2 rounded-md border border-border/60 bg-background/90 p-2">
                   <MessageResponse className="text-xs">{toolDetails}</MessageResponse>
                 </div>
               )}
@@ -365,7 +365,7 @@ function ChatMessage({
                   </MessageContent>
                 ) : (
                   <div key={`code-${index}`} className="group/sql relative">
-                    <CodeBlock className="!bg-transparent !text-inherit border-border/50 rounded-lg">
+                    <CodeBlock className="backdrop-blur-sm !bg-background/60 !text-inherit border-border/50 rounded-lg">
                       <CodeBlockCode
                         code={part.code}
                         language={part.language || "sql"}
@@ -714,24 +714,24 @@ export function AiChatPanel({
 
   const isEmpty = messages.length === 0;
   const hasActiveConnection = Boolean(connectionId);
-  const currentConnectionLabel = contextPreview?.connectionLabel || connectionLabel || connectionId || "Sem conexão";
+  const currentConnectionLabel = contextPreview?.connectionLabel || connectionLabel || connectionId || "No connection";
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
 
   return (
     <div
       className={cn(
-        "flex h-full flex-col overflow-hidden rounded-md bg-background",
+        "relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent",
         "motion-safe:animate-in motion-safe:slide-in-from-right-full",
         "motion-safe:duration-200 motion-safe:ease-out"
       )}
       style={{ width: "100%" }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 h-9 border-b border-border/50 shrink-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <Bot className="size-3.5 text-primary" />
-          <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+      {/* Header — minimal, near-transparent */}
+      <div className="flex items-center justify-between px-2 h-9 shrink-0">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Bot className="size-3.5 text-primary/80" />
+          <span className="text-[10px] font-medium text-foreground/50">
             {currentConnectionLabel}
           </span>
           <DropdownMenu>
@@ -756,71 +756,92 @@ export function AiChatPanel({
                 </Button>
               }
             />
-            <DropdownMenuContent align="start" side="bottom" className="w-[290px]">
-              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                Conversations
+            <DropdownMenuContent align="start" side="bottom" className="w-[290px] p-1">
+              <div className="px-2 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 uppercase">
+                History
               </div>
               <DropdownMenuItem
                 onClick={startNewConversation}
                 disabled={isLoading}
+                className="gap-2 rounded-md my-0.5 active:scale-[0.97] transition-[transform,background] duration-150 ease-out"
               >
                 <Plus className="size-3.5" />
                 New conversation
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="my-1" />
               {conversations.length === 0 ? (
-                <DropdownMenuItem disabled>No conversations yet</DropdownMenuItem>
+                <div className="px-2 py-4 text-center text-xs text-muted-foreground/60">
+                  No conversations yet
+                </div>
               ) : (
-                conversations.map((conversation) => (
-                  <DropdownMenuItem
-                    key={conversation.id}
-                    className="flex items-center justify-between gap-2"
-                    onClick={() => selectConversation(conversation.id)}
-                    disabled={isLoading}
-                  >
-                    <div className="flex min-w-0 flex-col">
-                      <span className="truncate text-xs font-medium">
-                        {conversation.title}
-                      </span>
-                      <span className="truncate text-[10px] text-muted-foreground/90">
-                        {conversation.contextTag?.connectionLabel
-                          || conversation.contextTag?.connectionId
-                          || "Sem conexão"}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {new Intl.DateTimeFormat(undefined, {
-                          month: "2-digit",
-                          day: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        }).format(new Date(conversation.updatedAt))}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {conversation.id === activeConversationId && (
-                        <Check className="size-3 text-primary" />
-                      )}
-                      <button
-                        type="button"
-                        aria-label="Delete conversation"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          deleteConversation(conversation.id);
-                        }}
-                        className="rounded p-1 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
-                        disabled={conversations.length === 1 || isLoading}
+                <div className="max-h-[240px] overflow-y-auto overscroll-contain -mx-1 px-1">
+                  {conversations.map((conversation, index) => {
+                    const isActive = conversation.id === activeConversationId;
+                    return (
+                      <DropdownMenuItem
+                        key={conversation.id}
+                        className={cn(
+                          "flex items-center justify-between gap-2 rounded-md my-0.5 px-2 py-1.5",
+                          "transition-[transform,background] duration-150 ease-out active:scale-[0.97]",
+                          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-1",
+                          isActive && "bg-primary/5",
+                        )}
+                        style={{ animationDelay: `${index * 40}ms`, animationFillMode: "backwards" }}
+                        onClick={() => selectConversation(conversation.id)}
+                        disabled={isLoading}
                       >
-                        <Trash2 className="size-3" />
-                      </button>
-                    </div>
-                  </DropdownMenuItem>
-                ))
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            {isActive && (
+                              <span className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-150" />
+                            )}
+                            <span className={cn(
+                              "truncate text-xs font-medium",
+                              isActive ? "text-foreground" : "text-foreground/80",
+                            )}>
+                              {conversation.title}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 pl-3">
+                            <span className="truncate text-[10px] text-muted-foreground/70">
+                              {conversation.contextTag?.connectionLabel
+                                || conversation.contextTag?.connectionId
+                                || "No connection"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/40">·</span>
+                            <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+                              {new Intl.DateTimeFormat(undefined, {
+                                month: "2-digit",
+                                day: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }).format(new Date(conversation.updatedAt))}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Delete conversation"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            deleteConversation(conversation.id);
+                          }}
+                          className="rounded p-1 text-muted-foreground/50 transition-[color,transform] duration-150 ease-out hover:text-destructive active:scale-[0.93] disabled:opacity-30"
+                          disabled={conversations.length === 1 || isLoading}
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </div>
               )}
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="my-1" />
               <DropdownMenuItem
                 onClick={clearAllConversations}
                 disabled={isLoading || conversations.length === 0}
+                className="gap-2 rounded-md my-0.5 text-muted-foreground active:scale-[0.97] transition-[transform,background] duration-150 ease-out"
               >
                 <Trash2 className="size-3.5" />
                 Clear all
@@ -828,7 +849,7 @@ export function AiChatPanel({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-px">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -837,7 +858,7 @@ export function AiChatPanel({
                   size="icon-xs"
                   onClick={startNewConversation}
                   disabled={isLoading}
-                  className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
+                  className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
                 >
                   <Plus className="size-3.5" />
                 </Button>
@@ -853,7 +874,7 @@ export function AiChatPanel({
                   size="icon-xs"
                   onClick={clearMessages}
                   disabled={isEmpty || isLoading}
-                  className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
+                  className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
                 >
                   <Trash2 className="size-3.5" />
                 </Button>
@@ -869,7 +890,7 @@ export function AiChatPanel({
                     variant="ghost"
                     size="icon-xs"
                     onClick={onClose}
-                    className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
+                    className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
                   >
                     <PanelRight className="size-3.5" />
                   </Button>
@@ -885,7 +906,7 @@ export function AiChatPanel({
       <Conversation className="flex-1 min-h-0" contextRef={conversationRef}>
         <ConversationContent
           key={activeConversationId ?? "no-conversation"}
-          className="flex flex-col gap-0 p-0"
+          className="flex flex-col gap-0 p-0 pb-28"
         >
           {isEmpty ? (
             <ConversationEmptyState>
@@ -925,27 +946,25 @@ export function AiChatPanel({
         <ConversationScrollButton />
       </Conversation>
 
-      {/* Error banner */}
-      {error && (
-        <div className="mx-3 mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
-          {error}
-        </div>
-      )}
-      {!hasActiveConnection && (
-        <div className="mx-3 mb-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-          No momento estou sem conexão ativa. Posso ajudar com SQL conceitual, mas tools SQL ao vivo ficam bloqueadas.
-        </div>
-      )}
-
       {/* Input */}
-      <div className="px-3 py-2 shrink-0">
+      <div className="absolute inset-x-0 bottom-0 z-30 px-3 py-2">
+        {error && (
+          <div className="mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
+            {error}
+          </div>
+        )}
+        {!hasActiveConnection && (
+          <div className="mb-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+            No active connection. I can still help with SQL concepts, but live SQL tools are currently disabled.
+          </div>
+        )}
         <PromptInput
           value={input}
           onValueChange={handleInputChange}
           onSubmit={handleSubmit}
           isLoading={isLoading}
           className={cn(
-            "rounded-md border border-border bg-muted/40 p-2 shadow-none",
+            "relative z-30 rounded-md bg-background/85 p-2 shadow-none backdrop-blur-md",
             "transition-transform duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
             inputPulse && "scale-[1.02]",
           )}

@@ -149,9 +149,10 @@ code {
     @apply border-border;
   }
   html, body {
-    background: transparent !important;
+    background: color-mix(in oklch, var(--background) 25%, transparent) !important;
   }
   body {
+    background: color-mix(in oklch, var(--background) 25%, transparent);
     @apply text-foreground;
   }
   html {

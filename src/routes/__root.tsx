@@ -3,7 +3,6 @@ import {
   Outlet,
   useRouterState,
 } from "@tanstack/react-router";
-import { Bot } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -12,7 +11,6 @@ import { TitleBar } from "@/components/TitleBar";
 import { Toaster } from "@/components/ui/sonner";
 import { TabbedConnectionView } from "@/components/TabbedConnectionView";
 import { AiChatPanel } from "@/components/AiChatPanel";
-import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -181,20 +179,6 @@ function Root() {
                   )}
                 </ResizablePanel>
               </ResizablePanelGroup>
-
-              <div className="absolute right-3 bottom-3 z-40">
-                <Button
-                  type="button"
-                  variant={isAiChatOpen ? "default" : "outline"}
-                  size="sm"
-                  onClick={toggleAiChat}
-                  className="gap-2 shadow-sm"
-                >
-                  <Bot className="size-4" />
-                  AI Chat
-                  <span className="text-[10px] opacity-80">⌘/Ctrl + J</span>
-                </Button>
-              </div>
               </div>
             </div>
           </div>

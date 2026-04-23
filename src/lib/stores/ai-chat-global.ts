@@ -36,11 +36,11 @@ interface AiChatGlobalState {
 const DEFAULT_CONTEXT: AiChatCurrentContext = {
   mode: "global",
   connectionId: null,
-  connectionLabel: "Sem conexão",
+  connectionLabel: "No connection",
   dbType: "postgresql",
   schemaContext: undefined,
   contextPreview: {
-    connectionLabel: "Sem conexão",
+    connectionLabel: "No connection",
     dbType: "postgresql",
     selectionPreview: "",
     errorPreview: "",
