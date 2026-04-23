@@ -5,6 +5,8 @@
  * and select a model. Uses the ai-actions module for IPC calls.
  */
 import {
+  Bookmark,
+  BookmarkCheck,
   Bot,
   Check,
   CheckCircle2,
@@ -14,6 +16,7 @@ import {
   KeyRound,
   Loader2,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -80,6 +83,26 @@ const PROVIDER_ICONS: Record<string, React.ComponentType<{ className?: string }>
   "openai-compatible": OpenAICompatibleIcon,
 };
 
+type ProviderName = "openai" | "anthropic" | "google" | "openai-compatible";
+
+interface SavedProviderProfile {
+  id: string;
+  name: string;
+  provider: ProviderName;
+  model: string;
+  openaiCompatibleBaseURL: string;
+  updatedAt: number;
+}
+
+const PROVIDER_PROFILE_STORAGE_KEY = "tarsdb:ai-provider-profiles:v1";
+
+function isProviderName(value: string): value is ProviderName {
+  return value === "openai"
+    || value === "anthropic"
+    || value === "google"
+    || value === "openai-compatible";
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -94,6 +117,8 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   const [isSavingProvider, setIsSavingProvider] = useState(false);
   const [isSavingModel, setIsSavingModel] = useState(false);
   const [isSavingBaseUrl, setIsSavingBaseUrl] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isApplyingProfileId, setIsApplyingProfileId] = useState<string | null>(null);
 
   // API key state per provider
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
@@ -101,6 +126,8 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   const [isSavingKey, setIsSavingKey] = useState<Record<string, boolean>>({});
   const [modelInput, setModelInput] = useState("");
   const [baseUrlInput, setBaseUrlInput] = useState("");
+  const [profileNameInput, setProfileNameInput] = useState("");
+  const [savedProfiles, setSavedProfiles] = useState<SavedProviderProfile[]>([]);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -122,6 +149,34 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     setBaseUrlInput(settings?.current.openaiCompatibleBaseURL ?? "");
   }, [settings?.current.model, settings?.current.openaiCompatibleBaseURL]);
 
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(PROVIDER_PROFILE_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return;
+      const nextProfiles = parsed.filter((entry): entry is SavedProviderProfile => {
+        if (!entry || typeof entry !== "object") return false;
+        if (!("id" in entry) || !("name" in entry) || !("provider" in entry)) return false;
+        if (!("model" in entry) || !("openaiCompatibleBaseURL" in entry)) return false;
+        return typeof entry.id === "string"
+          && typeof entry.name === "string"
+          && isProviderName(entry.provider)
+          && typeof entry.model === "string"
+          && typeof entry.openaiCompatibleBaseURL === "string"
+          && typeof entry.updatedAt === "number";
+      });
+      setSavedProfiles(nextProfiles.sort((a, b) => b.updatedAt - a.updatedAt));
+    } catch {
+      setSavedProfiles([]);
+    }
+  }, []);
+
+  const persistProfiles = useCallback((profiles: SavedProviderProfile[]) => {
+    setSavedProfiles(profiles);
+    localStorage.setItem(PROVIDER_PROFILE_STORAGE_KEY, JSON.stringify(profiles));
+  }, []);
+
   const configured = useMemo(
     () =>
       (settings?.providers.some((p) => p.hasApiKey) ?? false)
@@ -134,6 +189,17 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
 
   const currentProvider = useMemo(
     () => settings?.providers.find((p) => p.name === settings.current.provider),
+    [settings],
+  );
+
+  const isProfileActive = useCallback(
+    (profile: SavedProviderProfile) =>
+      settings?.current.provider === profile.provider
+      && settings.current.model === profile.model
+      && (
+        profile.provider !== "openai-compatible"
+        || settings.current.openaiCompatibleBaseURL === profile.openaiCompatibleBaseURL
+      ),
     [settings],
   );
 
@@ -211,6 +277,90 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       setIsSavingBaseUrl(false);
     }
   }, [baseUrlInput, loadSettings]);
+
+  const handleSaveProviderProfile = useCallback(async () => {
+    if (!settings) return;
+    const name = profileNameInput.trim();
+    if (!name) {
+      toast.error("Give this provider setup a name");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const profile: SavedProviderProfile = {
+        id: crypto.randomUUID(),
+        name,
+        provider: settings.current.provider as ProviderName,
+        model: settings.current.model,
+        openaiCompatibleBaseURL: settings.current.openaiCompatibleBaseURL,
+        updatedAt: Date.now(),
+      };
+
+      const nameKey = name.toLowerCase();
+      const existing = savedProfiles.find((p) => p.name.toLowerCase() === nameKey);
+      const nextProfiles = existing
+        ? savedProfiles.map((item) =>
+            item.id === existing.id
+              ? { ...profile, id: existing.id }
+              : item,
+          )
+        : [profile, ...savedProfiles];
+
+      const sortedProfiles = nextProfiles.sort((a, b) => b.updatedAt - a.updatedAt);
+      persistProfiles(sortedProfiles);
+      setProfileNameInput("");
+      toast.success(existing ? "Saved profile updated" : "Saved profile created");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }, [profileNameInput, persistProfiles, savedProfiles, settings]);
+
+  const handleApplyProviderProfile = useCallback(
+    async (profile: SavedProviderProfile) => {
+      if (!settings) return;
+      setIsApplyingProfileId(profile.id);
+      try {
+        const selectedProvider = settings.providers.find((p) => p.name === profile.provider);
+        if (!selectedProvider) {
+          toast.error("This provider is no longer available");
+          return;
+        }
+
+        const modelAllowed = profile.provider === "openai-compatible"
+          || selectedProvider.models.some((m) => m.id === profile.model);
+
+        await updateAiSettings({
+          provider: profile.provider,
+          model: modelAllowed ? profile.model : selectedProvider.defaultModel,
+          openaiCompatibleBaseURL: profile.provider === "openai-compatible"
+            ? profile.openaiCompatibleBaseURL
+            : undefined,
+        });
+        await loadSettings();
+
+        if (!modelAllowed) {
+          toast.success("Profile applied with provider default model");
+          return;
+        }
+        toast.success("Profile applied");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to apply profile");
+      } finally {
+        setIsApplyingProfileId(null);
+      }
+    },
+    [loadSettings, settings],
+  );
+
+  const handleDeleteProviderProfile = useCallback(
+    (profileId: string) => {
+      const nextProfiles = savedProfiles.filter((profile) => profile.id !== profileId);
+      persistProfiles(nextProfiles);
+      toast.success("Saved profile removed");
+    },
+    [persistProfiles, savedProfiles],
+  );
 
   // ------- Render -------
 
@@ -317,6 +467,112 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-3">
+        <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          Saved provider setups
+        </Label>
+        <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <Input
+              value={profileNameInput}
+              onChange={(e) => setProfileNameInput(e.target.value)}
+              placeholder="ex: OpenAI fast, Claude review, Local Ollama"
+              className="h-8 text-xs"
+            />
+            <Button
+              type="button"
+              size="sm"
+              disabled={isSavingProfile || !profileNameInput.trim()}
+              onClick={handleSaveProviderProfile}
+              className="h-8 gap-1.5 text-xs transition-transform duration-150 ease-out active:scale-[0.97]"
+            >
+              {isSavingProfile ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Bookmark className="size-3" />
+              )}
+              Save current
+            </Button>
+          </div>
+
+          {savedProfiles.length > 0 ? (
+            <div className="space-y-2">
+              {savedProfiles.map((profile) => {
+                const Icon = PROVIDER_ICONS[profile.provider];
+                const active = isProfileActive(profile);
+                const applying = isApplyingProfileId === profile.id;
+
+                return (
+                  <div
+                    key={profile.id}
+                    className={cn(
+                      "rounded-lg border px-3 py-2.5 transition-colors duration-150",
+                      active
+                        ? "border-primary/30 bg-primary/5"
+                        : "border-border bg-background/60",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          {Icon && <Icon className="size-3.5 shrink-0 text-muted-foreground" />}
+                          <p className="truncate text-xs font-semibold">{profile.name}</p>
+                          {active && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                              <BookmarkCheck className="size-2.5" />
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <p className="truncate font-mono text-[10px] text-muted-foreground">
+                          {profile.provider} · {profile.model}
+                          {profile.provider === "openai-compatible" && profile.openaiCompatibleBaseURL
+                            ? ` · ${profile.openaiCompatibleBaseURL}`
+                            : ""}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          type="button"
+                          variant={active ? "secondary" : "outline"}
+                          size="xs"
+                          disabled={applying}
+                          onClick={() => handleApplyProviderProfile(profile)}
+                          className="transition-transform duration-150 ease-out active:scale-[0.97]"
+                        >
+                          {applying ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            "Apply"
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteProviderProfile(profile.id)}
+                          className="size-7 text-muted-foreground transition-transform duration-150 ease-out active:scale-[0.97] hover:text-destructive"
+                          aria-label={`Delete profile ${profile.name}`}
+                        >
+                          <Trash2 className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              Save your current provider + model setup to switch quickly later.
+            </p>
+          )}
         </div>
       </div>
 

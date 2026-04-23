@@ -59,7 +59,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useAiChat, type AiChatMessage, type TextPart, type ToolInvocationPart } from "@/hooks/useAiChat";
-import { Tool, type ToolPart } from "@/components/ui/tool";
+import { ChatTool, type ChatToolPart } from "@/components/ai-elements/tool";
 import { cn } from "@/utils/tailwind";
 import type { DatabaseType } from "@/ipc/db/types";
 
@@ -216,9 +216,9 @@ function getToolStatus(invocation: ToolCallLike): "running" | "success" | "error
 }
 
 /**
- * Maps a ToolInvocationPart to the shadcn Tool component's ToolPart shape.
+ * Maps a ToolInvocationPart to the ChatTool component's ChatToolPart shape.
  */
-function toToolPart(invocation: ToolCallLike): ToolPart {
+function toChatToolPart(invocation: ToolCallLike): ChatToolPart {
   const status = getToolStatus(invocation);
 
   // Extract error text from result if applicable
@@ -228,8 +228,8 @@ function toToolPart(invocation: ToolCallLike): ToolPart {
     errorText = typeof result.error === "string" ? result.error : undefined;
   }
 
-  // Map invocation state → ToolPart state
-  const state: ToolPart["state"] =
+  // Map invocation state → ChatToolPart state
+  const state: ChatToolPart["state"] =
     invocation.state === "call" ? "input-streaming"
     : invocation.state === "partial-call" ? "input-available"
     : status === "error" ? "output-error"
@@ -383,14 +383,14 @@ function ChatMessage({
                 block.kind === "tool-group" ? (
                   <div key={`tools-${blockIndex}`} className="space-y-2">
                     {block.invocations!.map((tip) => {
-                      const toolPart = toToolPart(tip.toolInvocation);
+                      const chatToolPart = toChatToolPart(tip.toolInvocation);
                       const sqlFromTool = extractSqlSnippet(tip.toolInvocation.result) ?? extractSqlSnippet(tip.toolInvocation.args);
                       return (
                         <div key={tip.toolInvocation.toolCallId}>
-                          <Tool
-                            toolPart={toolPart}
+                          <ChatTool
+                            toolPart={chatToolPart}
                             defaultOpen
-                            className="mt-1 border-border/40 bg-muted/20"
+                            className="mt-1"
                           />
                           {sqlFromTool && onInsertSql && tip.toolInvocation.state === "result" && (
                             <MessageAction
