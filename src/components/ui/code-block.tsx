@@ -39,14 +39,52 @@ function CodeBlockCode({
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
 
   useEffect(() => {
+    const normalizeLanguage = (value: string): string => {
+      const normalized = value.trim().toLowerCase()
+      const aliases: Record<string, string> = {
+        postgres: "sql",
+        postgresql: "sql",
+        mysql: "sql",
+        mariadb: "sql",
+        sqlite: "sql",
+        clickhouse: "sql",
+        shell: "bash",
+        zsh: "bash",
+        sh: "bash",
+        js: "javascript",
+        ts: "typescript",
+        yml: "yaml",
+      }
+      return aliases[normalized] ?? normalized
+    }
+
     async function highlight() {
       if (!code) {
         setHighlightedHtml("<pre><code></code></pre>")
         return
       }
 
-      const html = await codeToHtml(code, { lang: language, theme })
-      setHighlightedHtml(html)
+      const normalizedLanguage = normalizeLanguage(language)
+
+      try {
+        const html = await codeToHtml(code, {
+          lang: normalizedLanguage,
+          theme,
+        })
+        setHighlightedHtml(html)
+      } catch {
+        try {
+          // SQL is the safest fallback for this app context.
+          const sqlFallback = await codeToHtml(code, { lang: "sql", theme })
+          setHighlightedHtml(sqlFallback)
+        } catch {
+          const plaintextFallback = await codeToHtml(code, {
+            lang: "plaintext",
+            theme,
+          })
+          setHighlightedHtml(plaintextFallback)
+        }
+      }
     }
     highlight()
   }, [code, language, theme])
