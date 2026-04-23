@@ -265,8 +265,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
               "transition-colors duration-150",
               isActive
-                ? "text-slate-900 dark:text-foreground"
-                : "text-slate-600 hover:text-slate-900 dark:text-muted-foreground dark:hover:text-foreground",
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground",
               !isActive &&
                 "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60",
               gooeyFilterId &&
@@ -350,7 +350,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               className={cn(
                 "absolute right-1.5 top-[calc(50%-2px)] -translate-y-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 transition-opacity outline-none",
                 "focus-visible:ring-2 focus-visible:ring-ring",
-                "text-slate-500 hover:bg-muted hover:text-slate-900 dark:text-muted-foreground dark:hover:text-foreground",
+                "text-muted-foreground hover:bg-muted hover:text-foreground",
                 "opacity-0 group-hover:opacity-80 hover:!opacity-100 focus-visible:opacity-100",
               )}
               aria-label={`Close ${tab.name}`}

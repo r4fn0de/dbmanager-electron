@@ -6,7 +6,9 @@
  */
 import {
   Bot,
+  Check,
   CheckCircle2,
+  Globe,
   Eye,
   EyeOff,
   KeyRound,
@@ -67,10 +69,15 @@ function GoogleAiIcon({ className }: { className?: string }) {
   );
 }
 
+function OpenAICompatibleIcon({ className }: { className?: string }) {
+  return <Globe className={className} />;
+}
+
 const PROVIDER_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   openai: OpenAiIcon,
   anthropic: AnthropicIcon,
   google: GoogleAiIcon,
+  "openai-compatible": OpenAICompatibleIcon,
 };
 
 // ---------------------------------------------------------------------------
@@ -86,11 +93,14 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProvider, setIsSavingProvider] = useState(false);
   const [isSavingModel, setIsSavingModel] = useState(false);
+  const [isSavingBaseUrl, setIsSavingBaseUrl] = useState(false);
 
   // API key state per provider
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
   const [isSavingKey, setIsSavingKey] = useState<Record<string, boolean>>({});
+  const [modelInput, setModelInput] = useState("");
+  const [baseUrlInput, setBaseUrlInput] = useState("");
 
   const loadSettings = useCallback(async () => {
     try {
@@ -107,8 +117,18 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     loadSettings();
   }, [loadSettings]);
 
+  useEffect(() => {
+    setModelInput(settings?.current.model ?? "");
+    setBaseUrlInput(settings?.current.openaiCompatibleBaseURL ?? "");
+  }, [settings?.current.model, settings?.current.openaiCompatibleBaseURL]);
+
   const configured = useMemo(
-    () => settings?.providers.some((p) => p.hasApiKey) ?? false,
+    () =>
+      (settings?.providers.some((p) => p.hasApiKey) ?? false)
+      || (
+        settings?.current.provider === "openai-compatible"
+        && (settings.current.openaiCompatibleBaseURL?.trim().length ?? 0) > 0
+      ),
     [settings],
   );
 
@@ -128,7 +148,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       try {
         // Switch provider AND reset model to the new provider's default
         await updateAiSettings({
-          provider: providerName as "openai" | "anthropic" | "google",
+          provider: providerName as "openai" | "anthropic" | "google" | "openai-compatible",
           model: newProvider.defaultModel,
         });
         await loadSettings();
@@ -165,7 +185,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       if (!key) return;
       setIsSavingKey((prev) => ({ ...prev, [provider]: true }));
       try {
-        await setAiApiKey(provider as "openai" | "anthropic" | "google", key);
+        await setAiApiKey(provider as "openai" | "anthropic" | "google" | "openai-compatible", key);
         setApiKeyInputs((prev) => ({ ...prev, [provider]: "" }));
         await loadSettings();
         toast.success("API key saved");
@@ -177,6 +197,20 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     },
     [apiKeyInputs, loadSettings],
   );
+
+  const handleSaveBaseUrl = useCallback(async () => {
+    if (!baseUrlInput.trim()) return;
+    setIsSavingBaseUrl(true);
+    try {
+      await updateAiSettings({ openaiCompatibleBaseURL: baseUrlInput.trim() });
+      await loadSettings();
+      toast.success("Base URL updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update Base URL");
+    } finally {
+      setIsSavingBaseUrl(false);
+    }
+  }, [baseUrlInput, loadSettings]);
 
   // ------- Render -------
 
@@ -239,7 +273,11 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
           ) : (
             <>
               <X className="size-4 shrink-0" />
-              <span className="font-medium">Add an API key to enable AI features</span>
+              <span className="font-medium">
+                {settings.current.provider === "openai-compatible"
+                  ? "Set the Base URL to enable OpenAI-compatible provider"
+                  : "Add an API key to enable AI features"}
+              </span>
             </>
           )}
         </div>
@@ -353,7 +391,10 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                 size="xs"
                 onClick={async () => {
                   try {
-                    await setAiApiKey(currentProvider.name as "openai" | "anthropic" | "google", "");
+                    await setAiApiKey(
+                      currentProvider.name as "openai" | "anthropic" | "google" | "openai-compatible",
+                      "",
+                    );
                     await loadSettings();
                     toast.success("API key removed");
                   } catch (err) {
@@ -369,6 +410,43 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
         </div>
       )}
 
+      {currentProvider?.name === "openai-compatible" && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              OpenAI-Compatible Base URL
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="url"
+                placeholder="http://localhost:1234/v1"
+                value={baseUrlInput}
+                onChange={(e) => setBaseUrlInput(e.target.value)}
+                className="h-8 font-mono text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={!baseUrlInput.trim() || isSavingBaseUrl}
+                onClick={handleSaveBaseUrl}
+                className="h-8 gap-1.5 text-xs transition-transform duration-150 ease-out active:scale-[0.97]"
+              >
+                {isSavingBaseUrl ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Check className="size-3" />
+                )}
+                Save
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Exemplo: `http://localhost:1234/v1`
+            </p>
+          </div>
+        </>
+      )}
+
       <Separator />
 
       {/* Model selection */}
@@ -377,23 +455,48 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
           <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
             Model
           </Label>
-          <Select
-            value={settings.current.model}
-            onValueChange={handleModelChange}
-            disabled={isSavingModel || !currentProvider.hasApiKey}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select a model" />
-            </SelectTrigger>
-            <SelectContent>
-              {currentProvider.models.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {!currentProvider.hasApiKey && (
+          {currentProvider.name === "openai-compatible" ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={modelInput}
+                onChange={(e) => setModelInput(e.target.value)}
+                placeholder="Model id (ex: gpt-4o-mini, llama3.1:8b)"
+                className="h-8 font-mono text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={!modelInput.trim() || isSavingModel}
+                onClick={() => handleModelChange(modelInput.trim())}
+                className="h-8 gap-1.5 text-xs transition-transform duration-150 ease-out active:scale-[0.97]"
+              >
+                {isSavingModel ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Check className="size-3" />
+                )}
+                Save
+              </Button>
+            </div>
+          ) : (
+            <Select
+              value={settings.current.model}
+              onValueChange={handleModelChange}
+              disabled={isSavingModel || !currentProvider.hasApiKey}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select a model" />
+              </SelectTrigger>
+              <SelectContent>
+                {currentProvider.models.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {!currentProvider.hasApiKey && currentProvider.name !== "openai-compatible" && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400">
               Add an API key above to enable model selection.
             </p>

@@ -15,6 +15,11 @@ export const AI_IPC_CHANNELS = {
   CHAT_DONE: "ai:chat:done",
   CHAT_ERROR: "ai:chat:error",
   CHAT_ABORT: "ai:chat:abort",
+  INLINE_START: "ai:inline:start",
+  INLINE_CHUNK: "ai:inline:chunk",
+  INLINE_DONE: "ai:inline:done",
+  INLINE_ERROR: "ai:inline:error",
+  INLINE_ABORT: "ai:inline:abort",
 } as const;
 
 export const ENVIRONMENT_VARIABLES = {

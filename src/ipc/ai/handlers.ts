@@ -119,13 +119,41 @@ export const aiUpdateSql = os
     const contextSection = input.context
       ? `\n\nDatabase context:\n${input.context}`
       : "";
+    const fewShotExamples = `
+
+Examples:
+User: "quero ver account e user"
+SQL:
+SELECT a.*, u.name, u.email
+FROM "account" a
+JOIN "user" u ON a.user_id = u.id;
+
+User: "liste pedidos com nome do cliente"
+SQL:
+SELECT o.id, o.created_at, o.total, c.name AS customer_name
+FROM "orders" o
+JOIN "customers" c ON o.customer_id = c.id;
+
+User: "mostre account e user separadamente"
+SQL:
+SELECT * FROM "account";
+SELECT * FROM "user";`;
 
     const { text } = await generateText({
       model,
-      system: `You are a SQL assistant for ${input.dbType}.
-Output ONLY the raw SQL query — no explanations, no markdown (\`\`\`sql), no commentary.
-If the prompt contains multiple queries, handle all of them.
-Preserve the logic of existing queries while applying the requested changes.${contextSection}`,
+      system: `You are a senior SQL assistant for ${input.dbType}.
+Output ONLY raw SQL (no explanations, no markdown, no comments).
+
+Generation rules:
+- If the user references multiple related tables, prefer ONE query with explicit JOINs instead of separate SELECTs.
+- Infer common relationships from context and naming (e.g., <table>_id -> <table>.id) when schema context supports it.
+- Preserve existing SQL intent when editing; apply only requested changes.
+- Use explicit table aliases and explicit JOIN conditions.
+- Prefer a single, runnable query unless the user explicitly asks for multiple queries.
+- Avoid SELECT * when a focused projection is obvious; if the user asks to "see content", SELECT * is acceptable.
+
+If no reliable relationship exists, then use separate queries.
+${fewShotExamples}${contextSection}`,
       prompt: `Original SQL:\n${input.sql}\n\nChange instruction: ${input.prompt}`,
     });
 

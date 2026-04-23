@@ -27,6 +27,27 @@ contextBridge.exposeInMainWorld("electron", {
       return () => ipcRenderer.removeListener(AI_IPC_CHANNELS.CHAT_ERROR, handler);
     },
   },
+
+  // AI inline SQL generation streaming — used by SqlEditor floating prompt
+  aiInline: {
+    start: (input: unknown) => ipcRenderer.send(AI_IPC_CHANNELS.INLINE_START, input),
+    abort: (requestId: string) => ipcRenderer.send(AI_IPC_CHANNELS.INLINE_ABORT, requestId),
+    onChunk: (callback: (chunk: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, chunk: unknown) => callback(chunk);
+      ipcRenderer.on(AI_IPC_CHANNELS.INLINE_CHUNK, handler);
+      return () => ipcRenderer.removeListener(AI_IPC_CHANNELS.INLINE_CHUNK, handler);
+    },
+    onDone: (callback: (result: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, result: unknown) => callback(result);
+      ipcRenderer.on(AI_IPC_CHANNELS.INLINE_DONE, handler);
+      return () => ipcRenderer.removeListener(AI_IPC_CHANNELS.INLINE_DONE, handler);
+    },
+    onError: (callback: (error: { requestId: string; message: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, error: { requestId: string; message: string }) => callback(error);
+      ipcRenderer.on(AI_IPC_CHANNELS.INLINE_ERROR, handler);
+      return () => ipcRenderer.removeListener(AI_IPC_CHANNELS.INLINE_ERROR, handler);
+    },
+  },
 });
 
 window.addEventListener("message", (event) => {

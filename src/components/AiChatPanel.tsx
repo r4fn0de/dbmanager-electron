@@ -6,16 +6,26 @@
  */
 import {
   Bot,
+  Code2,
   Loader2,
   PanelRight,
   Send,
   Square,
   Trash2,
   Wrench,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Message,
+  MessageContent,
+} from "@/components/ui/message";
+import {
+  PromptInput,
+  PromptInputActions,
+  PromptInputTextarea,
+} from "@/components/ui/prompt-input";
 import {
   Tooltip,
   TooltipContent,
@@ -36,6 +46,13 @@ interface AiChatPanelProps {
   dbType: DatabaseType;
   /** Optional schema context (table/column names) */
   schemaContext?: string;
+  /** Compact preview of what editor context will be sent to AI */
+  contextPreview?: {
+    connectionLabel: string;
+    dbType: DatabaseType;
+    selectionPreview?: string;
+    errorPreview?: string;
+  };
   /** Whether the panel is visible */
   isOpen: boolean;
   /** Callback to insert SQL into the editor */
@@ -50,7 +67,7 @@ interface AiChatPanelProps {
 
 function ToolCallBadge({ name }: { name: string }) {
   return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none transition-colors duration-150">
+    <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
       <Wrench className="size-2.5" />
       {name}
     </span>
@@ -65,85 +82,82 @@ function ChatMessage({
   onInsertSql?: (sql: string) => void;
 }) {
   const isUser = message.role === "user";
-  const isAssistant = message.role === "assistant";
 
-  // Extract SQL code blocks from assistant messages
-  const sqlBlocks = isAssistant
-    ? extractSqlBlocks(message.content)
-    : [];
+  // ── User message: right-aligned, no avatar ──
+  if (isUser) {
+    return (
+      <Message className="group/msg w-full px-3 py-2 flex justify-end">
+        <div className="flex max-w-[85%] min-w-0 flex-col items-end">
+          {message.content && (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words rounded-lg bg-muted/40 px-3 py-2">
+              {message.content}
+            </p>
+          )}
+        </div>
+      </Message>
+    );
+  }
+
+  // ── Assistant message: left-aligned ──
+  const sqlBlocks = extractSqlBlocks(message.content);
 
   return (
-    <div
-      className={cn(
-        "group/msg flex gap-2.5 px-3 py-3 transition-colors",
-        isUser ? "bg-muted/20" : "bg-background",
-      )}
-    >
-      {/* Avatar */}
-      <div
-        className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold transition-colors duration-150",
-          isUser
-            ? "bg-foreground/10 text-foreground"
-            : "bg-primary/10 text-primary",
-        )}
-      >
-        {isUser ? "U" : <Bot className="size-3.5" />}
-      </div>
+    <Message className="group/msg w-full px-3 py-2">
+      <div className="min-w-0 flex flex-col gap-1.5">
+          {/* Tool calls */}
+          {message.toolCalls && message.toolCalls.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {message.toolCalls.map((tc, i) => (
+                <ToolCallBadge key={`${tc.toolName}-${i}`} name={tc.toolName} />
+              ))}
+            </div>
+          )}
 
-      {/* Content */}
-      <div className="flex-1 min-w-0 space-y-1.5">
-        {/* Tool calls */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1">
-            {message.toolCalls.map((tc, i) => (
-              <ToolCallBadge key={`${tc.toolName}-${i}`} name={tc.toolName} />
-            ))}
-          </div>
-        )}
+          {/* Message text */}
+          {message.content && (
+            <MessageContent
+              markdown
+              className="!bg-transparent !p-0 text-sm leading-relaxed break-words"
+            >
+              {message.content}
+            </MessageContent>
+          )}
 
-        {/* Message text */}
-        {message.content && (
-          <div className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
-            {message.content}
-          </div>
-        )}
+          {/* Streaming indicator */}
+          {message.isStreaming && !message.content && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Thinking…
+            </div>
+          )}
 
-        {/* Streaming indicator */}
-        {message.isStreaming && !message.content && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" />
-            Thinking…
-          </div>
-        )}
+          {/* Streaming cursor */}
+          {message.isStreaming && message.content && (
+            <span className="ml-0.5 inline-block h-4 w-1.5 rounded-sm bg-primary/60 align-text-bottom motion-safe:animate-pulse" />
+          )}
 
-        {/* Streaming cursor */}
-        {message.isStreaming && message.content && (
-          <span className="inline-block w-1.5 h-4 bg-primary/60 motion-safe:animate-pulse rounded-sm align-text-bottom ml-0.5" />
-        )}
-
-        {/* SQL code blocks with insert action */}
-        {sqlBlocks.length > 0 && onInsertSql && !message.isStreaming && (
-          <div className="mt-2 space-y-1.5">
-            {sqlBlocks.map((sql, i) => (
-              <div key={i} className="group/sql relative">
-                <pre className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-mono overflow-x-auto max-h-32 leading-relaxed">
-                  {sql}
-                </pre>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="absolute top-1 right-1 opacity-0 group-hover/sql:opacity-100 transition-all duration-150 ease-out active:scale-[0.97]"
-                  onClick={() => onInsertSql(sql)}
-                >
-                  Insert
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+          {/* SQL code blocks with insert action */}
+          {sqlBlocks.length > 0 && onInsertSql && !message.isStreaming && (
+            <div className="mt-1 space-y-1.5">
+              {sqlBlocks.map((sql, i) => (
+                <div key={i} className="group/sql relative">
+                  <pre className="max-h-32 overflow-x-auto rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs leading-relaxed">
+                    {sql}
+                  </pre>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="absolute top-1 right-1 opacity-0 transition-all duration-150 ease-out group-hover/sql:opacity-100 active:scale-[0.97]"
+                    onClick={() => onInsertSql(sql)}
+                  >
+                    Insert
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+    </Message>
   );
 }
 
@@ -170,6 +184,7 @@ export function AiChatPanel({
   connectionId,
   dbType,
   schemaContext,
+  contextPreview,
   isOpen,
   onInsertSql,
   onClose,
@@ -182,8 +197,20 @@ export function AiChatPanel({
     });
 
   const [input, setInput] = useState("");
+  const [dismissedContext, setDismissedContext] = useState<{
+    selection: boolean;
+    error: boolean;
+  }>({ selection: false, error: false });
+  const [exitingContext, setExitingContext] = useState<{
+    selection: boolean;
+    error: boolean;
+  }>({ selection: false, error: false });
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const contextDismissTimeoutsRef = useRef<{
+    selection?: ReturnType<typeof setTimeout>;
+    error?: ReturnType<typeof setTimeout>;
+  }>({});
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -195,7 +222,6 @@ export function AiChatPanel({
   // Focus input when panel opens
   useEffect(() => {
     if (isOpen) {
-      // Small delay to allow animation to start
       const timer = setTimeout(() => {
         inputRef.current?.focus();
       }, 50);
@@ -203,14 +229,44 @@ export function AiChatPanel({
     }
   }, [isOpen]);
 
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!input.trim() || isLoading) return;
-      sendMessage(input.trim());
-      setInput("");
-    },
-    [input, isLoading, sendMessage],
+  useEffect(() => {
+    setDismissedContext({ selection: false, error: false });
+    setExitingContext({ selection: false, error: false });
+  }, [contextPreview?.selectionPreview, contextPreview?.errorPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (contextDismissTimeoutsRef.current.selection) {
+        clearTimeout(contextDismissTimeoutsRef.current.selection);
+      }
+      if (contextDismissTimeoutsRef.current.error) {
+        clearTimeout(contextDismissTimeoutsRef.current.error);
+      }
+    };
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    if (!input.trim() || isLoading) return;
+    sendMessage(input.trim());
+    setInput("");
+  }, [input, isLoading, sendMessage]);
+
+  const handleDismissContextChip = useCallback((kind: "selection" | "error") => {
+    setExitingContext((prev) => ({ ...prev, [kind]: true }));
+    const existing = contextDismissTimeoutsRef.current[kind];
+    if (existing) clearTimeout(existing);
+    contextDismissTimeoutsRef.current[kind] = setTimeout(() => {
+      setDismissedContext((prev) => ({ ...prev, [kind]: true }));
+      setExitingContext((prev) => ({ ...prev, [kind]: false }));
+      contextDismissTimeoutsRef.current[kind] = undefined;
+    }, 180);
+  }, []);
+
+  const showSelectionContextChip = Boolean(
+    contextPreview?.selectionPreview && !dismissedContext.selection,
+  );
+  const showErrorContextChip = Boolean(
+    contextPreview?.errorPreview && !dismissedContext.error,
   );
 
   if (!isOpen) return null;
@@ -227,7 +283,7 @@ export function AiChatPanel({
       style={{ width: "100%" }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 shrink-0">
+      <div className="flex items-center justify-between px-3 h-9 border-b border-border/50 shrink-0">
         <div className="flex items-center gap-2">
           <Bot className="size-3.5 text-primary" />
           <span className="text-xs font-semibold tracking-tight">AI Chat</span>
@@ -272,15 +328,14 @@ export function AiChatPanel({
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+          <div className="flex flex-col items-center justify-center h-full px-6 py-8 gap-4">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
               <Bot className="size-5 text-primary" />
             </div>
-            <div className="space-y-1">
+            <div className="text-center space-y-1">
               <p className="text-sm font-medium">AI SQL Assistant</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Ask about your database schema, generate SQL queries,
-                or get help fixing errors.
+                Ask about your database schema, generate queries, or fix errors.
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-1.5 mt-1">
@@ -289,7 +344,7 @@ export function AiChatPanel({
                   key={s}
                   type="button"
                   onClick={() => sendMessage(s)}
-                  className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-all duration-150 ease-out active:scale-[0.97]"
+                  className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground transition-colors duration-150 active:scale-[0.97]"
                 >
                   {s}
                 </button>
@@ -297,7 +352,7 @@ export function AiChatPanel({
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-border/30">
+          <div>
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
@@ -317,41 +372,104 @@ export function AiChatPanel({
       )}
 
       {/* Input */}
-      <div className="px-3 py-2 border-t border-border/50 shrink-0">
-        <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
-          <Input
+      <div className="px-3 py-2 shrink-0">
+        <PromptInput
+          value={input}
+          onValueChange={setInput}
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          disabled={!connectionId}
+          className="rounded-md border border-border bg-muted/40 p-2 shadow-none"
+        >
+          {contextPreview && (showSelectionContextChip || showErrorContextChip) && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {showSelectionContextChip && (
+                <div
+                  className={cn(
+                    "inline-flex max-w-full items-center gap-2 rounded-lg bg-background/70 px-2 py-1 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+                    exitingContext.selection && "-translate-y-1 scale-[0.98] opacity-0",
+                  )}
+                >
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
+                    AI
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[12px] font-medium text-foreground">
+                      {contextPreview.selectionPreview}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">Selected Text</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove selected text context"
+                    className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => handleDismissContextChip("selection")}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              )}
+              {showErrorContextChip && (
+                <div
+                  className={cn(
+                    "inline-flex max-w-full items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+                    exitingContext.error && "-translate-y-1 scale-[0.98] opacity-0",
+                  )}
+                >
+                  <Code2 className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
+                      {contextPreview.errorPreview}
+                    </p>
+                    <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80">Last Error</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove error context"
+                    className="shrink-0 rounded p-0.5 text-amber-700/70 transition-colors hover:text-amber-900 dark:text-amber-300/80 dark:hover:text-amber-200"
+                    onClick={() => handleDismissContextChip("error")}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <PromptInputTextarea
             ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
             placeholder={
               connectionId
                 ? "Ask about your database…"
                 : "Select a connection first"
             }
-            disabled={!connectionId}
-            className="h-8 text-xs"
+            className="max-h-[250px] min-h-[72px] overflow-y-auto p-2 text-sm dark:bg-transparent"
           />
-              {isLoading ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={abort}
-              className="shrink-0 text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
-            >
-              <Square className="size-3.5" />
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!input.trim() || !connectionId}
-              className="shrink-0 transition-transform duration-150 ease-out active:scale-[0.97]"
-            >
-              <Send className="size-3.5" />
-            </Button>
-          )}
-        </form>
+          <PromptInputActions className="justify-end gap-2 px-2 pb-2">
+            {isLoading ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={abort}
+                className="gap-1.5"
+              >
+                <Square className="size-3" />
+                Stop
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="xs"
+                onClick={handleSubmit}
+                disabled={!input.trim() || !connectionId}
+                className="gap-1.5"
+              >
+                Send
+                <Send className="size-3" />
+              </Button>
+            )}
+          </PromptInputActions>
+        </PromptInput>
       </div>
     </div>
   );

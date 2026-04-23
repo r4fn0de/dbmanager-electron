@@ -20,6 +20,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
   useDeferredValue,
@@ -572,6 +573,73 @@ export function TableDataEditor({
 
   const effectiveRowsRef = useRef(effectiveRows);
   effectiveRowsRef.current = effectiveRows;
+
+  // ── Row virtualization ────────────────────────────────────────
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const ROW_HEIGHT = 28; // h-7 ≈ 28px
+  const totalVirtualRows = draftInserts.length + effectiveRows.length;
+  const rowVirtualizer = useVirtualizer({
+    count: totalVirtualRows,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 8,
+  });
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
+  const visibleInsertIndices = useMemo(
+    () => new Set(virtualItems.filter(v => v.index < draftInserts.length).map(v => v.index)),
+    [virtualItems, draftInserts.length],
+  );
+  const visibleEffectiveArrayIndices = useMemo(
+    () =>
+      new Set(
+        virtualItems
+          .filter(v => v.index >= draftInserts.length)
+          .map(v => v.index - draftInserts.length),
+      ),
+    [virtualItems, draftInserts.length],
+  );
+
+  // Memoized visible rows for rendering (preserves original indices)
+  const visibleDraftInserts = useMemo<Array<{ row: RowRecord; insertIndex: number }>>(
+    () => {
+      const result: Array<{ row: RowRecord; insertIndex: number }> = [];
+      for (let i = 0; i < draftInserts.length; i++) {
+        if (visibleInsertIndices.has(i)) {
+          result.push({ row: draftInserts[i], insertIndex: i });
+        }
+      }
+      return result;
+    },
+    [draftInserts, visibleInsertIndices],
+  );
+  const visibleEffectiveRows = useMemo(
+    () => effectiveRows.filter((_, arrayIdx) => visibleEffectiveArrayIndices.has(arrayIdx)),
+    [effectiveRows, visibleEffectiveArrayIndices],
+  );
+
+  const topSpacerHeight = virtualItems.length > 0 ? virtualItems[0].start : 0;
+  const bottomSpacerHeight = virtualItems.length > 0
+    ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+    : 0;
+
+  // Scroll focused cell into view when it moves outside the virtualized range
+  useEffect(() => {
+    if (!focusedCell) return;
+    // Find the virtual index for the focused row
+    const insertPrefix = `insert:`;
+    if (focusedCell.rowKey.startsWith(insertPrefix)) {
+      const insertIdx = Number(focusedCell.rowKey.slice(insertPrefix.length));
+      if (!Number.isNaN(insertIdx)) {
+        rowVirtualizer.scrollToIndex(insertIdx, { align: 'auto' });
+      }
+    } else {
+      const effectiveIdx = effectiveRows.findIndex(r => r.rowKey === focusedCell.rowKey);
+      if (effectiveIdx >= 0) {
+        rowVirtualizer.scrollToIndex(draftInserts.length + effectiveIdx, { align: 'auto' });
+      }
+    }
+  }, [focusedCell, draftInserts.length, effectiveRows, rowVirtualizer]);
 
   const dirtyCounts = useMemo(
     () => ({
@@ -1587,7 +1655,7 @@ export function TableDataEditor({
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="h-full overflow-auto">
+          <div ref={scrollRef} className="h-full overflow-auto">
             <table
               className="w-max table-fixed caption-bottom text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
               onKeyDown={handleTableKeyDown}
@@ -1685,7 +1753,13 @@ export function TableDataEditor({
               </TableRow>
             </TableHeader>
             <TableBody className="align-top">
-              {draftInserts.map((row, insertIndex) => (
+              {/* ── Virtualization: top spacer ────────────────────── */}
+              {topSpacerHeight > 0 && (
+                <tr aria-hidden="true" className="border-0">
+                  <td colSpan={visibleColumns.length + 1} className="border-0 p-0" style={{ height: topSpacerHeight }} />
+                </tr>
+              )}
+              {visibleDraftInserts.map(({ row, insertIndex }) => (
                 <TableRow
                   key={`insert:${insertIndex}`}
                   className="bg-emerald-500/5 hover:bg-emerald-500/10"
@@ -1814,7 +1888,7 @@ export function TableDataEditor({
                 </TableRow>
               ))}
 
-              {effectiveRows.map(({ row, rowKey, index }) => {
+              {visibleEffectiveRows.map(({ row, rowKey, index }) => {
                 const isSelected = selectedRowKeys.has(rowKey);
                 const isRowUpdated = !!draftUpdates[rowKey];
                 const selectionCellBackground = isSelected
@@ -2029,7 +2103,13 @@ export function TableDataEditor({
                 );
               })}
 
-              {effectiveRows.length === 0 && draftInserts.length === 0 && (
+              {/* ── Virtualization: bottom spacer ─────────────────── */}
+              {bottomSpacerHeight > 0 && (
+                <tr aria-hidden="true" className="border-0">
+                  <td colSpan={visibleColumns.length + 1} className="border-0 p-0" style={{ height: bottomSpacerHeight }} />
+                </tr>
+              )}
+              {totalVirtualRows === 0 && (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
                     colSpan={Math.max(visibleColumns.length + 1, 1)}

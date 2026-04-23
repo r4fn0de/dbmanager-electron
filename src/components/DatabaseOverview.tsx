@@ -215,8 +215,11 @@ export function DatabaseOverview({
             <div className="flex items-center gap-2.5 min-w-0">
               {colorBadge && (
                 <span
-                  className="inline-block size-3 rounded-full shrink-0 ring-2 ring-muted-foreground/10"
-                  style={{ backgroundColor: colorBadge }}
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{
+                    backgroundColor: colorBadge,
+                    boxShadow: `0 0 0 2px color-mix(in srgb, ${colorBadge} 30%, transparent)`,
+                  }}
                 />
               )}
               <div className="min-w-0">

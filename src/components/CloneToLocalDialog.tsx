@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -27,9 +25,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Database, Loader2, Check, AlertCircle, XCircle, Table2, FileCode } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Database,
+  HardDrive,
+  Loader2,
+  Table2,
+  FileCode,
+  XCircle,
+} from "lucide-react";
 import type { Connection, TableRowCount } from "@/ipc/db/types";
 import type { CloneToLocalProgress } from "@/hooks/useCloneToLocal";
+import { cn } from "@/utils/tailwind";
+
+// ── Constants ──────────────────────────────────────────────────────────
+
+const POSTGRES_VERSIONS = [
+  { value: "18.3.0", label: "PostgreSQL 18" },
+  { value: "17.9.0", label: "PostgreSQL 17" },
+  { value: "16.13.0", label: "PostgreSQL 16" },
+  { value: "15.17.0", label: "PostgreSQL 15" },
+  { value: "14.22.0", label: "PostgreSQL 14" },
+];
+
+interface TableSelection {
+  schema: string;
+  table: string;
+  rowCount: number;
+  importData: boolean;
+}
+
+// ── Main component ─────────────────────────────────────────────────────
 
 interface CloneToLocalDialogProps {
   isOpen: boolean;
@@ -46,21 +73,6 @@ interface CloneToLocalDialogProps {
   progress: CloneToLocalProgress | null;
   isCloning: boolean;
   error: string | null;
-}
-
-const POSTGRES_VERSIONS = [
-  { value: "18.3.0", label: "PostgreSQL 18" },
-  { value: "17.9.0", label: "PostgreSQL 17" },
-  { value: "16.13.0", label: "PostgreSQL 16" },
-  { value: "15.17.0", label: "PostgreSQL 15" },
-  { value: "14.22.0", label: "PostgreSQL 14" },
-];
-
-interface TableSelection {
-  schema: string;
-  table: string;
-  rowCount: number;
-  importData: boolean;
 }
 
 export function CloneToLocalDialog({
@@ -81,7 +93,6 @@ export function CloneToLocalDialog({
   const [cloneMode, setCloneMode] = useState<"schema_and_data" | "schema_only">("schema_and_data");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // Derived: all selected state based on actual selections
   const selectedCount = useMemo(
     () => tableSelections.filter((t) => t.importData).length,
     [tableSelections],
@@ -94,11 +105,9 @@ export function CloneToLocalDialog({
       setElapsedSeconds(0);
       return;
     }
-
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
-
     return () => clearInterval(timer);
   }, [isCloning]);
 
@@ -161,24 +170,15 @@ export function CloneToLocalDialog({
   );
 
   const formatNumber = (num: number): string => {
-    if (num >= 1_000_000) {
-      return `${(num / 1_000_000).toFixed(1)}M`;
-    }
-    if (num >= 1_000) {
-      return `${(num / 1_000).toFixed(1)}k`;
-    }
+    if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+    if (num >= 1_000) return `${(num / 1_000).toFixed(1)}k`;
     return num.toString();
   };
 
   const getProgressPercentage = () => {
     if (!progress || progress.totalTables === 0) return 0;
-    if (progress.stage === "schema") {
-      // Keep schema phase visibly moving even when source introspection is slow.
-      return Math.min(35, 10 + elapsedSeconds * 0.8);
-    }
-    if (progress.stage === "data") {
-      return 10 + (progress.tablesProcessed / progress.totalTables) * 70;
-    }
+    if (progress.stage === "schema") return Math.min(35, 10 + elapsedSeconds * 0.8);
+    if (progress.stage === "data") return 10 + (progress.tablesProcessed / progress.totalTables) * 70;
     if (progress.stage === "indexes") return 80;
     if (progress.stage === "constraints") return 90;
     if (progress.stage === "complete") return 100;
@@ -190,256 +190,314 @@ export function CloneToLocalDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isCloning && onClose()}>
-      <DialogContent className="sm:max-w-[650px] max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
-            Clone to Local Database
-          </DialogTitle>
-          <DialogDescription>
-            {sourceConnection
-              ? `Clone "${sourceConnection.name}" to a new local database`
-              : "Clone a remote database to your local machine"}
-          </DialogDescription>
-        </DialogHeader>
-
-        {isLoadingSchema ? (
-          <div className="flex flex-col items-center justify-center py-12 space-y-4">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading schema information...</p>
-          </div>
-        ) : isCloning || isComplete || hasError ? (
-          <div className="py-6 space-y-6">
-            {/* Progress Display */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {progress?.stage === "complete"
-                    ? "Clone completed!"
-                    : progress?.stage === "error"
-                      ? "Clone failed"
-                      : progress?.message || "Processing..."}
-                </span>
-                <span className="font-medium">{Math.round(getProgressPercentage())}%</span>
-              </div>
-              <Progress value={getProgressPercentage()} className="h-2" />
-              {isCloning && progress?.stage === "schema" && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  This step can take a while for large databases ({elapsedSeconds}s elapsed).
-                </p>
-              )}
-            </div>
-
-            {/* Status Details */}
-            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Tables:</span>
-                <span className="font-medium">
-                  {progress?.tablesProcessed || 0} / {progress?.totalTables || 0}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Rows imported:</span>
-                <span className="font-medium">{formatNumber(progress?.rowsProcessed || 0)}</span>
-              </div>
-              {progress?.currentTable && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Current table:</span>
-                  <span className="font-medium font-mono">{progress.currentTable}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Error Display */}
-            {hasError && (
-              <div className="bg-destructive/10 text-destructive rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium">Clone failed</p>
-                  <p className="text-sm opacity-90">{error || progress?.message}</p>
-                </div>
-              </div>
+      <DialogContent className="sm:max-w-[520px] max-h-[90vh] p-0 gap-0 flex flex-col">
+        {/* Header — fixed */}
+        <div className="p-5 pb-0 shrink-0">
+          <DialogHeader className="gap-1">
+            <DialogTitle className="flex items-center gap-2">
+              <HardDrive className="size-4 text-muted-foreground" />
+              Clone to Local Database
+            </DialogTitle>
+            {sourceConnection && (
+              <p className="text-xs text-muted-foreground">
+                Source: <span className="font-medium text-foreground">{sourceConnection.name}</span>
+              </p>
             )}
+          </DialogHeader>
+        </div>
 
-            {/* Success Display */}
-            {isComplete && (
-              <div className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-lg p-4 flex items-center gap-3">
-                <Check className="h-5 w-5 shrink-0" />
-                <div>
-                  <p className="font-medium">Database cloned successfully!</p>
-                  <p className="text-sm opacity-90">
-                    {formatNumber(progress?.rowsProcessed || 0)} rows imported across{" "}
-                    {progress?.totalTables} tables.
-                  </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!isCloning && !isComplete && !hasError) handleStartClone();
+          }}
+          className="flex flex-col flex-1 min-h-0"
+        >
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="flex flex-col gap-5 p-5">
+              {isLoadingSchema ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground">Loading schema information...</p>
                 </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4 overflow-hidden flex-1 flex flex-col min-h-0">
-            {/* Target Name */}
-            <div className="space-y-2">
-              <Label htmlFor="targetName">Local Database Name</Label>
-              <Input
-                id="targetName"
-                value={targetName}
-                onChange={(e) => setTargetName(e.target.value)}
-                placeholder="My Cloned Database"
-              />
-            </div>
+              ) : isCloning || isComplete || hasError ? (
+                /* ── Progress phase ─────────────────────────────────── */
+                <div className="flex flex-col gap-4">
+                  {/* Progress bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        {progress?.stage === "complete"
+                          ? "Clone completed!"
+                          : progress?.stage === "error"
+                            ? "Clone failed"
+                            : progress?.message || "Processing..."}
+                      </span>
+                      <span className="font-medium tabular-nums">{Math.round(getProgressPercentage())}%</span>
+                    </div>
+                    <Progress value={getProgressPercentage()} className="h-1.5" />
+                    {isCloning && progress?.stage === "schema" && (
+                      <p className="text-[11px] text-muted-foreground">
+                        This step can take a while for large databases ({elapsedSeconds}s elapsed).
+                      </p>
+                    )}
+                  </div>
 
-            {/* PostgreSQL Version */}
-            <div className="space-y-2">
-              <Label htmlFor="postgresVersion">PostgreSQL Version</Label>
-              <Select value={postgresVersion} onValueChange={(v) => v && setPostgresVersion(v)}>
-                <SelectTrigger id="postgresVersion">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {POSTGRES_VERSIONS.map((v) => (
-                    <SelectItem key={v.value} value={v.value}>
-                      {v.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  {/* Status details */}
+                  <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Tables</span>
+                      <span className="font-medium tabular-nums">
+                        {progress?.tablesProcessed || 0} / {progress?.totalTables || 0}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Rows imported</span>
+                      <span className="font-medium tabular-nums">{formatNumber(progress?.rowsProcessed || 0)}</span>
+                    </div>
+                    {progress?.currentTable && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Current</span>
+                        <span className="font-mono font-medium">{progress.currentTable}</span>
+                      </div>
+                    )}
+                  </div>
 
-            {/* Clone Mode */}
-            <div className="space-y-2">
-              <Label>Clone Mode</Label>
-              <div className="inline-flex w-full rounded-lg border">
-                <button
-                  type="button"
-                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-l-lg px-3 py-2 text-xs font-medium transition-colors ${
-                    cloneMode === "schema_and_data"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background text-muted-foreground hover:bg-muted/50"
-                  }`}
-                  onClick={() => setCloneMode("schema_and_data")}
-                >
-                  <Table2 className="h-3.5 w-3.5" />
-                  Schema + Data
-                </button>
-                <button
-                  type="button"
-                  className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-r-lg px-3 py-2 text-xs font-medium transition-colors border-l ${
-                    cloneMode === "schema_only"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background text-muted-foreground hover:bg-muted/50"
-                  }`}
-                  onClick={() => setCloneMode("schema_only")}
-                >
-                  <FileCode className="h-3.5 w-3.5" />
-                  Schema Only
-                </button>
-              </div>
-            </div>
+                  {/* Error */}
+                  {hasError && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 flex items-start gap-2.5">
+                      <AlertCircle className="size-4 shrink-0 mt-px text-destructive" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-destructive">Clone failed</p>
+                        <p className="text-[11px] text-muted-foreground">{error || progress?.message}</p>
+                      </div>
+                    </div>
+                  )}
 
-            {/* Tables Selection - only visible in schema_and_data mode */}
-            {isSchemaOnly ? (
-              <div className="bg-muted/50 rounded-lg p-3">
-                <p className="text-sm text-muted-foreground">
-                  Only the schema structure (tables, indexes, constraints) will be cloned.
-                  No row data will be imported.
-                </p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
-                  {tableSelections.length} tables will be created.
-                </p>
-              </div>
-            ) : (
-            <div className="space-y-2 flex-1 min-h-0 flex flex-col">
-              <div className="flex items-center justify-between">
-                <Label>Tables to Import</Label>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span>
-                    {selectedCount} of {tableSelections.length} selected
-                  </span>
-                  <span>~{formatNumber(totalRowsToImport)} rows</span>
+                  {/* Success */}
+                  {isComplete && (
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 flex items-start gap-2.5">
+                      <Check className="size-4 shrink-0 mt-px text-emerald-600 dark:text-emerald-400" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                          Database cloned successfully!
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {formatNumber(progress?.rowsProcessed || 0)} rows imported across{" "}
+                          {progress?.totalTables} tables.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                /* ── Form phase ─────────────────────────────────────── */
+                <>
+                  {/* ── Target section ──────────────────────────────── */}
+                  <div className="flex flex-col gap-3.5">
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Target
+                    </span>
 
-              <div className="border rounded-md overflow-hidden flex-1 min-h-0">
-                <div className="bg-muted/50 px-4 py-2 border-b flex items-center gap-3">
-                  <Checkbox
-                    id="selectAll"
-                    checked={allSelected}
-                    onCheckedChange={handleToggleAll}
-                  />
-                  <Label htmlFor="selectAll" className="font-medium cursor-pointer">
-                    Select All
-                  </Label>
-                </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="clone-target-name" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Local Database Name
+                      </Label>
+                      <Input
+                        id="clone-target-name"
+                        value={targetName}
+                        onChange={(e) => setTargetName(e.target.value)}
+                        placeholder="My Cloned Database"
+                        className="h-7"
+                      />
+                    </div>
 
-                <div className="overflow-auto max-h-[250px]">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background">
-                      <TableRow>
-                        <TableHead className="w-[40px]"></TableHead>
-                        <TableHead>Table</TableHead>
-                        <TableHead className="text-right">Rows</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tableSelections.map((table) => (
-                        <TableRow key={`${table.schema}.${table.table}`}>
-                          <TableCell>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="clone-pg-version" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                        PostgreSQL Version
+                      </Label>
+                      <Select value={postgresVersion} onValueChange={(v) => v && setPostgresVersion(v)}>
+                        <SelectTrigger id="clone-pg-version" className="h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {POSTGRES_VERSIONS.map((v) => (
+                            <SelectItem key={v.value} value={v.value}>
+                              {v.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="border-t" />
+
+                  {/* ── Configuration section ──────────────────────── */}
+                  <div className="flex flex-col gap-3.5">
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Configuration
+                    </span>
+
+                    {/* Clone mode — pill-style toggle */}
+                    <div className="flex flex-col gap-1.5">
+                      <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Mode
+                      </Label>
+                      <div className="inline-flex w-full rounded-md border border-border bg-muted/30 p-0.5">
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+                            cloneMode === "schema_and_data"
+                              ? "bg-background text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                          onClick={() => setCloneMode("schema_and_data")}
+                        >
+                          <Table2 className="size-3" />
+                          Schema + Data
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+                            cloneMode === "schema_only"
+                              ? "bg-background text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                          onClick={() => setCloneMode("schema_only")}
+                        >
+                          <FileCode className="size-3" />
+                          Schema Only
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Schema-only notice */}
+                    {isSchemaOnly && (
+                      <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+                        Only the schema structure (tables, indexes, constraints) will be cloned. No row data will be
+                        imported.
+                        <span className="block mt-1">{tableSelections.length} tables will be created.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Tables section (only in schema_and_data mode) ── */}
+                  {!isSchemaOnly && (
+                    <>
+                      <div className="border-t" />
+                      <div className="flex flex-col gap-3.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                            Tables
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {selectedCount}/{tableSelections.length} selected · ~{formatNumber(totalRowsToImport)} rows
+                          </span>
+                        </div>
+
+                        <div className="border rounded-md overflow-hidden">
+                          {/* Select all header */}
+                          <div className="bg-muted/30 px-3 py-1.5 border-b flex items-center gap-2.5">
                             <Checkbox
-                              checked={table.importData}
-                              onCheckedChange={() =>
-                                handleToggleTable(table.schema, table.table)
-                              }
+                              id="clone-select-all"
+                              checked={allSelected}
+                              onCheckedChange={handleToggleAll}
                             />
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-mono text-sm">
-                              <span className="text-muted-foreground">{table.schema}.</span>
-                              {table.table}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
-                            {formatNumber(table.rowCount)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+                            <Label htmlFor="clone-select-all" className="text-[11px] font-medium cursor-pointer">
+                              Select All
+                            </Label>
+                          </div>
+
+                          {/* Table list */}
+                          <div className="overflow-auto max-h-[200px]">
+                            <Table>
+                              <TableHeader className="sticky top-0 bg-background">
+                                <TableRow>
+                                  <TableHead className="w-[32px]" />
+                                  <TableHead className="text-[11px]">Table</TableHead>
+                                  <TableHead className="text-right text-[11px]">Rows</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {tableSelections.map((table) => (
+                                  <TableRow key={`${table.schema}.${table.table}`}>
+                                    <TableCell>
+                                      <Checkbox
+                                        checked={table.importData}
+                                        onCheckedChange={() =>
+                                          handleToggleTable(table.schema, table.table)
+                                        }
+                                      />
+                                    </TableCell>
+                                    <TableCell>
+                                      <span className="font-mono text-[11px]">
+                                        <span className="text-muted-foreground">{table.schema}.</span>
+                                        {table.table}
+                                      </span>
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-[11px] tabular-nums">
+                                      {formatNumber(table.rowCount)}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
+          </div>
+
+          {/* Footer — fixed */}
+          <div className="flex items-center justify-end gap-2 border-t bg-muted/50 px-5 py-3 shrink-0">
+            {isCloning ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={onCancelClone}
+                className="h-7 text-xs gap-1"
+              >
+                <XCircle className="size-3" />
+                Cancel Clone
+              </Button>
+            ) : isComplete || hasError ? (
+              <Button type="button" size="sm" onClick={onClose} className="h-7 text-xs">
+                {hasError ? "Close" : "Done"}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  className="h-7 px-2 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!targetName.trim() || (!isSchemaOnly && selectedCount === 0)}
+                  className="h-7 text-xs gap-1"
+                >
+                  <Database className="size-3" />
+                  {isSchemaOnly ? "Clone Schema Only" : `Clone ${selectedCount} Tables`}
+                </Button>
+              </>
             )}
           </div>
-        )}
-
-        <DialogFooter className="gap-2">
-          {isCloning && (
-            <Button variant="destructive" size="sm" onClick={onCancelClone}>
-              <XCircle className="h-4 w-4 mr-2" />
-              Cancel Clone
-            </Button>
-          )}
-          {!isCloning && !isComplete && !hasError && (
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-          )}
-          {hasError && !isCloning && (
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-          )}
-          {isComplete ? (
-            <Button onClick={onClose}>Done</Button>
-          ) : !isCloning && !hasError ? (
-            <Button
-              onClick={handleStartClone}
-              disabled={!targetName.trim() || (!isSchemaOnly && selectedCount === 0)}
-            >
-              <Database className="h-4 w-4 mr-2" />
-              {isSchemaOnly ? "Clone Schema Only" : `Clone ${selectedCount} Tables`}
-            </Button>
-          ) : null}
-        </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

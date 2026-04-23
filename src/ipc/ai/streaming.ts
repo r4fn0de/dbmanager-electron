@@ -37,17 +37,39 @@ interface ChatStartInput {
   messages: ModelMessage[];
 }
 
+interface InlineGenerateStartInput {
+  /** Unique ID for this inline generation request */
+  requestId: string;
+  /** Database type (postgresql, mysql, etc.) */
+  dbType: DatabaseType;
+  /** Natural language instruction */
+  prompt: string;
+  /** Existing SQL to update (optional) */
+  sql?: string;
+  /** Optional schema context */
+  schemaContext?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Active streams tracking — allows aborting in-progress streams
 // ---------------------------------------------------------------------------
 
 const activeAbortControllers = new Map<string, AbortController>();
+const activeInlineAbortControllers = new Map<string, AbortController>();
 
 function abortStream(chatId: string) {
   const controller = activeAbortControllers.get(chatId);
   if (controller) {
     controller.abort();
     activeAbortControllers.delete(chatId);
+  }
+}
+
+function abortInlineStream(requestId: string) {
+  const controller = activeInlineAbortControllers.get(requestId);
+  if (controller) {
+    controller.abort();
+    activeInlineAbortControllers.delete(requestId);
   }
 }
 
@@ -71,6 +93,7 @@ Current date/time: ${now}
 - Respond in markdown with SQL in code blocks
 - If you're unsure about column names or types, use the columns tool first
 - Prefer incremental/specific changes over rewriting entire queries
+- When the user mentions multiple related tables, prefer a single query with explicit JOINs over separate SELECTs
 - Never drop or truncate data unless the user explicitly requests it`;
 
   if (schemaContext) {
@@ -78,6 +101,46 @@ Current date/time: ${now}
   }
 
   return prompt;
+}
+
+function buildInlineSystemPrompt(dbType: DatabaseType, schemaContext?: string): string {
+  const contextSection = schemaContext
+    ? `\n\nDatabase context:\n${schemaContext}`
+    : "";
+  const fewShotExamples = `
+
+Examples:
+User: "quero ver account e user"
+SQL:
+SELECT a.*, u.name, u.email
+FROM "account" a
+JOIN "user" u ON a.user_id = u.id;
+
+User: "liste pedidos com nome do cliente"
+SQL:
+SELECT o.id, o.created_at, o.total, c.name AS customer_name
+FROM "orders" o
+JOIN "customers" c ON o.customer_id = c.id;
+
+User: "mostre account e user separadamente"
+SQL:
+SELECT * FROM "account";
+SELECT * FROM "user";`;
+
+  return `You are a senior SQL assistant for ${dbType}.
+Output ONLY raw SQL (no explanations, no markdown, no comments).
+
+Generation rules:
+- If the user references multiple related tables, prefer ONE query with explicit JOINs instead of separate SELECTs.
+- Infer common relationships from context and naming (e.g., <table>_id -> <table>.id) when schema context supports it.
+- Preserve existing SQL intent when editing; apply only requested changes.
+- Use explicit table aliases and explicit JOIN conditions.
+- Prefer a single, runnable query unless the user explicitly asks for multiple queries.
+- Avoid SELECT * when a focused projection is obvious; if the user asks to "see content", SELECT * is acceptable.
+
+If no reliable relationship exists, then use separate queries.
+${fewShotExamples}
+${contextSection}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +243,68 @@ async function handleChatStart(
   }
 }
 
+async function handleInlineGenerateStart(
+  window: BrowserWindow,
+  input: InlineGenerateStartInput,
+): Promise<void> {
+  const { requestId, dbType, prompt, sql, schemaContext } = input;
+
+  abortInlineStream(requestId);
+  const abortController = new AbortController();
+  activeInlineAbortControllers.set(requestId, abortController);
+
+  try {
+    const model = getCurrentModel();
+    const sourceSql = sql?.trim() ?? "";
+    const finalPrompt = sourceSql
+      ? `Original SQL:\n${sourceSql}\n\nChange instruction: ${prompt}`
+      : `Generate a SQL query for this instruction: ${prompt}`;
+
+    const result = streamText({
+      model,
+      system: buildInlineSystemPrompt(dbType, schemaContext),
+      prompt: finalPrompt,
+      abortSignal: abortController.signal,
+      experimental_transform: smoothStream({ chunking: "word" }),
+      onChunk(event) {
+        if (event.chunk.type === "text-delta") {
+          window.webContents.send(AI_IPC_CHANNELS.INLINE_CHUNK, {
+            requestId,
+            type: "text",
+            text: event.chunk.text,
+          });
+        }
+      },
+    });
+
+    for await (const _ of result.textStream) {
+      // consumed by loop; chunks are emitted in onChunk
+    }
+
+    const finishReason = await result.finishReason;
+    const usage = await result.usage;
+    window.webContents.send(AI_IPC_CHANNELS.INLINE_DONE, {
+      requestId,
+      finishReason,
+      usage,
+    });
+  } catch (err) {
+    if (abortController.signal.aborted) {
+      return;
+    }
+    const message =
+      err instanceof Error
+        ? err.message
+        : "An unexpected error occurred during inline SQL generation.";
+    window.webContents.send(AI_IPC_CHANNELS.INLINE_ERROR, {
+      requestId,
+      message,
+    });
+  } finally {
+    activeInlineAbortControllers.delete(requestId);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Register IPC listeners — call once from main.ts
 // ---------------------------------------------------------------------------
@@ -204,6 +329,28 @@ export function registerAiStreamingHandlers(): void {
 
   ipcMain.on(AI_IPC_CHANNELS.CHAT_ABORT, (_event, chatId: string) => {
     abortStream(chatId);
+  });
+
+  ipcMain.on(
+    AI_IPC_CHANNELS.INLINE_START,
+    (event: IpcMainEvent, input: InlineGenerateStartInput) => {
+      const window = ipcContext.mainWindow;
+      if (!window) {
+        event.sender.send(AI_IPC_CHANNELS.INLINE_ERROR, {
+          requestId: input.requestId,
+          message: "Main window not available — cannot start inline generation.",
+        });
+        return;
+      }
+
+      handleInlineGenerateStart(window, input).catch((err) => {
+        console.error("[ai] Inline generation stream error:", err);
+      });
+    },
+  );
+
+  ipcMain.on(AI_IPC_CHANNELS.INLINE_ABORT, (_event, requestId: string) => {
+    abortInlineStream(requestId);
   });
 
   console.log("[ai] Streaming chat handlers registered");

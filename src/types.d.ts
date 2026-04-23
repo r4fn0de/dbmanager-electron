@@ -25,6 +25,19 @@ declare global {
         onDone: (callback: (result: { chatId: string; finishReason: string; usage?: unknown }) => void) => () => void;
         onError: (callback: (error: { chatId: string; message: string }) => void) => () => void;
       };
+      aiInline?: {
+        start: (input: {
+          requestId: string;
+          dbType: string;
+          prompt: string;
+          sql?: string;
+          schemaContext?: string;
+        }) => void;
+        abort: (requestId: string) => void;
+        onChunk: (callback: (chunk: AiInlineChunk) => void) => () => void;
+        onDone: (callback: (result: { requestId: string; finishReason: string; usage?: unknown }) => void) => () => void;
+        onError: (callback: (error: { requestId: string; message: string }) => void) => () => void;
+      };
     };
   }
 
@@ -32,4 +45,6 @@ declare global {
     | { chatId: string; type: "text"; text: string }
     | { chatId: string; type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
     | { chatId: string; type: "tool-result"; toolCallId: string; toolName: string; result: unknown };
+
+  type AiInlineChunk = { requestId: string; type: "text"; text: string };
 }

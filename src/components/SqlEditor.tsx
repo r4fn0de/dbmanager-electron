@@ -139,6 +139,11 @@ function hasDangerousSqlKeywords(sql: string): boolean {
   return new RegExp(dangerousKeywordsPattern, "gi").test(uncommentedLines);
 }
 
+function truncateForContext(value: string, max: number): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}\n...[truncated]`;
+}
+
 function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = "";
@@ -350,6 +355,13 @@ export function SqlEditor({
   const editorRef = useRef<MonacoEditor | null>(null);
   const executionAbort = useRef<AbortController | null>(null);
   const monacoResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const monacoSelectionListenerRef = useRef<monaco.IDisposable | null>(null);
+  const monacoContentListenerRef = useRef<monaco.IDisposable | null>(null);
+  const inlineStreamRequestIdRef = useRef<string | null>(null);
+  const inlineStreamTextRef = useRef("");
+  const inlinePreviousSqlRef = useRef("");
+  const inlineStreamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineStartFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track sidebar pixel width in a ref (cheap, no setState) — read on layout change
   const sidebarWidthRef = useRef<number>(0);
 
@@ -359,6 +371,7 @@ export function SqlEditor({
   const [isInlineAiPromptOpen, setIsInlineAiPromptOpen] = useState(false);
   const [inlineAiPrompt, setInlineAiPrompt] = useState("");
   const [isGeneratingInlineAi, setIsGeneratingInlineAi] = useState(false);
+  const [selectedSqlForAi, setSelectedSqlForAi] = useState("");
   // EXPLAIN state (driven by keyboard shortcuts only, no toolbar button)
   const [isExplaining, setIsExplaining] = useState(false);
 
@@ -432,6 +445,49 @@ export function SqlEditor({
     };
   }, [connections, selectedConnection]);
 
+  const aiChatContext = useMemo(() => {
+    const blocks: string[] = [];
+
+    if (schemaContext?.trim()) {
+      blocks.push(`## Database Schema Context\n${schemaContext.trim()}`);
+    }
+
+    blocks.push(
+      `## Editor Context\n- Connection: ${selectedConnectionMeta.label || "none"}\n- Database type: ${dbType}`,
+    );
+
+    if (selectedSqlForAi.trim()) {
+      blocks.push(
+        `## Selected SQL in Editor (Priority)\n${truncateForContext(selectedSqlForAi.trim(), 5000)}`,
+      );
+    }
+
+    if (doc.sql.trim()) {
+      blocks.push(
+        `## Current SQL in Editor\n${truncateForContext(doc.sql.trim(), 12000)}`,
+      );
+    }
+
+    if (lastError?.trim()) {
+      blocks.push(
+        `## Last SQL Error\n${truncateForContext(lastError.trim(), 2500)}`,
+      );
+    }
+
+    return blocks.join("\n\n");
+  }, [schemaContext, selectedConnectionMeta.label, dbType, selectedSqlForAi, doc.sql, lastError]);
+
+  const aiChatContextPreview = useMemo(() => {
+    const selection = selectedSqlForAi.trim();
+    const error = lastError?.trim() ?? "";
+    return {
+      connectionLabel: selectedConnectionMeta.label || "No connection",
+      dbType,
+      selectionPreview: selection ? truncateForContext(selection, 160) : "",
+      errorPreview: error ? truncateForContext(error, 120) : "",
+    };
+  }, [selectedSqlForAi, lastError, selectedConnectionMeta.label, dbType]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run only when the load request key changes.
   useEffect(() => {
     if (!loadRequest) return;
@@ -453,8 +509,23 @@ export function SqlEditor({
     // Clean up on unmount: abort in-flight execution, disconnect Monaco ResizeObserver
     return () => {
       executionAbort.current?.abort();
+      if (inlineStreamTimeoutRef.current) {
+        clearTimeout(inlineStreamTimeoutRef.current);
+        inlineStreamTimeoutRef.current = null;
+      }
+      if (inlineStartFallbackTimeoutRef.current) {
+        clearTimeout(inlineStartFallbackTimeoutRef.current);
+        inlineStartFallbackTimeoutRef.current = null;
+      }
+      if (inlineStreamRequestIdRef.current) {
+        window.electron?.aiInline?.abort(inlineStreamRequestIdRef.current);
+      }
       monacoResizeObserverRef.current?.disconnect();
       monacoResizeObserverRef.current = null;
+      monacoSelectionListenerRef.current?.dispose();
+      monacoSelectionListenerRef.current = null;
+      monacoContentListenerRef.current?.dispose();
+      monacoContentListenerRef.current = null;
     };
   }, []);
 
@@ -504,38 +575,122 @@ export function SqlEditor({
     setDoc((current) => ({ ...current, sql, updatedAt: nowIso() }));
   }, []);
 
+  const clearInlineStreamTimeout = useCallback(() => {
+    if (inlineStreamTimeoutRef.current) {
+      clearTimeout(inlineStreamTimeoutRef.current);
+      inlineStreamTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearInlineStartFallbackTimeout = useCallback(() => {
+    if (inlineStartFallbackTimeoutRef.current) {
+      clearTimeout(inlineStartFallbackTimeoutRef.current);
+      inlineStartFallbackTimeoutRef.current = null;
+    }
+  }, []);
+
+  const fallbackInlineGenerateSql = useCallback(async (
+    requestId: string,
+    prompt: string,
+    sqlSeed: string,
+  ) => {
+    try {
+      const result = await updateSql(sqlSeed, prompt, dbType, schemaContext);
+      if (requestId !== inlineStreamRequestIdRef.current) return;
+
+      clearInlineStreamTimeout();
+      clearInlineStartFallbackTimeout();
+      inlineStreamTextRef.current = result.sql;
+      setSql(result.sql);
+      inlineStreamRequestIdRef.current = null;
+      setIsGeneratingInlineAi(false);
+      setIsInlineAiPromptOpen(false);
+      setInlineAiPrompt("");
+      toast.success("SQL generated with AI");
+    } catch (err) {
+      if (requestId !== inlineStreamRequestIdRef.current) return;
+      clearInlineStreamTimeout();
+      clearInlineStartFallbackTimeout();
+      inlineStreamRequestIdRef.current = null;
+      setIsGeneratingInlineAi(false);
+      setSql(inlinePreviousSqlRef.current);
+      toast.error(err instanceof Error ? err.message : "Failed to generate SQL with AI");
+    }
+  }, [clearInlineStartFallbackTimeout, clearInlineStreamTimeout, dbType, schemaContext, setSql]);
+
+  const scheduleInlineStartFallback = useCallback((
+    requestId: string,
+    prompt: string,
+    sqlSeed: string,
+  ) => {
+    clearInlineStartFallbackTimeout();
+    inlineStartFallbackTimeoutRef.current = setTimeout(() => {
+      if (requestId !== inlineStreamRequestIdRef.current) return;
+      if (inlineStreamTextRef.current.trim().length > 0) return;
+      window.electron?.aiInline?.abort(requestId);
+      void fallbackInlineGenerateSql(requestId, prompt, sqlSeed);
+    }, 4000);
+  }, [clearInlineStartFallbackTimeout, fallbackInlineGenerateSql]);
+
+  const scheduleInlineStreamTimeout = useCallback(() => {
+    clearInlineStreamTimeout();
+    inlineStreamTimeoutRef.current = setTimeout(() => {
+      const requestId = inlineStreamRequestIdRef.current;
+      if (!requestId) return;
+      window.electron?.aiInline?.abort(requestId);
+      const hasPartial = inlineStreamTextRef.current.trim().length > 0;
+      if (!hasPartial) {
+        setSql(inlinePreviousSqlRef.current);
+      }
+      clearInlineStartFallbackTimeout();
+      inlineStreamRequestIdRef.current = null;
+      setIsGeneratingInlineAi(false);
+      toast.error("AI generation timed out. Try a shorter prompt or check provider settings.");
+    }, 30000);
+  }, [clearInlineStartFallbackTimeout, clearInlineStreamTimeout, setSql]);
+
   // AI: Insert SQL into editor (from AI chat) — strip markdown fences if present
   const handleInsertSqlFromAi = useCallback((sql: string) => {
     const cleaned = sql.trim().replace(/^```sql?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
     setSql(cleaned);
   }, [setSql]);
 
-  // AI: inline SQL generation from natural language prompt
+  // AI: inline SQL generation from natural language prompt (streaming)
   const handleGenerateSqlInline = useCallback(async () => {
     const prompt = inlineAiPrompt.trim();
     if (!prompt) return;
+    const aiInline = window.electron?.aiInline;
+    if (!aiInline) {
+      toast.error("AI inline generation is not available");
+      return;
+    }
+    if (isGeneratingInlineAi) return;
 
     setIsGeneratingInlineAi(true);
-    try {
-      const sqlSeed = doc.sql.trim() === DEFAULT_SQL.trim() ? "" : doc.sql;
-      const result = await updateSql(sqlSeed, prompt, dbType, schemaContext);
-      if (result.sql?.trim()) {
-        handleInsertSqlFromAi(result.sql);
-        setIsInlineAiPromptOpen(false);
-        setInlineAiPrompt("");
-        toast.success("SQL generated with AI");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate SQL with AI");
-    } finally {
-      setIsGeneratingInlineAi(false);
-    }
+    const requestId = `inline-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sqlSeed = doc.sql.trim() === DEFAULT_SQL.trim() ? "" : doc.sql;
+    inlineStreamRequestIdRef.current = requestId;
+    inlineStreamTextRef.current = "";
+    inlinePreviousSqlRef.current = doc.sql;
+    setSql("");
+    scheduleInlineStreamTimeout();
+    scheduleInlineStartFallback(requestId, prompt, sqlSeed);
+    aiInline.start({
+      requestId,
+      dbType,
+      prompt,
+      sql: sqlSeed,
+      schemaContext,
+    });
   }, [
     inlineAiPrompt,
+    isGeneratingInlineAi,
     doc.sql,
     dbType,
     schemaContext,
-    handleInsertSqlFromAi,
+    setSql,
+    scheduleInlineStartFallback,
+    scheduleInlineStreamTimeout,
   ]);
 
   useEffect(() => {
@@ -545,6 +700,54 @@ export function SqlEditor({
     });
     return () => cancelAnimationFrame(frame);
   }, [isInlineAiPromptOpen]);
+
+  useEffect(() => {
+    const aiInline = window.electron?.aiInline;
+    if (!aiInline) return;
+
+    const unsubChunk = aiInline.onChunk((chunk: AiInlineChunk) => {
+      if (chunk.requestId !== inlineStreamRequestIdRef.current) return;
+      clearInlineStartFallbackTimeout();
+      scheduleInlineStreamTimeout();
+      inlineStreamTextRef.current += chunk.text;
+      setSql(inlineStreamTextRef.current);
+    });
+
+    const unsubDone = aiInline.onDone(({ requestId }) => {
+      if (requestId !== inlineStreamRequestIdRef.current) return;
+      clearInlineStartFallbackTimeout();
+      clearInlineStreamTimeout();
+      inlineStreamRequestIdRef.current = null;
+      setIsGeneratingInlineAi(false);
+      setIsInlineAiPromptOpen(false);
+      setInlineAiPrompt("");
+      toast.success("SQL generated with AI");
+    });
+
+    const unsubError = aiInline.onError(({ requestId, message }) => {
+      if (requestId !== inlineStreamRequestIdRef.current) return;
+      clearInlineStartFallbackTimeout();
+      clearInlineStreamTimeout();
+      const hasPartial = inlineStreamTextRef.current.trim().length > 0;
+      if (!hasPartial) {
+        setSql(inlinePreviousSqlRef.current);
+      }
+      inlineStreamRequestIdRef.current = null;
+      setIsGeneratingInlineAi(false);
+      toast.error(message || "Failed to generate SQL with AI");
+    });
+
+    return () => {
+      unsubChunk();
+      unsubDone();
+      unsubError();
+    };
+  }, [
+    clearInlineStartFallbackTimeout,
+    clearInlineStreamTimeout,
+    scheduleInlineStreamTimeout,
+    setSql,
+  ]);
 
   // ── Format SQL (Prettify) — driven by keyboard shortcut only (⌘⇧F), no toolbar button ──
   const handleFormatSql = useCallback(() => {
@@ -874,6 +1077,18 @@ export function SqlEditor({
   const handleEditorMount = useCallback<OnMount>((mounted) => {
     editorRef.current = mounted;
 
+    const syncSelectedSql = () => {
+      const selection = mounted.getSelection();
+      const model = mounted.getModel();
+      if (!selection || !model) {
+        setSelectedSqlForAi("");
+        return;
+      }
+      const selected = model.getValueInRange(selection).trim();
+      setSelectedSqlForAi(selected.length > 0 ? selected : "");
+    };
+    syncSelectedSql();
+
     // ResizeObserver + RAF-throttled layout() replaces automaticLayout:true polling.
     // automaticLayout uses a 100ms MutationObserver that triggers relayout on every
     // DOM mutation during resize — very expensive. ResizeObserver only fires when the
@@ -891,6 +1106,15 @@ export function SqlEditor({
       observer.observe(container);
       monacoResizeObserverRef.current = observer;
     }
+
+    monacoSelectionListenerRef.current?.dispose();
+    monacoSelectionListenerRef.current = mounted.onDidChangeCursorSelection(() => {
+      syncSelectedSql();
+    });
+    monacoContentListenerRef.current?.dispose();
+    monacoContentListenerRef.current = mounted.onDidChangeModelContent(() => {
+      syncSelectedSql();
+    });
 
     // Register Monaco editor actions (format, explain)
     // These use refs to avoid stale closures — the actual handler logic lives in the callbacks above.
@@ -1208,7 +1432,7 @@ export function SqlEditor({
           <ResizablePanel id="sql-editor-main" defaultSize={`${100 - AI_CHAT_DEFAULT_SIZE}%`} minSize="40%" className="min-h-0 min-w-0">
           <div className="h-full min-w-0 flex flex-col">
           {/* ── Editor toolbar (single row) ──────────────────── */}
-          <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1">
+          <div className="flex items-center gap-2 border-b border-border/50 px-3 h-9">
             {/* Query title */}
             <Input
               className="h-7 w-[180px] rounded-md border-0 bg-transparent px-1.5 font-medium text-sm hover:bg-muted/60 focus:bg-muted focus-visible:ring-0 transition-colors"
@@ -1395,14 +1619,14 @@ export function SqlEditor({
                 options={MONACO_OPTIONS}
               />
 
-              {isEditorEmpty && (
-                <div className="pointer-events-none absolute left-[44px] top-[13px] z-10 text-xs text-muted-foreground">
+              {isEditorEmpty && !isInlineAiPromptOpen && (
+                <div className="pointer-events-none absolute left-[70px] top-[12px] z-10 font-mono text-sm leading-5 text-muted-foreground/40">
                   <span className="pointer-events-auto">
                     Type SQL or{" "}
                     <button
                       type="button"
                       onClick={() => setIsInlineAiPromptOpen(true)}
-                      className="font-medium text-primary hover:underline"
+                      className="font-medium text-primary/60 hover:text-primary hover:underline"
                     >
                       Generate with AI...
                     </button>
@@ -1411,52 +1635,73 @@ export function SqlEditor({
               )}
 
               {isInlineAiPromptOpen && (
-                <div className="absolute left-[44px] top-[34px] z-20 w-[min(680px,calc(100%-56px))] rounded-xl border border-primary/35 bg-background/95 px-2.5 py-2 shadow-lg backdrop-blur">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      ref={inlineAiInputRef}
-                      value={inlineAiPrompt}
-                      onChange={(e) => setInlineAiPrompt(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") {
+                <div className="absolute left-[44px] top-[34px] z-20 w-[min(560px,calc(100%-56px))] rounded-lg border border-border/60 bg-background/95 px-2.5 py-2 shadow-lg backdrop-blur-sm">
+                  {isGeneratingInlineAi ? (
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+                      <span className="flex-1 truncate text-xs text-muted-foreground">
+                        Generating…
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          if (!inlineStreamRequestIdRef.current) return;
+                          window.electron?.aiInline?.abort(inlineStreamRequestIdRef.current);
+                          inlineStreamRequestIdRef.current = null;
+                          clearInlineStartFallbackTimeout();
+                          clearInlineStreamTimeout();
+                          setIsGeneratingInlineAi(false);
+                          setSql(inlinePreviousSqlRef.current);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        ref={inlineAiInputRef}
+                        value={inlineAiPrompt}
+                        onChange={(e) => setInlineAiPrompt(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            setIsInlineAiPromptOpen(false);
+                            setInlineAiPrompt("");
+                            return;
+                          }
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleGenerateSqlInline();
+                          }
+                        }}
+                        placeholder="Describe the SQL query you want to run..."
+                        className="h-7 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => void handleGenerateSqlInline()}
+                        disabled={!inlineAiPrompt.trim()}
+                      >
+                        <ArrowRightCircle className="size-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => {
                           setIsInlineAiPromptOpen(false);
                           setInlineAiPrompt("");
-                          return;
-                        }
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void handleGenerateSqlInline();
-                        }
-                      }}
-                      placeholder="Describe the SQL query you want to run..."
-                      className="h-8 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => void handleGenerateSqlInline()}
-                      disabled={!inlineAiPrompt.trim() || isGeneratingInlineAi}
-                    >
-                      {isGeneratingInlineAi ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : (
-                        <ArrowRightCircle className="size-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() => {
-                        setIsInlineAiPromptOpen(false);
-                        setInlineAiPrompt("");
-                      }}
-                      disabled={isGeneratingInlineAi}
-                    >
-                      <X className="size-3.5" />
-                    </Button>
-                  </div>
+                        }}
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
               </div>
@@ -1553,7 +1798,8 @@ export function SqlEditor({
               <AiChatPanel
                 connectionId={selectedConnection}
                 dbType={dbType}
-                schemaContext={schemaContext}
+                schemaContext={aiChatContext}
+                contextPreview={aiChatContextPreview}
                 isOpen={isAiChatOpen}
                 onInsertSql={handleInsertSqlFromAi}
                 onClose={() => {
