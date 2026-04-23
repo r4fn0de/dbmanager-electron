@@ -1,4 +1,5 @@
 import {
+  ArrowRightCircle,
   Bot,
   Clock,
   FileCode2,
@@ -40,7 +41,7 @@ import {
   type SqlHistoryEntry,
   type SqlSavedQuery,
 } from "@/hooks/useSqlWorkspace";
-import { fixSql } from "@/hooks/ai-actions";
+import { fixSql, updateSql } from "@/hooks/ai-actions";
 import { formatDuration } from "@/lib/utils";
 import {
   buildExplainSql,
@@ -345,6 +346,7 @@ export function SqlEditor({
   const monacoTheme = resolvedTheme === "dark" ? "vs-dark" : "vs";
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineAiInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<MonacoEditor | null>(null);
   const executionAbort = useRef<AbortController | null>(null);
   const monacoResizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -354,6 +356,9 @@ export function SqlEditor({
   // AI panel state
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [isFixingSql, setIsFixingSql] = useState(false);
+  const [isInlineAiPromptOpen, setIsInlineAiPromptOpen] = useState(false);
+  const [inlineAiPrompt, setInlineAiPrompt] = useState("");
+  const [isGeneratingInlineAi, setIsGeneratingInlineAi] = useState(false);
   // EXPLAIN state (driven by keyboard shortcuts only, no toolbar button)
   const [isExplaining, setIsExplaining] = useState(false);
 
@@ -490,6 +495,11 @@ export function SqlEditor({
     };
   }, [runResults]);
 
+  const isEditorEmpty = useMemo(
+    () => doc.sql.trim().length === 0,
+    [doc.sql],
+  );
+
   const setSql = useCallback((sql: string) => {
     setDoc((current) => ({ ...current, sql, updatedAt: nowIso() }));
   }, []);
@@ -499,6 +509,42 @@ export function SqlEditor({
     const cleaned = sql.trim().replace(/^```sql?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
     setSql(cleaned);
   }, [setSql]);
+
+  // AI: inline SQL generation from natural language prompt
+  const handleGenerateSqlInline = useCallback(async () => {
+    const prompt = inlineAiPrompt.trim();
+    if (!prompt) return;
+
+    setIsGeneratingInlineAi(true);
+    try {
+      const sqlSeed = doc.sql.trim() === DEFAULT_SQL.trim() ? "" : doc.sql;
+      const result = await updateSql(sqlSeed, prompt, dbType, schemaContext);
+      if (result.sql?.trim()) {
+        handleInsertSqlFromAi(result.sql);
+        setIsInlineAiPromptOpen(false);
+        setInlineAiPrompt("");
+        toast.success("SQL generated with AI");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate SQL with AI");
+    } finally {
+      setIsGeneratingInlineAi(false);
+    }
+  }, [
+    inlineAiPrompt,
+    doc.sql,
+    dbType,
+    schemaContext,
+    handleInsertSqlFromAi,
+  ]);
+
+  useEffect(() => {
+    if (!isInlineAiPromptOpen) return;
+    const frame = requestAnimationFrame(() => {
+      inlineAiInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isInlineAiPromptOpen]);
 
   // ── Format SQL (Prettify) — driven by keyboard shortcut only (⌘⇧F), no toolbar button ──
   const handleFormatSql = useCallback(() => {
@@ -1310,7 +1356,7 @@ export function SqlEditor({
           >
             <ResizablePanel id="sql-editor-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
               <div
-                className="h-full min-h-0"
+                className="h-full min-h-0 relative"
                 onDragOver={(e) => {
                   if (e.dataTransfer?.types.includes("text/sql-table-ref")) {
                     e.preventDefault();
@@ -1348,6 +1394,71 @@ export function SqlEditor({
                 theme={monacoTheme}
                 options={MONACO_OPTIONS}
               />
+
+              {isEditorEmpty && (
+                <div className="pointer-events-none absolute left-[44px] top-[13px] z-10 text-xs text-muted-foreground">
+                  <span className="pointer-events-auto">
+                    Type SQL or{" "}
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineAiPromptOpen(true)}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Generate with AI...
+                    </button>
+                  </span>
+                </div>
+              )}
+
+              {isInlineAiPromptOpen && (
+                <div className="absolute left-[44px] top-[34px] z-20 w-[min(680px,calc(100%-56px))] rounded-xl border border-primary/35 bg-background/95 px-2.5 py-2 shadow-lg backdrop-blur">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      ref={inlineAiInputRef}
+                      value={inlineAiPrompt}
+                      onChange={(e) => setInlineAiPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setIsInlineAiPromptOpen(false);
+                          setInlineAiPrompt("");
+                          return;
+                        }
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void handleGenerateSqlInline();
+                        }
+                      }}
+                      placeholder="Describe the SQL query you want to run..."
+                      className="h-8 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => void handleGenerateSqlInline()}
+                      disabled={!inlineAiPrompt.trim() || isGeneratingInlineAi}
+                    >
+                      {isGeneratingInlineAi ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <ArrowRightCircle className="size-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => {
+                        setIsInlineAiPromptOpen(false);
+                        setInlineAiPrompt("");
+                      }}
+                      disabled={isGeneratingInlineAi}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
