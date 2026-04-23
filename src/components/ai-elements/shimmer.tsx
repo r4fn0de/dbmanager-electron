@@ -1,3 +1,4 @@
+"use no memo"
 import { cn } from "@/utils/tailwind";
 import type { MotionProps } from "motion/react";
 import { motion } from "motion/react";

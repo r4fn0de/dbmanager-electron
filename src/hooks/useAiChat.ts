@@ -13,10 +13,36 @@ export interface AiChatContextTag {
   dbType?: DatabaseType;
 }
 
+// ── Parts-based message model (mirrors AI SDK UIMessage.parts) ──
+
+/** A text segment produced by the assistant. */
+export interface TextPart {
+  type: "text";
+  text: string;
+}
+
+/** A tool invocation within an assistant message (call + optional result). */
+export interface ToolInvocationPart {
+  type: "tool-invocation";
+  toolInvocation: {
+    toolCallId: string;
+    toolName: string;
+    args: unknown;
+    result?: unknown;
+    state: "call" | "partial-call" | "result";
+  };
+}
+
+/** Union of all part types that can appear in an assistant message. */
+export type AiChatMessagePart = TextPart | ToolInvocationPart;
+
 export interface AiChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
+  /** Legacy flat text content — kept for storage compat and copy operations. */
   content: string;
+  /** Structured parts (AI SDK UIMessage.parts pattern). */
+  parts?: AiChatMessagePart[];
   createdAt?: string;
   contextTag?: AiChatContextTag;
   /** Optional context snapshot attached to a user message */
@@ -24,13 +50,6 @@ export interface AiChatMessage {
     selectionPreview?: string;
     errorPreview?: string;
   };
-  /** Tool calls made by the assistant during this message */
-  toolCalls?: Array<{
-    toolCallId: string;
-    toolName: string;
-    input: unknown;
-    result?: unknown;
-  }>;
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
 }
@@ -144,8 +163,65 @@ function toPersistedMessage(message: AiChatMessage): AiChatMessage {
 }
 
 function toStorageMessage(message: AiChatMessage): AiChatMessage {
-  const { isStreaming: _isStreaming, ...rest } = message;
-  return rest;
+  // Strip isStreaming (runtime-only) and any legacy toolCalls that may have
+  // been loaded from v2 storage so they aren't written back.
+  const { isStreaming: _isStreaming, ...rest } = message as LegacyAiChatMessage;
+  const { toolCalls: _toolCalls, ...clean } = rest;
+  return clean as AiChatMessage;
+}
+
+/**
+ * Shape of a message as stored in v2 localStorage (may contain legacy toolCalls).
+ * Used only inside ensureParts for safe access to pre-migration data.
+ */
+interface LegacyAiChatMessage extends AiChatMessage {
+  /** Removed from the public type; may still exist in stored JSON. */
+  toolCalls?: Array<{
+    toolCallId: string;
+    toolName: string;
+    input: unknown;
+    result?: unknown;
+  }>;
+}
+
+/**
+ * Reconstruct parts[] from legacy content + toolCalls for v2 storage
+ * messages that were saved before the parts migration.
+ */
+export function ensureParts(message: AiChatMessage): AiChatMessage {
+  if (message.parts && message.parts.length > 0) return message;
+
+  const parts: AiChatMessagePart[] = [];
+
+  // Convert legacy toolCalls into tool-invocation parts.
+  // Cast through LegacyAiChatMessage for safe access to pre-migration data.
+  const legacy = message as LegacyAiChatMessage;
+  if (legacy.toolCalls && legacy.toolCalls.length > 0) {
+    for (const tc of legacy.toolCalls) {
+      parts.push({
+        type: "tool-invocation",
+        toolInvocation: {
+          toolCallId: tc.toolCallId,
+          toolName: tc.toolName,
+          args: tc.input,
+          result: tc.result,
+          state: tc.result !== undefined ? "result" : "call",
+        },
+      });
+    }
+  }
+
+  // Add text part from content if non-empty
+  if (message.content) {
+    parts.push({ type: "text", text: message.content });
+  }
+
+  // Ensure at least one text part for empty assistant messages
+  if (parts.length === 0 && message.role === "assistant") {
+    parts.push({ type: "text", text: "" });
+  }
+
+  return { ...message, parts };
 }
 
 function trimConversationMessages(messages: AiChatMessage[]): AiChatMessage[] {
@@ -344,7 +420,7 @@ export function useAiChat({
   const messages = useMemo(() => {
     if (!activeConversationId) return [];
     const active = conversations.find((conversation) => conversation.id === activeConversationId);
-    return active?.messages ?? [];
+    return active?.messages.map(ensureParts) ?? [];
   }, [activeConversationId, conversations]);
 
   const updateConversationById = useCallback(
@@ -446,9 +522,18 @@ export function useAiChat({
           return {
             ...conversation,
             updatedAt: toIsoNow(),
-            messages: conversation.messages.map((msg) =>
-              msg.id === id ? { ...msg, content: msg.content + chunk.text } : msg,
-            ),
+            messages: conversation.messages.map((msg) => {
+              if (msg.id !== id) return msg;
+              const parts = [...(msg.parts ?? [])];
+              // Append to the last text part, or create a new one
+              const lastPart = parts[parts.length - 1];
+              if (lastPart?.type === "text") {
+                parts[parts.length - 1] = { ...lastPart, text: lastPart.text + chunk.text };
+              } else {
+                parts.push({ type: "text", text: chunk.text });
+              }
+              return { ...msg, content: msg.content + chunk.text, parts };
+            }),
           };
         });
       } else if (chunk.type === "tool-call") {
@@ -458,21 +543,20 @@ export function useAiChat({
           return {
             ...conversation,
             updatedAt: toIsoNow(),
-            messages: conversation.messages.map((msg) =>
-              msg.id === id
-                ? {
-                    ...msg,
-                    toolCalls: [
-                      ...(msg.toolCalls ?? []),
-                      {
-                        toolCallId: chunk.toolCallId,
-                        toolName: chunk.toolName,
-                        input: chunk.input,
-                      },
-                    ],
-                  }
-                : msg,
-            ),
+            messages: conversation.messages.map((msg) => {
+              if (msg.id !== id) return msg;
+              const parts = [...(msg.parts ?? [])];
+              parts.push({
+                type: "tool-invocation",
+                toolInvocation: {
+                  toolCallId: chunk.toolCallId,
+                  toolName: chunk.toolName,
+                  args: chunk.input,
+                  state: "call",
+                },
+              });
+              return { ...msg, parts };
+            }),
           };
         });
       } else if (chunk.type === "tool-result") {
@@ -483,13 +567,24 @@ export function useAiChat({
             ...conversation,
             updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
-              if (msg.id !== id || !msg.toolCalls) return msg;
-              const updated = [...msg.toolCalls];
-              const callIdx = updated.findIndex((call) => call.toolCallId === chunk.toolCallId);
-              if (callIdx >= 0) {
-                updated[callIdx] = { ...updated[callIdx], result: chunk.result };
-              }
-              return { ...msg, toolCalls: updated };
+              if (msg.id !== id) return msg;
+              const parts = (msg.parts ?? []).map((part) => {
+                if (
+                  part.type === "tool-invocation"
+                  && part.toolInvocation.toolCallId === chunk.toolCallId
+                ) {
+                  return {
+                    ...part,
+                    toolInvocation: {
+                      ...part.toolInvocation,
+                      result: chunk.result,
+                      state: "result" as const,
+                    },
+                  };
+                }
+                return part;
+              });
+              return { ...msg, parts };
             }),
           };
         });
@@ -600,6 +695,7 @@ export function useAiChat({
         id: nextId(),
         role: "assistant",
         content: "",
+        parts: [],
         createdAt: now,
         contextTag,
         isStreaming: true,
@@ -616,12 +712,28 @@ export function useAiChat({
       setIsLoading(true);
 
       // Always compute model messages from latest in-memory conversation state.
+      // Include contextSnapshot (selection/error) in user message content
+      // so the AI model actually sees what the user selected/errored on.
       const coreMessages = [...activeConversation.messages, userMsg]
         .filter((message) => message.role !== "system")
-        .map((message) => ({
-          role: message.role,
-          content: message.content,
-        }));
+        .map((message) => {
+          let content = message.content;
+          // Inject context snapshot into the message content for the AI model
+          if (message.contextSnapshot) {
+            const snapshot = message.contextSnapshot;
+            const contextParts: string[] = [];
+            if (snapshot.selectionPreview) {
+              contextParts.push(`[Selected text in editor]\n${snapshot.selectionPreview}`);
+            }
+            if (snapshot.errorPreview) {
+              contextParts.push(`[Last error in editor]\n${snapshot.errorPreview}`);
+            }
+            if (contextParts.length > 0) {
+              content = `${contextParts.join("\n\n")}\n\n${content}`;
+            }
+          }
+          return { role: message.role, content };
+        });
 
       aiChat.start({
         chatId: chatIdRef.current,

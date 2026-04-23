@@ -60,7 +60,7 @@ export function SettingsDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger>
-        <span className="inline-flex size-9 cursor-pointer items-center justify-center rounded-md text-foreground/75 transition-colors duration-150 hover:text-foreground hover:bg-muted/60 active:scale-[0.97]">
+        <span className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-default active:scale-[0.97]">
           <Cog className="size-4" />
         </span>
       </DialogTrigger>

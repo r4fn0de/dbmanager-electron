@@ -77,12 +77,12 @@ export function TitleBar() {
   if (platform === "macos") {
     return (
       <div className="z-50 select-none">
-        <div className="h-10 bg-transparent flex items-center pr-3">
+        <div className="h-10 bg-transparent flex items-center pr-1">
           <div className="w-[78px] shrink-0 h-full draglayer" />
           {tabsSlot}
-          <div className="ml-auto flex items-center no-drag pl-2">
+          <div className="ml-auto flex items-center no-drag pl-0">
             <SettingsDialog />
-            <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors" />
+            <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-default" />
           </div>
         </div>
       </div>
@@ -101,9 +101,9 @@ export function TitleBar() {
         </div>
 
         <div className="flex items-center shrink-0 no-drag">
-          <div className="flex items-center px-2 gap-0.5">
+          <div className="flex items-center px-0 gap-0.5">
             <SettingsDialog />
-            <ThemeToggle className="inline-flex size-8 items-center justify-center rounded-none text-foreground/75 hover:text-foreground hover:bg-muted transition-colors" />
+            <ThemeToggle className="inline-flex size-8 items-center justify-center rounded-none text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-default" />
           </div>
           <Button
             variant="ghost"

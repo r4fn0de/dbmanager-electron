@@ -5,10 +5,8 @@
  * Uses the useAiChat hook to manage streaming chat over Electron IPC.
  */
 import {
-  AlertCircle,
   Bot,
   Check,
-  CircleDashed,
   ChevronDown,
   Copy,
   Code2,
@@ -17,7 +15,6 @@ import {
   Send,
   Square,
   Trash2,
-  Wrench,
   X,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -33,10 +30,10 @@ import {
 } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { StickToBottomContext } from "use-stick-to-bottom";
 import { Button } from "@/components/ui/button";
-import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
+import { CodeBlockCode } from "@/components/ui/code-block";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,7 +58,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAiChat, type AiChatMessage } from "@/hooks/useAiChat";
+import { useAiChat, type AiChatMessage, type TextPart, type ToolInvocationPart } from "@/hooks/useAiChat";
+import { Tool, type ToolPart } from "@/components/ui/tool";
 import { cn } from "@/utils/tailwind";
 import type { DatabaseType } from "@/ipc/db/types";
 
@@ -99,24 +97,83 @@ interface AiChatPanelProps {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-type ToolCallLike = NonNullable<AiChatMessage["toolCalls"]>[number];
+type ToolCallLike = ToolInvocationPart["toolInvocation"];
 
-function stringifyPayload(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
+/**
+ * Enhanced code block for assistant messages.
+ * Adds language label, copy button, and optional Insert SQL button.
+ */
+function AssistantCodeBlock({
+  code,
+  language,
+  codeTheme,
+  onInsertSql,
+  isStreaming,
+}: {
+  code: string;
+  language?: string;
+  codeTheme: string;
+  onInsertSql?: (sql: string) => void;
+  isStreaming?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const displayLang = language?.trim() || "sql";
+  const isSqlLike = /^(sql|postgres|postgresql|mysql|mariadb|sqlite|clickhouse)$/i.test(displayLang);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <div className="group/code relative overflow-hidden rounded-lg border border-border/40 bg-background/60 backdrop-blur-sm">
+      {/* Header bar */}
+      <div className="flex items-center justify-between border-b border-border/30 bg-muted/30 px-3 py-1">
+        <span className="text-[11px] font-medium text-muted-foreground/80">{displayLang}</span>
+        <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-hover/code:opacity-100 group-focus-within/code:opacity-100">
+          <MessageAction
+            tooltip={copied ? "Copied" : "Copy code"}
+            label={copied ? "Copied" : "Copy code"}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(code);
+                setCopied(true);
+              } catch {
+                // Ignore copy failures.
+              }
+            }}
+          >
+            {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+          </MessageAction>
+          {!isStreaming && isSqlLike && onInsertSql && (
+            <MessageAction
+              tooltip="Insert SQL"
+              label="Insert SQL"
+              onClick={() => onInsertSql(code)}
+            >
+              <Code2 className="size-3" />
+            </MessageAction>
+          )}
+        </div>
+      </div>
+      {/* Code content */}
+      <div className="w-full overflow-x-auto text-[13px]">
+        <CodeBlockCode
+          code={code}
+          language={language || "sql"}
+          theme={codeTheme}
+          className="[&>pre]:!rounded-none [&>pre]:!m-0 [&>pre]:px-4 [&>pre]:py-3"
+        />
+      </div>
+    </div>
+  );
 }
 
-function compactPreview(value: unknown, max = 128): string {
-  const normalized = stringifyPayload(value).replace(/\s+/g, " ").trim();
-  if (!normalized) return "";
-  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
-}
-
+/**
+ * Extract a SQL snippet from a tool invocation result or args.
+ * Used to power the "Insert SQL from tool" button.
+ */
 function extractSqlSnippet(value: unknown): string | null {
   if (typeof value === "string") {
     const text = value.trim();
@@ -148,15 +205,59 @@ function extractSqlSnippet(value: unknown): string | null {
   return null;
 }
 
-function getToolStatus(toolCall: ToolCallLike, isStreaming: boolean): "running" | "success" | "error" {
-  if (isStreaming && toolCall.result === undefined) return "running";
-  if (toolCall.result && typeof toolCall.result === "object") {
-    const result = toolCall.result as Record<string, unknown>;
+function getToolStatus(invocation: ToolCallLike): "running" | "success" | "error" {
+  if (invocation.state === "call") return "running";
+  if (invocation.result && typeof invocation.result === "object") {
+    const result = invocation.result as Record<string, unknown>;
     if (typeof result.error === "string" && result.error.trim()) return "error";
     if (result.success === false || result.ok === false) return "error";
   }
   return "success";
 }
+
+/**
+ * Maps a ToolInvocationPart to the shadcn Tool component's ToolPart shape.
+ */
+function toToolPart(invocation: ToolCallLike): ToolPart {
+  const status = getToolStatus(invocation);
+
+  // Extract error text from result if applicable
+  let errorText: string | undefined;
+  if (status === "error" && invocation.result && typeof invocation.result === "object") {
+    const result = invocation.result as Record<string, unknown>;
+    errorText = typeof result.error === "string" ? result.error : undefined;
+  }
+
+  // Map invocation state → ToolPart state
+  const state: ToolPart["state"] =
+    invocation.state === "call" ? "input-streaming"
+    : invocation.state === "partial-call" ? "input-available"
+    : status === "error" ? "output-error"
+    : "output-available";
+
+  // Safely cast args/output to Record<string, unknown>
+  const input = (invocation.args && typeof invocation.args === "object")
+    ? invocation.args as Record<string, unknown>
+    : undefined;
+  const output = (invocation.result !== undefined && invocation.result !== null)
+    ? typeof invocation.result === "object"
+      ? invocation.result as Record<string, unknown>
+      : { result: invocation.result }
+    : undefined;
+
+  return {
+    type: invocation.toolName,
+    state,
+    input,
+    output,
+    toolCallId: invocation.toolCallId,
+    errorText,
+  };
+}
+
+/** Shared typography className for assistant prose content. */
+const ASSISTANT_PROSE_CLASS =
+  "!w-full !max-w-none !bg-transparent !p-0 text-[14.5px] leading-7 break-words text-zinc-800 dark:text-zinc-200 [&_a]:font-medium [&_a]:text-primary [&_a]:underline-offset-4 [&_a]:hover:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_hr]:border-muted-foreground/20 [&_hr]:my-4 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-7 [&_p+p]:mt-3 [&_strong]:font-semibold [&_table]:my-3 [&_table]:w-full [&_td]:border [&_td]:border-border/40 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border/40 [&_th]:bg-muted/30 [&_th]:px-2 [&_th]:py-1 [&_th]:font-medium [&_th]:text-left [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
 
 function ChatMessage({
   message,
@@ -169,7 +270,6 @@ function ChatMessage({
 }) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
-  const [copiedToolKey, setCopiedToolKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!copied) return;
@@ -178,14 +278,6 @@ function ChatMessage({
     }, 1200);
     return () => clearTimeout(timer);
   }, [copied]);
-
-  useEffect(() => {
-    if (!copiedToolKey) return;
-    const timer = setTimeout(() => {
-      setCopiedToolKey(null);
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [copiedToolKey]);
 
   const handleCopyMessage = useCallback(async () => {
     if (!message.content) return;
@@ -241,154 +333,101 @@ function ChatMessage({
     );
   }
 
-  // ── Assistant message: left-aligned ──
-  const contentParts = parseAssistantContent(message.content);
-  const firstSqlBlock = contentParts.find((part) => part.type === "code");
-  const toolCalls = message.toolCalls ?? [];
-  const hasToolCalls = toolCalls.length > 0;
-  const toolDetails = toolCalls
-    .map((tc, index) => {
-      const status = getToolStatus(tc, Boolean(message.isStreaming));
-      const input = stringifyPayload(tc.input);
-      const output = stringifyPayload(tc.result);
-      return [
-        `### ${index + 1}. ${tc.toolName} (${status})`,
-        input ? `**Input**\n\`\`\`json\n${input}\n\`\`\`` : "",
-        output ? `**Output**\n\`\`\`json\n${output}\n\`\`\`` : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-    })
-    .join("\n\n");
+  // ── Assistant message: left-aligned, parts-based rendering in order ──
+  const parts = message.parts ?? [];
+
+  // Find first SQL code block across all text parts for the toolbar button
+  const firstSqlBlock = parts
+    .filter((p): p is TextPart => p.type === "text")
+    .flatMap((tp) => splitTextIntoSegments(tp.text))
+    .find((seg) => seg.type === "code");
+
+  // Group consecutive tool-invocation parts into a single collapsible section
+  // while rendering text parts in their original interleaved order.
+  const renderedParts: Array<{
+    kind: "text-segments" | "tool-group";
+    segments?: TextSegment[];
+    invocations?: ToolInvocationPart[];
+  }> = [];
+
+  let pendingTools: ToolInvocationPart[] = [];
+  for (const part of parts) {
+    if (part.type === "tool-invocation") {
+      pendingTools.push(part);
+    } else {
+      // Flush any accumulated tool invocations before rendering text
+      if (pendingTools.length > 0) {
+        renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+        pendingTools = [];
+      }
+      const segments = splitTextIntoSegments(part.text);
+      if (segments.length > 0) {
+        renderedParts.push({ kind: "text-segments", segments });
+      }
+    }
+  }
+  // Flush any remaining tool invocations at the end
+  if (pendingTools.length > 0) {
+    renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+  }
+
+  const hasContent = renderedParts.length > 0;
 
   return (
     <Message from="assistant" className="group/msg w-full max-w-full px-3 py-2">
       <div className="min-w-0 flex flex-col gap-1.5">
-          {hasToolCalls && (
-            <details className="group/tcalls rounded-lg border border-border/60 backdrop-blur-sm bg-muted/40 px-2 py-1.5">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs text-foreground marker:content-none">
-                <span className="inline-flex items-center gap-1.5">
-                  <Wrench className="size-3.5 text-primary" />
-                  <span className="font-medium">Tool Calls</span>
-                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                    {toolCalls.length}
-                  </span>
-                </span>
-                <span className="text-[10px] text-muted-foreground transition-transform duration-150 ease-out group-open/tcalls:rotate-180">
-                  ▼
-                </span>
-              </summary>
-
-              <div className="mt-2 space-y-1.5">
-                {toolCalls.map((tc, index) => {
-                  const status = getToolStatus(tc, Boolean(message.isStreaming));
-                  const statusIcon =
-                    status === "running"
-                      ? <CircleDashed className="size-3.5 animate-spin text-muted-foreground" />
-                      : status === "error"
-                        ? <AlertCircle className="size-3.5 text-destructive" />
-                        : <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />;
-                  const statusLabel = status === "running" ? "Running" : status === "error" ? "Error" : "Done";
-                  const preview = compactPreview(tc.result ?? tc.input);
-                  const sqlFromTool = extractSqlSnippet(tc.result) ?? extractSqlSnippet(tc.input);
-                  const copyValue = stringifyPayload(tc.result ?? tc.input);
-                  const copyKey = `${tc.toolCallId}-${index}`;
-
-                  return (
-                    <div
-                      key={copyKey}
-                      className="group/tool flex items-start justify-between gap-2 rounded-md border border-border/50 bg-background/90 px-2 py-1.5 transition-colors duration-150 ease-out hover:bg-background"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          {statusIcon}
-                          <span className="truncate text-xs font-medium text-foreground">{tc.toolName}</span>
-                          <span className="text-[10px] text-muted-foreground">{statusLabel}</span>
-                        </div>
-                        {preview && (
-                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            {preview}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-hover/tool:opacity-100 group-focus-within/tool:opacity-100">
-                        <MessageAction
-                          tooltip={copiedToolKey === copyKey ? "Copied" : "Copy tool payload"}
-                          label={copiedToolKey === copyKey ? "Copied" : "Copy tool payload"}
-                          onClick={async () => {
-                            if (!copyValue) return;
-                            try {
-                              await navigator.clipboard.writeText(copyValue);
-                              setCopiedToolKey(copyKey);
-                            } catch {
-                              // Ignore copy failures.
-                            }
-                          }}
-                          disabled={!copyValue}
-                        >
-                          {copiedToolKey === copyKey ? (
-                            <Check className="size-3.5" />
-                          ) : (
-                            <Copy className="size-3.5" />
+          {/* Render parts in their original interleaved order */}
+          {hasContent && (
+            <div className="space-y-3">
+              {renderedParts.map((block, blockIndex) =>
+                block.kind === "tool-group" ? (
+                  <div key={`tools-${blockIndex}`} className="space-y-2">
+                    {block.invocations!.map((tip) => {
+                      const toolPart = toToolPart(tip.toolInvocation);
+                      const sqlFromTool = extractSqlSnippet(tip.toolInvocation.result) ?? extractSqlSnippet(tip.toolInvocation.args);
+                      return (
+                        <div key={tip.toolInvocation.toolCallId}>
+                          <Tool
+                            toolPart={toolPart}
+                            defaultOpen
+                            className="mt-1 border-border/40 bg-muted/20"
+                          />
+                          {sqlFromTool && onInsertSql && tip.toolInvocation.state === "result" && (
+                            <MessageAction
+                              tooltip="Insert SQL from tool"
+                              label="Insert SQL"
+                              onClick={() => onInsertSql(sqlFromTool)}
+                              className="mt-1 ml-1"
+                            >
+                              <Code2 className="size-3.5" />
+                            </MessageAction>
                           )}
-                        </MessageAction>
-                        <MessageAction
-                          tooltip="Insert SQL from tool"
-                          label="Insert SQL from tool"
-                          onClick={() => {
-                            if (sqlFromTool && onInsertSql) onInsertSql(sqlFromTool);
-                          }}
-                          disabled={!sqlFromTool || !onInsertSql}
-                        >
-                          <Code2 className="size-3.5" />
-                        </MessageAction>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {toolDetails && (
-                <div className="mt-2 rounded-md border border-border/60 bg-background/90 p-2">
-                  <MessageResponse className="text-xs">{toolDetails}</MessageResponse>
-                </div>
-              )}
-            </details>
-          )}
-
-          {/* Message content (text + code blocks) */}
-          {contentParts.length > 0 && (
-            <div className="space-y-2">
-              {contentParts.map((part, index) =>
-                part.type === "text" ? (
-                  <MessageContent
-                    key={`text-${index}`}
-                    className="!w-full !max-w-none !bg-transparent !p-0 text-[14.5px] leading-7 break-words text-zinc-800 dark:text-zinc-200 [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.92em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_li]:my-1 [&_ol]:my-2 [&_p+p]:mt-3 [&_strong]:font-semibold [&_ul]:my-2"
-                  >
-                    <MessageResponse>{part.content}</MessageResponse>
-                  </MessageContent>
-                ) : (
-                  <div key={`code-${index}`} className="group/sql relative">
-                    <CodeBlock className="backdrop-blur-sm !bg-background/60 !text-inherit border-border/50 rounded-lg">
-                      <CodeBlockCode
-                        code={part.code}
-                        language={part.language || "sql"}
-                        theme={codeTheme}
-                        className="[&>pre]:!rounded-none [&>pre]:!m-0"
-                      />
-                    </CodeBlock>
-                    {onInsertSql && !message.isStreaming && (
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        className="absolute top-1 right-1 z-10 h-6 bg-background/90 px-2 text-[11px] opacity-0 shadow-sm backdrop-blur transition-all duration-150 ease-out group-hover/sql:opacity-100 group-focus-within/sql:opacity-100 hover:bg-background active:scale-[0.97]"
-                        onClick={() => onInsertSql(part.code)}
-                      >
-                        Insert
-                      </Button>
-                    )}
+                        </div>
+                      );
+                    })}
                   </div>
+                ) : (
+                  <Fragment key={`text-${blockIndex}`}>
+                    {block.segments!.map((seg, segIndex) =>
+                      seg.type === "text" ? (
+                        <MessageContent
+                          key={`seg-${segIndex}`}
+                          className={ASSISTANT_PROSE_CLASS}
+                        >
+                          <MessageResponse isStreaming={message.isStreaming}>{seg.content}</MessageResponse>
+                        </MessageContent>
+                      ) : (
+                        <AssistantCodeBlock
+                          key={`seg-${segIndex}`}
+                          code={seg.code}
+                          language={seg.language}
+                          codeTheme={codeTheme}
+                          onInsertSql={onInsertSql}
+                          isStreaming={message.isStreaming}
+                        />
+                      ),
+                    )}
+                  </Fragment>
                 ),
               )}
             </div>
@@ -449,35 +488,43 @@ function ChatMessage({
 }
 
 // ---------------------------------------------------------------------------
-// Extract SQL code blocks from markdown
+// Split a single text part into prose + fenced code segments
 // ---------------------------------------------------------------------------
 
-type AssistantContentPart =
+type TextSegment =
   | { type: "text"; content: string }
   | { type: "code"; code: string; language?: string };
 
-function parseAssistantContent(content: string): AssistantContentPart[] {
-  if (!content) return [];
+/**
+ * Splits the text content of a single TextPart into alternating
+ * prose and fenced-code-block segments for rendering.
+ *
+ * This replaces the old `parseAssistantContent` which operated on the
+ * flat `message.content` string. Now each TextPart is split independently,
+ * so tool-invocation parts are handled separately via the parts array.
+ */
+function splitTextIntoSegments(text: string): TextSegment[] {
+  if (!text) return [];
 
-  const parts: AssistantContentPart[] = [];
+  const segments: TextSegment[] = [];
   const fenceRegex = /```([\w-]+)?\s*\n([\s\S]*?)```/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = fenceRegex.exec(content)) !== null) {
+  while ((match = fenceRegex.exec(text)) !== null) {
     const [fullMatch, language, code] = match;
     const start = match.index;
 
     if (start > lastIndex) {
-      const textChunk = content.slice(lastIndex, start).trim();
-      if (textChunk) {
-        parts.push({ type: "text", content: textChunk });
+      const prose = text.slice(lastIndex, start).trim();
+      if (prose) {
+        segments.push({ type: "text", content: prose });
       }
     }
 
     const normalizedCode = code?.trim() ?? "";
     if (normalizedCode) {
-      parts.push({
+      segments.push({
         type: "code",
         code: normalizedCode,
         language: language?.trim() || undefined,
@@ -487,18 +534,18 @@ function parseAssistantContent(content: string): AssistantContentPart[] {
     lastIndex = start + fullMatch.length;
   }
 
-  if (lastIndex < content.length) {
-    const trailing = content.slice(lastIndex).trim();
+  if (lastIndex < text.length) {
+    const trailing = text.slice(lastIndex).trim();
     if (trailing) {
-      parts.push({ type: "text", content: trailing });
+      segments.push({ type: "text", content: trailing });
     }
   }
 
-  if (parts.length === 0) {
-    parts.push({ type: "text", content });
+  if (segments.length === 0) {
+    segments.push({ type: "text", content: text });
   }
 
-  return parts;
+  return segments;
 }
 
 // ---------------------------------------------------------------------------
@@ -540,9 +587,6 @@ export function AiChatPanel({
   });
 
   const [input, setInput] = useState("");
-  const [inputPulse, setInputPulse] = useState(false);
-  const prevInputHadTextRef = useRef(false);
-  const inputPulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dismissedContext, setDismissedContext] = useState<{
     selection: boolean;
     error: boolean;
@@ -610,9 +654,6 @@ export function AiChatPanel({
       if (contextDismissTimeoutsRef.current.error) {
         clearTimeout(contextDismissTimeoutsRef.current.error);
       }
-      if (inputPulseTimeoutRef.current) {
-        clearTimeout(inputPulseTimeoutRef.current);
-      }
       if (titleMorphTimeoutRef.current) {
         clearTimeout(titleMorphTimeoutRef.current);
       }
@@ -645,21 +686,7 @@ export function AiChatPanel({
     contextPreview?.errorPreview && !dismissedContext.error,
   );
 
-  // Detect when user clears all text → trigger pulse animation
   const handleInputChange = useCallback((value: string) => {
-    const hadText = prevInputHadTextRef.current;
-    const nowEmpty = value.length === 0;
-    prevInputHadTextRef.current = value.length > 0;
-
-    if (hadText && nowEmpty) {
-      setInputPulse(true);
-      if (inputPulseTimeoutRef.current) clearTimeout(inputPulseTimeoutRef.current);
-      inputPulseTimeoutRef.current = setTimeout(() => {
-        setInputPulse(false);
-        inputPulseTimeoutRef.current = null;
-      }, 200);
-    }
-
     setInput(value);
   }, []);
 
@@ -973,11 +1000,7 @@ export function AiChatPanel({
           onValueChange={handleInputChange}
           onSubmit={handleSubmit}
           isLoading={isLoading}
-          className={cn(
-            "relative z-30 rounded-md bg-background p-2 shadow-none backdrop-blur-md",
-            "transition-transform duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
-            inputPulse && "scale-[1.02]",
-          )}
+          className="relative z-30 rounded-md bg-background p-2 shadow-none backdrop-blur-md"
         >
           {contextPreview && (showSelectionContextChip || showErrorContextChip) && (
             <div className="mb-2 flex flex-wrap gap-1.5">
@@ -1063,7 +1086,7 @@ export function AiChatPanel({
                 size="icon-xs"
                 onClick={handleSubmit}
                 disabled={!input.trim()}
-                className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
+                className="transition-[transform,opacity] duration-150 ease-out disabled:opacity-30 disabled:bg-muted disabled:text-muted-foreground"
               >
                 <Send className="size-3.5" />
               </Button>
