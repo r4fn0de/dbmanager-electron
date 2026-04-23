@@ -683,6 +683,29 @@ export class LocalDbManager {
     return this.metaToInfo(meta, this.runningInstances.has(id) || this.sqliteHandles.has(id));
   }
 
+  /** Snapshot of currently running local DB instances (sync, in-memory only). */
+  getRunningInstancesSnapshot(): Array<Pick<LocalDbInfo, "id" | "name" | "engine">> {
+    const running = new Map<string, Pick<LocalDbInfo, "id" | "name" | "engine">>();
+
+    for (const [id, instance] of this.runningInstances) {
+      running.set(id, {
+        id,
+        name: instance.meta.name,
+        engine: instance.meta.engine ?? "postgresql",
+      });
+    }
+
+    for (const [id, handle] of this.sqliteHandles) {
+      running.set(id, {
+        id,
+        name: handle.meta.name,
+        engine: handle.meta.engine ?? "sqlite",
+      });
+    }
+
+    return [...running.values()];
+  }
+
   // ── Hydration (reconnect auto-start instances on app launch) ─
 
   async hydrate(): Promise<void> {

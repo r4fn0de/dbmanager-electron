@@ -20,6 +20,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { motion } from "motion/react";
 import {
   Conversation,
   ConversationContent,
@@ -86,6 +87,8 @@ interface AiChatPanelProps {
   };
   /** Whether the panel is visible */
   isOpen: boolean;
+  /** Additional className for the root element (layout positioning) */
+  className?: string;
   /** Callback to insert SQL into the editor */
   onInsertSql?: (sql: string) => void;
   /** Callback when panel is closed */
@@ -509,6 +512,7 @@ export function AiChatPanel({
   schemaContext,
   contextPreview,
   isOpen,
+  className,
   onInsertSql,
   onClose,
 }: AiChatPanelProps) {
@@ -719,8 +723,6 @@ export function AiChatPanel({
     }, 180);
   }, []);
 
-  if (!isOpen) return null;
-
   const isEmpty = messages.length === 0;
   const hasActiveConnection = Boolean(connectionId);
   const currentConnectionLabel = contextPreview?.connectionLabel || connectionLabel || connectionId || "No connection";
@@ -728,9 +730,12 @@ export function AiChatPanel({
     conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
 
   return (
-    <div
-      className="relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent"
+    <motion.div
+      className={cn("relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent", className)}
       style={{ width: "100%" }}
+      initial={{ x: 24, opacity: 0, transition: { duration: 0.3, ease: [0.23, 1, 0.32, 1] } }}
+      animate={{ x: 0, opacity: 1, transition: { duration: 0.3, ease: [0.23, 1, 0.32, 1] } }}
+      exit={{ x: 24, opacity: 0, transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
     >
       {/* Header — minimal, near-transparent */}
       <div className="flex h-9 shrink-0 items-center justify-between px-2">
@@ -1066,7 +1071,7 @@ export function AiChatPanel({
           </PromptInputActions>
         </PromptInput>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

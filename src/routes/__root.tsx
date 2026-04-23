@@ -3,9 +3,9 @@ import {
   Outlet,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/TitleBar";
@@ -18,24 +18,20 @@ import {
   ResizablePanelGroup,
   type GroupImperativeHandle,
   type Layout,
+  type PanelImperativeHandle,
 } from "@/components/ui/resizable";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { cn } from "@/utils/tailwind";
 
 import "../styles/global.css";
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
+function isAiChatShortcut(event: KeyboardEvent): boolean {
+  if (event.isComposing || event.repeat) return false;
+  if (!(event.metaKey || event.ctrlKey)) return false;
+  if (event.shiftKey || event.altKey) return false;
 
-  if (target.isContentEditable) return true;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-
-  return Boolean(
-    target.closest(".monaco-editor")
-      || target.closest("[data-monaco-editor]")
-      || target.closest("[contenteditable='true']"),
-  );
+  // `code` is layout-independent (physical key), `key` is fallback.
+  return event.code === "KeyJ" || event.key.toLowerCase() === "j";
 }
 
 function Root() {
@@ -45,11 +41,13 @@ function Root() {
   const isAiChatOpen = useAiChatGlobalStore((state) => state.isOpen);
   const aiPanelSize = useAiChatGlobalStore((state) => state.panelSize);
   const setAiChatOpen = useAiChatGlobalStore((state) => state.setOpen);
-  const toggleAiChat = useAiChatGlobalStore((state) => state.toggleOpen);
   const setAiPanelSize = useAiChatGlobalStore((state) => state.setPanelSize);
   const chatContext = useAiChatGlobalStore((state) => state.currentContext);
 
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
+  const aiPanelRef = useRef<PanelImperativeHandle>(null);
+  const [isAiPanelAnimating, setIsAiPanelAnimating] = useState(false);
+  const aiPanelAnimTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const defaultLayout = useMemo((): Layout => {
     if (!isAiChatOpen) {
@@ -65,40 +63,61 @@ function Root() {
     };
   }, [isAiChatOpen, aiPanelSize]);
 
-  useEffect(() => {
-    if (!panelGroupRef.current) return;
+  // Layout is controlled via panel imperative handle (expand/collapse),
+  // not groupRef.setLayout — this ensures CSS transition-[flex-grow] works.
 
-    if (isAiChatOpen) {
-      panelGroupRef.current.setLayout({
-        "root-main": 100 - aiPanelSize,
-        "root-ai-chat": aiPanelSize,
-      });
-      return;
+  const clearAiPanelAnimTimeout = useCallback(() => {
+    if (aiPanelAnimTimeoutRef.current) {
+      clearTimeout(aiPanelAnimTimeoutRef.current);
+      aiPanelAnimTimeoutRef.current = undefined;
     }
+  }, []);
 
-    panelGroupRef.current.setLayout({
-      "root-main": 100,
-      "root-ai-chat": 0,
-    });
-  }, [aiPanelSize, isAiChatOpen]);
+  const handleAiChatClose = useCallback(() => {
+    // Close: AiChatPanel plays exit animation first,
+    // then panel collapses via CSS transition on flex-grow.
+    setIsAiPanelAnimating(true);
+    setAiChatOpen(false);
+  }, [setAiChatOpen]);
+
+  const handleAiChatToggle = useCallback(() => {
+    if (isAiChatOpen) {
+      handleAiChatClose();
+    } else {
+      // Open: expand panel via imperative handle (triggers CSS flex-grow transition)
+      // and render AiChatPanel simultaneously.
+      setIsAiPanelAnimating(true);
+      setAiChatOpen(true);
+      aiPanelRef.current?.expand();
+      clearAiPanelAnimTimeout();
+      aiPanelAnimTimeoutRef.current = setTimeout(() => {
+        setIsAiPanelAnimating(false);
+        aiPanelAnimTimeoutRef.current = undefined;
+      }, 300);
+    }
+  }, [isAiChatOpen, handleAiChatClose, setAiChatOpen, clearAiPanelAnimTimeout]);
+
+  // Clean up animation timeout on unmount
+  useEffect(() => {
+    return () => {
+      clearAiPanelAnimTimeout();
+    };
+  }, [clearAiPanelAnimTimeout]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const isShortcut = (event.metaKey || event.ctrlKey)
-        && !event.shiftKey
-        && !event.altKey
-        && event.key.toLowerCase() === "j";
-
-      if (!isShortcut) return;
-      if (isEditableTarget(event.target)) return;
+      if (!isAiChatShortcut(event)) return;
 
       event.preventDefault();
-      toggleAiChat();
+      event.stopPropagation();
+      handleAiChatToggle();
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleAiChat]);
+    // Capture phase makes the shortcut resilient even when components
+    // intercept keydown events in bubble phase.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [handleAiChatToggle]);
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -121,9 +140,8 @@ function Root() {
                   }
                 }}
               >
-                <ResizablePanel id="root-main" className="min-h-0 min-w-0">
-                  {isDatabaseRoute ? <TabbedConnectionView /> : <Outlet />}
-                </ResizablePanel>
+                <ResizablePanel id="root-main" className={cn("min-h-0 min-w-0", isAiPanelAnimating && "transition-[flex-grow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]")}>
+                  {isDatabaseRoute ? <TabbedConnectionView /> : <Outlet />}</ResizablePanel>
 
                 <ResizableHandle
                   withHandle
@@ -141,7 +159,7 @@ function Root() {
                       // Hide the small pill while dragging to keep only the vertical line.
                       "[&>div]:translate-x-1/2 data-[resize-handle-state=drag]:[&>div]:opacity-0",
                     ].join(" "),
-                    !isAiChatOpen && "pointer-events-none opacity-0",
+                    !(isAiChatOpen || isAiPanelAnimating) && "pointer-events-none opacity-0",
                   )}
                 />
                 <ResizablePanel
@@ -151,6 +169,7 @@ function Root() {
                   maxSize="45%"
                   collapsible
                   collapsedSize={0}
+                  panelRef={aiPanelRef}
                   onResize={(size, _id, prevSize) => {
                     const wasCollapsed = prevSize ? prevSize.asPercentage === 0 : false;
                     const isCollapsed = size.asPercentage === 0;
@@ -163,31 +182,33 @@ function Root() {
                       setAiChatOpen(!isCollapsed);
                     }
                   }}
-                  className="min-h-0 min-w-0"
+                  className={cn("min-h-0 min-w-0", isAiPanelAnimating && "transition-[flex-grow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]")}
                 >
-                  <AnimatePresence initial={false}>
+                  <AnimatePresence
+                    initial={false}
+                    onExitComplete={() => {
+                      // After exit animation finishes, collapse the panel
+                      // via imperative handle — CSS transition animates flex-grow.
+                      aiPanelRef.current?.collapse();
+                      clearAiPanelAnimTimeout();
+                      aiPanelAnimTimeoutRef.current = setTimeout(() => {
+                        setIsAiPanelAnimating(false);
+                        aiPanelAnimTimeoutRef.current = undefined;
+                      }, 300);
+                    }}
+                  >
                     {isAiChatOpen && (
-                      <motion.div
+                      <AiChatPanel
                         key="ai-chat-panel"
-                        initial={{ opacity: 0, x: 24, scale: 0.97 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: 24, scale: 0.97 }}
-                        transition={{
-                          enter: { duration: 0.22, ease: [0.23, 1, 0.32, 1] },
-                          exit: { duration: 0.15, ease: [0.23, 1, 0.32, 1] },
-                        }}
+                        connectionId={chatContext.connectionId}
+                        connectionLabel={chatContext.connectionLabel}
+                        dbType={chatContext.dbType}
+                        schemaContext={chatContext.schemaContext}
+                        contextPreview={chatContext.contextPreview}
+                        isOpen={isAiChatOpen}
                         className="-mt-[6px] h-[calc(100%+6px)] pl-1.5"
-                      >
-                        <AiChatPanel
-                          connectionId={chatContext.connectionId}
-                          connectionLabel={chatContext.connectionLabel}
-                          dbType={chatContext.dbType}
-                          schemaContext={chatContext.schemaContext}
-                          contextPreview={chatContext.contextPreview}
-                          isOpen={isAiChatOpen}
-                          onClose={() => setAiChatOpen(false)}
-                        />
-                      </motion.div>
+                        onClose={handleAiChatClose}
+                      />
                     )}
                   </AnimatePresence>
                 </ResizablePanel>

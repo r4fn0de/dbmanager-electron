@@ -62,24 +62,67 @@ function createWindow() {
     ...platformOptions,
   });
   ipcContext.setMainWindow(mainWindow);
+  let isQuitting = false;
+
+  let windowShown = false;
+  const showMainWindow = () => {
+    if (windowShown || mainWindow.isDestroyed()) return;
+    windowShown = true;
+    mainWindow.show();
+    mainWindow.focus();
+  };
+
+  mainWindow.once("ready-to-show", showMainWindow);
+  // Fallback for cases where renderer never emits ready-to-show in dev.
+  setTimeout(showMainWindow, 3000);
 
   mainWindow.on("close", (event) => {
-    if (!ipcContext.hasUnsavedChanges) return;
-    const unsavedScopes = ipcContext.unsavedScopeKeys;
-    const summarizedScopes = unsavedScopes.slice(0, 3).map((scope) => {
-      if (!scope.startsWith("table:")) return scope;
-      const [, , tableRef] = scope.split(":");
-      return tableRef ?? scope;
-    });
-    const hasMoreScopes = unsavedScopes.length > summarizedScopes.length;
-    const details = [
-      "Closing now may discard pending edits.",
-      "",
-      ...summarizedScopes.map((scope) => `• ${scope}`),
-    ];
-    if (hasMoreScopes) {
-      details.push(`• +${unsavedScopes.length - summarizedScopes.length} more`);
+    if (isQuitting) return;
+
+    const hasUnsavedChanges = ipcContext.hasUnsavedChanges;
+    const runningLocalDbs = localDbManager.getRunningInstancesSnapshot();
+    const hasRunningLocalDbs = runningLocalDbs.length > 0;
+
+    if (!hasUnsavedChanges && !hasRunningLocalDbs) return;
+
+    event.preventDefault();
+
+    const details: string[] = [];
+
+    if (hasUnsavedChanges) {
+      const unsavedScopes = ipcContext.unsavedScopeKeys;
+      const summarizedScopes = unsavedScopes.slice(0, 3).map((scope) => {
+        if (!scope.startsWith("table:")) return scope;
+        const [, , tableRef] = scope.split(":");
+        return tableRef ?? scope;
+      });
+      const hasMoreScopes = unsavedScopes.length > summarizedScopes.length;
+
+      details.push("Closing now may discard pending edits.", "");
+      details.push(...summarizedScopes.map((scope) => `• ${scope}`));
+      if (hasMoreScopes) {
+        details.push(`• +${unsavedScopes.length - summarizedScopes.length} more`);
+      }
     }
+
+    if (hasRunningLocalDbs) {
+      const summarizedRunningDbs = runningLocalDbs
+        .slice(0, 3)
+        .map((db) => `${db.name} (${db.engine})`);
+      const hasMoreRunningDbs = runningLocalDbs.length > summarizedRunningDbs.length;
+
+      if (details.length > 0) details.push("");
+      details.push(
+        "There are local databases still running.",
+        "The app will pause closing and stop them safely before exiting.",
+        "",
+      );
+      details.push(...summarizedRunningDbs.map((dbLabel) => `• ${dbLabel}`));
+      if (hasMoreRunningDbs) {
+        details.push(`• +${runningLocalDbs.length - summarizedRunningDbs.length} more`);
+      }
+    }
+
     details.push("", "Do you want to quit anyway?");
 
     const choice = dialog.showMessageBoxSync(mainWindow, {
@@ -88,15 +131,28 @@ function createWindow() {
       defaultId: 0,
       cancelId: 0,
       title: APP_DISPLAY_NAME,
-      message: "You have unsaved changes.",
+      message: "Confirm app close",
       detail: details.join("\n"),
       noLink: true,
     });
-    if (choice === 0) {
-      event.preventDefault();
-      return;
-    }
-    ipcContext.clearUnsavedScopes();
+
+    if (choice === 0) return;
+
+    isQuitting = true;
+    void (async () => {
+      try {
+        if (hasRunningLocalDbs) {
+          await localDbManager.stopAll();
+        }
+      } catch (error) {
+        console.error("[shutdown] Failed to stop local DBs before close:", error);
+      } finally {
+        ipcContext.clearUnsavedScopes();
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.close();
+        }
+      }
+    })();
   });
 
   // Força o título da janela para o nome do app
@@ -106,6 +162,20 @@ function createWindow() {
   });
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow.setTitle(APP_DISPLAY_NAME);
+  });
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL) => {
+      console.error("[window] failed to load renderer", {
+        errorCode,
+        errorDescription,
+        validatedURL,
+      });
+      showMainWindow();
+    },
+  );
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[window] renderer process gone", details);
   });
 
   // Force DevTools to always open in detached window to preserve
@@ -153,6 +223,41 @@ function checkForUpdates() {
       repo: "LuanRoger/electron-shadcn",
     },
   });
+}
+
+async function runPostWindowInitialization() {
+  try {
+    await installExtensions();
+  } catch (error) {
+    console.error("[startup] Failed to install dev extensions:", error);
+  }
+
+  try {
+    checkForUpdates();
+  } catch (error) {
+    console.error("[startup] Failed to configure auto-updates:", error);
+  }
+
+  try {
+    // Register database drivers (PostgreSQL, MySQL, MariaDB)
+    await registerDrivers();
+  } catch (error) {
+    console.error("[startup] Failed to register DB drivers:", error);
+  }
+
+  try {
+    // Register AI streaming chat handlers (IPC event-based)
+    registerAiStreamingHandlers();
+  } catch (error) {
+    console.error("[startup] Failed to register AI handlers:", error);
+  }
+
+  try {
+    // Hydrate local databases (auto-start instances that were running before)
+    await localDbManager.hydrate();
+  } catch (error) {
+    console.error("[startup] Failed to hydrate local databases:", error);
+  }
 }
 
 function setupMenu() {
@@ -253,14 +358,8 @@ app.whenReady().then(async () => {
     await setupORPC();
     createWindow();
     setupMenu();
-    await installExtensions();
-    checkForUpdates();
-    // Register database drivers (PostgreSQL, MySQL, MariaDB)
-    await registerDrivers();
-    // Register AI streaming chat handlers (IPC event-based)
-    registerAiStreamingHandlers();
-    // Hydrate local databases (auto-start instances that were running before)
-    await localDbManager.hydrate();
+    // Keep the window startup path fast and run non-critical setup in background.
+    void runPostWindowInitialization();
   } catch (error) {
     console.error("Error during app initialization:", error);
   }
