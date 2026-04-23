@@ -140,6 +140,10 @@ function fallbackConversationTitle(): string {
 }
 
 function toPersistedMessage(message: AiChatMessage): AiChatMessage {
+  return message;
+}
+
+function toStorageMessage(message: AiChatMessage): AiChatMessage {
   const { isStreaming: _isStreaming, ...rest } = message;
   return rest;
 }
@@ -419,7 +423,7 @@ export function useAiChat({
       version: 2,
       conversations: conversations.map((conversation) => ({
         ...conversation,
-        messages: conversation.messages.map(toPersistedMessage),
+        messages: conversation.messages.map(toStorageMessage),
       })),
       activeConversationId,
       migratedFromV1: migratedFromV1Ref.current,

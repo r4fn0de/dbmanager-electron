@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
+import { AnimatePresence, motion } from "motion/react";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/TitleBar";
@@ -164,19 +165,31 @@ function Root() {
                   }}
                   className="min-h-0 min-w-0"
                 >
-                  {isAiChatOpen && (
-                    <div className="h-full pl-1.5">
-                      <AiChatPanel
-                        connectionId={chatContext.connectionId}
-                        connectionLabel={chatContext.connectionLabel}
-                        dbType={chatContext.dbType}
-                        schemaContext={chatContext.schemaContext}
-                        contextPreview={chatContext.contextPreview}
-                        isOpen={isAiChatOpen}
-                        onClose={() => setAiChatOpen(false)}
-                      />
-                    </div>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {isAiChatOpen && (
+                      <motion.div
+                        key="ai-chat-panel"
+                        initial={{ opacity: 0, x: 24, scale: 0.97 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: 24, scale: 0.97 }}
+                        transition={{
+                          enter: { duration: 0.22, ease: [0.23, 1, 0.32, 1] },
+                          exit: { duration: 0.15, ease: [0.23, 1, 0.32, 1] },
+                        }}
+                        className="-mt-[6px] h-[calc(100%+6px)] pl-1.5"
+                      >
+                        <AiChatPanel
+                          connectionId={chatContext.connectionId}
+                          connectionLabel={chatContext.connectionLabel}
+                          dbType={chatContext.dbType}
+                          schemaContext={chatContext.schemaContext}
+                          contextPreview={chatContext.contextPreview}
+                          isOpen={isAiChatOpen}
+                          onClose={() => setAiChatOpen(false)}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </ResizablePanel>
               </ResizablePanelGroup>
               </div>

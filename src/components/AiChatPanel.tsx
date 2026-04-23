@@ -30,6 +30,7 @@ import {
   Reasoning,
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StickToBottomContext } from "use-stick-to-bottom";
@@ -226,8 +227,9 @@ function ChatMessage({
               )}
             </div>
           )}
+          {/* Light-mode visual spec documented in docs/ai-chat-visual-style.md */}
           {message.content && (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words rounded-lg backdrop-blur-sm bg-muted/70 px-3 py-2">
+            <p className="text-[14px] leading-6 whitespace-pre-wrap break-words rounded-xl border border-zinc-300/70 bg-zinc-200/85 px-3 py-2 text-zinc-900 shadow-[0_1px_0_rgba(255,255,255,0.45)_inset] backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-800/85 dark:text-zinc-100 dark:shadow-[0_1px_0_rgba(255,255,255,0.05)_inset]">
               {message.content}
             </p>
           )}
@@ -359,7 +361,7 @@ function ChatMessage({
                 part.type === "text" ? (
                   <MessageContent
                     key={`text-${index}`}
-                    className="!w-full !max-w-none !bg-transparent !p-0 text-sm leading-relaxed break-words"
+                    className="!w-full !max-w-none !bg-transparent !p-0 text-[14.5px] leading-7 break-words text-zinc-800 dark:text-zinc-200 [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.92em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_li]:my-1 [&_ol]:my-2 [&_p+p]:mt-3 [&_strong]:font-semibold [&_ul]:my-2"
                   >
                     <MessageResponse>{part.content}</MessageResponse>
                   </MessageContent>
@@ -422,7 +424,14 @@ function ChatMessage({
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 [animation-duration:1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
                   <span className="inline-flex size-1.5 rounded-full bg-primary" />
                 </span>
-                Thinking…
+                <Shimmer
+                  as="span"
+                  className="text-xs font-medium"
+                  duration={1.8}
+                  spread={1.4}
+                >
+                  Thinking…
+                </Shimmer>
               </ReasoningTrigger>
             </Reasoning>
           )}
@@ -720,15 +729,11 @@ export function AiChatPanel({
 
   return (
     <div
-      className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent",
-        "motion-safe:animate-in motion-safe:slide-in-from-right-full",
-        "motion-safe:duration-200 motion-safe:ease-out"
-      )}
+      className="relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent"
       style={{ width: "100%" }}
     >
       {/* Header — minimal, near-transparent */}
-      <div className="flex items-center justify-between px-2 h-9 shrink-0">
+      <div className="flex h-9 shrink-0 items-center justify-between px-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <Bot className="size-3.5 text-primary/80" />
           <span className="text-[10px] font-medium text-foreground/50">
@@ -906,7 +911,7 @@ export function AiChatPanel({
       <Conversation className="flex-1 min-h-0" contextRef={conversationRef}>
         <ConversationContent
           key={activeConversationId ?? "no-conversation"}
-          className="flex flex-col gap-0 p-0 pb-28"
+          className="flex flex-col gap-0 p-0 pb-32"
         >
           {isEmpty ? (
             <ConversationEmptyState>
@@ -949,12 +954,12 @@ export function AiChatPanel({
       {/* Input */}
       <div className="absolute inset-x-0 bottom-0 z-30 px-3 py-2">
         {error && (
-          <div className="mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
+          <div className="relative z-10 mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
             {error}
           </div>
         )}
         {!hasActiveConnection && (
-          <div className="mb-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+          <div className="relative z-10 mb-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
             No active connection. I can still help with SQL concepts, but live SQL tools are currently disabled.
           </div>
         )}
@@ -964,7 +969,7 @@ export function AiChatPanel({
           onSubmit={handleSubmit}
           isLoading={isLoading}
           className={cn(
-            "relative z-30 rounded-md bg-background/85 p-2 shadow-none backdrop-blur-md",
+            "relative z-30 rounded-md bg-background p-2 shadow-none backdrop-blur-md",
             "transition-transform duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
             inputPulse && "scale-[1.02]",
           )}
@@ -1041,23 +1046,21 @@ export function AiChatPanel({
               <Button
                 type="button"
                 variant="outline"
-                size="xs"
+                size="icon-xs"
                 onClick={abort}
-                className="gap-1.5"
+                className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
               >
-                <Square className="size-3" />
-                Stop
+                <Square className="size-3.5" />
               </Button>
             ) : (
               <Button
                 type="button"
-                size="xs"
+                size="icon-xs"
                 onClick={handleSubmit}
                 disabled={!input.trim()}
-                className="gap-1.5"
+                className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
               >
-                Send
-                <Send className="size-3" />
+                <Send className="size-3.5" />
               </Button>
             )}
           </PromptInputActions>
