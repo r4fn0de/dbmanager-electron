@@ -27,8 +27,8 @@ import type { DatabaseType } from "@/ipc/db/types";
 interface ChatStartInput {
   /** Unique ID for this chat session (used to correlate events) */
   chatId: string;
-  /** Connection ID for the active database */
-  connectionId: string;
+  /** Connection ID for the active database (optional in global mode) */
+  connectionId: string | null;
   /** Database type (postgresql, mysql, etc.) */
   dbType: DatabaseType;
   /** Optional schema context to inject into system prompt */
@@ -77,7 +77,11 @@ function abortInlineStream(requestId: string) {
 // System prompt builder
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(dbType: DatabaseType, schemaContext?: string): string {
+function buildSystemPrompt(
+  dbType: DatabaseType,
+  schemaContext?: string,
+  hasConnection = true,
+): string {
   const now = new Date().toISOString();
 
   let prompt = `You are an AI SQL assistant for ${dbType}. Your primary role is to help users write, optimize, and debug SQL queries.
@@ -87,14 +91,23 @@ Current date/time: ${now}
 ## Rules
 - Always use quoted identifiers to avoid case-sensitivity issues
 - Generate optimized, valid SQL for ${dbType}
-- Use the provided tools (tables, columns, select) to inspect the database before writing queries
-- When the user asks a question about their data, use the select tool to query it
+- Use the provided tools (tables, columns, select) when available to inspect the database before writing queries
+- When tools are available and user asks about their data, use the select tool to query it
 - For schema changes, generate appropriate DDL statements
 - Respond in markdown with SQL in code blocks
 - If you're unsure about column names or types, use the columns tool first
 - Prefer incremental/specific changes over rewriting entire queries
 - When the user mentions multiple related tables, prefer a single query with explicit JOINs over separate SELECTs
 - Never drop or truncate data unless the user explicitly requests it`;
+
+  if (!hasConnection) {
+    prompt += `
+
+## Runtime mode
+- There is no active database connection in this chat session.
+- Do not claim execution results from the user's database.
+- Provide SQL, reasoning, and guidance only.`;
+  }
 
   prompt += `
 
@@ -177,15 +190,15 @@ async function handleChatStart(
 
     // Use the factory pattern to create tools with connectionId in closure.
     // The AI SDK does NOT forward experimental_context to tool execute functions.
-    const tools = createAiTools(connectionId);
+    const tools = connectionId ? createAiTools(connectionId) : undefined;
 
     // streamText() is SYNCHRONOUS — it returns a StreamTextResult immediately,
     // NOT a Promise. Do NOT await it before accessing .textStream etc.
     const result = streamText({
       model,
-      system: buildSystemPrompt(dbType, schemaContext),
+      system: buildSystemPrompt(dbType, schemaContext, Boolean(connectionId)),
       messages,
-      tools,
+      ...(tools ? { tools } : {}),
       abortSignal: abortController.signal,
       // AI SDK v6: maxSteps replaced by stopWhen + stepCountIs
       stopWhen: stepCountIs(5),

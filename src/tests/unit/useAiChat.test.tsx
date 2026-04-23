@@ -7,7 +7,8 @@ vi.mock("@/hooks/ai-actions", () => ({
   generateTitle: vi.fn().mockResolvedValue({ title: "Generated Chat Title" }),
 }));
 
-const AI_CHAT_STORAGE_KEY = "ai-chat-history:v1";
+const AI_CHAT_STORAGE_KEY_V1 = "ai-chat-history:v1";
+const AI_CHAT_STORAGE_KEY_V2 = "ai-chat-history:v2";
 
 function makeMessages(count: number) {
   return Array.from({ length: count }, (_, index) => ({
@@ -33,9 +34,9 @@ describe("useAiChat", () => {
     };
   });
 
-  it("rehydrates history per connection", async () => {
+  it("migrates v1 history to v2 and preserves connection tags", async () => {
     localStorage.setItem(
-      AI_CHAT_STORAGE_KEY,
+      AI_CHAT_STORAGE_KEY_V1,
       JSON.stringify({
         version: 1,
         conversationsByConnection: {
@@ -54,8 +55,8 @@ describe("useAiChat", () => {
               id: "conv-b",
               connectionId: "conn-b",
               title: "B",
-              createdAt: "2025-01-01T00:00:00.000Z",
-              updatedAt: "2025-01-01T00:00:00.000Z",
+              createdAt: "2025-01-02T00:00:00.000Z",
+              updatedAt: "2025-01-02T00:00:00.000Z",
               messages: [{ id: "m2", role: "user", content: "hello b" }],
             },
           ],
@@ -67,30 +68,31 @@ describe("useAiChat", () => {
       }),
     );
 
-    const { result, rerender } = renderHook(
-      ({ connectionId }) =>
-        useAiChat({
-          connectionId,
-          dbType: "postgresql",
-          schemaContext: undefined,
-        }),
-      { initialProps: { connectionId: "conn-a" as string | null } },
+    const { result } = renderHook(() =>
+      useAiChat({
+        connectionId: "conn-a",
+        dbType: "postgresql",
+      }),
     );
 
     await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe("hello a");
+      expect(result.current.conversations.length).toBe(2);
     });
 
-    rerender({ connectionId: "conn-b" });
-
-    await waitFor(() => {
-      expect(result.current.messages[0]?.content).toBe("hello b");
-    });
+    const migrated = JSON.parse(localStorage.getItem(AI_CHAT_STORAGE_KEY_V2) ?? "{}");
+    expect(migrated.version).toBe(2);
+    expect(migrated.conversations).toHaveLength(2);
+    expect(migrated.conversations[0].contextTag.connectionId).toBeTruthy();
+    expect(
+      migrated.conversations.every(
+        (conversation: any) => conversation.messages.every((message: any) => Boolean(message.contextTag)),
+      ),
+    ).toBe(true);
   });
 
-  it("does not wipe existing storage during initial hydration", async () => {
+  it("migration is idempotent and does not duplicate conversations", async () => {
     localStorage.setItem(
-      AI_CHAT_STORAGE_KEY,
+      AI_CHAT_STORAGE_KEY_V1,
       JSON.stringify({
         version: 1,
         conversationsByConnection: {
@@ -98,16 +100,62 @@ describe("useAiChat", () => {
             {
               id: "conv-a",
               connectionId: "conn-a",
-              title: "Persisted Chat",
+              title: "A",
               createdAt: "2025-01-01T00:00:00.000Z",
               updatedAt: "2025-01-01T00:00:00.000Z",
-              messages: [{ id: "m1", role: "user", content: "still here" }],
+              messages: [{ id: "m1", role: "user", content: "hello a" }],
             },
           ],
         },
         activeConversationByConnection: {
           "conn-a": "conv-a",
         },
+      }),
+    );
+
+    const first = renderHook(() =>
+      useAiChat({
+        connectionId: "conn-a",
+        dbType: "postgresql",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(first.result.current.conversations.length).toBe(1);
+    });
+    first.unmount();
+
+    const second = renderHook(() =>
+      useAiChat({
+        connectionId: "conn-a",
+        dbType: "postgresql",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(second.result.current.conversations.length).toBe(1);
+    });
+
+    const migrated = JSON.parse(localStorage.getItem(AI_CHAT_STORAGE_KEY_V2) ?? "{}");
+    expect(migrated.conversations).toHaveLength(1);
+  });
+
+  it("does not wipe existing v2 storage during initial hydration", async () => {
+    localStorage.setItem(
+      AI_CHAT_STORAGE_KEY_V2,
+      JSON.stringify({
+        version: 2,
+        conversations: [
+          {
+            id: "conv-a",
+            title: "Persisted Chat",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+            contextTag: { connectionId: "conn-a", dbType: "postgresql" },
+            messages: [{ id: "m1", role: "user", content: "still here" }],
+          },
+        ],
+        activeConversationId: "conv-a",
       }),
     );
 
@@ -119,9 +167,9 @@ describe("useAiChat", () => {
     );
 
     await waitFor(() => {
-      const stored = JSON.parse(localStorage.getItem(AI_CHAT_STORAGE_KEY) ?? "{}");
-      expect(stored.conversationsByConnection["conn-a"]?.[0]?.title).toBe("Persisted Chat");
-      expect(stored.conversationsByConnection["conn-a"]?.[0]?.messages?.[0]?.content).toBe("still here");
+      const stored = JSON.parse(localStorage.getItem(AI_CHAT_STORAGE_KEY_V2) ?? "{}");
+      expect(stored.conversations[0]?.title).toBe("Persisted Chat");
+      expect(stored.conversations[0]?.messages?.[0]?.content).toBe("still here");
     });
   });
 
@@ -168,24 +216,20 @@ describe("useAiChat", () => {
     });
   });
 
-  it("applies retention for conversations and messages", async () => {
+  it("applies retention limits for global conversations and messages", async () => {
     localStorage.setItem(
-      AI_CHAT_STORAGE_KEY,
+      AI_CHAT_STORAGE_KEY_V2,
       JSON.stringify({
-        version: 1,
-        conversationsByConnection: {
-          "conn-a": Array.from({ length: 35 }, (_, index) => ({
-            id: `conv-${index}`,
-            connectionId: "conn-a",
-            title: `Conv ${index}`,
-            createdAt: `2025-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
-            updatedAt: `2025-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
-            messages: makeMessages(140),
-          })),
-        },
-        activeConversationByConnection: {
-          "conn-a": "conv-34",
-        },
+        version: 2,
+        conversations: Array.from({ length: 35 }, (_, index) => ({
+          id: `conv-${index}`,
+          title: `Conv ${index}`,
+          createdAt: `2025-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+          updatedAt: `2025-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+          contextTag: { connectionId: "conn-a", dbType: "postgresql" },
+          messages: makeMessages(140),
+        })),
+        activeConversationId: "conv-34",
       }),
     );
 
@@ -200,7 +244,9 @@ describe("useAiChat", () => {
       expect(result.current.conversations.length).toBe(30);
     });
 
-    expect(result.current.conversations.every((conversation) => conversation.messages.length <= 120)).toBe(true);
+    expect(
+      result.current.conversations.every((conversation) => conversation.messages.length <= 120),
+    ).toBe(true);
   });
 
   it("deleting active conversation falls back to another", async () => {
@@ -228,37 +274,30 @@ describe("useAiChat", () => {
     expect(result.current.conversations.length).toBe(1);
   });
 
-  it("clearAllConversations only clears current connection", async () => {
+  it("clearAllConversations resets global history", async () => {
     localStorage.setItem(
-      AI_CHAT_STORAGE_KEY,
+      AI_CHAT_STORAGE_KEY_V2,
       JSON.stringify({
-        version: 1,
-        conversationsByConnection: {
-          "conn-a": [
-            {
-              id: "conv-a",
-              connectionId: "conn-a",
-              title: "A",
-              createdAt: "2025-01-01T00:00:00.000Z",
-              updatedAt: "2025-01-01T00:00:00.000Z",
-              messages: [{ id: "m1", role: "user", content: "a" }],
-            },
-          ],
-          "conn-b": [
-            {
-              id: "conv-b",
-              connectionId: "conn-b",
-              title: "B",
-              createdAt: "2025-01-01T00:00:00.000Z",
-              updatedAt: "2025-01-01T00:00:00.000Z",
-              messages: [{ id: "m2", role: "user", content: "b" }],
-            },
-          ],
-        },
-        activeConversationByConnection: {
-          "conn-a": "conv-a",
-          "conn-b": "conv-b",
-        },
+        version: 2,
+        conversations: [
+          {
+            id: "conv-a",
+            title: "A",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+            contextTag: { connectionId: "conn-a", dbType: "postgresql" },
+            messages: [{ id: "m1", role: "user", content: "a" }],
+          },
+          {
+            id: "conv-b",
+            title: "B",
+            createdAt: "2025-01-02T00:00:00.000Z",
+            updatedAt: "2025-01-02T00:00:00.000Z",
+            contextTag: { connectionId: "conn-b", dbType: "postgresql" },
+            messages: [{ id: "m2", role: "user", content: "b" }],
+          },
+        ],
+        activeConversationId: "conv-a",
       }),
     );
 
@@ -270,20 +309,51 @@ describe("useAiChat", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.conversations.length).toBe(1);
+      expect(result.current.conversations.length).toBe(2);
     });
 
     act(() => {
       result.current.clearAllConversations();
     });
 
-    const stored = JSON.parse(localStorage.getItem(AI_CHAT_STORAGE_KEY) ?? "{}");
-    expect(stored.conversationsByConnection["conn-b"]).toHaveLength(1);
-    expect(stored.conversationsByConnection["conn-a"]).toHaveLength(1);
+    const stored = JSON.parse(localStorage.getItem(AI_CHAT_STORAGE_KEY_V2) ?? "{}");
+    expect(stored.conversations).toHaveLength(1);
+    expect(stored.activeConversationId).toBeTruthy();
+  });
+
+  it("restores global active conversation after restart", async () => {
+    const first = renderHook(() =>
+      useAiChat({
+        connectionId: "conn-a",
+        dbType: "postgresql",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(first.result.current.conversations.length).toBe(1);
+    });
+
+    act(() => {
+      first.result.current.startNewConversation();
+    });
+
+    const chosen = first.result.current.activeConversationId;
+    first.unmount();
+
+    const second = renderHook(() =>
+      useAiChat({
+        connectionId: "conn-a",
+        dbType: "postgresql",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(second.result.current.activeConversationId).toBe(chosen);
+    });
   });
 
   it("handles invalid JSON in localStorage", async () => {
-    localStorage.setItem(AI_CHAT_STORAGE_KEY, "{not-valid-json");
+    localStorage.setItem(AI_CHAT_STORAGE_KEY_V2, "{not-valid-json");
 
     const { result } = renderHook(() =>
       useAiChat({

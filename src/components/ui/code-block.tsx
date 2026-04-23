@@ -94,6 +94,19 @@ function CodeBlockCode({
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
 
   useEffect(() => {
+    const normalizeTheme = (value: string): string => {
+      const normalized = value.trim().toLowerCase()
+      const aliases: Record<string, string> = {
+        "dark-plus": "github-dark",
+        "dark+": "github-dark",
+        "light-plus": "github-light",
+        "light+": "github-light",
+        "vscode-dark": "github-dark",
+        "vscode-light": "github-light",
+      }
+      return aliases[normalized] ?? value
+    }
+
     const normalizeLanguage = (value: string): string => {
       const normalized = value.trim().toLowerCase()
       const aliases: Record<string, string> = {
@@ -128,19 +141,22 @@ function CodeBlockCode({
       try {
         const html = await codeToHtml(code, {
           lang: normalizedLanguage,
-          theme,
+          theme: normalizeTheme(theme),
         })
         setHighlightedHtml(html)
       } catch {
         try {
           // SQL is the safest fallback for this app context.
-          const sqlFallback = await codeToHtml(code, { lang: "sql", theme })
+          const sqlFallback = await codeToHtml(code, {
+            lang: "sql",
+            theme: normalizeTheme(theme),
+          })
           setHighlightedHtml(sqlFallback)
         } catch {
           try {
             const plaintextFallback = await codeToHtml(code, {
               lang: "text",
-              theme,
+              theme: normalizeTheme(theme),
             })
             setHighlightedHtml(plaintextFallback)
           } catch {

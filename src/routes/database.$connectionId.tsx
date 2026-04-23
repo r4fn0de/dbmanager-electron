@@ -1058,6 +1058,7 @@ export function DatabasePageContent({
                 dbType={connection.db_type || "postgresql"}
                 schemaContext={schemaContextForAi}
                 schemaCompletionData={schemaCompletionData}
+                isRouteActive={isActive}
                 loadRequest={initialSqlQuery ? {
                   key: `query:${Date.now()}`,
                   title: "Query",

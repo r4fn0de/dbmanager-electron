@@ -1,5 +1,5 @@
 import path from "node:path";
-import { app, BrowserWindow, dialog, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, Menu, nativeTheme } from "electron";
 import { ipcMain } from "electron/main";
 import {
   installExtension,
@@ -108,6 +108,26 @@ function createWindow() {
     mainWindow.setTitle(APP_DISPLAY_NAME);
   });
 
+  // Force DevTools to always open in detached window to preserve
+  // vibrancy/transparency on the main window. Docked DevTools breaks
+  // the transparent compositing mode.
+  if (inDevelopment) {
+    let isReopeningDevTools = false;
+    mainWindow.webContents.on("devtools-opened", () => {
+      if (isReopeningDevTools) {
+        isReopeningDevTools = false;
+        return;
+      }
+      isReopeningDevTools = true;
+      mainWindow.webContents.closeDevTools();
+      mainWindow.webContents.openDevTools({ mode: "detach" });
+      // Fallback: if the reopened event never fires, unstick the flag
+      setTimeout(() => {
+        isReopeningDevTools = false;
+      }, 1000);
+    });
+  }
+
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
@@ -133,6 +153,70 @@ function checkForUpdates() {
       repo: "LuanRoger/electron-shadcn",
     },
   });
+}
+
+function setupMenu() {
+  const isMac = process.platform === "darwin";
+
+  const template: Electron.MenuItemConstructorOptions[] = [];
+
+  // macOS app menu
+  if (isMac) {
+    template.push({
+      label: APP_DISPLAY_NAME,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    });
+  }
+
+  // View menu
+  const viewSubmenu: Electron.MenuItemConstructorOptions[] = [];
+  if (inDevelopment) {
+    viewSubmenu.push(
+      {
+        label: "Toggle Developer Tools",
+        accelerator: isMac ? "Alt+Cmd+I" : "Ctrl+Shift+I",
+        click: (_menuItem: Electron.MenuItem, focusedWindow: Electron.BaseWindow | undefined) => {
+          if (focusedWindow instanceof Electron.BrowserWindow) {
+            focusedWindow.webContents.toggleDevTools();
+          }
+        },
+      },
+      { type: "separator" },
+    );
+  }
+  viewSubmenu.push(
+    { role: "reload" },
+    { role: "forceReload" },
+    { type: "separator" },
+    { role: "resetZoom" },
+    { role: "zoomIn" },
+    { role: "zoomOut" },
+    { type: "separator" },
+    { role: "togglefullscreen" },
+  );
+  template.push({ label: "View", submenu: viewSubmenu });
+
+  // Window menu
+  const windowSubmenu: Electron.MenuItemConstructorOptions[] = [
+    { role: "minimize" },
+    { role: "zoom" },
+  ];
+  if (isMac) {
+    windowSubmenu.push({ type: "separator" }, { role: "front" });
+  } else {
+    windowSubmenu.push({ role: "close" });
+  }
+  template.push({ label: "Window", submenu: windowSubmenu });
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 async function setupORPC() {
@@ -164,10 +248,13 @@ function configureAppIdentity(): void {
 app.whenReady().then(async () => {
   try {
     configureAppIdentity();
+    // Register IPC handlers before creating the renderer window so
+    // initial theme sync events from the renderer are not lost.
+    await setupORPC();
     createWindow();
+    setupMenu();
     await installExtensions();
     checkForUpdates();
-    await setupORPC();
     // Register database drivers (PostgreSQL, MySQL, MariaDB)
     await registerDrivers();
     // Register AI streaming chat handlers (IPC event-based)

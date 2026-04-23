@@ -68,8 +68,10 @@ import type { DatabaseType } from "@/ipc/db/types";
 // ---------------------------------------------------------------------------
 
 interface AiChatPanelProps {
-  /** Active connection ID */
+  /** Active connection ID (optional in global mode) */
   connectionId: string | null;
+  /** Active connection display label */
+  connectionLabel?: string;
   /** Database engine type */
   dbType: DatabaseType;
   /** Optional schema context (table/column names) */
@@ -415,7 +417,7 @@ function ChatMessage({
           {/* Thinking indicator — ai-elements Reasoning, minimal style */}
           {message.isStreaming && !message.content && (
             <Reasoning isStreaming className="!mb-0 px-3">
-              <ReasoningTrigger className="gap-1.5 px-0 py-1 text-xs">
+              <ReasoningTrigger className="gap-1.5 py-1 text-xs">
                 <span className="relative flex size-1.5">
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 [animation-duration:1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
                   <span className="inline-flex size-1.5 rounded-full bg-primary" />
@@ -493,6 +495,7 @@ function parseAssistantContent(content: string): AssistantContentPart[] {
 
 export function AiChatPanel({
   connectionId,
+  connectionLabel,
   dbType,
   schemaContext,
   contextPreview,
@@ -501,7 +504,7 @@ export function AiChatPanel({
   onClose,
 }: AiChatPanelProps) {
   const { resolvedTheme } = useTheme();
-  const codeTheme = resolvedTheme === "dark" ? "dark-plus" : "light-plus";
+  const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
 
   const {
     messages,
@@ -519,6 +522,7 @@ export function AiChatPanel({
   } = useAiChat({
     connectionId,
     dbType,
+    connectionLabel,
     schemaContext,
   });
 
@@ -709,13 +713,15 @@ export function AiChatPanel({
   if (!isOpen) return null;
 
   const isEmpty = messages.length === 0;
+  const hasActiveConnection = Boolean(connectionId);
+  const currentConnectionLabel = contextPreview?.connectionLabel || connectionLabel || connectionId || "Sem conexão";
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
 
   return (
     <div
       className={cn(
-        "flex h-full flex-col bg-background",
+        "flex h-full flex-col overflow-hidden rounded-md bg-background",
         "motion-safe:animate-in motion-safe:slide-in-from-right-full",
         "motion-safe:duration-200 motion-safe:ease-out"
       )}
@@ -725,6 +731,9 @@ export function AiChatPanel({
       <div className="flex items-center justify-between px-3 h-9 border-b border-border/50 shrink-0">
         <div className="flex min-w-0 items-center gap-2">
           <Bot className="size-3.5 text-primary" />
+          <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {currentConnectionLabel}
+          </span>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -732,7 +741,6 @@ export function AiChatPanel({
                   variant="ghost"
                   size="sm"
                   className="h-7 max-w-[210px] justify-start px-2 text-xs font-semibold tracking-tight"
-                  disabled={!connectionId}
                 >
                   <span
                     key={`${activeConversation?.id ?? "none"}:${activeConversation?.title ?? "AI Chat"}`}
@@ -754,7 +762,7 @@ export function AiChatPanel({
               </div>
               <DropdownMenuItem
                 onClick={startNewConversation}
-                disabled={!connectionId || isLoading}
+                disabled={isLoading}
               >
                 <Plus className="size-3.5" />
                 New conversation
@@ -773,6 +781,11 @@ export function AiChatPanel({
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate text-xs font-medium">
                         {conversation.title}
+                      </span>
+                      <span className="truncate text-[10px] text-muted-foreground/90">
+                        {conversation.contextTag?.connectionLabel
+                          || conversation.contextTag?.connectionId
+                          || "Sem conexão"}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
                         {new Intl.DateTimeFormat(undefined, {
@@ -807,7 +820,7 @@ export function AiChatPanel({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={clearAllConversations}
-                disabled={!connectionId || isLoading || conversations.length === 0}
+                disabled={isLoading || conversations.length === 0}
               >
                 <Trash2 className="size-3.5" />
                 Clear all
@@ -823,7 +836,7 @@ export function AiChatPanel({
                   variant="ghost"
                   size="icon-xs"
                   onClick={startNewConversation}
-                  disabled={!connectionId || isLoading}
+                  disabled={isLoading}
                   className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
                 >
                   <Plus className="size-3.5" />
@@ -918,6 +931,11 @@ export function AiChatPanel({
           {error}
         </div>
       )}
+      {!hasActiveConnection && (
+        <div className="mx-3 mb-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+          No momento estou sem conexão ativa. Posso ajudar com SQL conceitual, mas tools SQL ao vivo ficam bloqueadas.
+        </div>
+      )}
 
       {/* Input */}
       <div className="px-3 py-2 shrink-0">
@@ -926,7 +944,6 @@ export function AiChatPanel({
           onValueChange={handleInputChange}
           onSubmit={handleSubmit}
           isLoading={isLoading}
-          disabled={!connectionId}
           className={cn(
             "rounded-md border border-border bg-muted/40 p-2 shadow-none",
             "transition-transform duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
@@ -994,9 +1011,9 @@ export function AiChatPanel({
           <PromptInputTextarea
             ref={inputRef}
             placeholder={
-              connectionId
+              hasActiveConnection
                 ? "Ask about your database…"
-                : "Select a connection first"
+                : "Ask anything about SQL, modeling, or debugging…"
             }
             className="max-h-[250px] min-h-[72px] overflow-y-auto p-2 text-sm dark:bg-transparent"
           />
@@ -1017,7 +1034,7 @@ export function AiChatPanel({
                 type="button"
                 size="xs"
                 onClick={handleSubmit}
-                disabled={!input.trim() || !connectionId}
+                disabled={!input.trim()}
                 className="gap-1.5"
               >
                 Send

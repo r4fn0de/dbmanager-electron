@@ -15,7 +15,7 @@ declare global {
       aiChat?: {
         start: (input: {
           chatId: string;
-          connectionId: string;
+          connectionId: string | null;
           dbType: string;
           schemaContext?: string;
           messages: Array<{ role: string; content: string }>;

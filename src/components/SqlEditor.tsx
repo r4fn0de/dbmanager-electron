@@ -18,7 +18,6 @@ import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { QueryResults } from "@/components/QueryResults";
-import { AiChatPanel } from "@/components/AiChatPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
@@ -28,8 +27,6 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-  type Layout,
-  type GroupImperativeHandle,
   useDefaultLayout,
 } from "@/components/ui/resizable";
 import { Separator } from "@/components/ui/separator";
@@ -53,6 +50,7 @@ import {
   type SchemaCompletionData,
 } from "@/lib/monaco-sql-setup";
 import { cn } from "@/utils/tailwind";
+import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import * as monaco from "monaco-editor";
 import "@/lib/monaco-loader";
 import type {
@@ -80,6 +78,8 @@ interface SqlEditorProps {
   schemaContext?: string;
   /** Schema data for autocomplete — table names, column names, schemas */
   schemaCompletionData?: SchemaCompletionData;
+  /** Whether this SQL editor belongs to the currently visible tab */
+  isRouteActive?: boolean;
 }
 
 const DEFAULT_SQL = `/*
@@ -306,6 +306,7 @@ export function SqlEditor({
   dbType = "postgresql",
   schemaContext,
   schemaCompletionData,
+  isRouteActive = true,
 }: SqlEditorProps) {
   const {
     savedQueries,
@@ -366,7 +367,6 @@ export function SqlEditor({
   const sidebarWidthRef = useRef<number>(0);
 
   // AI panel state
-  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
   const [isFixingSql, setIsFixingSql] = useState(false);
   const [isInlineAiPromptOpen, setIsInlineAiPromptOpen] = useState(false);
   const [inlineAiPrompt, setInlineAiPrompt] = useState("");
@@ -375,53 +375,13 @@ export function SqlEditor({
   // EXPLAIN state (driven by keyboard shortcuts only, no toolbar button)
   const [isExplaining, setIsExplaining] = useState(false);
 
-  // AI chat layout persistence — skip saving when chat is closed
-  const AI_CHAT_DEFAULT_SIZE = 30; // percentage
-  const aiChatLayoutStore = useDefaultLayout({
-    id: `sql-ai-chat-${selectedConnection ?? "default"}`,
-    storage: localStorage,
-  });
-  const persistAiChatLayout = useCallback(
-    (layout: Layout) => {
-      // Only persist when AI chat is open — avoid saving collapsed state
-      if (!isAiChatOpen) return;
-      aiChatLayoutStore.onLayoutChanged(layout);
-    },
-    [aiChatLayoutStore.onLayoutChanged, isAiChatOpen],
+  const isGlobalAiChatOpen = useAiChatGlobalStore((state) => state.isOpen);
+  const setGlobalAiChatOpen = useAiChatGlobalStore((state) => state.setOpen);
+  const setSqlContext = useAiChatGlobalStore((state) => state.setSqlContext);
+  const clearSqlContext = useAiChatGlobalStore((state) => state.clearSqlContext);
+  const sqlContextSourceIdRef = useRef<string>(
+    `sql-editor-${selectedConnection ?? "none"}-${Math.random().toString(36).slice(2)}`,
   );
-
-  // Group ref for atomic setLayout() — opens/closes AI chat without remounting the editor
-  const aiChatGroupRef = useRef<GroupImperativeHandle>(null);
-  // Tracks whether the toggle came from the toolbar button (vs. user dragging)
-  const aiChatToggleSource = useRef<"button" | "resize">("resize");
-
-  // Collapse/expand AI chat panel imperatively when toggled
-  useEffect(() => {
-    if (isAiChatOpen) {
-      // Only setLayout when triggered by toolbar/close button — not when user dragged to expand
-      // (dragging already sets the correct size; setLayout would override it)
-      if (aiChatToggleSource.current === "button") {
-        const targetSize = aiChatLayoutStore.defaultLayout?.["sql-ai-chat"] ?? AI_CHAT_DEFAULT_SIZE;
-        aiChatGroupRef.current?.setLayout({
-          "sql-editor-main": 100 - targetSize,
-          "sql-ai-chat": targetSize,
-        });
-      }
-    } else {
-      // Closing always collapses the panel regardless of source
-      aiChatGroupRef.current?.setLayout({ "sql-editor-main": 100, "sql-ai-chat": 0 });
-    }
-    aiChatToggleSource.current = "resize"; // reset for next time
-  }, [isAiChatOpen, aiChatLayoutStore.defaultLayout]);
-
-  // Compute initial layout for the AI chat panel group
-  // When chat starts closed, force the chat panel to 0% to avoid a flash on mount
-  const aiChatGroupDefaultLayout = useMemo((): Layout | undefined => {
-    if (!isAiChatOpen) {
-      return { "sql-editor-main": 100, "sql-ai-chat": 0 };
-    }
-    return aiChatLayoutStore.defaultLayout ?? { "sql-editor-main": 100 - AI_CHAT_DEFAULT_SIZE, "sql-ai-chat": AI_CHAT_DEFAULT_SIZE };
-  }, [isAiChatOpen, aiChatLayoutStore.defaultLayout]); // eslint-disable-line react-hooks/exhaustive-deps — defaultLayout is mount-only but we need isAiChatOpen for initial render
 
   // ── Autocomplete: register Monaco completion provider on mount, update schema data ──
   useEffect(() => {
@@ -487,6 +447,31 @@ export function SqlEditor({
       errorPreview: error ? truncateForContext(error, 120) : "",
     };
   }, [selectedSqlForAi, lastError, selectedConnectionMeta.label, dbType]);
+
+  useEffect(() => {
+    if (!isRouteActive) return;
+
+    setSqlContext(sqlContextSourceIdRef.current, {
+      connectionId: selectedConnection,
+      connectionLabel: selectedConnectionMeta.label || "No connection",
+      dbType,
+      schemaContext: aiChatContext,
+      contextPreview: aiChatContextPreview,
+    });
+
+    return () => {
+      clearSqlContext(sqlContextSourceIdRef.current);
+    };
+  }, [
+    aiChatContext,
+    aiChatContextPreview,
+    clearSqlContext,
+    dbType,
+    isRouteActive,
+    selectedConnection,
+    selectedConnectionMeta.label,
+    setSqlContext,
+  ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run only when the load request key changes.
   useEffect(() => {
@@ -648,12 +633,6 @@ export function SqlEditor({
       toast.error("AI generation timed out. Try a shorter prompt or check provider settings.");
     }, 30000);
   }, [clearInlineStartFallbackTimeout, clearInlineStreamTimeout, setSql]);
-
-  // AI: Insert SQL into editor (from AI chat) — strip markdown fences if present
-  const handleInsertSqlFromAi = useCallback((sql: string) => {
-    const cleaned = sql.trim().replace(/^```sql?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
-    setSql(cleaned);
-  }, [setSql]);
 
   // AI: inline SQL generation from natural language prompt (streaming)
   const handleGenerateSqlInline = useCallback(async () => {
@@ -1422,14 +1401,6 @@ export function SqlEditor({
         )}
         {showWorkspaceSidebar && <ResizableHandle withHandle />}
         <ResizablePanel id="sql-editor" className="min-h-0 min-w-0">
-        <ResizablePanelGroup
-          orientation="horizontal"
-          className="h-full min-h-0"
-          defaultLayout={aiChatGroupDefaultLayout}
-          onLayoutChanged={persistAiChatLayout}
-          groupRef={aiChatGroupRef}
-        >
-          <ResizablePanel id="sql-editor-main" defaultSize={`${100 - AI_CHAT_DEFAULT_SIZE}%`} minSize="40%" className="min-h-0 min-w-0">
           <div className="h-full min-w-0 flex flex-col">
           {/* ── Editor toolbar (single row) ──────────────────── */}
           <div className="flex items-center gap-2 border-b border-border/50 px-3 h-9">
@@ -1486,10 +1457,9 @@ export function SqlEditor({
                       variant="ghost"
                       size="xs"
                       onClick={() => {
-                        aiChatToggleSource.current = "button";
-                        setIsAiChatOpen(!isAiChatOpen);
+                        setGlobalAiChatOpen(!isGlobalAiChatOpen);
                       }}
-                      className={cn("gap-1", isAiChatOpen && "bg-primary/10 text-primary")}
+                      className={cn("gap-1", isGlobalAiChatOpen && "bg-primary/10 text-primary")}
                     >
                       <Bot className="size-3" />
                       AI Chat
@@ -1766,50 +1736,6 @@ export function SqlEditor({
             </ResizablePanel>
           </ResizablePanelGroup>
           </div>
-          </ResizablePanel>
-
-          {/* AI Chat sidebar panel — always rendered; collapsed/expanded via imperative panelRef */}
-          <ResizableHandle
-            withHandle
-            className={cn(
-              "bg-border/50 hover:bg-border transition-colors duration-150",
-              !isAiChatOpen && "pointer-events-none opacity-0",
-            )}
-          />
-          <ResizablePanel
-            id="sql-ai-chat"
-            defaultSize={`${AI_CHAT_DEFAULT_SIZE}%`}
-            minSize="15%"
-            maxSize="40%"
-            collapsible
-            collapsedSize={0}
-            onResize={(size, _id, prevSize) => {
-              // Sync isAiChatOpen state only when crossing the collapsed/expanded threshold
-              const wasCollapsed = prevSize ? prevSize.asPercentage === 0 : false;
-              const isCollapsed = size.asPercentage === 0;
-              if (wasCollapsed !== isCollapsed) {
-                aiChatToggleSource.current = "resize";
-                setIsAiChatOpen(!isCollapsed);
-              }
-            }}
-            className="min-h-0 min-w-0"
-          >
-            {isAiChatOpen && (
-              <AiChatPanel
-                connectionId={selectedConnection}
-                dbType={dbType}
-                schemaContext={aiChatContext}
-                contextPreview={aiChatContextPreview}
-                isOpen={isAiChatOpen}
-                onInsertSql={handleInsertSqlFromAi}
-                onClose={() => {
-                  aiChatToggleSource.current = "button";
-                  setIsAiChatOpen(false);
-                }}
-              />
-            )}
-          </ResizablePanel>
-        </ResizablePanelGroup>
         </ResizablePanel>
       </ResizablePanelGroup>
     </section>
