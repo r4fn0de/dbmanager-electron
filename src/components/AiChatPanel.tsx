@@ -6,9 +6,12 @@
  */
 import {
   Bot,
+  Check,
+  ChevronDown,
   Code2,
   Loader2,
   PanelRight,
+  Plus,
   Send,
   Square,
   Trash2,
@@ -19,6 +22,13 @@ import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Message,
   MessageContent,
@@ -159,11 +169,12 @@ function ChatMessage({
                   </MessageContent>
                 ) : (
                   <div key={`code-${index}`} className="group/sql relative">
-                    <CodeBlock>
+                    <CodeBlock className="!bg-transparent !text-inherit border-border/50 rounded-lg">
                       <CodeBlockCode
                         code={part.code}
                         language={part.language || "sql"}
                         theme={codeTheme}
+                        className="[&>pre]:!rounded-none [&>pre]:!m-0"
                       />
                     </CodeBlock>
                     {onInsertSql && !message.isStreaming && (
@@ -262,14 +273,26 @@ export function AiChatPanel({
   onClose,
 }: AiChatPanelProps) {
   const { resolvedTheme } = useTheme();
-  const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
+  const codeTheme = resolvedTheme === "dark" ? "dark-plus" : "light-plus";
 
-  const { messages, isLoading, error, sendMessage, abort, clearMessages } =
-    useAiChat({
-      connectionId,
-      dbType,
-      schemaContext,
-    });
+  const {
+    messages,
+    conversations,
+    activeConversationId,
+    isLoading,
+    error,
+    sendMessage,
+    abort,
+    clearMessages,
+    startNewConversation,
+    selectConversation,
+    deleteConversation,
+    clearAllConversations,
+  } = useAiChat({
+    connectionId,
+    dbType,
+    schemaContext,
+  });
 
   const [input, setInput] = useState("");
   const [inputPulse, setInputPulse] = useState(false);
@@ -279,6 +302,7 @@ export function AiChatPanel({
     selection: boolean;
     error: boolean;
   }>({ selection: false, error: false });
+  const [isTitleMorphing, setIsTitleMorphing] = useState(false);
   const [exitingContext, setExitingContext] = useState<{
     selection: boolean;
     error: boolean;
@@ -289,6 +313,8 @@ export function AiChatPanel({
     selection?: ReturnType<typeof setTimeout>;
     error?: ReturnType<typeof setTimeout>;
   }>({});
+  const titleMorphTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousTitleRef = useRef<string | null>(null);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -323,8 +349,30 @@ export function AiChatPanel({
       if (inputPulseTimeoutRef.current) {
         clearTimeout(inputPulseTimeoutRef.current);
       }
+      if (titleMorphTimeoutRef.current) {
+        clearTimeout(titleMorphTimeoutRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    const currentTitle =
+      conversations.find((conversation) => conversation.id === activeConversationId)?.title
+      ?? null;
+    const previousTitle = previousTitleRef.current;
+    previousTitleRef.current = currentTitle;
+
+    if (!currentTitle || !previousTitle || currentTitle === previousTitle) return;
+
+    setIsTitleMorphing(true);
+    if (titleMorphTimeoutRef.current) {
+      clearTimeout(titleMorphTimeoutRef.current);
+    }
+    titleMorphTimeoutRef.current = setTimeout(() => {
+      setIsTitleMorphing(false);
+      titleMorphTimeoutRef.current = null;
+    }, 220);
+  }, [activeConversationId, conversations]);
 
   const showSelectionContextChip = Boolean(
     contextPreview?.selectionPreview && !dismissedContext.selection,
@@ -414,6 +462,8 @@ export function AiChatPanel({
   if (!isOpen) return null;
 
   const isEmpty = messages.length === 0;
+  const activeConversation =
+    conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
 
   return (
     <div
@@ -426,9 +476,97 @@ export function AiChatPanel({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 h-9 border-b border-border/50 shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Bot className="size-3.5 text-primary" />
-          <span className="text-xs font-semibold tracking-tight">AI Chat</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 max-w-[210px] justify-start px-2 text-xs font-semibold tracking-tight"
+                  disabled={!connectionId}
+                >
+                  <span
+                    key={`${activeConversation?.id ?? "none"}:${activeConversation?.title ?? "AI Chat"}`}
+                    className={cn(
+                      "truncate transition-[filter,opacity,transform] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+                      "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-180",
+                      isTitleMorphing && "opacity-80 blur-[1.5px] -translate-y-0.5",
+                    )}
+                  >
+                    {activeConversation?.title ?? "AI Chat"}
+                  </span>
+                  <ChevronDown className="size-3 shrink-0 opacity-70" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start" side="bottom" className="w-[290px]">
+              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                Conversations
+              </div>
+              <DropdownMenuItem
+                onClick={startNewConversation}
+                disabled={!connectionId || isLoading}
+              >
+                <Plus className="size-3.5" />
+                New conversation
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {conversations.length === 0 ? (
+                <DropdownMenuItem disabled>No conversations yet</DropdownMenuItem>
+              ) : (
+                conversations.map((conversation) => (
+                  <DropdownMenuItem
+                    key={conversation.id}
+                    className="flex items-center justify-between gap-2"
+                    onClick={() => selectConversation(conversation.id)}
+                    disabled={isLoading}
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate text-xs font-medium">
+                        {conversation.title}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {new Intl.DateTimeFormat(undefined, {
+                          month: "2-digit",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }).format(new Date(conversation.updatedAt))}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {conversation.id === activeConversationId && (
+                        <Check className="size-3 text-primary" />
+                      )}
+                      <button
+                        type="button"
+                        aria-label="Delete conversation"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          deleteConversation(conversation.id);
+                        }}
+                        className="rounded p-1 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+                        disabled={conversations.length === 1 || isLoading}
+                      >
+                        <Trash2 className="size-3" />
+                      </button>
+                    </div>
+                  </DropdownMenuItem>
+                ))
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={clearAllConversations}
+                disabled={!connectionId || isLoading || conversations.length === 0}
+              >
+                <Trash2 className="size-3.5" />
+                Clear all
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div className="flex items-center gap-0.5">
           <Tooltip>
@@ -437,8 +575,24 @@ export function AiChatPanel({
                 <Button
                   variant="ghost"
                   size="icon-xs"
+                  onClick={startNewConversation}
+                  disabled={!connectionId || isLoading}
+                  className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
+                >
+                  <Plus className="size-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent>New conversation</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={clearMessages}
-                  disabled={isEmpty}
+                  disabled={isEmpty || isLoading}
                   className="text-muted-foreground hover:text-foreground transition-transform duration-150 ease-out active:scale-[0.97]"
                 >
                   <Trash2 className="size-3.5" />
@@ -469,42 +623,50 @@ export function AiChatPanel({
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
-        {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full px-6 py-8 gap-4">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-              <Bot className="size-5 text-primary" />
+        <div
+          key={activeConversationId ?? "no-conversation"}
+          className={cn(
+            "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1",
+            "motion-safe:duration-180 motion-safe:[animation-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+          )}
+        >
+          {isEmpty ? (
+            <div className="flex flex-col items-center justify-center h-full px-6 py-8 gap-4">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+                <Bot className="size-5 text-primary" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium">AI SQL Assistant</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Ask about your database schema, generate queries, or fix errors.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-1.5 mt-1">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => sendMessage(s)}
+                    className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground transition-colors duration-150 active:scale-[0.97]"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="text-center space-y-1">
-              <p className="text-sm font-medium">AI SQL Assistant</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Ask about your database schema, generate queries, or fix errors.
-              </p>
-            </div>
-            <div className="flex flex-wrap justify-center gap-1.5 mt-1">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => sendMessage(s)}
-                  className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground transition-colors duration-150 active:scale-[0.97]"
-                >
-                  {s}
-                </button>
+          ) : (
+            <div>
+              {messages.map((msg) => (
+                <ChatMessage
+                  key={msg.id}
+                  message={msg}
+                  codeTheme={codeTheme}
+                  onInsertSql={onInsertSql}
+                />
               ))}
             </div>
-          </div>
-        ) : (
-          <div>
-            {messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-                codeTheme={codeTheme}
-                onInsertSql={onInsertSql}
-              />
-            ))}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Error banner */}
