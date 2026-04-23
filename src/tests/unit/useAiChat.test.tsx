@@ -88,6 +88,43 @@ describe("useAiChat", () => {
     });
   });
 
+  it("does not wipe existing storage during initial hydration", async () => {
+    localStorage.setItem(
+      AI_CHAT_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        conversationsByConnection: {
+          "conn-a": [
+            {
+              id: "conv-a",
+              connectionId: "conn-a",
+              title: "Persisted Chat",
+              createdAt: "2025-01-01T00:00:00.000Z",
+              updatedAt: "2025-01-01T00:00:00.000Z",
+              messages: [{ id: "m1", role: "user", content: "still here" }],
+            },
+          ],
+        },
+        activeConversationByConnection: {
+          "conn-a": "conv-a",
+        },
+      }),
+    );
+
+    renderHook(() =>
+      useAiChat({
+        connectionId: "conn-a",
+        dbType: "postgresql",
+      }),
+    );
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem(AI_CHAT_STORAGE_KEY) ?? "{}");
+      expect(stored.conversationsByConnection["conn-a"]?.[0]?.title).toBe("Persisted Chat");
+      expect(stored.conversationsByConnection["conn-a"]?.[0]?.messages?.[0]?.content).toBe("still here");
+    });
+  });
+
   it("creates a new conversation and makes it active", async () => {
     const { result } = renderHook(() =>
       useAiChat({

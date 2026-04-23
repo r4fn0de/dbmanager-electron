@@ -206,6 +206,7 @@ export function useAiChat({
 }: UseAiChatOptions): UseAiChatReturn {
   const [conversations, setConversations] = useState<AiChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -280,6 +281,7 @@ export function useAiChat({
 
   useEffect(() => {
     if (!connectionId) {
+      setIsHydrated(false);
       setConversations([]);
       setActiveConversationId(null);
       setIsLoading(false);
@@ -289,6 +291,7 @@ export function useAiChat({
       return;
     }
 
+    setIsHydrated(false);
     const storage = readStorage();
     const persisted = withRetention(storage.conversationsByConnection[connectionId] ?? []);
     const persistedActiveId = storage.activeConversationByConnection[connectionId] ?? null;
@@ -303,6 +306,7 @@ export function useAiChat({
       storage.conversationsByConnection[connectionId] = [fresh];
       storage.activeConversationByConnection[connectionId] = fresh.id;
       writeStorage(storage);
+      setIsHydrated(true);
       return;
     }
 
@@ -312,11 +316,13 @@ export function useAiChat({
       storage.activeConversationByConnection[connectionId] = persisted[0].id;
       writeStorage(storage);
     }
+    setIsHydrated(true);
   }, [connectionId]);
 
   useEffect(() => {
+    if (!isHydrated) return;
     persistCurrentConnection(conversations, activeConversationId);
-  }, [conversations, activeConversationId, persistCurrentConnection]);
+  }, [isHydrated, conversations, activeConversationId, persistCurrentConnection]);
 
   // Register IPC listeners for streaming chunks
   useEffect(() => {

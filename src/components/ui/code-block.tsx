@@ -1,6 +1,6 @@
 import { cn } from "@/utils/tailwind"
 import React, { useEffect, useState } from "react"
-import { codeToHtml } from "shiki"
+import { codeToHtml } from "shiki/bundle/web"
 
 export type CodeBlockProps = {
   children?: React.ReactNode
@@ -28,6 +28,61 @@ export type CodeBlockCodeProps = {
   theme?: string
   className?: string
 } & React.HTMLProps<HTMLDivElement>
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+}
+
+function buildPlainThemedHtml(code: string, theme: string): string {
+  const isDark = theme.toLowerCase().includes("dark")
+  const foreground = isDark ? "#D4D4D4" : "#1F2328"
+  return `<pre class="shiki" style="color:${foreground};background-color:transparent" tabindex="0"><code>${escapeHtml(code)}</code></pre>`
+}
+
+function buildSqlFallbackHtml(code: string, theme: string): string {
+  const isDark = theme.toLowerCase().includes("dark")
+  const colors = {
+    text: isDark ? "#D4D4D4" : "#1F2328",
+    keyword: isDark ? "#569CD6" : "#0550AE",
+    string: isDark ? "#CE9178" : "#0A3069",
+    number: isDark ? "#B5CEA8" : "#116329",
+    comment: isDark ? "#6A9955" : "#1A7F37",
+  }
+
+  const keywords = [
+    "select", "from", "where", "join", "inner", "left", "right", "full",
+    "outer", "on", "group", "by", "order", "limit", "offset", "insert",
+    "into", "values", "update", "set", "delete", "create", "table", "view",
+    "index", "drop", "alter", "add", "distinct", "as", "and", "or", "not",
+    "null", "is", "in", "like", "between", "having", "union", "all",
+  ]
+  const keywordSet = new Set(keywords)
+
+  const tokenRegex =
+    /(--[^\n]*|'(?:''|[^'])*'|"(?:""|[^"])*"|\b\d+(?:\.\d+)?\b|\b[a-z_][a-z0-9_]*\b)/gi
+
+  const highlighted = escapeHtml(code).replace(tokenRegex, (rawToken) => {
+    const token = rawToken.toLowerCase()
+    if (token.startsWith("--")) {
+      return `<span style="color:${colors.comment}">${rawToken}</span>`
+    }
+    if (token.startsWith("'") || token.startsWith('"')) {
+      return `<span style="color:${colors.string}">${rawToken}</span>`
+    }
+    if (/^\d+(\.\d+)?$/.test(token)) {
+      return `<span style="color:${colors.number}">${rawToken}</span>`
+    }
+    if (keywordSet.has(token)) {
+      return `<span style="color:${colors.keyword}">${rawToken}</span>`
+    }
+    return rawToken
+  })
+
+  return `<pre class="shiki sql-fallback" style="color:${colors.text};background-color:transparent" tabindex="0"><code>${highlighted}</code></pre>`
+}
 
 function CodeBlockCode({
   code,
@@ -65,6 +120,10 @@ function CodeBlockCode({
       }
 
       const normalizedLanguage = normalizeLanguage(language)
+      const useSqlFallback =
+        normalizedLanguage === "sql"
+        || normalizedLanguage === "plaintext"
+        || normalizedLanguage === "text"
 
       try {
         const html = await codeToHtml(code, {
@@ -78,11 +137,20 @@ function CodeBlockCode({
           const sqlFallback = await codeToHtml(code, { lang: "sql", theme })
           setHighlightedHtml(sqlFallback)
         } catch {
-          const plaintextFallback = await codeToHtml(code, {
-            lang: "plaintext",
-            theme,
-          })
-          setHighlightedHtml(plaintextFallback)
+          try {
+            const plaintextFallback = await codeToHtml(code, {
+              lang: "text",
+              theme,
+            })
+            setHighlightedHtml(plaintextFallback)
+          } catch {
+            // Robust fallback for Electron renderer: keep themed code even if Shiki runtime fails.
+            setHighlightedHtml(
+              useSqlFallback
+                ? buildSqlFallbackHtml(code, theme)
+                : buildPlainThemedHtml(code, theme),
+            )
+          }
         }
       }
     }
