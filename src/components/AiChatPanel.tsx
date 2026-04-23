@@ -272,11 +272,13 @@ export function AiChatPanel({
     });
 
   const [input, setInput] = useState("");
+  const [inputPulse, setInputPulse] = useState(false);
+  const prevInputHadTextRef = useRef(false);
+  const inputPulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dismissedContext, setDismissedContext] = useState<{
     selection: boolean;
     error: boolean;
   }>({ selection: false, error: false });
-  const [selectionTrend, setSelectionTrend] = useState<"grow" | "shrink" | null>(null);
   const [exitingContext, setExitingContext] = useState<{
     selection: boolean;
     error: boolean;
@@ -287,8 +289,6 @@ export function AiChatPanel({
     selection?: ReturnType<typeof setTimeout>;
     error?: ReturnType<typeof setTimeout>;
   }>({});
-  const selectionTrendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevSelectionLengthRef = useRef(0);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -313,33 +313,6 @@ export function AiChatPanel({
   }, [contextPreview?.selectionPreview, contextPreview?.errorPreview]);
 
   useEffect(() => {
-    const nextLength = contextPreview?.selectionPreview?.length ?? 0;
-    const prevLength = prevSelectionLengthRef.current;
-    prevSelectionLengthRef.current = nextLength;
-
-    if (!contextPreview?.selectionPreview || dismissedContext.selection) {
-      setSelectionTrend(null);
-      return;
-    }
-
-    if (nextLength > prevLength) {
-      setSelectionTrend("grow");
-    } else if (nextLength < prevLength) {
-      setSelectionTrend("shrink");
-    } else {
-      return;
-    }
-
-    if (selectionTrendTimeoutRef.current) {
-      clearTimeout(selectionTrendTimeoutRef.current);
-    }
-    selectionTrendTimeoutRef.current = setTimeout(() => {
-      setSelectionTrend(null);
-      selectionTrendTimeoutRef.current = null;
-    }, 220);
-  }, [contextPreview?.selectionPreview, dismissedContext.selection]);
-
-  useEffect(() => {
     return () => {
       if (contextDismissTimeoutsRef.current.selection) {
         clearTimeout(contextDismissTimeoutsRef.current.selection);
@@ -347,8 +320,8 @@ export function AiChatPanel({
       if (contextDismissTimeoutsRef.current.error) {
         clearTimeout(contextDismissTimeoutsRef.current.error);
       }
-      if (selectionTrendTimeoutRef.current) {
-        clearTimeout(selectionTrendTimeoutRef.current);
+      if (inputPulseTimeoutRef.current) {
+        clearTimeout(inputPulseTimeoutRef.current);
       }
     };
   }, []);
@@ -359,6 +332,24 @@ export function AiChatPanel({
   const showErrorContextChip = Boolean(
     contextPreview?.errorPreview && !dismissedContext.error,
   );
+
+  // Detect when user clears all text → trigger pulse animation
+  const handleInputChange = useCallback((value: string) => {
+    const hadText = prevInputHadTextRef.current;
+    const nowEmpty = value.length === 0;
+    prevInputHadTextRef.current = value.length > 0;
+
+    if (hadText && nowEmpty) {
+      setInputPulse(true);
+      if (inputPulseTimeoutRef.current) clearTimeout(inputPulseTimeoutRef.current);
+      inputPulseTimeoutRef.current = setTimeout(() => {
+        setInputPulse(false);
+        inputPulseTimeoutRef.current = null;
+      }, 200);
+    }
+
+    setInput(value);
+  }, []);
 
   const handleSubmit = useCallback(() => {
     if (!input.trim() || isLoading) return;
@@ -527,31 +518,32 @@ export function AiChatPanel({
       <div className="px-3 py-2 shrink-0">
         <PromptInput
           value={input}
-          onValueChange={setInput}
+          onValueChange={handleInputChange}
           onSubmit={handleSubmit}
           isLoading={isLoading}
           disabled={!connectionId}
-          className="rounded-md border border-border bg-muted/40 p-2 shadow-none"
+          className={cn(
+            "rounded-md border border-border bg-muted/40 p-2 shadow-none",
+            "transition-transform duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+            inputPulse && "scale-[1.02]",
+          )}
         >
           {contextPreview && (showSelectionContextChip || showErrorContextChip) && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {showSelectionContextChip && (
                 <div
                   className={cn(
-                    "group/ctx relative inline-flex w-[182px] max-w-full min-h-[52px] cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+                    "group/ctx relative inline-flex w-[182px] max-w-full min-h-[52px] cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5",
+                    "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150 motion-safe:ease-out",
+                    "transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
                     exitingContext.selection && "-translate-y-1 scale-[0.98] opacity-0",
-                    selectionTrend === "grow" && "scale-[1.015]",
-                    selectionTrend === "shrink" && "scale-[0.995] opacity-95",
                   )}
                 >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
                     AI
                   </span>
                   <div className="min-w-0 overflow-hidden">
-                    <p
-                      key={contextPreview.selectionPreview}
-                      className="truncate text-[12px] font-medium text-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
-                    >
+                    <p className="truncate text-[12px] font-medium text-foreground">
                       {contextPreview.selectionPreview}
                     </p>
                     <p className="text-[11px] text-muted-foreground">Selected Text</p>
@@ -569,16 +561,15 @@ export function AiChatPanel({
               {showErrorContextChip && (
                 <div
                   className={cn(
-                    "group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1 transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
+                    "group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1",
+                    "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150 motion-safe:ease-out",
+                    "transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
                     exitingContext.error && "-translate-y-1 scale-[0.98] opacity-0",
                   )}
                 >
                   <Code2 className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="min-w-0">
-                    <p
-                      key={contextPreview.errorPreview}
-                      className="truncate text-[12px] text-amber-700 dark:text-amber-300 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
-                    >
+                    <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
                       {contextPreview.errorPreview}
                     </p>
                     <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80">Last Error</p>
