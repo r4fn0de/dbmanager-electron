@@ -26,6 +26,10 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import {
+  Reasoning,
+  ReasoningTrigger,
+} from "@/components/ai-elements/reasoning";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StickToBottomContext } from "use-stick-to-bottom";
@@ -408,15 +412,17 @@ function ChatMessage({
             </MessageToolbar>
           )}
 
-          {/* Thinking indicator */}
+          {/* Thinking indicator — ai-elements Reasoning, minimal style */}
           {message.isStreaming && !message.content && (
-            <div className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/50 [animation-duration:1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
-                <span className="inline-flex size-1.5 rounded-full bg-primary" />
-              </span>
-              Thinking…
-            </div>
+            <Reasoning isStreaming className="!mb-0 px-3">
+              <ReasoningTrigger className="gap-1.5 px-0 py-1 text-xs">
+                <span className="relative flex size-1.5">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 [animation-duration:1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
+                  <span className="inline-flex size-1.5 rounded-full bg-primary" />
+                </span>
+                Thinking…
+              </ReasoningTrigger>
+            </Reasoning>
           )}
           {/* No-content fallback for completed/aborted messages */}
           {!message.isStreaming && !message.content && (
