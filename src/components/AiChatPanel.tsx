@@ -1189,10 +1189,10 @@ export function AiChatPanel({
       </div>
 
       {/* Messages — auto-scroll via StickToBottom */}
-      <Conversation className="flex-1 min-h-0" contextRef={conversationRef}>
+      <Conversation className="flex-1 min-h-0 -mb-2" contextRef={conversationRef}>
         <ConversationContent
           key={activeConversationId ?? "no-conversation"}
-          className="flex flex-col gap-0 pl-3 pr-0 pb-32"
+          className="flex flex-col gap-0 pl-3 pr-0"
         >
           {isEmpty ? (
             <ConversationEmptyState>
@@ -1244,11 +1244,11 @@ export function AiChatPanel({
             ))
           )}
         </ConversationContent>
-        <ConversationScrollButton className="bottom-40 z-40" />
+        <ConversationScrollButton className="bottom-8 z-40" />
       </Conversation>
 
       {/* Input */}
-      <div className="absolute inset-x-0 bottom-0 z-30 pl-4 pr-3 py-2">
+      <div className="z-30 shrink-0 pl-4 pr-3 py-2">
         {error && (
           <div className="relative z-10 mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
             {error}
