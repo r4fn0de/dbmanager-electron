@@ -433,6 +433,209 @@ export function createClickhouseDriver(): DatabaseDriver {
       }
     },
 
+    async explainQuery(connectionString, sql, analyze = false) {
+      const client = await getClickhouseClient(connectionString);
+
+      try {
+        // ClickHouse uses EXPLAIN with various settings
+        // For ANALYZE, we use EXPLAIN PIPELINE or EXPLAIN PLAN
+        let explainSql: string;
+        if (analyze) {
+          // ClickHouse 20.6+ supports EXPLAIN ANALYZE
+          explainSql = `EXPLAIN ANALYZE ${sql}`;
+        } else {
+          explainSql = `EXPLAIN PLAN ${sql}`;
+        }
+
+        const result = await client.query({
+          query: explainSql,
+          format: "JSONEachRow",
+        });
+        const rows = await result.json<Record<string, unknown>[]>();
+
+        // Format the plan
+        const planText = rows
+          .map((row) => {
+            return Object.entries(row)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join("\n");
+          })
+          .join("\n\n");
+
+        return {
+          plan: planText,
+          hasExecutionStats: analyze,
+        };
+      } catch (err) {
+        // Fallback to simple EXPLAIN if ANALYZE fails
+        if (analyze) {
+          try {
+            const result = await client.query({
+              query: `EXPLAIN PLAN ${sql}`,
+              format: "JSONEachRow",
+            });
+            const rows = await result.json<Record<string, unknown>[]>();
+
+            const planText = rows
+              .map((row) => {
+                return Object.entries(row)
+                  .map(([k, v]) => `${k}: ${v}`)
+                  .join("\n");
+              })
+              .join("\n\n");
+
+            return {
+              plan: planText,
+              hasExecutionStats: false,
+            };
+          } catch {
+            // Fall through to outer error
+          }
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`ClickHouse explainQuery error: ${msg}`);
+      }
+    },
+
+    async getTableSample(connectionString, schema, table, sampleSize = 100) {
+      const client = await getClickhouseClient(connectionString);
+
+      try {
+        // Get total row count
+        const countResult = await client.query({
+          query: `SELECT count() as cnt FROM ${escId(schema)}.${escId(table)}`,
+          format: "JSONEachRow",
+        });
+        const countRows = await countResult.json() as Array<{ cnt: string }>;
+        const totalRows = Number.parseInt(countRows[0]?.cnt ?? "0", 10);
+
+        // Get sample using ClickHouse's sampling
+        // ClickHouse has native sampling via SAMPLE clause
+        let sampleQuery: string;
+        if (totalRows > 10000) {
+          // Use native sampling for large tables
+          const sampleRatio = Math.min((sampleSize / totalRows) * 100, 100);
+          sampleQuery = `SELECT * FROM ${escId(schema)}.${escId(table)} SAMPLE ${sampleRatio} LIMIT ${sampleSize}`;
+        } else {
+          // Use ORDER BY rand() for smaller tables
+          sampleQuery = `SELECT * FROM ${escId(schema)}.${escId(table)} ORDER BY rand() LIMIT ${sampleSize}`;
+        }
+
+        const sampleResult = await client.query({
+          query: sampleQuery,
+          format: "JSONEachRow",
+        });
+        const rows = await sampleResult.json() as Record<string, unknown>[];
+
+        // Get column information from system.columns
+        const columnsResult = await client.query({
+          query: `SELECT
+            name as column_name,
+            type as data_type
+          FROM system.columns
+          WHERE database = ${escVal(schema)} AND table = ${escVal(table)}
+          ORDER BY position`,
+          format: "JSONEachRow",
+        });
+        const columns = await columnsResult.json() as Array<{ column_name: string; data_type: string }>;
+
+        // Build column statistics using ClickHouse's built-in functions
+        const columnStats: import("./types").ColumnStat[] = [];
+
+        for (const col of columns) {
+          const colName = col.column_name;
+          const dataType = col.data_type;
+
+          const stat: import("./types").ColumnStat = {
+            columnName: colName,
+            dataType: dataType,
+          };
+
+          // Check if type is numeric
+          const isNumeric =
+            dataType.includes("Int") ||
+            dataType.includes("Float") ||
+            dataType.includes("Decimal") ||
+            dataType.includes("Double");
+
+          if (isNumeric) {
+            try {
+              const statsResult = await client.query({
+                query: `SELECT
+                  min("${colName}") as min_val,
+                  max("${colName}") as max_val,
+                  avg("${colName}") as avg_val,
+                  uniqExact("${colName}") as unique_count,
+                  countIf("${colName}" IS NULL) * 100.0 / count() as null_pct
+                FROM ${escId(schema)}.${escId(table)}`,
+                format: "JSONEachRow",
+              });
+              const statsRows = await statsResult.json() as Array<Record<string, unknown>>;
+              const row = statsRows[0] as { min_val?: unknown; max_val?: unknown; avg_val?: string; unique_count?: string; null_pct?: string } | undefined;
+              if (row) {
+                stat.min = row.min_val as number | string | undefined;
+                stat.max = row.max_val as number | string | undefined;
+                stat.avg = row.avg_val ? Number.parseFloat(row.avg_val) : undefined;
+                stat.uniqueCount = row.unique_count ? Number.parseInt(row.unique_count, 10) : undefined;
+                stat.nullPercentage = row.null_pct ? Number.parseFloat(row.null_pct) : 0;
+              }
+            } catch {
+              // Ignore stats errors
+            }
+          } else {
+            // For string/categorical columns
+            try {
+              const topValuesResult = await client.query({
+                query: `SELECT
+                  "${colName}" as value,
+                  count() as count
+                FROM ${escId(schema)}.${escId(table)}
+                WHERE "${colName}" IS NOT NULL
+                GROUP BY "${colName}"
+                ORDER BY count DESC
+                LIMIT 5`,
+                format: "JSONEachRow",
+              });
+              const topValues = await topValuesResult.json() as Array<{ value: unknown; count: string }>;
+              stat.topValues = topValues.map((r) => ({
+                value: String(r.value),
+                count: Number.parseInt(r.count, 10),
+              }));
+
+              // Get unique count and null percentage
+              const uniqueResult = await client.query({
+                query: `SELECT
+                  uniqExact("${colName}") as unique_count,
+                  countIf("${colName}" IS NULL) * 100.0 / count() as null_pct
+                FROM ${escId(schema)}.${escId(table)}`,
+                format: "JSONEachRow",
+              });
+              const uniqueRows = await uniqueResult.json() as Array<Record<string, unknown>>;
+              const uniqueRow = uniqueRows[0] as { unique_count?: string; null_pct?: string } | undefined;
+              if (uniqueRow) {
+                stat.uniqueCount = uniqueRow.unique_count ? Number.parseInt(uniqueRow.unique_count, 10) : undefined;
+                stat.nullPercentage = uniqueRow.null_pct ? Number.parseFloat(uniqueRow.null_pct) : 0;
+              }
+            } catch {
+              // Ignore stats errors
+            }
+          }
+
+          columnStats.push(stat);
+        }
+
+        return {
+          rows,
+          columnStats,
+          totalRows,
+          sampleSize: rows.length,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`ClickHouse getTableSample error: ${msg}`);
+      }
+    },
+
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
       const client = await getClickhouseClient(connectionString);
 

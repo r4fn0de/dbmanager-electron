@@ -14,6 +14,8 @@ import type {
   ConstraintInfo,
   TableStats,
   QueryResult,
+  QueryPlanResult,
+  TableSampleResult,
   SchemaSummary,
   SchemaTableDetails,
   SslMode,
@@ -103,6 +105,27 @@ export interface DatabaseDriver {
     schema: string,
     table: string,
   ): Promise<TableStats>;
+
+  /**
+   * Get query execution plan for a SQL query.
+   * Uses EXPLAIN (or equivalent) to show how the database will execute the query.
+   */
+  explainQuery(
+    connectionString: string,
+    sql: string,
+    analyze?: boolean,
+  ): Promise<QueryPlanResult>;
+
+  /**
+   * Get a representative sample of table data with column statistics.
+   * Returns distributed sample rows and statistical summaries for AI analysis.
+   */
+  getTableSample(
+    connectionString: string,
+    schema: string,
+    table: string,
+    sampleSize?: number,
+  ): Promise<TableSampleResult>;
 
   /** List rows from a table with pagination, sorting and filtering. */
   listRows(

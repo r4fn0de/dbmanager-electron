@@ -10,7 +10,7 @@
  */
 import type { DatabaseType, SslMode, ConstraintInfo } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
-import { getPgKysely } from "./kysely-factory";
+import { getPgKysely, getPgPool } from "./kysely-factory";
 import {
   buildPgConnectionString,
   buildPgWhereClause,
@@ -562,6 +562,186 @@ export function createPostgresDriver(): DatabaseDriver {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`PostgreSQL getTableStats error for ${schema}.${table}: ${msg}`);
+      }
+    },
+
+    async explainQuery(connectionString, sql, analyze = false) {
+      const pool = getPgPool(connectionString);
+      const client = await pool.connect();
+      try {
+        // Use JSON format for easier parsing
+        const explainSql = analyze
+          ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`
+          : `EXPLAIN (FORMAT JSON) ${sql}`;
+
+        const result = await client.query(explainSql);
+
+        // PostgreSQL returns JSON array with plan info
+        const planJson = result.rows[0]?.["QUERY PLAN"] ?? result.rows[0];
+        const planText = JSON.stringify(planJson, null, 2);
+
+        // Try to extract cost and row estimates from the plan
+        let totalCost: number | undefined;
+        let estimatedRows: number | undefined;
+        let executionTimeMs: number | undefined;
+
+        if (Array.isArray(planJson) && planJson.length > 0) {
+          const plan = planJson[0].Plan ?? planJson[0];
+          totalCost = plan["Total Cost"] ?? plan["Total Cost"];
+          estimatedRows = plan["Plan Rows"] ?? plan["Actual Rows"];
+          if (plan["Execution Time"]) {
+            executionTimeMs = plan["Execution Time"];
+          }
+        }
+
+        return {
+          plan: planText,
+          hasExecutionStats: analyze,
+          totalCost,
+          estimatedRows,
+          executionTimeMs,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL explainQuery error: ${msg}`);
+      } finally {
+        client.release();
+      }
+    },
+
+    async getTableSample(connectionString, schema, table, sampleSize = 100) {
+      const pool = getPgPool(connectionString);
+      const client = await pool.connect();
+      try {
+        // Get total row count
+        const countResult = await client.query(
+          "SELECT COUNT(*) as cnt FROM $1.$2",
+          [schema, table]
+        );
+        const totalRows = Number.parseInt(countResult.rows[0].cnt as string, 10);
+
+        // Get sample rows using TABLESAMPLE for large tables, or random for small
+        let sampleQuery: string;
+        if (totalRows > 10000) {
+          // Use TABLESAMPLE for large tables (if available)
+          sampleQuery = `
+            SELECT * FROM "${schema}"."${table}"
+            TABLESAMPLE BERNOULLI (LEAST((${sampleSize}::float / ${totalRows}) * 100, 100))
+            LIMIT ${sampleSize}
+          `;
+        } else {
+          // Use ORDER BY random() for smaller tables
+          sampleQuery = `
+            SELECT * FROM "${schema}"."${table}"
+            ORDER BY RANDOM()
+            LIMIT ${sampleSize}
+          `;
+        }
+
+        const sampleResult = await client.query(sampleQuery);
+        const rows = sampleResult.rows;
+
+        // Get column statistics from information_schema and pg_stats
+        const columnStatsQuery = `
+          SELECT
+            c.column_name,
+            c.data_type,
+            c.is_nullable
+          FROM information_schema.columns c
+          WHERE c.table_schema = $1 AND c.table_name = $2
+          ORDER BY c.ordinal_position
+        `;
+        const columnResult = await client.query(columnStatsQuery, [schema, table]);
+
+        // Build column statistics
+        const columnStats = await Promise.all(
+          columnResult.rows.map(async (col) => {
+            const colName = col.column_name as string;
+            const dataType = col.data_type as string;
+            const isNullable = col.is_nullable === "YES";
+
+            const stat: import("./types").ColumnStat = {
+              columnName: colName,
+              dataType: dataType,
+            };
+
+            // Try to get min/max/avg for numeric types
+            if (
+              dataType.includes("int") ||
+              dataType.includes("float") ||
+              dataType.includes("numeric") ||
+              dataType.includes("decimal") ||
+              dataType.includes("double") ||
+              dataType.includes("real")
+            ) {
+              try {
+                const statsResult = await client.query(
+                  `SELECT
+                    MIN("${colName}") as min_val,
+                    MAX("${colName}") as max_val,
+                    AVG("${colName}"::float) as avg_val,
+                    COUNT(DISTINCT "${colName}") as unique_count,
+                    COUNT(*) FILTER (WHERE "${colName}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
+                  FROM "${schema}"."${table}"`
+                );
+                const row = statsResult.rows[0];
+                stat.min = row.min_val;
+                stat.max = row.max_val;
+                stat.avg = row.avg_val ? Number.parseFloat(row.avg_val as string) : undefined;
+                stat.uniqueCount = Number.parseInt(row.unique_count as string, 10);
+                stat.nullPercentage = row.null_pct ? Number.parseFloat(row.null_pct as string) : isNullable ? 0 : 0;
+              } catch {
+                // Ignore stats errors
+              }
+            } else {
+              // For string/categorical columns, get top values
+              try {
+                const topValuesResult = await client.query(
+                  `SELECT
+                    "${colName}" as value,
+                    COUNT(*) as count
+                  FROM "${schema}"."${table}"
+                  WHERE "${colName}" IS NOT NULL
+                  GROUP BY "${colName}"
+                  ORDER BY count DESC
+                  LIMIT 5`
+                );
+                stat.topValues = topValuesResult.rows.map((r) => ({
+                  value: String(r.value),
+                  count: Number.parseInt(r.count as string, 10),
+                }));
+
+                // Get null percentage and unique count
+                const uniqueResult = await client.query(
+                  `SELECT
+                    COUNT(DISTINCT "${colName}") as unique_count,
+                    COUNT(*) FILTER (WHERE "${colName}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
+                  FROM "${schema}"."${table}"`
+                );
+                stat.uniqueCount = Number.parseInt(uniqueResult.rows[0].unique_count as string, 10);
+                stat.nullPercentage = uniqueResult.rows[0].null_pct
+                  ? Number.parseFloat(uniqueResult.rows[0].null_pct as string)
+                  : 0;
+              } catch {
+                // Ignore stats errors
+              }
+            }
+
+            return stat;
+          })
+        );
+
+        return {
+          rows,
+          columnStats,
+          totalRows,
+          sampleSize: rows.length,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getTableSample error: ${msg}`);
+      } finally {
+        client.release();
       }
     },
 

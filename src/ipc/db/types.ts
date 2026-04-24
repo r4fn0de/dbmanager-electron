@@ -477,3 +477,45 @@ export interface TableStats {
   lastAnalyze?: string | null;
   lastAutoanalyze?: string | null;
 }
+
+/** Result of EXPLAIN/EXPLAIN ANALYZE query execution */
+export interface QueryPlanResult {
+  /** Raw query plan output (format varies by database) */
+  plan: string;
+  /** Whether the plan includes actual execution stats (ANALYZE) */
+  hasExecutionStats: boolean;
+  /** Estimated/actual cost if available */
+  totalCost?: number;
+  /** Estimated/actual row count if available */
+  estimatedRows?: number;
+  /** Execution time in ms if ANALYZE was used */
+  executionTimeMs?: number;
+}
+
+/** Statistical sample of table data for AI analysis */
+export interface TableSampleResult {
+  /** Sample rows (distributed/stratified if possible) */
+  rows: Record<string, unknown>[];
+  /** Column statistics (min/max/avg for numeric, top values for categorical) */
+  columnStats: ColumnStat[];
+  /** Total row count in table */
+  totalRows: number;
+  /** Sample size */
+  sampleSize: number;
+}
+
+/** Statistics for a single column */
+export interface ColumnStat {
+  columnName: string;
+  dataType: string;
+  /** For numeric columns */
+  min?: number | string;
+  max?: number | string;
+  avg?: number;
+  /** For string/categorical columns - top N most frequent values */
+  topValues?: { value: string; count: number }[];
+  /** Null percentage (0-100) */
+  nullPercentage?: number;
+  /** Unique value count (approximation for large tables) */
+  uniqueCount?: number;
+}

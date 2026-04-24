@@ -22,6 +22,8 @@ export interface ConnectionTab {
 interface ConnectionTabsState {
   tabs: ConnectionTab[];
   activeTabId: string | null;
+  /** Tab IDs ordered by most-recently-active first (MRU stack). Not persisted. */
+  recentTabIds: string[];
 
   addTab: (tab: ConnectionTab) => void;
   removeTab: (id: string) => void;
@@ -100,15 +102,18 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
     (set) => ({
       tabs: [],
       activeTabId: null,
+      recentTabIds: [],
 
       addTab: (tab) =>
         set((state) => {
+          const recent = [tab.id, ...state.recentTabIds.filter((rid) => rid !== tab.id)];
           if (state.tabs.some((t) => t.id === tab.id)) {
-            return { activeTabId: tab.id };
+            return { activeTabId: tab.id, recentTabIds: recent };
           }
           return {
             tabs: [...state.tabs, tab],
             activeTabId: tab.id,
+            recentTabIds: recent,
           };
         }),
 
@@ -128,10 +133,23 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
             }
           }
 
-          return { tabs: next, activeTabId: nextActive };
+          // Update MRU: remove closed tab, move next active to front
+          let recent = state.recentTabIds.filter((rid) => rid !== id);
+          if (nextActive) {
+            recent = [nextActive, ...recent.filter((rid) => rid !== nextActive)];
+          }
+
+          return { tabs: next, activeTabId: nextActive, recentTabIds: recent };
         }),
 
-      setActiveTab: (id) => set({ activeTabId: id }),
+      setActiveTab: (id) =>
+        set((state) => {
+          if (id === state.activeTabId) return state;
+          const recent = id
+            ? [id, ...state.recentTabIds.filter((rid) => rid !== id)]
+            : state.recentTabIds;
+          return { activeTabId: id, recentTabIds: recent };
+        }),
 
       renameTab: (id, name) =>
         set((state) => ({
@@ -207,7 +225,7 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
           return { tabs: next };
         }),
 
-      clearTabs: () => set({ tabs: [], activeTabId: null }),
+      clearTabs: () => set({ tabs: [], activeTabId: null, recentTabIds: [] }),
     }),
     {
       name: "connection-tabs",

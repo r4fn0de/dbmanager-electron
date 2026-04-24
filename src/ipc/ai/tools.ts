@@ -18,10 +18,12 @@ import {
   getCachedIndexes,
   getCachedConstraints,
   getCachedTableStats,
+  getCachedTableSample,
   setCachedTableDetails,
   setCachedIndexes,
   setCachedConstraints,
   setCachedTableStats,
+  setCachedTableSample,
 } from "./schema-cache";
 
 // ---------------------------------------------------------------------------
@@ -343,5 +345,98 @@ export function createAiTools(connectionId: string) {
     },
   });
 
-  return { columns, enums, tables, select, indexes, constraints, tableStats };
+  /**
+   * Get table sample — returns representative sample rows and column statistics.
+   * Better than raw SELECT because it provides statistical summaries (min/max/avg,
+   * top values, null percentages) that help the AI understand data distribution.
+   */
+  const tableSample = tool({
+    description:
+      "Get a representative sample of table data with column statistics. Returns random sample rows plus statistical summaries (min/max/avg for numeric columns, most frequent values for categorical columns, null percentages). Use this to understand the shape and distribution of data before writing queries, especially for unfamiliar tables.",
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+      sampleSize: z
+        .number()
+        .optional()
+        .default(50)
+        .describe("Number of sample rows to return (default: 50, max: 200)"),
+    }),
+    execute: async ({ schemaName, tableName, sampleSize }) => {
+      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
+        return "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.";
+      }
+
+      // Clamp sample size to reasonable bounds
+      const clampedSize = Math.max(10, Math.min(sampleSize ?? 50, 200));
+
+      // Check cache first
+      let sampleResult = getCachedTableSample(connectionId, schemaName, tableName);
+
+      if (!sampleResult) {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        sampleResult = await driver.getTableSample(connStr, schemaName, tableName, clampedSize);
+        setCachedTableSample(connectionId, schemaName, tableName, sampleResult);
+      }
+
+      return {
+        totalRows: sampleResult.totalRows,
+        sampleSize: sampleResult.sampleSize,
+        rows: sampleResult.rows,
+        columnStats: sampleResult.columnStats.map((stat) => ({
+          columnName: stat.columnName,
+          dataType: stat.dataType,
+          min: stat.min,
+          max: stat.max,
+          avg: stat.avg,
+          uniqueCount: stat.uniqueCount,
+          nullPercentage: stat.nullPercentage,
+          topValues: stat.topValues?.slice(0, 5),
+        })),
+      };
+    },
+  });
+
+  /**
+   * Explain query plan — lets the AI analyze how a query will be executed.
+   * Returns the execution plan showing scan types, index usage, join methods,
+   * and estimated costs. Use this to optimize slow queries or understand
+   * database performance characteristics.
+   */
+  const explain = tool({
+    description:
+      "Analyze the execution plan of a SQL query. Returns detailed information about how the database will execute the query, including scan types (sequential scan, index scan), join methods, estimated costs, and row counts. Use this to optimize slow queries, understand performance bottlenecks, or verify that indexes are being used effectively.",
+    inputSchema: z.object({
+      sql: z.string().describe("The SQL query to analyze (e.g. 'SELECT * FROM users WHERE id = 1')"),
+      analyze: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("If true, execute the query and show actual execution stats (timing, actual rows). Only use for SELECT queries that you know are safe to run."),
+    }),
+    execute: async ({ sql, analyze }) => {
+      // Basic SQL validation - only allow SELECT, WITH, and EXPLAIN queries
+      const trimmed = sql.trim().toLowerCase();
+      if (!trimmed.match(/^(select|with|explain)\s/)) {
+        return "Only SELECT, WITH, and EXPLAIN queries can be analyzed. DDL and DML operations are not supported.";
+      }
+
+      try {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        const planResult = await driver.explainQuery(connStr, sql, analyze);
+
+        return {
+          plan: planResult.plan,
+          hasExecutionStats: planResult.hasExecutionStats,
+          totalCost: planResult.totalCost,
+          estimatedRows: planResult.estimatedRows,
+          executionTimeMs: planResult.executionTimeMs,
+        };
+      } catch (err) {
+        return `Error analyzing query plan: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+  });
+
+  return { columns, enums, tables, select, indexes, constraints, tableStats, tableSample, explain };
 }

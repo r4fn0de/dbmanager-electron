@@ -778,6 +778,210 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
       });
     },
 
+    async explainQuery(connectionString, sql, analyze = false) {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          // MySQL uses EXPLAIN or EXPLAIN ANALYZE (8.0.18+)
+          // For older versions, we fall back to regular EXPLAIN
+          let explainSql: string;
+          if (analyze) {
+            // Try EXPLAIN ANALYZE first (MySQL 8.0.18+)
+            explainSql = `EXPLAIN ANALYZE ${sql}`;
+          } else {
+            explainSql = `EXPLAIN ${sql}`;
+          }
+
+          const [rows] = await conn.query(explainSql);
+
+          // Format the result as a readable string
+          const planRows = Array.isArray(rows) ? rows : [rows];
+          const planText = planRows
+            .map((row, i) => {
+              const entries = Object.entries(row as Record<string, unknown>)
+                .map(([k, v]) => `  ${k}: ${v}`)
+                .join("\n");
+              return `Step ${i + 1}:\n${entries}`;
+            })
+            .join("\n\n");
+
+          // Try to extract cost and row estimates
+          let estimatedRows: number | undefined;
+          let totalCost: number | undefined;
+
+          const firstRow = planRows[0] as Record<string, unknown> | undefined;
+          if (firstRow) {
+            estimatedRows =
+              (firstRow.rows as number) ??
+              (firstRow.Rows as number) ??
+              undefined;
+
+            // MySQL doesn't provide cost in standard EXPLAIN, but EXPLAIN FORMAT=JSON might
+            totalCost = firstRow.cost as number | undefined;
+          }
+
+          return {
+            plan: planText,
+            hasExecutionStats: analyze,
+            estimatedRows,
+            totalCost,
+          };
+        } catch (err) {
+          // If EXPLAIN ANALYZE fails, fall back to regular EXPLAIN
+          if (analyze) {
+            try {
+              const [rows] = await conn.query(`EXPLAIN ${sql}`);
+              const planRows = Array.isArray(rows) ? rows : [rows];
+              const planText = planRows
+                .map((row, i) => {
+                  const entries = Object.entries(row as Record<string, unknown>)
+                    .map(([k, v]) => `  ${k}: ${v}`)
+                    .join("\n");
+                  return `Step ${i + 1}:\n${entries}`;
+                })
+                .join("\n\n");
+
+              return {
+                plan: planText,
+                hasExecutionStats: false,
+              };
+            } catch {
+              // Fall through to outer error
+            }
+          }
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL explainQuery error: ${msg}`);
+        }
+      });
+    },
+
+    async getTableSample(connectionString, schema, table, sampleSize = 100) {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          // Get total row count
+          const [countRows] = await conn.query(
+            "SELECT COUNT(*) as cnt FROM ??.?",
+            [schema, table]
+          );
+          const totalRows = Number.parseInt((countRows as Array<{ cnt: string }>)[0].cnt, 10);
+
+          // Get sample rows using random ordering
+          const [sampleRows] = await conn.query(
+            `SELECT * FROM ??.? ORDER BY RAND() LIMIT ?`,
+            [schema, table, sampleSize]
+          );
+          const rows = sampleRows as Record<string, unknown>[];
+
+          // Get column information
+          const [columnRows] = await conn.query(
+            `SELECT
+              COLUMN_NAME as column_name,
+              DATA_TYPE as data_type,
+              IS_NULLABLE as is_nullable
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+            ORDER BY ORDINAL_POSITION`,
+            [schema, table]
+          );
+
+          // Build column statistics
+          const columnStats = await Promise.all(
+            (columnRows as Array<{ column_name: string; data_type: string; is_nullable: string }>).map(async (col) => {
+              const colName = col.column_name;
+              const dataType = col.data_type;
+              const isNullable = col.is_nullable === "YES";
+
+              const stat: import("./types").ColumnStat = {
+                columnName: colName,
+                dataType: dataType,
+              };
+
+              // Try to get min/max/avg for numeric types
+              if (
+                dataType.includes("int") ||
+                dataType.includes("float") ||
+                dataType.includes("decimal") ||
+                dataType.includes("double") ||
+                dataType.includes("numeric") ||
+                dataType.includes("real")
+              ) {
+                try {
+                  const [statsRows] = await conn.query(
+                    `SELECT
+                      MIN(\`${colName}\`) as min_val,
+                      MAX(\`${colName}\`) as max_val,
+                      AVG(\`${colName}\`) as avg_val,
+                      COUNT(DISTINCT \`${colName}\`) as unique_count,
+                      COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM \`??\`.\`??\`), 0) as null_pct
+                    FROM \`??\`.\`??\`
+                    WHERE \`${colName}\` IS NULL`,
+                    [schema, table, schema, table]
+                  );
+                  const row = (statsRows as Array<Record<string, unknown>>)[0];
+                  if (row) {
+                    stat.min = row.min_val as number | string | undefined;
+                    stat.max = row.max_val as number | string | undefined;
+                    stat.avg = row.avg_val ? Number.parseFloat(row.avg_val as string) : undefined;
+                    stat.uniqueCount = Number.parseInt(row.unique_count as string, 10);
+                    stat.nullPercentage = row.null_pct ? Number.parseFloat(row.null_pct as string) : 0;
+                  }
+                } catch {
+                  // Ignore stats errors
+                }
+              } else {
+                // For string/categorical columns, get top values
+                try {
+                  const [topValuesRows] = await conn.query(
+                    `SELECT
+                      \`${colName}\` as value,
+                      COUNT(*) as count
+                    FROM \`??\`.\`??\`
+                    WHERE \`${colName}\` IS NOT NULL
+                    GROUP BY \`${colName}\`
+                    ORDER BY count DESC
+                    LIMIT 5`,
+                    [schema, table]
+                  );
+                  stat.topValues = (topValuesRows as Array<{ value: unknown; count: string }>).map((r) => ({
+                    value: String(r.value),
+                    count: Number.parseInt(r.count, 10),
+                  }));
+
+                  // Get unique count and null percentage
+                  const [uniqueRows] = await conn.query(
+                    `SELECT
+                      COUNT(DISTINCT \`${colName}\`) as unique_count,
+                      COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM \`??\`.\`??\`), 0) as null_pct
+                    FROM \`??\`.\`??\`
+                    WHERE \`${colName}\` IS NULL`,
+                    [schema, table, schema, table]
+                  );
+                  const uniqueRow = (uniqueRows as Array<Record<string, unknown>>)[0];
+                  if (uniqueRow) {
+                    stat.uniqueCount = Number.parseInt(uniqueRow.unique_count as string, 10);
+                    stat.nullPercentage = uniqueRow.null_pct ? Number.parseFloat(uniqueRow.null_pct as string) : 0;
+                  }
+                } catch {
+                  // Ignore stats errors
+                }
+              }
+
+              return stat;
+            })
+          );
+
+          return {
+            rows,
+            columnStats,
+            totalRows,
+            sampleSize: rows.length,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL getTableSample error: ${msg}`);
+        }
+      });
+    },
+
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
       return withConnection(connectionString, async (conn) => {
         const conditions: string[] = [];

@@ -6,7 +6,7 @@
  * - Invalidation: automatic on DDL operations detected
  * - Scope: per connection, per schema/table
  */
-import type { DatabaseSchema, SchemaTableDetails, IndexInfo, ConstraintInfo, TableStats } from "@/ipc/db/types";
+import type { DatabaseSchema, SchemaTableDetails, IndexInfo, ConstraintInfo, TableStats, TableSampleResult } from "@/ipc/db/types";
 
 // ---------------------------------------------------------------------------
 // Cache entry types
@@ -24,6 +24,7 @@ interface SchemaCache {
   indexes: Map<string, CacheEntry<IndexInfo[]>>;
   constraints: Map<string, CacheEntry<ConstraintInfo[]>>;
   tableStats: Map<string, CacheEntry<TableStats>>;
+  tableSamples: Map<string, CacheEntry<TableSampleResult>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,7 @@ function getOrCreateConnectionCache(connectionId: string): SchemaCache {
       indexes: new Map(),
       constraints: new Map(),
       tableStats: new Map(),
+      tableSamples: new Map(),
     });
   }
   return cache.get(connectionId)!;
@@ -270,6 +272,47 @@ export function setCachedTableStats(
   });
 }
 
+/**
+ * Get cached table sample.
+ */
+export function getCachedTableSample(
+  connectionId: string,
+  schema: string,
+  table: string,
+): TableSampleResult | null {
+  const connCache = cache.get(connectionId);
+  if (!connCache) return null;
+
+  const key = buildTableKey(schema, table);
+  const entry = connCache.tableSamples.get(key);
+
+  if (!entry) return null;
+  if (isExpired(entry) || shouldInvalidate(connectionId, schema, table)) {
+    connCache.tableSamples.delete(key);
+    return null;
+  }
+
+  return entry.data;
+}
+
+/**
+ * Set cached table sample.
+ */
+export function setCachedTableSample(
+  connectionId: string,
+  schema: string,
+  table: string,
+  sample: TableSampleResult,
+): void {
+  const connCache = getOrCreateConnectionCache(connectionId);
+  const key = buildTableKey(schema, table);
+  connCache.tableSamples.set(key, {
+    data: sample,
+    timestamp: Date.now(),
+    key,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Invalidation
 // ---------------------------------------------------------------------------
@@ -305,6 +348,7 @@ export function invalidateTableCache(
   connCache.indexes.delete(key);
   connCache.constraints.delete(key);
   connCache.tableStats.delete(key);
+  connCache.tableSamples.delete(key);
 
   // Mark DDL operation
   const ddlKey = `${connectionId}:${schema}.${table}:ddl`;

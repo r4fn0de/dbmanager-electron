@@ -497,6 +497,163 @@ export function createSqliteDriver(): DatabaseDriver {
       }
     },
 
+    async explainQuery(connectionString, sql, analyze = false) {
+      const db = getDb(connectionString);
+
+      try {
+        // SQLite uses EXPLAIN QUERY PLAN for the execution plan
+        // Note: SQLite doesn't support EXPLAIN ANALYZE like PostgreSQL
+        // We can only get the query plan, not actual execution stats
+        const explainSql = `EXPLAIN QUERY PLAN ${sql}`;
+        const stmt = db.prepare(explainSql);
+        const rows = stmt.all() as Array<Record<string, unknown>>;
+
+        // Format the plan as a readable tree
+        const planLines = rows.map((row) => {
+          const id = row.id ?? row.id;
+          const parent = row.parent ?? row.parent;
+          const notUsed = row.notused ?? row.notused;
+          const detail = row.detail ?? row.detail;
+          const depth = row.parent === 0 ? 0 : 1; // Simple depth estimation
+          const indent = "  ".repeat(depth as number);
+          return `${indent}${detail}`;
+        });
+
+        const planText = planLines.join("\n");
+
+        // Try to extract row estimates from the plan
+        let estimatedRows: number | undefined;
+        for (const row of rows) {
+          const detail = String(row.detail ?? "");
+          // Look for patterns like "~N rows" or "SCAN TABLE" which indicates full scan
+          const match = detail.match(/~(\d+) rows/);
+          if (match) {
+            estimatedRows = Number.parseInt(match[1], 10);
+            break;
+          }
+        }
+
+        return {
+          plan: planText,
+          hasExecutionStats: false, // SQLite doesn't support ANALYZE in EXPLAIN
+          estimatedRows,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`SQLite explainQuery error: ${msg}`);
+      }
+    },
+
+    async getTableSample(connectionString, schema, table, sampleSize = 100) {
+      const db = getDb(connectionString);
+
+      try {
+        // Get total row count
+        const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"`);
+        const totalRows = countStmt.get() as { cnt: number };
+
+        // Get sample rows using random ordering (SQLite uses RANDOM())
+        const sampleStmt = db.prepare(`
+          SELECT * FROM "${table}"
+          ORDER BY RANDOM()
+          LIMIT ${sampleSize}
+        `);
+        const rows = sampleStmt.all() as Record<string, unknown>[];
+
+        // Get column information from PRAGMA
+        const pragmaStmt = db.prepare(`PRAGMA table_info("${table}")`);
+        const columns = pragmaStmt.all() as Array<{ name: string; type: string; notnull: number }>;
+
+        // Build column statistics
+        const columnStats: import("./types").ColumnStat[] = [];
+
+        for (const col of columns) {
+          const colName = col.name;
+          const dataType = col.type || "TEXT";
+          const isNullable = col.notnull === 0;
+
+          const stat: import("./types").ColumnStat = {
+            columnName: colName,
+            dataType: dataType,
+          };
+
+          // Try to get min/max/avg for numeric types
+          if (
+            dataType.toLowerCase().includes("int") ||
+            dataType.toLowerCase().includes("real") ||
+            dataType.toLowerCase().includes("float") ||
+            dataType.toLowerCase().includes("double") ||
+            dataType.toLowerCase().includes("numeric") ||
+            dataType.toLowerCase().includes("decimal")
+          ) {
+            try {
+              const statsStmt = db.prepare(`
+                SELECT
+                  MIN("${colName}") as min_val,
+                  MAX("${colName}") as max_val,
+                  AVG("${colName}") as avg_val,
+                  COUNT(DISTINCT "${colName}") as unique_count,
+                  COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM "${table}"), 0) as null_pct
+                FROM "${table}"
+              `);
+              const row = statsStmt.get() as Record<string, unknown>;
+              stat.min = row.min_val as number | string | undefined;
+              stat.max = row.max_val as number | string | undefined;
+              stat.avg = row.avg_val ? Number.parseFloat(row.avg_val as string) : undefined;
+              stat.uniqueCount = Number.parseInt(row.unique_count as string, 10);
+              stat.nullPercentage = row.null_pct ? Number.parseFloat(row.null_pct as string) : 0;
+            } catch {
+              // Ignore stats errors
+            }
+          } else {
+            // For string/categorical columns, get top values
+            try {
+              const topValuesStmt = db.prepare(`
+                SELECT
+                  "${colName}" as value,
+                  COUNT(*) as count
+                FROM "${table}"
+                WHERE "${colName}" IS NOT NULL
+                GROUP BY "${colName}"
+                ORDER BY count DESC
+                LIMIT 5
+              `);
+              const topValues = topValuesStmt.all() as Array<{ value: unknown; count: number }>;
+              stat.topValues = topValues.map((r) => ({
+                value: String(r.value),
+                count: r.count,
+              }));
+
+              // Get unique count and null percentage
+              const uniqueStmt = db.prepare(`
+                SELECT
+                  COUNT(DISTINCT "${colName}") as unique_count,
+                  COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM "${table}"), 0) as null_pct
+                FROM "${table}"
+              `);
+              const uniqueRow = uniqueStmt.get() as Record<string, unknown>;
+              stat.uniqueCount = Number.parseInt(uniqueRow.unique_count as string, 10);
+              stat.nullPercentage = uniqueRow.null_pct ? Number.parseFloat(uniqueRow.null_pct as string) : 0;
+            } catch {
+              // Ignore stats errors
+            }
+          }
+
+          columnStats.push(stat);
+        }
+
+        return {
+          rows,
+          columnStats,
+          totalRows: totalRows.cnt,
+          sampleSize: rows.length,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`SQLite getTableSample error: ${msg}`);
+      }
+    },
+
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
       const db = getDb(connectionString);
       const offset = (page - 1) * pageSize;

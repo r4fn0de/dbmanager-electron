@@ -3,6 +3,7 @@ import {
   Outlet,
   useRouterState,
   useParams,
+  useNavigate,
 } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -22,6 +23,7 @@ import {
   type PanelImperativeHandle,
 } from "@/components/ui/resizable";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
+import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
 import { useConnectionsList } from "@/hooks/useConnectionsList";
 import { cn } from "@/utils/tailwind";
 import type { DatabaseType } from "@/ipc/db/types";
@@ -199,6 +201,111 @@ function Root() {
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [handleAiChatToggle]);
+
+  // ── Tab navigation keyboard shortcuts ────────────────────────────
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isCtrl = event.ctrlKey || event.metaKey;
+
+      // ── Ctrl+Tab / Ctrl+Shift+Tab: MRU tab switching ──
+      if (event.key === "Tab" && isCtrl) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const store = useConnectionTabsStore.getState();
+        const { tabs, activeTabId, recentTabIds, setActiveTab } = store;
+        if (tabs.length <= 1) return;
+
+        if (event.shiftKey) {
+          // Ctrl+Shift+Tab: go to least-recently-used (bottom of MRU stack)
+          const openIds = new Set(tabs.map((t) => t.id));
+          const candidates = recentTabIds.filter((id) => openIds.has(id) && id !== activeTabId);
+          const target = candidates[candidates.length - 1] ?? tabs.find((t) => t.id !== activeTabId)?.id;
+          if (target) {
+            setActiveTab(target);
+            navigate({ to: "/database/$connectionId", params: { connectionId: target } });
+          }
+        } else {
+          // Ctrl+Tab: go to most-recently-used (second in MRU stack)
+          const openIds = new Set(tabs.map((t) => t.id));
+          const candidates = recentTabIds.filter((id) => openIds.has(id) && id !== activeTabId);
+          const target = candidates[0] ?? tabs.find((t) => t.id !== activeTabId)?.id;
+          if (target) {
+            setActiveTab(target);
+            navigate({ to: "/database/$connectionId", params: { connectionId: target } });
+          }
+        }
+        return;
+      }
+
+      // ── Cmd/Ctrl+W: Close current tab ──
+      if (event.key.toLowerCase() === "w" && isCtrl && !event.shiftKey && !event.altKey) {
+        // Don't intercept if focus is inside an input/textarea (so users can still type W)
+        const tag = (event.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        // Also skip if inside Monaco editor (code-editor context)
+        if ((event.target as HTMLElement)?.closest?.(".monaco-editor")) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const store = useConnectionTabsStore.getState();
+        const { tabs, activeTabId, removeTab } = store;
+        if (!activeTabId || tabs.length === 0) return;
+
+        const idx = tabs.findIndex((t) => t.id === activeTabId);
+        const remaining = tabs.filter((t) => t.id !== activeTabId);
+        removeTab(activeTabId);
+
+        if (remaining.length > 0) {
+          const nextIdx = Math.min(idx, remaining.length - 1);
+          const nextTab = remaining[nextIdx];
+          if (nextTab) {
+            navigate({ to: "/database/$connectionId", params: { connectionId: nextTab.id } });
+          }
+        } else {
+          navigate({ to: "/" });
+        }
+        return;
+      }
+
+      // ── Next/Previous tab (visual order) ──
+      // macOS: Cmd+Shift+] / [  ·  Windows/Linux: Ctrl+PageDown / PageUp
+      const isNextTab =
+        (isCtrl && event.shiftKey && !event.altKey && (event.code === "BracketRight" || event.key === "]")) ||
+        (event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.code === "PageDown");
+      const isPrevTab =
+        (isCtrl && event.shiftKey && !event.altKey && (event.code === "BracketLeft" || event.key === "[")) ||
+        (event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.code === "PageUp");
+
+      if (isNextTab || isPrevTab) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const store = useConnectionTabsStore.getState();
+        const { tabs, activeTabId, setActiveTab } = store;
+        if (!activeTabId || tabs.length <= 1) return;
+
+        const idx = tabs.findIndex((t) => t.id === activeTabId);
+        const nextIdx = isNextTab
+          ? (idx + 1) % tabs.length
+          : (idx - 1 + tabs.length) % tabs.length;
+        const next = tabs[nextIdx];
+        if (next) {
+          setActiveTab(next.id);
+          navigate({ to: "/database/$connectionId", params: { connectionId: next.id } });
+        }
+        return;
+      }
+    };
+
+    // Capture phase ensures these shortcuts work even when components
+    // intercept keydown in bubble phase (Monaco, etc.)
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [navigate]);
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
