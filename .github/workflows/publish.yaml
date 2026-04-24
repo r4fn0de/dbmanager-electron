@@ -5,7 +5,10 @@ on:
 
 jobs:
   publish-release:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     steps:
@@ -17,7 +20,23 @@ jobs:
       - name: Install and build
         run: bun install --frozen-lockfile
 
-      - name: Publish Release
+      - name: Make artifacts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bun run publish
+          UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
+          UPDATE_CHANNEL: ${{ vars.UPDATE_CHANNEL || 'stable' }}
+        run: bun run make
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Publish private update artifacts
+        env:
+          UPDATE_BUCKET: ${{ secrets.UPDATE_BUCKET }}
+          UPDATE_PREFIX: ${{ vars.UPDATE_PREFIX || 'updates' }}
+          UPDATE_CHANNEL: ${{ vars.UPDATE_CHANNEL || 'stable' }}
+          UPDATE_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.UPDATE_CLOUDFRONT_DISTRIBUTION_ID }}
+        run: node scripts/publish-private-updates.mjs

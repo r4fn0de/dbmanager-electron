@@ -83,18 +83,29 @@ Now you can go directly to `/src/routes/index.tsx` and modify the app as you wan
 
 ## Auto update
 
-> [!WARNING]
-> This feature only work in open-source repositories in GitHub, if you need to use in a private repository, you need to setup a custom update server. Check the [Updating Applications](https://www.electronjs.org/docs/latest/tutorial/updates) section in the Electron documentation for more details.
+This project is configured for **private auto updates** using:
 
-The auto update uses GitHub Releases as source for the updates. The `publish` script will automatically create a new release with the version specified in your `package.json` file. You can run locally the `publish` script to create a new release, but you need to set the `GITHUB_TOKEN` environment variable with a GitHub Personal Access Token that has permission to create releases in your repository.
+- `update-electron-app` with `StaticStorage`
+- S3/CloudFront artifact hosting (private distribution)
+- Signed CloudFront cookies obtained from a backend auth endpoint
 
-You can also use the GitHub Actions workflow to automatically create a new release when you push a new tag to the repository. The workflow need to be triggered manually, but you can modify to fit your needs. Also, the release is created as draft by default, so you can review and set a proper description before publish.
+At startup, the app asks your auth endpoint for temporary update access, configures auto-updater, downloads updates silently, and applies them on next app restart.
 
-> Check the [`.github/workflows/publish.yml`](https://github.com/LuanRoger/electron-shadcn/blob/main/.github/workflows/publish.yaml) file for more details.
+### Runtime env vars
 
-When you open the app, it will check for updates automatically. If an update is available, it will download and install the update, after that, it will restart the app to apply the update. This ensure  that your users always have the latest version of your app.
+- `TARSDB_UPDATE_AUTH_ENDPOINT` (required in production)
+- `TARSDB_UPDATE_CHANNEL` (default: `stable`)
+- `TARSDB_UPDATE_CHECK_INTERVAL` (default: `10 minutes`)
+- `TARSDB_UPDATE_AUTH_TIMEOUT_MS` (default: `8000`)
+- `TARSDB_UPDATE_AUTH_BEARER` (optional bearer token for auth endpoint)
 
-The auto update is implemented using [update-electron-app](https://github.com/electron/update-electron-app) to check the updates and apply them. For the publishing, it is using the [Electron Forge's GitHub publisher](https://www.electronforge.io/config/publishers/github).
+### Release pipeline
+
+`.github/workflows/publish.yaml` builds artifacts on `windows-latest` and `macos-latest`, then uploads update metadata/artifacts to S3 and optionally invalidates CloudFront.
+
+Required CI secrets/vars are documented in [`docs/private-updates.md`](docs/private-updates.md).
+
+> For background on Squirrel metadata formats and storage layout, see Electron's [Updating Applications](https://www.electronjs.org/docs/latest/tutorial/updates).
 
 ## Documentation
 

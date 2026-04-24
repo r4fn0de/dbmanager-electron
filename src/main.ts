@@ -2,7 +2,6 @@ import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, nativeTheme, session } from "electron";
 import { ipcMain } from "electron/main";
 import { downloadChromeExtension } from "electron-devtools-installer/dist/downloadChromeExtension";
-import { UpdateSourceType, updateElectronApp } from "update-electron-app";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, inDevelopment } from "./constants";
 import { getBasePath } from "./utils/path";
@@ -11,6 +10,7 @@ import { registerDrivers } from "./ipc/db/registry";
 import { closeAllPools } from "./ipc/db/kysely-factory";
 import { registerAiStreamingHandlers } from "./ipc/ai";
 import { APP_DISPLAY_NAME } from "./appBranding";
+import { configurePrivateUpdates } from "@/updater/private-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
 
@@ -221,13 +221,8 @@ async function installExtensions() {
   }
 }
 
-function checkForUpdates() {
-  updateElectronApp({
-    updateSource: {
-      type: UpdateSourceType.ElectronPublicUpdateService,
-      repo: "LuanRoger/electron-shadcn",
-    },
-  });
+async function checkForUpdates() {
+  await configurePrivateUpdates();
 }
 
 async function runPostWindowInitialization() {
@@ -238,7 +233,7 @@ async function runPostWindowInitialization() {
   }
 
   try {
-    checkForUpdates();
+    await checkForUpdates();
   } catch (error) {
     console.error("[startup] Failed to configure auto-updates:", error);
   }

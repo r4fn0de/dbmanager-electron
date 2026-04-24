@@ -1,14 +1,44 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Copy, Minus, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { Cable, Copy, Globe, HardDrive, Minus, Plus, X } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   ConnectionTabs,
   useConnectionTabSync,
 } from "@/components/ConnectionTabs";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { ClickHouse } from "@/components/icons/ClickHouse";
+import { MySql } from "@/components/icons/MySql";
+import { Neon } from "@/components/icons/Neon";
+import { Supabase } from "@/components/icons/Supabase";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import GooeySvgFilter from "@/components/ui/gooey-svg-filter";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useConnectionsList } from "@/hooks/useConnectionsList";
+import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import {
+  buildConnectionTab,
+  detectConnectionProvider,
+  useConnectionTabsStore,
+} from "@/lib/stores/connection-tabs";
+import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
+import type { Connection } from "@/ipc/db/types";
 
 type Platform = "macos" | "windows" | "linux" | "unknown";
 
@@ -26,14 +56,88 @@ function detectPlatform(): Platform {
   return "unknown";
 }
 
+function ProviderIcon({
+  provider,
+  className,
+}: {
+  provider: ConnectionProvider;
+  className?: string;
+}) {
+  const cls = className ?? "size-3.5 shrink-0";
+  switch (provider) {
+    case "neon":
+      return <Neon className={cls} />;
+    case "supabase":
+      return <Supabase className={cls} />;
+    case "mysql":
+    case "mariadb":
+      return <MySql className={cls} />;
+    case "clickhouse":
+      return <ClickHouse className={cls} />;
+    case "url":
+      return <Globe className={`${cls} text-muted-foreground/50`} />;
+    default:
+      return <Cable className={`${cls} text-muted-foreground/50`} />;
+  }
+}
+
 export function TitleBar() {
   const titlebarGooeyFilterId = "titlebar-tabs-gooey";
   const [platform] = useState<Platform>(() => detectPlatform());
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isConnectionMenuOpen, setIsConnectionMenuOpen] = useState(false);
   const navigate = useNavigate();
 
   // Auto-add tabs when navigating to database pages
   useConnectionTabSync();
+
+  const { connections } = useConnectionsList();
+  const { databases: localDbs } = useLocalDatabases();
+  const tabs = useConnectionTabsStore((s) => s.tabs);
+
+  const localDbById = useMemo(() => {
+    const map: Record<string, (typeof localDbs)[number]> = {};
+    for (const db of localDbs) {
+      map[db.id] = db;
+    }
+    return map;
+  }, [localDbs]);
+
+  // Connections not already open as tabs
+  const openTabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
+  const unopenedConnections = useMemo(
+    () => connections.filter((c) => !openTabIds.has(c.id)),
+    [connections, openTabIds],
+  );
+
+  const localUnopened = useMemo(
+    () => unopenedConnections.filter((c) => c.is_local),
+    [unopenedConnections],
+  );
+  const remoteUnopened = useMemo(
+    () => unopenedConnections.filter((c) => !c.is_local),
+    [unopenedConnections],
+  );
+
+  const handleOpenConnection = useCallback(
+    (connection: Connection) => {
+      if (connection.is_local) {
+        const localDb = localDbById[connection.id];
+        if (!localDb?.running) {
+          toast.error(
+            `Local database "${connection.name}" is not running. Start it before opening.`,
+          );
+          return;
+        }
+      }
+      useConnectionTabsStore.getState().addTab(buildConnectionTab(connection));
+      navigate({
+        to: "/database/$connectionId",
+        params: { connectionId: connection.id },
+      });
+    },
+    [localDbById, navigate],
+  );
 
   const handleMinimize = () => {
     // Electron minimize - to be implemented with IPC
@@ -61,15 +165,108 @@ export function TitleBar() {
       <div className="no-drag h-full flex items-end">
         <ConnectionTabs gooeyFilterId={titlebarGooeyFilterId} />
       </div>
-      <button
-        type="button"
-        onClick={handleOpenConnections}
-        className="shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground hover:text-foreground transition-colors no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60"
-        aria-label="Open connections"
-        title="Open connections"
+      <DropdownMenu
+        open={isConnectionMenuOpen}
+        onOpenChange={(open) => {
+          // Only accept close events (Escape, click-outside, etc.).
+          // Open requests from the default trigger click are suppressed —
+          // left-click navigates home instead; right-click opens the menu
+          // directly via onContextMenu.
+          if (open) return;
+          setIsConnectionMenuOpen(false);
+        }}
       >
-        <Plus className="h-3.5 w-3.5 -translate-y-[2px]" />
-      </button>
+        <TooltipProvider delay={500}>
+          <Tooltip open={isConnectionMenuOpen ? false : undefined}>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isConnectionMenuOpen) {
+                          setIsConnectionMenuOpen(false);
+                        } else {
+                          handleOpenConnections();
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        if (unopenedConnections.length > 0) {
+                          e.preventDefault();
+                          setIsConnectionMenuOpen(true);
+                        }
+                      }}
+                      className="shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground hover:text-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors after:duration-150 hover:after:bg-muted/60 active:scale-[0.97] after:active:bg-muted/40"
+                      aria-label="Open connections"
+                    >
+                      <Plus className="h-3.5 w-3.5 -translate-y-[2px]" />
+                    </button>
+                  }
+                />
+              }
+            />
+            <TooltipContent side="bottom" sideOffset={8}>
+              <span>Open connections</span>
+              <Kbd>Right-click</Kbd>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <DropdownMenuContent
+          align="start"
+          sideOffset={6}
+          className="w-56 origin-(--transform-origin)"
+        >
+          {remoteUnopened.length > 0 && (
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Remote</DropdownMenuLabel>
+              {remoteUnopened.map((conn) => (
+                <DropdownMenuItem
+                  key={conn.id}
+                  onClick={() => handleOpenConnection(conn)}
+                  className="gap-2"
+                >
+                  <ProviderIcon
+                    provider={detectConnectionProvider(conn)}
+                    className="size-3.5 shrink-0"
+                  />
+                  <span className="truncate text-xs">{conn.name}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          )}
+          {localUnopened.length > 0 && remoteUnopened.length > 0 && (
+            <DropdownMenuSeparator />
+          )}
+          {localUnopened.length > 0 && (
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Local</DropdownMenuLabel>
+              {localUnopened.map((conn) => {
+                const isRunning = localDbById[conn.id]?.running ?? false;
+                return (
+                  <DropdownMenuItem
+                    key={conn.id}
+                    onClick={() => handleOpenConnection(conn)}
+                    className="gap-2"
+                  >
+                    <HardDrive className="size-3.5 shrink-0 text-emerald-500" />
+                    <span className="truncate text-xs">{conn.name}</span>
+                    <span
+                      className={
+                        isRunning
+                          ? "ml-auto text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+                          : "ml-auto text-[10px] font-medium text-muted-foreground"
+                      }
+                    >
+                      {isRunning ? "Running" : "Stopped"}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuGroup>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 

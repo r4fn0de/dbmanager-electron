@@ -7,6 +7,15 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 
+const updateBaseUrl = process.env.UPDATE_BASE_URL?.trim().replace(/\/+$/, "");
+const updateChannel = process.env.UPDATE_CHANNEL?.trim() || "stable";
+const winRemoteReleases = updateBaseUrl
+  ? `${updateBaseUrl}/${updateChannel}/win32/${process.arch}`
+  : undefined;
+const macUpdateManifestBaseUrl = updateBaseUrl
+  ? `${updateBaseUrl}/${updateChannel}/darwin/${process.arch}`
+  : undefined;
+
 const config: ForgeConfig = {
   packagerConfig: {
     icon: "./icons/app-icon",
@@ -16,28 +25,21 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ["darwin"]),
+    new MakerSquirrel({
+      ...(winRemoteReleases ? { remoteReleases: winRemoteReleases } : {}),
+    }),
+    new MakerZIP(
+      {
+        ...(macUpdateManifestBaseUrl
+          ? { macUpdateManifestBaseUrl }
+          : {}),
+      },
+      ["darwin"],
+    ),
     new MakerRpm({}),
     new MakerDeb({}),
   ],
-  publishers: [
-    {
-      /*
-       * Publish release on GitHub as draft.
-       * Remember to manually publish it on GitHub website after verifying everything is correct.
-       */
-      name: "@electron-forge/publisher-github",
-      config: {
-        repository: {
-          owner: "LuanRoger",
-          name: "electron-shadcn",
-        },
-        draft: true,
-        prerelease: false,
-      },
-    },
-  ],
+  publishers: [],
   plugins: [
     new VitePlugin({
       build: [
