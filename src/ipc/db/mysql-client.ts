@@ -460,7 +460,7 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
 
       const tableRows = await db
         .selectFrom("tables")
-        .select(["TABLE_SCHEMA", "TABLE_NAME"])
+        .select(["TABLE_SCHEMA", "TABLE_NAME", "TABLE_ROWS"])
         .where("TABLE_SCHEMA", "not in", excludedSchemas)
         .orderBy("TABLE_SCHEMA")
         .orderBy("TABLE_NAME")
@@ -472,6 +472,7 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
           name: t.TABLE_NAME,
           schema: t.TABLE_SCHEMA,
           has_rls: false,
+          estimated_row_count: Number(t.TABLE_ROWS ?? 0),
         })),
       };
     },

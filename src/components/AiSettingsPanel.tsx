@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
   Settings,
   Sparkles,
@@ -360,14 +359,9 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                     <span>{provider.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {provider.hasApiKey && (
-                      <KeyRound className="size-3.5 text-emerald-500" />
-                    )}
-                    {isSavingThis ? (
+                    {isSavingThis && (
                       <Loader2 className="size-3.5 animate-spin" />
-                    ) : isActive ? (
-                      <CheckCircle2 className="size-4 text-primary" />
-                    ) : null}
+                    )}
                   </div>
                 </button>
                 {isActive && (
@@ -383,6 +377,26 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
               </div>
             );
           })}
+
+          {/* Missing config warning for active provider */}
+          {(() => {
+            const activeProvider = settings.providers.find(
+              (p) => p.name === settings.current.provider
+            );
+            if (!activeProvider?.hasApiKey) {
+              return (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/6 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <X className="size-3.5 shrink-0" />
+                  <span>
+                    {settings.current.provider === "openai-compatible"
+                      ? "Configure the Base URL and API key to use this provider"
+                      : "Add an API key to enable this provider"}
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
         {/* Provider Config Dialog */}
         <Dialog

@@ -80,6 +80,7 @@ const CreateSchemaDialog = lazy(() => import("@/components/TableDdlDialogs").the
 const CreateIndexDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.CreateIndexDialog })));
 const ImportCsvDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.ImportCsvDialog })));
 const RlsPoliciesDialog = lazy(() => import("@/components/RlsPoliciesDialog").then((m) => ({ default: m.RlsPoliciesDialog })));
+const ViewDdlDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.ViewDdlDialog })));
 
 type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer";
 
@@ -297,6 +298,7 @@ export function DatabasePageContent({
     isNullable: boolean;
   } | null>(null);
   const [rlsPoliciesTarget, setRlsPoliciesTarget] = useState<{ schema: string; name: string } | null>(null);
+  const [ddlViewTarget, setDdlViewTarget] = useState<{ schema: string; name: string } | null>(null);
   const [rlsPolicies, setRlsPolicies] = useState<SchemaPolicy[]>([]);
   const [isLoadingRlsPolicies, setIsLoadingRlsPolicies] = useState(false);
   const queryClient = useQueryClient();
@@ -483,6 +485,12 @@ export function DatabasePageContent({
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && isTablesSection) {
       e.preventDefault();
       toggleSidebar();
+    }
+
+    // Cmd+R / Ctrl+R: Refresh schema
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      handleRefresh();
     }
   };
 
@@ -946,6 +954,7 @@ export function DatabasePageContent({
                   onRenameTable={setDdlRenameTarget}
                   onDropTable={setDdlDropTarget}
                   onViewRlsPolicies={setRlsPoliciesTarget}
+                  onViewDdl={setDdlViewTarget}
                 />
               </ResizablePanel>
 
@@ -1329,6 +1338,23 @@ export function DatabasePageContent({
           schema={rlsPoliciesTarget.schema}
           tableName={rlsPoliciesTarget.name}
           policies={rlsPolicies}
+        />
+      )}
+      {ddlViewTarget && (
+        <ViewDdlDialog
+          isOpen
+          onClose={() => setDdlViewTarget(null)}
+          connectionId={connection.id}
+          schema={ddlViewTarget.schema}
+          tableName={ddlViewTarget.name}
+          dbType={connection.db_type || "postgresql"}
+          cachedDetails={
+            selectedTableDetails &&
+            selectedTableDetails.schema === ddlViewTarget.schema &&
+            selectedTableDetails.name === ddlViewTarget.name
+              ? selectedTableDetails
+              : null
+          }
         />
       )}
       </Suspense>

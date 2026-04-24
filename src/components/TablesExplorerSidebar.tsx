@@ -7,6 +7,7 @@ import {
   LockKeyhole,
   Pencil,
   Plus,
+  ScrollText,
   Search,
   Table2,
   Terminal,
@@ -48,6 +49,14 @@ import {
 import { cn } from "@/utils/tailwind";
 import type { SchemaTableSummary } from "@/ipc/db/types";
 
+/** Format large row counts compactly (e.g. 1.2K, 3.4M, ~0). */
+function formatRowCount(count: number): string {
+  if (count < 1_000) return String(count);
+  if (count < 1_000_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  if (count < 1_000_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  return `${(count / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B`;
+}
+
 /** Parsed table reference (schema.name) */
 interface TableRef {
   schema: string;
@@ -86,6 +95,7 @@ export interface TablesExplorerSidebarProps {
   onRenameTable: (target: { schema: string; name: string }) => void;
   onDropTable: (target: { schema: string; name: string }) => void;
   onViewRlsPolicies: (target: { schema: string; name: string }) => void;
+  onViewDdl: (target: { schema: string; name: string }) => void;
 }
 
 export function TablesExplorerSidebar({
@@ -108,6 +118,7 @@ export function TablesExplorerSidebar({
   onRenameTable,
   onDropTable,
   onViewRlsPolicies,
+  onViewDdl,
 }: TablesExplorerSidebarProps) {
   return (
     <aside className="h-full min-h-0 flex flex-col bg-sidebar">
@@ -290,6 +301,11 @@ export function TablesExplorerSidebar({
                           <span className="flex-1 truncate text-[13px] font-medium leading-tight">
                             {table.name}
                           </span>
+                          {table.estimated_row_count > 0 && (
+                            <Badge variant="secondary" className="font-mono text-[9px] h-3.5 px-1 leading-none shrink-0 tabular-nums text-muted-foreground">
+                              {formatRowCount(table.estimated_row_count)}
+                            </Badge>
+                          )}
                           {table.has_rls ? (
                             <Tooltip>
                               <TooltipTrigger className="inline-flex shrink-0">
@@ -309,6 +325,17 @@ export function TablesExplorerSidebar({
                       }
                     />
                     <ContextMenuContent>
+                      <ContextMenuItem
+                        onClick={() =>
+                          onViewDdl({
+                            schema: table.schema,
+                            name: table.name,
+                          })
+                        }
+                      >
+                        <ScrollText className="size-3.5" />
+                        View DDL
+                      </ContextMenuItem>
                       <ContextMenuItem
                         onClick={() =>
                           onRenameTable({

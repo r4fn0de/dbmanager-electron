@@ -282,12 +282,12 @@ export function createClickhouseDriver(): DatabaseDriver {
         });
         const schemaRows = await schemasResult.json() as Array<{ schema_name: string }>;
 
-        // 2. Tables — just schema + name, no column/index data
+        // 2. Tables — schema + name + estimated row count from system.parts
         const tablesResult = await client.query({
-          query: `SELECT database, name FROM system.tables WHERE database NOT IN (${CH_SYSTEM_DATABASES.map((d) => `'${d}'`).join(", ")}) AND engine NOT IN ('View', 'MaterializedView', 'Dictionary') ORDER BY database, name`,
+          query: `SELECT database, name, total_rows FROM system.tables WHERE database NOT IN (${CH_SYSTEM_DATABASES.map((d) => `'${d}'`).join(", ")}) AND engine NOT IN ('View', 'MaterializedView', 'Dictionary') ORDER BY database, name`,
           format: "JSONEachRow",
         });
-        const tableRows = await tablesResult.json() as Array<{ database: string; name: string }>;
+        const tableRows = await tablesResult.json() as Array<{ database: string; name: string; total_rows: string }>;
 
         return {
           schemas: schemaRows.map((r) => r.schema_name),
@@ -295,6 +295,7 @@ export function createClickhouseDriver(): DatabaseDriver {
             name: t.name,
             schema: t.database,
             has_rls: false,
+            estimated_row_count: Number(t.total_rows ?? 0),
           })),
         };
       } catch (err) {

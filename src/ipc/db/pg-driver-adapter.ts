@@ -232,22 +232,36 @@ export function createPostgresDriver(): DatabaseDriver {
         .orderBy("schema_name")
         .execute();
 
-      const tables = await db
-        .withSchema("information_schema")
-        .selectFrom("tables")
-        .select(["table_schema", "table_name"])
-        .where("table_schema", "not like", "pg_%")
-        .where("table_schema", "!=", "information_schema")
-        .orderBy("table_schema")
-        .orderBy("table_name")
-        .execute();
+      // Raw query joining information_schema.tables with pg_class for row counts & RLS.
+      // LEFT JOIN ensures partitioned parents, foreign tables, etc. are not dropped.
+      // IMPORTANT: Use pool.query() directly — NOT executePgQuery() — because
+      // executePgQuery() converts rows to value arrays (Object.values), which
+      // breaks property-name access. Pool.query() returns rows as objects.
+      const pool = getPgPool(connectionString);
+      const tablesResult = await pool.query(`
+        SELECT
+          t.table_schema,
+          t.table_name,
+          COALESCE(c.relrowsecurity, false) AS has_rls,
+          COALESCE(c.reltuples::bigint, 0) AS estimated_row_count
+        FROM information_schema.tables t
+        LEFT JOIN pg_catalog.pg_class c
+          ON c.relname = t.table_name AND c.relkind = 'r'
+        LEFT JOIN pg_catalog.pg_namespace n
+          ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+        WHERE t.table_schema NOT LIKE 'pg_%'
+          AND t.table_schema != 'information_schema'
+          AND t.table_type = 'BASE TABLE'
+        ORDER BY t.table_schema, t.table_name
+      `);
 
       return {
         schemas: schemas.map((r) => r.schema_name),
-        tables: tables.map((t) => ({
-          name: t.table_name,
-          schema: t.table_schema,
-          has_rls: false,
+        tables: tablesResult.rows.map((row: Record<string, unknown>) => ({
+          name: String(row.table_name),
+          schema: String(row.table_schema),
+          has_rls: Boolean(row.has_rls),
+          estimated_row_count: Math.max(0, Math.round(Number(row.estimated_row_count ?? 0))),
         })),
       };
     },

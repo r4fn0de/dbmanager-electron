@@ -300,13 +300,26 @@ export function createSqliteDriver(): DatabaseDriver {
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         .all() as Array<{ name: string }>;
 
-      return {
-        schemas,
-        tables: tableRows.map((t) => ({
+      // Get row counts for each table (SQLite requires per-table COUNT)
+      const tablesWithCounts = tableRows.map((t) => {
+        let rowCount = 0;
+        try {
+          const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`).get() as Record<string, number>;
+          rowCount = countRow?.cnt ?? 0;
+        } catch {
+          // Table may be a virtual table or otherwise unreadable
+        }
+        return {
           name: t.name,
           schema: "main",
           has_rls: false,
-        })),
+          estimated_row_count: rowCount,
+        };
+      });
+
+      return {
+        schemas,
+        tables: tablesWithCounts,
       };
     },
 

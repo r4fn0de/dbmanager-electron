@@ -1,13 +1,15 @@
 import {
   AlertTriangle,
+  Copy,
   Database,
   Loader2,
   Plus,
+  ScrollText,
   Trash2,
   Upload,
   Wand,
 } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -40,6 +42,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-block";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { getTableDetails } from "@/hooks/db-actions";
+import { qi, qt } from "@/ipc/db/ddl-sql";
+import type { DatabaseType } from "@/ipc/db/types";
 import type {
   AddColumnInput,
   AlterColumnTypeInput,
@@ -56,6 +63,7 @@ import type {
   SaveChangesResponse,
   SetColumnDefaultInput,
   SetColumnNullableInput,
+  SchemaTableDetails,
 } from "@/ipc/db/types";
 
 // ============================================================
@@ -1679,6 +1687,205 @@ export function SetColumnNullableDialog({
           <Button onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
+// View DDL Dialog
+// ============================================================
+
+interface ViewDdlDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connectionId: string;
+  schema: string;
+  tableName: string;
+  dbType: DatabaseType;
+  /** Pre-fetched table details from React Query cache, if available. */
+  cachedDetails?: SchemaTableDetails | null;
+}
+
+/** Build a CREATE TABLE DDL script from SchemaTableDetails with engine-correct quoting. */
+function buildDdlFromDetails(details: SchemaTableDetails, dbType: DatabaseType): string {
+  const lines: string[] = [];
+  const colLines: string[] = [];
+  const qTable = qt(dbType, details.schema, details.name);
+
+  for (const col of details.columns) {
+    let line = `  ${qi(dbType, col.name)} ${col.data_type}`;
+    if (!col.is_nullable) line += " NOT NULL";
+    if (col.column_default) line += ` DEFAULT ${col.column_default}`;
+    colLines.push(line);
+  }
+
+  // Primary key from indexes
+  const pk = details.indexes.find((idx) => idx.is_primary);
+  if (pk) {
+    colLines.push(
+      `  PRIMARY KEY (${pk.column_names.map((c) => qi(dbType, c)).join(", ")})`,
+    );
+  }
+
+  // Unique constraints (non-primary)
+  for (const idx of details.indexes.filter((i) => i.is_unique && !i.is_primary)) {
+    colLines.push(
+      `  UNIQUE (${idx.column_names.map((c) => qi(dbType, c)).join(", ")})`,
+    );
+  }
+
+  // Foreign keys
+  for (const fk of details.foreign_keys) {
+    const ref = fk.referenced_schema
+      ? qt(dbType, fk.referenced_schema, fk.referenced_table)
+      : qi(dbType, fk.referenced_table);
+    colLines.push(
+      `  FOREIGN KEY (${qi(dbType, fk.column_name)}) REFERENCES ${ref}(${qi(dbType, fk.referenced_column)})`,
+    );
+  }
+
+  lines.push(
+    `CREATE TABLE ${qTable} (`,
+    colLines.join(",\n"),
+    ");",
+  );
+
+  // Non-unique indexes
+  const nonUnique = details.indexes.filter((i) => !i.is_unique && !i.is_primary);
+  for (const idx of nonUnique) {
+    lines.push(
+      `CREATE INDEX ${qi(dbType, idx.name)} ON ${qTable} (${idx.column_names.map((c) => qi(dbType, c)).join(", ")});`,
+    );
+  }
+
+  // RLS policies (PostgreSQL only)
+  if (details.has_rls && dbType === "postgresql") {
+    lines.push("");
+    lines.push(`ALTER TABLE ${qTable} ENABLE ROW LEVEL SECURITY;`);
+    for (const policy of details.rls_policies) {
+      const roles = policy.roles.join(", ");
+      const usingPart = policy.using_expr ? ` WITH (${policy.using_expr})` : "";
+      const checkPart = policy.with_check_expr ? ` WITH CHECK (${policy.with_check_expr})` : "";
+      lines.push(
+        `CREATE POLICY ${qi(dbType, policy.name)} ON ${qTable} AS ${policy.kind} FOR ${roles}${usingPart}${checkPart};`,
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function ViewDdlDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  tableName,
+  dbType,
+  cachedDetails,
+}: ViewDdlDialogProps) {
+  const [details, setDetails] = useState<SchemaTableDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  const ddl = details ? buildDdlFromDetails(details, dbType) : "";
+
+  // Use cached details when available (same table, same connection),
+  // otherwise fetch from IPC.
+  useEffect(() => {
+    if (!isOpen) {
+      setDetails(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+    // Use cached details when available for instant display
+    if (cachedDetails) {
+      setDetails(cachedDetails);
+      setIsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+    getTableDetails(connectionId, schema, tableName)
+      .then((result) => {
+        if (!cancelled) setDetails(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load DDL");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isOpen, connectionId, schema, tableName, cachedDetails]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(ddl);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    } catch {
+      // Clipboard API not available
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ScrollText className="size-4 text-muted-foreground" />
+            DDL Script
+          </DialogTitle>
+          <DialogDescription>
+            <code className="font-mono text-foreground">{schema}.{tableName}</code>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Loading DDL...</span>
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-12 text-destructive text-sm">
+              {error}
+            </div>
+          ) : details ? (
+            <ScrollArea className="h-full max-h-[55vh]">
+              <CodeBlock className="border-0 bg-muted/30 rounded-lg">
+                <CodeBlockGroup className="px-4 py-2 border-b border-border/40">
+                  <span className="text-xs text-muted-foreground font-mono">sql</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs gap-1.5"
+                    onClick={() => { void handleCopy(); }}
+                  >
+                    <Copy className="size-3" />
+                    {copyFeedback ? "Copied!" : "Copy"}
+                  </Button>
+                </CodeBlockGroup>
+                <CodeBlockCode
+                  code={ddl}
+                  language="sql"
+                  className="[&>pre]:py-3"
+                />
+              </CodeBlock>
+            </ScrollArea>
+          ) : null}
+        </div>
+
+        <DialogFooter className="pt-2">
+          <Button variant="outline" onClick={onClose}>
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

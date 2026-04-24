@@ -125,6 +125,8 @@ export interface SchemaTableSummary {
   name: string;
   schema: string;
   has_rls: boolean;
+  /** Estimated row count (approximate, from DB statistics). 0 means unknown/empty. */
+  estimated_row_count: number;
 }
 
 export interface SchemaSummary {
