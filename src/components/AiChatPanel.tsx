@@ -136,7 +136,7 @@ function AssistantCodeBlock({
   }, [copied]);
 
   return (
-    <div className="group/code relative overflow-hidden rounded-lg border border-border/40 bg-background/60 backdrop-blur-sm">
+    <div className="group/code relative rounded-lg border border-border/40 bg-background/60 backdrop-blur-sm">
       {/* Header bar */}
       <div className="flex items-center justify-between border-b border-border/30 bg-muted/30 px-3 py-1">
         <span className="text-[11px] font-medium text-muted-foreground/80">{displayLang}</span>
@@ -422,7 +422,7 @@ function ChatMessage({
       <Message
         from="user"
         className="
-          group/msg w-full max-w-full pl-3 pr-1 py-2
+          group/msg w-full max-w-full pl-3 pr-3 py-2
           motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2
           motion-safe:duration-200
         "
@@ -539,7 +539,7 @@ function ChatMessage({
     <Message
       from="assistant"
       className="
-        group/msg w-full max-w-full px-2 py-2
+        group/msg w-full max-w-full pl-1 pr-2 py-2
         motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1
         motion-safe:duration-250
       "
@@ -1192,7 +1192,7 @@ export function AiChatPanel({
       <Conversation className="flex-1 min-h-0" contextRef={conversationRef}>
         <ConversationContent
           key={activeConversationId ?? "no-conversation"}
-          className="flex flex-col gap-0 p-0 pb-32"
+          className="flex flex-col gap-0 pl-3 pr-0 pb-32"
         >
           {isEmpty ? (
             <ConversationEmptyState>
@@ -1248,7 +1248,7 @@ export function AiChatPanel({
       </Conversation>
 
       {/* Input */}
-      <div className="absolute inset-x-0 bottom-0 z-30 px-3 py-2">
+      <div className="absolute inset-x-0 bottom-0 z-30 pl-4 pr-3 py-2">
         {error && (
           <div className="relative z-10 mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
             {error}
@@ -1334,12 +1334,12 @@ export function AiChatPanel({
                 : "Ask anything about SQL, modeling, or debugging…"
             }
             className="
-              max-h-[250px] min-h-[72px] overflow-y-auto p-2 text-sm
+              max-h-[250px] min-h-[72px] overflow-y-auto px-3 py-2 text-sm
               placeholder:text-muted-foreground/50
               dark:bg-transparent
             "
           />
-          <PromptInputActions className="justify-end gap-2 px-2 pb-2">
+          <PromptInputActions className="justify-end gap-2 px-3 pb-2">
             {isLoading ? (
               <Button
                 type="button"

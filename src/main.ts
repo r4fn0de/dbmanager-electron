@@ -286,6 +286,21 @@ function setupMenu() {
     });
   }
 
+  // Edit menu — required for clipboard shortcuts (Cmd/Ctrl+C, V, X, etc.) to work
+  // in renderer input fields. Without this, Electron does not handle these shortcuts.
+  template.push({
+    label: "Edit",
+    submenu: [
+      { role: "undo" },
+      { role: "redo" },
+      { type: "separator" },
+      { role: "cut" },
+      { role: "copy" },
+      { role: "paste" },
+      { role: "selectAll" },
+    ],
+  });
+
   // View menu
   const viewSubmenu: Electron.MenuItemConstructorOptions[] = [];
   if (inDevelopment) {

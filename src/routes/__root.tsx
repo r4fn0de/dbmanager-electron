@@ -28,6 +28,8 @@ import type { DatabaseType } from "@/ipc/db/types";
 
 import "../styles/global.css";
 
+const AI_PANEL_ANIM_DURATION_MS = 180;
+
 function isAiChatShortcut(event: KeyboardEvent): boolean {
   if (event.isComposing || event.repeat) return false;
   if (!(event.metaKey || event.ctrlKey)) return false;
@@ -98,6 +100,8 @@ function Root() {
 
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const aiPanelRef = useRef<PanelImperativeHandle>(null);
+  const aiResizeDraggingRef = useRef(false);
+  const [isAiHandleDragging, setIsAiHandleDragging] = useState(false);
   const [isAiPanelAnimating, setIsAiPanelAnimating] = useState(false);
   const aiPanelAnimTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -125,6 +129,11 @@ function Root() {
     }
   }, []);
 
+  const stopAiPanelAnimation = useCallback(() => {
+    clearAiPanelAnimTimeout();
+    setIsAiPanelAnimating(false);
+  }, [clearAiPanelAnimTimeout]);
+
   const handleAiChatClose = useCallback(() => {
     // Close: AiChatPanel plays exit animation first,
     // then panel collapses via CSS transition on flex-grow.
@@ -145,16 +154,36 @@ function Root() {
       aiPanelAnimTimeoutRef.current = setTimeout(() => {
         setIsAiPanelAnimating(false);
         aiPanelAnimTimeoutRef.current = undefined;
-      }, 300);
+      }, AI_PANEL_ANIM_DURATION_MS);
     }
   }, [isAiChatOpen, handleAiChatClose, setAiChatOpen, clearAiPanelAnimTimeout]);
 
   // Clean up animation timeout on unmount
   useEffect(() => {
     return () => {
+      aiResizeDraggingRef.current = false;
+      setIsAiHandleDragging(false);
       clearAiPanelAnimTimeout();
     };
   }, [clearAiPanelAnimTimeout]);
+
+  useEffect(() => {
+    const finishResizeDrag = () => {
+      aiResizeDraggingRef.current = false;
+      setIsAiHandleDragging(false);
+    };
+
+    window.addEventListener("pointerup", finishResizeDrag, true);
+    window.addEventListener("pointercancel", finishResizeDrag, true);
+    window.addEventListener("mouseup", finishResizeDrag, true);
+    window.addEventListener("blur", finishResizeDrag);
+    return () => {
+      window.removeEventListener("pointerup", finishResizeDrag, true);
+      window.removeEventListener("pointercancel", finishResizeDrag, true);
+      window.removeEventListener("mouseup", finishResizeDrag, true);
+      window.removeEventListener("blur", finishResizeDrag);
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -192,49 +221,50 @@ function Root() {
                   }
                 }}
               >
-                <ResizablePanel id="root-main" className={cn("min-h-0 min-w-0", isAiPanelAnimating && "transition-[flex-grow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]")}>
+                <ResizablePanel id="root-main" className={cn("min-h-0 min-w-0", isAiPanelAnimating && "transition-[flex-grow] duration-180 ease-[cubic-bezier(0.23,1,0.32,1)]")}>
                   {isDatabaseRoute ? <TabbedConnectionView /> : <Outlet />}</ResizablePanel>
 
                 <ResizableHandle
-                  withHandle
+                  onPointerDownCapture={() => {
+                    aiResizeDraggingRef.current = true;
+                    setIsAiHandleDragging(true);
+                    if (isAiPanelAnimating) {
+                      stopAiPanelAnimation();
+                    }
+                  }}
                   className={cn(
                     [
-                      "!bg-transparent hover:!bg-transparent justify-end",
-                      // Keep the drag hit-area but hide idle visuals.
-                      "after:w-1 after:rounded-full after:bg-transparent",
-                      // During drag, show a solid vertical guide line like the reference.
-                      "data-[resize-handle-state=drag]:after:w-[3px]",
-                      "data-[resize-handle-state=drag]:after:bg-border/80",
-                      "data-[resize-handle-state=drag]:after:shadow-[0_0_0_1px_rgba(120,120,130,0.12)]",
-                      // Pin the visual guide closer to the chat panel side.
-                      "data-[resize-handle-state=drag]:after:translate-x-[1px]",
-                      // Hide the small pill while dragging to keep only the vertical line.
-                      "[&>div]:translate-x-1/2 data-[resize-handle-state=drag]:[&>div]:opacity-0",
+                      "!bg-transparent hover:!bg-transparent justify-center",
+                      // Single center guide shown only during drag.
+                      "after:absolute after:inset-y-0 after:left-1/2 after:-translate-x-1/2 after:w-[3px] after:rounded-full after:transition-colors after:duration-150",
+                      isAiHandleDragging
+                        ? "after:bg-primary/55"
+                        : "after:bg-transparent",
                     ].join(" "),
+                    !isAiHandleDragging && "opacity-0",
                     !(isAiChatOpen || isAiPanelAnimating) && "pointer-events-none opacity-0",
                   )}
                 />
                 <ResizablePanel
                   id="root-ai-chat"
-                  defaultSize={`${aiPanelSize}%`}
+                  defaultSize={aiPanelSize}
                   minSize="15%"
                   maxSize="45%"
                   collapsible
                   collapsedSize={0}
                   panelRef={aiPanelRef}
-                  onResize={(size, _id, prevSize) => {
-                    const wasCollapsed = prevSize ? prevSize.asPercentage === 0 : false;
-                    const isCollapsed = size.asPercentage === 0;
-
-                    if (!isCollapsed) {
-                      setAiPanelSize(size.asPercentage);
+                  onResize={(size) => {
+                    if (aiResizeDraggingRef.current && isAiPanelAnimating) {
+                      stopAiPanelAnimation();
                     }
 
-                    if (wasCollapsed !== isCollapsed) {
-                      setAiChatOpen(!isCollapsed);
+                    // Keep collapse explicit (button/shortcut). During drag,
+                    // force panel back to min width instead of collapsing.
+                    if (aiResizeDraggingRef.current && size.asPercentage === 0) {
+                      aiPanelRef.current?.resize("15%");
                     }
                   }}
-                  className={cn("min-h-0 min-w-0 ", isAiPanelAnimating && "transition-[flex-grow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]")}
+                  className={cn("min-h-0 min-w-0 ", isAiPanelAnimating && "transition-[flex-grow] duration-180 ease-[cubic-bezier(0.23,1,0.32,1)]")}
                 >
                   <AnimatePresence
                     initial={false}
@@ -246,7 +276,7 @@ function Root() {
                       aiPanelAnimTimeoutRef.current = setTimeout(() => {
                         setIsAiPanelAnimating(false);
                         aiPanelAnimTimeoutRef.current = undefined;
-                      }, 300);
+                      }, AI_PANEL_ANIM_DURATION_MS);
                     }}
                   >
                     {isAiChatOpen && (
@@ -258,7 +288,7 @@ function Root() {
                         schemaContext={effectiveContext.schemaContext}
                         contextPreview={effectiveContext.contextPreview}
                         isOpen={isAiChatOpen}
-                        className="-mt-[6px] h-[calc(100%+6px)] px-1.5"
+                        className="-mt-[6px] h-[calc(100%+6px)] pl-2 pr-0"
                         onClose={handleAiChatClose}
                       />
                     )}

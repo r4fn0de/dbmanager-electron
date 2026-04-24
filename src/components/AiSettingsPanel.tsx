@@ -275,7 +275,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       {/* Header — only in full mode */}
       {!compact && (
         <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/[0.08] ring-1 ring-primary/10">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/[0.12] ring-1 ring-primary/20">
             <Sparkles className="size-5 text-primary" />
           </div>
           <div>
@@ -342,7 +342,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                 className={cn(
                   "flex items-center gap-2 rounded-xl border transition-all duration-150 ease-out",
                   isActive
-                    ? "border-primary/25 bg-primary/[0.04] ring-1 ring-primary/15 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+                    ? "border-primary/30 bg-primary/[0.08] ring-1 ring-primary/20 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
                     : "border-border/70 bg-transparent hover:border-muted-foreground/30 hover:bg-muted/[0.02]"
                 )}
               >
@@ -438,14 +438,6 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                             [provider.name]: e.target.value,
                           }))
                         }
-                        onPaste={(e) => {
-                          e.stopPropagation();
-                          const pasted = e.clipboardData.getData("text");
-                          setApiKeyInputs((prev) => ({
-                            ...prev,
-                            [provider.name]: pasted,
-                          }));
-                        }}
                         className="h-8 pr-8 font-mono text-xs bg-background"
                         autoComplete="off"
                         autoCorrect="off"

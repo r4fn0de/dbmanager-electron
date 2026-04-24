@@ -95,7 +95,7 @@ export function SettingsDialog() {
                   className={cn(
                     "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ease-out text-left active:scale-[0.98]",
                     isActive
-                      ? "bg-primary/[0.06] text-primary ring-1 ring-primary/15"
+                      ? "bg-primary/[0.10] text-primary ring-1 ring-primary/25"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                   )}
                 >
