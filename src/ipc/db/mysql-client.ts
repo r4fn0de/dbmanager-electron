@@ -8,7 +8,7 @@
  * DDL uses shared builders (ddl-sql.ts) executed via pool.
  */
 import mysql from "mysql2/promise";
-import type { DatabaseType, SslMode } from "./types";
+import type { DatabaseType, SslMode, ConstraintInfo } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getMysqlPool, getMysqlKysely } from "./kysely-factory";
 import {
@@ -577,6 +577,205 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`MySQL table details error for ${schema}.${table}: ${msg}`);
       }
+    },
+
+    async getIndexes(connectionString, schema, table) {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          const [rows] = await conn.query(
+            `SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE
+             FROM information_schema.statistics
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+             ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
+            [schema, table],
+          );
+
+          const indexRows = rows as Array<{
+            INDEX_NAME: string;
+            COLUMN_NAME: string;
+            NON_UNIQUE: number;
+            INDEX_TYPE: string;
+          }>;
+
+          // Group by index name
+          const indexMap = new Map<string, {
+            columns: string[];
+            isUnique: boolean;
+            isPrimary: boolean;
+            type: string;
+          }>();
+
+          for (const row of indexRows) {
+            if (!indexMap.has(row.INDEX_NAME)) {
+              indexMap.set(row.INDEX_NAME, {
+                columns: [],
+                isUnique: row.NON_UNIQUE === 0,
+                isPrimary: row.INDEX_NAME === "PRIMARY",
+                type: row.INDEX_TYPE ?? "BTREE",
+              });
+            }
+            indexMap.get(row.INDEX_NAME)!.columns.push(row.COLUMN_NAME);
+          }
+
+          return Array.from(indexMap.entries()).map(([name, idx]) => ({
+            name,
+            schema,
+            table,
+            columns: idx.columns,
+            isUnique: idx.isUnique,
+            isPrimary: idx.isPrimary,
+            type: idx.type,
+          }));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL getIndexes error for ${schema}.${table}: ${msg}`);
+        }
+      });
+    },
+
+    async getConstraints(connectionString, schema, table) {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          // Get all constraints from information_schema
+          const [rows] = await conn.query(
+            `SELECT
+              tc.CONSTRAINT_NAME,
+              tc.CONSTRAINT_TYPE,
+              kcu.COLUMN_NAME,
+              rc.UNIQUE_CONSTRAINT_SCHEMA,
+              rc.REFERENCED_TABLE_NAME,
+              rc.UPDATE_RULE,
+              rc.DELETE_RULE
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+              AND tc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+            LEFT JOIN information_schema.referential_constraints rc
+              ON tc.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+              AND tc.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+            WHERE tc.TABLE_SCHEMA = ? AND tc.TABLE_NAME = ?`,
+            [schema, table],
+          );
+
+          const constraintRows = rows as Array<{
+            CONSTRAINT_NAME: string;
+            CONSTRAINT_TYPE: string;
+            COLUMN_NAME: string;
+            UNIQUE_CONSTRAINT_SCHEMA: string | null;
+            REFERENCED_TABLE_NAME: string | null;
+            UPDATE_RULE: string | null;
+            DELETE_RULE: string | null;
+          }>;
+
+          // Group by constraint name
+          const constraintMap = new Map<string, ConstraintInfo>();
+
+          for (const row of constraintRows) {
+            const typeMap: Record<string, import("./types").ConstraintType> = {
+              "PRIMARY KEY": "primary_key",
+              "UNIQUE": "unique",
+              "FOREIGN KEY": "foreign_key",
+              "CHECK": "check",
+            };
+
+            const constraintType = typeMap[row.CONSTRAINT_TYPE] ?? "check";
+
+            if (!constraintMap.has(row.CONSTRAINT_NAME)) {
+              constraintMap.set(row.CONSTRAINT_NAME, {
+                name: row.CONSTRAINT_NAME,
+                schema,
+                table,
+                type: constraintType,
+                columns: [],
+                referencedSchema: row.UNIQUE_CONSTRAINT_SCHEMA ?? undefined,
+                referencedTable: row.REFERENCED_TABLE_NAME ?? undefined,
+                updateRule: row.UPDATE_RULE ?? undefined,
+                deleteRule: row.DELETE_RULE ?? undefined,
+              });
+            }
+
+            const constraint = constraintMap.get(row.CONSTRAINT_NAME)!;
+            if (row.COLUMN_NAME && !constraint.columns.includes(row.COLUMN_NAME)) {
+              constraint.columns.push(row.COLUMN_NAME);
+            }
+          }
+
+          return Array.from(constraintMap.values());
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL getConstraints error for ${schema}.${table}: ${msg}`);
+        }
+      });
+    },
+
+    async getTableStats(connectionString, schema, table) {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          // Get row count and size information
+          const [infoRows] = await conn.query(
+            `SELECT
+              TABLE_ROWS as row_count,
+              DATA_LENGTH + INDEX_LENGTH as size_bytes,
+              DATA_LENGTH as data_bytes,
+              INDEX_LENGTH as index_bytes
+            FROM information_schema.tables
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+            [schema, table],
+          );
+
+          const info = (infoRows as Array<{
+            row_count: bigint;
+            size_bytes: bigint;
+            data_bytes: bigint;
+            index_bytes: bigint;
+          }>)[0];
+
+          const sizeBytes = Number(info?.size_bytes ?? 0);
+
+          // Format size string
+          let sizeFormatted = "0 B";
+          if (sizeBytes > 0) {
+            if (sizeBytes < 1024) {
+              sizeFormatted = `${sizeBytes} B`;
+            } else if (sizeBytes < 1024 * 1024) {
+              sizeFormatted = `${(sizeBytes / 1024).toFixed(2)} KB`;
+            } else if (sizeBytes < 1024 * 1024 * 1024) {
+              sizeFormatted = `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
+            } else {
+              sizeFormatted = `${(sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+            }
+          }
+
+          // Get last update time from information_schema if available
+          let lastUpdate: string | null = null;
+          try {
+            const [timeRows] = await conn.query(
+              `SELECT UPDATE_TIME
+               FROM information_schema.tables
+               WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+              [schema, table],
+            );
+            const timeRow = (timeRows as Array<{ UPDATE_TIME: string | null }>)[0];
+            lastUpdate = timeRow?.UPDATE_TIME ?? null;
+          } catch {
+            // Ignore if not available
+          }
+
+          return {
+            schema,
+            table,
+            rowCount: Number(info?.row_count ?? 0),
+            sizeBytes,
+            sizeFormatted,
+            lastVacuum: null, // MySQL doesn't have vacuum
+            lastAnalyze: lastUpdate,
+            lastAutoanalyze: null,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL getTableStats error for ${schema}.${table}: ${msg}`);
+        }
+      });
     },
 
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {

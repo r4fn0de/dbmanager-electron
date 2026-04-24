@@ -435,3 +435,45 @@ export interface CloneToLocalInput {
   selectedTables: { schema: string; table: string; importData: boolean }[];
   postgresVersion?: string;
 }
+
+// ---------------------------------------------------------------------------
+// AI Tool Types — for database introspection tools
+// ---------------------------------------------------------------------------
+
+export interface IndexInfo {
+  name: string;
+  schema: string;
+  table: string;
+  columns: string[];
+  isUnique: boolean;
+  isPrimary: boolean;
+  type?: string;
+}
+
+export type ConstraintType = "primary_key" | "unique" | "foreign_key" | "check" | "exclude" | "not_null";
+
+export interface ConstraintInfo {
+  name: string;
+  schema: string;
+  table: string;
+  type: ConstraintType;
+  columns: string[];
+  definition?: string;
+  // For foreign keys
+  referencedSchema?: string;
+  referencedTable?: string;
+  referencedColumns?: string[];
+  updateRule?: string;
+  deleteRule?: string;
+}
+
+export interface TableStats {
+  schema: string;
+  table: string;
+  rowCount: number;
+  sizeBytes: number;
+  sizeFormatted: string;
+  lastVacuum?: string | null;
+  lastAnalyze?: string | null;
+  lastAutoanalyze?: string | null;
+}

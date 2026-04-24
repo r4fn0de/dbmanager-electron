@@ -49,6 +49,12 @@ import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import { driverRegistry } from "./registry";
 import { localDbManager } from "./local-db-manager";
 import {
+  invalidateTableCache,
+  invalidateSchemaCache,
+  invalidateConnectionCache,
+  recordDdlOperation,
+} from "@/ipc/ai/schema-cache";
+import {
   tableFkLookupRuntime,
   tableSaveChangesRuntime,
   tableTruncateRuntime,
@@ -88,6 +94,21 @@ async function resolveConnectionString(connectionId: string): Promise<{ connecti
   if (!connection) {
     throw new Error("Connection not found");
   }
+
+  if (connection.is_local) {
+    const localStatus = await localDbManager.getStatus(connection.id);
+    if (!localStatus) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Local database was not found. Recreate it and try again.",
+      });
+    }
+    if (!localStatus.running) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `Local database "${connection.name}" is not running. Start it before connecting.`,
+      });
+    }
+  }
+
   const dbType = resolveDbType(connection);
   const driver = driverRegistry.get(dbType);
   const connStr = driver.buildConnectionString(toDriverConfig(connection));
@@ -157,6 +178,8 @@ export const deleteConnection = os
     const connections = await loadConnections();
     const filtered = connections.filter((c) => c.id !== input.id);
     await saveConnections(filtered);
+    // Invalidate all cache for the deleted connection
+    invalidateConnectionCache(input.id);
   });
 
 export const testConnection = os
@@ -298,6 +321,9 @@ export const dropTable = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.dropTable(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    // Invalidate cache for the dropped table
+    invalidateTableCache(input.connectionId, input.schema, input.name);
+    recordDdlOperation(input.connectionId, input.schema, input.name);
     return { sql };
   });
 
@@ -307,6 +333,11 @@ export const renameTable = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.renameTable(connStr, input.schema, input.oldName, input.newName);
+    // Invalidate cache for both old and new table names
+    invalidateTableCache(input.connectionId, input.schema, input.oldName);
+    invalidateTableCache(input.connectionId, input.schema, input.newName);
+    recordDdlOperation(input.connectionId, input.schema, input.oldName);
+    recordDdlOperation(input.connectionId, input.schema, input.newName);
     return { sql };
   });
 
@@ -325,6 +356,9 @@ export const addColumn = os
       input.column.defaultExpr,
       input.ifNotExists,
     );
+    // Invalidate cache for the modified table
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
     return { sql };
   });
 
@@ -334,6 +368,9 @@ export const dropColumn = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.dropColumn(connStr, input.schema, input.table, input.column, input.cascade, input.ifExists);
+    // Invalidate cache for the modified table
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
     return { sql };
   });
 
@@ -343,6 +380,9 @@ export const renameColumn = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.renameColumn(connStr, input.schema, input.table, input.oldName, input.newName);
+    // Invalidate cache for the modified table
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
     return { sql };
   });
 
@@ -352,6 +392,9 @@ export const alterColumnType = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.alterColumnType(connStr, input.schema, input.table, input.column, input.newType, input.usingExpr);
+    // Invalidate cache for the modified table
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
     return { sql };
   });
 
@@ -361,6 +404,9 @@ export const setColumnNullable = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.setColumnNullable(connStr, input.schema, input.table, input.column, input.isNullable);
+    // Invalidate cache for the modified table
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
     return { sql };
   });
 
@@ -370,6 +416,9 @@ export const setColumnDefault = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.setColumnDefault(connStr, input.schema, input.table, input.column, input.defaultExpr);
+    // Invalidate cache for the modified table
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
     return { sql };
   });
 
@@ -380,6 +429,9 @@ export const createIndex = os
     const driver = driverRegistry.get(resolveDbType(connection));
     const indexName = input.name || `${input.table}_${input.columns.join("_")}_idx`;
     const sql = await driver.createIndex(connStr, input.schema, input.table, indexName, input.columns, input.unique, input.ifNotExists);
+    // Invalidate cache for the modified table (indexes changed)
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
     return { sql };
   });
 
@@ -389,6 +441,9 @@ export const dropIndex = os
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.dropIndex(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    // Invalidate cache for the schema (index might be on any table)
+    invalidateSchemaCache(input.connectionId, input.schema);
+    recordDdlOperation(input.connectionId, input.schema);
     return { sql };
   });
 

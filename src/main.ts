@@ -1,10 +1,7 @@
 import path from "node:path";
-import { app, BrowserWindow, dialog, Menu, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, Menu, nativeTheme, session } from "electron";
 import { ipcMain } from "electron/main";
-import {
-  installExtension,
-  REACT_DEVELOPER_TOOLS,
-} from "electron-devtools-installer";
+import { downloadChromeExtension } from "electron-devtools-installer/dist/downloadChromeExtension";
 import { UpdateSourceType, updateElectronApp } from "update-electron-app";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, inDevelopment } from "./constants";
@@ -14,6 +11,8 @@ import { registerDrivers } from "./ipc/db/registry";
 import { closeAllPools } from "./ipc/db/kysely-factory";
 import { registerAiStreamingHandlers } from "./ipc/ai";
 import { APP_DISPLAY_NAME } from "./appBranding";
+
+const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
 
 function createWindow() {
   const basePath = getBasePath();
@@ -178,26 +177,6 @@ function createWindow() {
     console.error("[window] renderer process gone", details);
   });
 
-  // Force DevTools to always open in detached window to preserve
-  // vibrancy/transparency on the main window. Docked DevTools breaks
-  // the transparent compositing mode.
-  if (inDevelopment) {
-    let isReopeningDevTools = false;
-    mainWindow.webContents.on("devtools-opened", () => {
-      if (isReopeningDevTools) {
-        isReopeningDevTools = false;
-        return;
-      }
-      isReopeningDevTools = true;
-      mainWindow.webContents.closeDevTools();
-      mainWindow.webContents.openDevTools({ mode: "detach" });
-      // Fallback: if the reopened event never fires, unstick the flag
-      setTimeout(() => {
-        isReopeningDevTools = false;
-      }, 1000);
-    });
-  }
-
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
@@ -209,10 +188,36 @@ function createWindow() {
 
 async function installExtensions() {
   try {
-    const result = await installExtension(REACT_DEVELOPER_TOOLS);
-    console.log(`Extensions installed successfully: ${result.name}`);
-  } catch {
-    console.error("Failed to install extensions");
+    const extensionApi = session.defaultSession.extensions;
+    const installedExtension = extensionApi
+      .getAllExtensions()
+      .find((extension) => extension.id === REACT_DEVELOPER_TOOLS_EXTENSION_ID);
+
+    const extensionFolder = await downloadChromeExtension(
+      REACT_DEVELOPER_TOOLS_EXTENSION_ID,
+      { forceDownload: false },
+    );
+
+    if (installedExtension?.id) {
+      const unloadPromise = new Promise<void>((resolve) => {
+        const handler = (_event: Electron.Event, extension: Electron.Extension) => {
+          if (extension.id === installedExtension.id) {
+            extensionApi.removeListener("extension-unloaded", handler);
+            resolve();
+          }
+        };
+
+        extensionApi.on("extension-unloaded", handler);
+      });
+
+      extensionApi.removeExtension(installedExtension.id);
+      await unloadPromise;
+    }
+
+    const loadedExtension = await extensionApi.loadExtension(extensionFolder);
+    console.log(`Extensions installed successfully: ${loadedExtension.name}`);
+  } catch (error) {
+    console.error("Failed to install extensions", error);
   }
 }
 
@@ -289,7 +294,7 @@ function setupMenu() {
         label: "Toggle Developer Tools",
         accelerator: isMac ? "Alt+Cmd+I" : "Ctrl+Shift+I",
         click: (_menuItem: Electron.MenuItem, focusedWindow: Electron.BaseWindow | undefined) => {
-          if (focusedWindow instanceof Electron.BrowserWindow) {
+          if (focusedWindow instanceof BrowserWindow) {
             focusedWindow.webContents.toggleDevTools();
           }
         },

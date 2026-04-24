@@ -17,6 +17,14 @@ import {
   aiGenerateTitle,
   aiFilters,
 } from "./handlers";
+import {
+  saveFeedbackHandler,
+  getFeedbackHandler,
+  removeFeedbackHandler,
+  listFeedbackHandler,
+  getFeedbackStatsHandler,
+  getNegativeFeedbackHandler,
+} from "./feedback-handlers";
 
 export { registerAiStreamingHandlers } from "./streaming";
 export { AI_IPC_CHANNELS } from "@/constants";
@@ -37,4 +45,11 @@ export const ai = {
   generateTitle: aiGenerateTitle,
   // Table filters
   filters: aiFilters,
+  // Feedback
+  saveFeedback: saveFeedbackHandler,
+  getFeedback: getFeedbackHandler,
+  removeFeedback: removeFeedbackHandler,
+  listFeedback: listFeedbackHandler,
+  getFeedbackStats: getFeedbackStatsHandler,
+  getNegativeFeedback: getNegativeFeedbackHandler,
 };

@@ -13,6 +13,16 @@ import { driverRegistry } from "@/ipc/db/registry";
 import { loadConnections } from "@/ipc/db/connection-store";
 import type { DatabaseType } from "@/ipc/db/types";
 import type { DriverConnectionConfig } from "@/ipc/db/driver";
+import {
+  getCachedTableDetails,
+  getCachedIndexes,
+  getCachedConstraints,
+  getCachedTableStats,
+  setCachedTableDetails,
+  setCachedIndexes,
+  setCachedConstraints,
+  setCachedTableStats,
+} from "./schema-cache";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,8 +89,16 @@ export function createAiTools(connectionId: string) {
       if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
         return "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.";
       }
-      const { driver, connStr } = await resolveConnection(connectionId);
-      const details = await driver.getTableDetails(connStr, schemaName, tableName);
+
+      // Check cache first
+      let details = getCachedTableDetails(connectionId, schemaName, tableName);
+
+      if (!details) {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        details = await driver.getTableDetails(connStr, schemaName, tableName);
+        setCachedTableDetails(connectionId, schemaName, tableName, details);
+      }
+
       return details.columns.map((c) => ({
         name: c.name,
         type: c.data_type,
@@ -219,5 +237,111 @@ export function createAiTools(connectionId: string) {
     },
   });
 
-  return { columns, enums, tables, select };
+  /**
+   * List indexes for a table — gives the AI information about available indexes,
+   * including unique constraints and index types (btree, hash, gin, etc.).
+   */
+  const indexes = tool({
+    description:
+      "Get the list of indexes on a specific database table, including index names, columns, uniqueness, and index types. Use this to understand query optimization opportunities and existing constraints.",
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+    }),
+    execute: async ({ schemaName, tableName }) => {
+      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
+        return "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.";
+      }
+
+      // Check cache first
+      let indexList = getCachedIndexes(connectionId, schemaName, tableName);
+
+      if (!indexList) {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        indexList = await driver.getIndexes(connStr, schemaName, tableName);
+        setCachedIndexes(connectionId, schemaName, tableName, indexList);
+      }
+
+      return indexList.map((idx) => ({
+        name: idx.name,
+        columns: idx.columns,
+        isUnique: idx.isUnique,
+        isPrimary: idx.isPrimary,
+        type: idx.type,
+      }));
+    },
+  });
+
+  /**
+   * List constraints for a table — gives the AI information about all constraints
+   * including primary keys, foreign keys, unique constraints, and check constraints.
+   */
+  const constraints = tool({
+    description:
+      "Get the list of constraints on a specific database table, including primary keys, foreign keys, unique constraints, and check constraints. Use this to understand table relationships and validation rules.",
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+    }),
+    execute: async ({ schemaName, tableName }) => {
+      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
+        return "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.";
+      }
+
+      // Check cache first
+      let constraintList = getCachedConstraints(connectionId, schemaName, tableName);
+
+      if (!constraintList) {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        constraintList = await driver.getConstraints(connStr, schemaName, tableName);
+        setCachedConstraints(connectionId, schemaName, tableName, constraintList);
+      }
+
+      return constraintList.map((c) => ({
+        name: c.name,
+        type: c.type,
+        columns: c.columns,
+        referencedTable: c.referencedTable,
+        referencedColumns: c.referencedColumns,
+        updateRule: c.updateRule,
+        deleteRule: c.deleteRule,
+      }));
+    },
+  });
+
+  /**
+   * Get table statistics — gives the AI information about table size, row count,
+   * and maintenance history (vacuum/analyze timestamps for PostgreSQL).
+   */
+  const tableStats = tool({
+    description:
+      "Get statistics for a specific database table, including row count, table size, and last maintenance timestamps (vacuum/analyze). Use this to understand table scale and performance characteristics.",
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+    }),
+    execute: async ({ schemaName, tableName }) => {
+      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
+        return "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.";
+      }
+
+      // Check cache first
+      let stats = getCachedTableStats(connectionId, schemaName, tableName);
+
+      if (!stats) {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        stats = await driver.getTableStats(connStr, schemaName, tableName);
+        setCachedTableStats(connectionId, schemaName, tableName, stats);
+      }
+
+      return {
+        rowCount: stats.rowCount,
+        size: stats.sizeFormatted,
+        lastVacuum: stats.lastVacuum,
+        lastAnalyze: stats.lastAnalyze,
+      };
+    },
+  });
+
+  return { columns, enums, tables, select, indexes, constraints, tableStats };
 }

@@ -364,6 +364,139 @@ export function createSqliteDriver(): DatabaseDriver {
       }
     },
 
+    async getIndexes(connectionString, schema, table) {
+      const db = getDb(connectionString);
+
+      try {
+        const indexList = db.pragma(`index_list("${table}")`) as unknown as SqliteIndexInfo[];
+
+        return indexList
+          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
+          .map((idx) => {
+            const idxCols = db.pragma(`index_xinfo("${idx.name}")`) as unknown as SqliteIndexColumn[];
+            return {
+              name: idx.name,
+              schema: "main",
+              table,
+              columns: idxCols
+                .filter((ic) => ic.cid >= 0 && ic.name)
+                .map((ic) => ic.name!),
+              isUnique: idx.unique === 1,
+              isPrimary: idx.origin === "pk",
+              type: "btree", // SQLite only supports btree indexes
+            };
+          });
+      } catch (err) {
+        throw new Error(`SQLite getIndexes error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+
+    async getConstraints(connectionString, schema, table) {
+      const db = getDb(connectionString);
+      const constraints: import("./types").ConstraintInfo[] = [];
+
+      try {
+        // Get primary key info from table_info pragma
+        const colInfo = db.pragma(`table_info("${table}")`) as unknown as SqliteColumnInfo[];
+        const pkColumns = colInfo.filter((c) => c.pk > 0).sort((a, b) => a.pk - b.pk).map((c) => c.name);
+
+        if (pkColumns.length > 0) {
+          constraints.push({
+            name: `${table}_pkey`,
+            schema: "main",
+            table,
+            type: "primary_key",
+            columns: pkColumns,
+          });
+        }
+
+        // Get foreign keys from foreign_key_list pragma
+        const fkList = db.pragma(`foreign_key_list("${table}")`) as unknown as SqliteForeignKey[];
+        const fkMap = new Map<number, import("./types").ConstraintInfo>();
+
+        for (const fk of fkList) {
+          if (!fkMap.has(fk.id)) {
+            fkMap.set(fk.id, {
+              name: `${table}_${fk.from}_fkey`,
+              schema: "main",
+              table,
+              type: "foreign_key",
+              columns: [],
+              referencedSchema: "main",
+              referencedTable: fk.table,
+              referencedColumns: [],
+            });
+          }
+          const constraint = fkMap.get(fk.id)!;
+          constraint.columns.push(fk.from);
+          constraint.referencedColumns!.push(fk.to);
+        }
+
+        constraints.push(...fkMap.values());
+
+        // Get unique constraints from index_list pragma
+        const indexList = db.pragma(`index_list("${table}")`) as unknown as SqliteIndexInfo[];
+        for (const idx of indexList) {
+          if (idx.unique === 1 && idx.origin === "c") {
+            const idxCols = db.pragma(`index_xinfo("${idx.name}")`) as unknown as SqliteIndexColumn[];
+            constraints.push({
+              name: idx.name,
+              schema: "main",
+              table,
+              type: "unique",
+              columns: idxCols
+                .filter((ic) => ic.cid >= 0 && ic.name)
+                .map((ic) => ic.name!),
+            });
+          }
+        }
+
+        return constraints;
+      } catch (err) {
+        throw new Error(`SQLite getConstraints error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+
+    async getTableStats(connectionString, schema, table) {
+      const db = getDb(connectionString);
+
+      try {
+        // Get approximate row count via SELECT COUNT(*)
+        const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"`).get() as Record<string, number>;
+        const rowCount = countRow?.cnt ?? 0;
+
+        // Get page count and size via pragma page_count and page_size
+        const pageCount = db.pragma("page_count") as number;
+        const pageSize = db.pragma("page_size") as number;
+        const sizeBytes = pageCount * pageSize;
+
+        // Format size
+        let sizeFormatted = "0 B";
+        if (sizeBytes > 0) {
+          if (sizeBytes < 1024) {
+            sizeFormatted = `${sizeBytes} B`;
+          } else if (sizeBytes < 1024 * 1024) {
+            sizeFormatted = `${(sizeBytes / 1024).toFixed(2)} KB`;
+          } else {
+            sizeFormatted = `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
+          }
+        }
+
+        return {
+          schema: "main",
+          table,
+          rowCount,
+          sizeBytes,
+          sizeFormatted,
+          lastVacuum: null, // SQLite doesn't track vacuum time
+          lastAnalyze: null, // SQLite doesn't have analyze
+          lastAutoanalyze: null,
+        };
+      } catch (err) {
+        throw new Error(`SQLite getTableStats error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
       const db = getDb(connectionString);
       const offset = (page - 1) * pageSize;

@@ -2,6 +2,7 @@ import {
   createRootRoute,
   Outlet,
   useRouterState,
+  useParams,
 } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -21,7 +22,9 @@ import {
   type PanelImperativeHandle,
 } from "@/components/ui/resizable";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
+import { useConnectionsList } from "@/hooks/useConnectionsList";
 import { cn } from "@/utils/tailwind";
+import type { DatabaseType } from "@/ipc/db/types";
 
 import "../styles/global.css";
 
@@ -38,11 +41,60 @@ function Root() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isDatabaseRoute = pathname.startsWith("/database/");
 
+  // Derive connectionId from route params during render (not from store)
+  const params = useParams({ strict: false });
+  const routeConnectionId = params.connectionId as string | undefined;
+
+  // Get connections list to find connection details
+  const { connections } = useConnectionsList();
+
   const isAiChatOpen = useAiChatGlobalStore((state) => state.isOpen);
   const aiPanelSize = useAiChatGlobalStore((state) => state.panelSize);
   const setAiChatOpen = useAiChatGlobalStore((state) => state.setOpen);
   const setAiPanelSize = useAiChatGlobalStore((state) => state.setPanelSize);
-  const chatContext = useAiChatGlobalStore((state) => state.currentContext);
+  const storeContext = useAiChatGlobalStore((state) => state.currentContext);
+
+  // Derive effective context: route params are source of truth for connectionId
+  const activeConnection = routeConnectionId
+    ? connections.find((c) => c.id === routeConnectionId)
+    : undefined;
+
+  const effectiveContext = useMemo(() => {
+    if (activeConnection) {
+      return {
+        connectionId: activeConnection.id,
+        connectionLabel: activeConnection.name?.trim()
+          || activeConnection.database?.trim()
+          || activeConnection.id,
+        dbType: (activeConnection.db_type || "postgresql") as DatabaseType,
+        // Use store's schemaContext if available for the same connection, otherwise undefined
+        schemaContext: storeContext.connectionId === activeConnection.id
+          ? storeContext.schemaContext
+          : undefined,
+        contextPreview: {
+          connectionLabel: activeConnection.name?.trim()
+            || activeConnection.database?.trim()
+            || activeConnection.id,
+          dbType: (activeConnection.db_type || "postgresql") as DatabaseType,
+          selectionPreview: storeContext.connectionId === activeConnection.id
+            ? storeContext.contextPreview?.selectionPreview
+            : undefined,
+          errorPreview: storeContext.connectionId === activeConnection.id
+            ? storeContext.contextPreview?.errorPreview
+            : undefined,
+        },
+      };
+    }
+
+    // Fallback to store context or default
+    return {
+      connectionId: storeContext.connectionId,
+      connectionLabel: storeContext.connectionLabel,
+      dbType: storeContext.dbType,
+      schemaContext: storeContext.schemaContext,
+      contextPreview: storeContext.contextPreview,
+    };
+  }, [activeConnection, storeContext]);
 
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const aiPanelRef = useRef<PanelImperativeHandle>(null);
@@ -182,7 +234,7 @@ function Root() {
                       setAiChatOpen(!isCollapsed);
                     }
                   }}
-                  className={cn("min-h-0 min-w-0", isAiPanelAnimating && "transition-[flex-grow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]")}
+                  className={cn("min-h-0 min-w-0 ", isAiPanelAnimating && "transition-[flex-grow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]")}
                 >
                   <AnimatePresence
                     initial={false}
@@ -200,13 +252,13 @@ function Root() {
                     {isAiChatOpen && (
                       <AiChatPanel
                         key="ai-chat-panel"
-                        connectionId={chatContext.connectionId}
-                        connectionLabel={chatContext.connectionLabel}
-                        dbType={chatContext.dbType}
-                        schemaContext={chatContext.schemaContext}
-                        contextPreview={chatContext.contextPreview}
+                        connectionId={effectiveContext.connectionId}
+                        connectionLabel={effectiveContext.connectionLabel}
+                        dbType={effectiveContext.dbType}
+                        schemaContext={effectiveContext.schemaContext}
+                        contextPreview={effectiveContext.contextPreview}
                         isOpen={isAiChatOpen}
-                        className="-mt-[6px] h-[calc(100%+6px)] pl-1.5"
+                        className="-mt-[6px] h-[calc(100%+6px)] px-1.5"
                         onClose={handleAiChatClose}
                       />
                     )}

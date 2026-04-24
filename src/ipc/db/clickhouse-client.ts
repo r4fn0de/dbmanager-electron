@@ -344,6 +344,95 @@ export function createClickhouseDriver(): DatabaseDriver {
       }
     },
 
+    async getIndexes(connectionString, schema, table) {
+      const client = await getClickhouseClient(connectionString);
+
+      try {
+        // ClickHouse data skipping indexes (not traditional indexes)
+        const result = await client.query({
+          query: `SELECT name, type, expr AS expression FROM system.data_skipping_indices WHERE database = ${escVal(schema)} AND table = ${escVal(table)}`,
+          format: "JSONEachRow",
+        });
+        const indexRows = await result.json() as Array<{
+          name: string;
+          type: string;
+          expression: string;
+        }>;
+
+        return indexRows.map((idx) => ({
+          name: idx.name,
+          schema,
+          table,
+          columns: [idx.expression], // Expressions, not column names
+          isUnique: false, // ClickHouse doesn't have unique indexes
+          isPrimary: false,
+          type: idx.type,
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`ClickHouse getIndexes error for ${schema}.${table}: ${msg}`);
+      }
+    },
+
+    async getConstraints(connectionString, schema, table) {
+      // ClickHouse doesn't have traditional constraints (FK, unique, check)
+      // It only has data skipping indices and primary keys via ORDER BY
+      return [];
+    },
+
+    async getTableStats(connectionString, schema, table) {
+      const client = await getClickhouseClient(connectionString);
+
+      try {
+        // Get table statistics from system.parts
+        const result = await client.query({
+          query: `SELECT
+            sum(rows) AS row_count,
+            sum(bytes_on_disk) AS size_bytes,
+            max(modification_time) AS last_modified
+          FROM system.parts
+          WHERE database = ${escVal(schema)} AND table = ${escVal(table)} AND active = 1`,
+          format: "JSONEachRow",
+        });
+        const statsRow = await result.json() as Array<{
+          row_count: number;
+          size_bytes: number;
+          last_modified: string;
+        }>;
+
+        const row = statsRow[0];
+        const sizeBytes = row?.size_bytes ?? 0;
+
+        // Format size
+        let sizeFormatted = "0 B";
+        if (sizeBytes > 0) {
+          if (sizeBytes < 1024) {
+            sizeFormatted = `${sizeBytes} B`;
+          } else if (sizeBytes < 1024 * 1024) {
+            sizeFormatted = `${(sizeBytes / 1024).toFixed(2)} KB`;
+          } else if (sizeBytes < 1024 * 1024 * 1024) {
+            sizeFormatted = `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
+          } else {
+            sizeFormatted = `${(sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+          }
+        }
+
+        return {
+          schema,
+          table,
+          rowCount: Number(row?.row_count ?? 0),
+          sizeBytes,
+          sizeFormatted,
+          lastVacuum: null,
+          lastAnalyze: row?.last_modified ?? null,
+          lastAutoanalyze: null,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`ClickHouse getTableStats error for ${schema}.${table}: ${msg}`);
+      }
+    },
+
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
       const client = await getClickhouseClient(connectionString);
 

@@ -8,7 +8,7 @@
  * names and result.fields type mapping), plus Kysely for PK/FK introspection.
  * DDL and clone/export operations are delegated to pg-runtime helpers.
  */
-import type { DatabaseType, SslMode } from "./types";
+import type { DatabaseType, SslMode, ConstraintInfo } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getPgKysely } from "./kysely-factory";
 import {
@@ -385,6 +385,183 @@ export function createPostgresDriver(): DatabaseDriver {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`PostgreSQL table details error for ${schema}.${table}: ${msg}`);
+      }
+    },
+
+    async getIndexes(connectionString, schema, table) {
+      const db = getPgKysely(connectionString);
+
+      try {
+        // Query pg_catalog for detailed index information
+        const indexRows = await db
+          .withSchema("pg_catalog")
+          .selectFrom("pg_indexes as pi")
+          .innerJoin("pg_class as c", (join) =>
+            join.onRef("c.relname", "=", "pi.indexname"),
+          )
+          .innerJoin("pg_namespace as n", (join) =>
+            join.onRef("n.oid", "=", "c.relnamespace").on("n.nspname", "=", schema),
+          )
+          .select(["pi.indexname", "pi.indexdef"])
+          .where("pi.schemaname", "=", schema)
+          .where("pi.tablename", "=", table)
+          .execute();
+
+        return indexRows.map((row) => {
+          const indexdef = row.indexdef;
+          const isUnique = indexdef.includes("UNIQUE");
+          const isPrimary = indexdef.includes("PRIMARY KEY");
+          const typeMatch = indexdef.match(/USING\s+(\w+)/);
+          const type = typeMatch ? typeMatch[1] : "btree";
+          const columnMatch = indexdef.match(/\(([^)]+)\)/);
+          const columns = columnMatch
+            ? columnMatch[1].split(",").map((c: string) => c.trim())
+            : [];
+
+          return {
+            name: row.indexname,
+            schema,
+            table,
+            columns,
+            isUnique,
+            isPrimary,
+            type,
+          };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getIndexes error for ${schema}.${table}: ${msg}`);
+      }
+    },
+
+    async getConstraints(connectionString, schema, table) {
+      const db = getPgKysely(connectionString);
+
+      try {
+        // Query information_schema for all constraints
+        const constraintRows = await db
+          .withSchema("information_schema")
+          .selectFrom("table_constraints as tc")
+          .innerJoin("key_column_usage as kcu", (join) =>
+            join
+              .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+          )
+          .leftJoin("referential_constraints as rc", (join) =>
+            join
+              .onRef("tc.constraint_name", "=", "rc.constraint_name")
+              .onRef("tc.constraint_schema", "=", "rc.constraint_schema"),
+          )
+          .select([
+            "tc.constraint_name",
+            "tc.constraint_type",
+            "kcu.column_name",
+            "rc.unique_constraint_schema as referenced_schema",
+            "rc.unique_constraint_name",
+            "rc.update_rule",
+            "rc.delete_rule",
+          ])
+          .where("tc.table_schema", "=", schema)
+          .where("tc.table_name", "=", table)
+          .execute();
+
+        // Group by constraint name
+        const constraintMap = new Map<string, ConstraintInfo>();
+
+        for (const row of constraintRows) {
+          const typeMap: Record<string, import("./types").ConstraintType> = {
+            "PRIMARY KEY": "primary_key",
+            "UNIQUE": "unique",
+            "FOREIGN KEY": "foreign_key",
+            "CHECK": "check",
+          };
+
+          const constraintType = typeMap[row.constraint_type] ?? "check";
+
+          if (!constraintMap.has(row.constraint_name)) {
+            constraintMap.set(row.constraint_name, {
+              name: row.constraint_name,
+              schema,
+              table,
+              type: constraintType,
+              columns: [],
+              referencedSchema: row.referenced_schema ?? undefined,
+              updateRule: row.update_rule ?? undefined,
+              deleteRule: row.delete_rule ?? undefined,
+            });
+          }
+
+          const constraint = constraintMap.get(row.constraint_name)!;
+          if (row.column_name && !constraint.columns.includes(row.column_name)) {
+            constraint.columns.push(row.column_name);
+          }
+        }
+
+        return Array.from(constraintMap.values());
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getConstraints error for ${schema}.${table}: ${msg}`);
+      }
+    },
+
+    async getTableStats(connectionString, schema, table) {
+      try {
+        // Use raw query for stats to avoid Kysely type issues with pg_stat_user_tables
+        const statsSql = `
+          SELECT
+            c.reltuples::bigint as row_estimate,
+            c.relpages::bigint as pages,
+            s.n_live_tup::bigint as live_tuples,
+            s.last_vacuum::text,
+            s.last_autovacuum::text,
+            s.last_analyze::text,
+            s.last_autoanalyze::text,
+            pg_total_relation_size(c.oid)::bigint as total_bytes
+          FROM pg_catalog.pg_class c
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+          LEFT JOIN pg_catalog.pg_stat_user_tables s ON s.relid = c.oid
+          WHERE n.nspname = '${schema.replace(/'/g, "''")}'
+            AND c.relname = '${table.replace(/'/g, "''")}'
+            AND c.relkind = 'r'
+        `;
+
+        const result = await executePgQuery(connectionString, statsSql);
+        const row = result.rows[0] as unknown as Record<string, unknown> | undefined;
+
+        const sizeBytes = Number(row?.total_bytes ?? 0);
+
+        // Format size string
+        let sizeFormatted = "0 B";
+        if (sizeBytes > 0) {
+          if (sizeBytes < 1024) {
+            sizeFormatted = `${sizeBytes} B`;
+          } else if (sizeBytes < 1024 * 1024) {
+            sizeFormatted = `${(sizeBytes / 1024).toFixed(2)} KB`;
+          } else if (sizeBytes < 1024 * 1024 * 1024) {
+            sizeFormatted = `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
+          } else {
+            sizeFormatted = `${(sizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+          }
+        }
+
+        // Use live tuple count if available, otherwise use estimate
+        const rowCount = row?.live_tuples
+          ? Number(row.live_tuples)
+          : Math.round(Number(row?.row_estimate ?? 0));
+
+        return {
+          schema,
+          table,
+          rowCount,
+          sizeBytes,
+          sizeFormatted,
+          lastVacuum: row?.last_vacuum?.toString() ?? null,
+          lastAnalyze: row?.last_analyze?.toString() ?? null,
+          lastAutoanalyze: row?.last_autoanalyze?.toString() ?? null,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getTableStats error for ${schema}.${table}: ${msg}`);
       }
     },
 

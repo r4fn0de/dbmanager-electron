@@ -846,6 +846,37 @@ export function DatabasePageContent({
     );
   }
 
+  const isLocalConnectionStopped = Boolean(
+    connection.is_local &&
+    !isLoadingLocalDbStatus &&
+    (!localDbStatus || !localDbStatus.running),
+  );
+
+  if (isLocalConnectionStopped) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8">
+        <Database className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-lg font-semibold mb-2">Local database is paused</h2>
+        <p className="text-muted-foreground mb-6 text-center max-w-md">
+          Start this local database before accessing tables, schema, and queries.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleStartLocalDb} disabled={isTogglingLocalDb}>
+            {isTogglingLocalDb ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-2" />
+            )}
+            Start local database
+          </Button>
+          <Button variant="outline" onClick={() => navigate({ to: "/" })}>
+            Back to Connections
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 flex bg-transparent">

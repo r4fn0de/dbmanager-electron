@@ -234,6 +234,14 @@ function Home() {
   };
 
   const handleSelectConnection = (connection: Connection) => {
+    if (connection.is_local) {
+      const localDb = localDbById[connection.id];
+      if (!localDb?.running) {
+        toast.error(`Local database "${connection.name}" is not running. Start it before opening.`);
+        return;
+      }
+    }
+
     // Add tab synchronously BEFORE navigating so it appears instantly
     useConnectionTabsStore.getState().addTab(buildConnectionTab(connection));
     navigate({

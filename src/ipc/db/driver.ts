@@ -10,6 +10,9 @@ import type {
   DatabaseInfo,
   DatabaseSchema,
   DatabaseType,
+  IndexInfo,
+  ConstraintInfo,
+  TableStats,
   QueryResult,
   SchemaSummary,
   SchemaTableDetails,
@@ -79,6 +82,27 @@ export interface DatabaseDriver {
     schema: string,
     table: string,
   ): Promise<SchemaTableDetails>;
+
+  /** Fetch index details for a specific table. */
+  getIndexes(
+    connectionString: string,
+    schema: string,
+    table: string,
+  ): Promise<IndexInfo[]>;
+
+  /** Fetch constraint details for a specific table. */
+  getConstraints(
+    connectionString: string,
+    schema: string,
+    table: string,
+  ): Promise<ConstraintInfo[]>;
+
+  /** Fetch statistics for a specific table. */
+  getTableStats(
+    connectionString: string,
+    schema: string,
+    table: string,
+  ): Promise<TableStats>;
 
   /** List rows from a table with pagination, sorting and filtering. */
   listRows(
