@@ -139,23 +139,25 @@ export function DatabaseNavSidebar({
             <Tooltip key={section}>
               <TooltipTrigger
                 render={
-                  <button
+                  <motion.button
                     type="button"
                     onClick={() => onSectionChange(section)}
                     className={cn(
-                      "group relative flex size-9 items-center justify-center rounded-lg transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "group relative flex size-9 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 transition-colors duration-150",
                       isActive
                         ? "bg-foreground/20"
                         : "hover:bg-foreground/15"
                     )}
+                    whileTap={{ scale: 0.95 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
                   >
                     <Icon
                       className={cn(
-                        "size-[18px]",
+                        "size-[18px] transition-colors duration-150",
                         isActive ? "text-foreground" : "text-foreground/60"
                       )}
                     />
-                  </button>
+                  </motion.button>
                 }
               />
               <TooltipContent side="right" sideOffset={8}>
