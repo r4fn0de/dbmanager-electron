@@ -28,9 +28,10 @@ import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
+import { MariaDb } from "@/components/icons/MariaDb";
 import { Sqlite } from "@/components/icons/Sqlite";
 import { ClickHouse } from "@/components/icons/ClickHouse";
-import { MariaDb } from "@/components/icons/MariaDb";
+import { Redis } from "@/components/icons/Redis";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import { motion } from "motion/react";
 import {
@@ -99,6 +100,8 @@ function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
         return MariaDb;
       case "clickhouse":
         return ClickHouse;
+      case "redis":
+        return Redis;
     }
   }
 
@@ -114,6 +117,8 @@ function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
       return Sqlite;
     case "clickhouse":
       return ClickHouse;
+    case "redis":
+      return Redis;
     default:
       return Database;
   }

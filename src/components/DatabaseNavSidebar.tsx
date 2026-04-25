@@ -12,6 +12,7 @@ import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
 import { ClickHouse } from "@/components/icons/ClickHouse";
+import { Redis } from "@/components/icons/Redis";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Tooltip,
@@ -53,6 +54,7 @@ function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; is
   if (provider === "mysql") return <MySql className="size-[18px]" />;
   if (provider === "mariadb") return <MySql className="size-[18px]" />;
   if (provider === "clickhouse") return <ClickHouse className="size-[18px]" />;
+  if (provider === "redis") return <Redis className="size-[18px]" />;
   if (isLocal) return <Server className="size-[18px] text-emerald-500" />;
   return <Database className="size-[18px] text-foreground/60" />;
 }

@@ -11,6 +11,7 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { MySql } from "@/components/icons/MySql";
 import { Neon } from "@/components/icons/Neon";
+import { Redis } from "@/components/icons/Redis";
 import { Supabase } from "@/components/icons/Supabase";
 import {
   DropdownMenu,
@@ -74,6 +75,8 @@ function ProviderIcon({
       return <MySql className={cls} />;
     case "clickhouse":
       return <ClickHouse className={cls} />;
+    case "redis":
+      return <Redis className={cls} />;
     case "url":
       return <Globe className={`${cls} text-muted-foreground/50`} />;
     default:

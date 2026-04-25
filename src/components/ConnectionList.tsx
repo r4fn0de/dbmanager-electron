@@ -25,6 +25,7 @@ import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
 import { ClickHouse } from "@/components/icons/ClickHouse";
+import { Redis } from "@/components/icons/Redis";
 import { cn } from "@/utils/tailwind";
 import type { Connection, LocalDbInfo } from "@/ipc/db/types";
 import { getClickhouseEffectivePort } from "@/ipc/db/types";
@@ -42,7 +43,7 @@ interface ConnectionListProps {
   onCloneToLocal?: (connection: Connection) => void;
 }
 
-type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "url" | "direct";
+type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "redis" | "url" | "direct";
 
 function resolveProviderHost(connection: Connection): string {
   if (connection.url) {
@@ -60,10 +61,11 @@ function detectConnectionProvider(connection: Connection): ConnectionProvider {
   if (host.includes("neon.tech")) return "neon";
   if (host.includes("supabase.co") || host.includes("supabase.com"))
     return "supabase";
-  // Detect by db_type for MySQL/MariaDB/ClickHouse
+  // Detect by db_type for MySQL/MariaDB/ClickHouse/Redis
   if (connection.db_type === "mysql") return "mysql";
   if (connection.db_type === "mariadb") return "mariadb";
   if (connection.db_type === "clickhouse") return "clickhouse";
+  if (connection.db_type === "redis") return "redis";
   return connection.url ? "url" : "direct";
 }
 
@@ -97,6 +99,8 @@ function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
       return <MySql className="size-4 shrink-0" />;
     case "clickhouse":
       return <ClickHouse className="size-4 shrink-0" />;
+    case "redis":
+      return <Redis className="size-4 shrink-0" />;
     case "url":
       return <Globe className="size-4 shrink-0 text-muted-foreground/50" />;
     default:

@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import type {
   ConstraintInfo,
   DatabaseType,
@@ -68,22 +69,31 @@ interface DefinitionsBrowserPanelProps {
 }
 
 // ---------------------------------------------------------------------------
+// Design tokens (Emil Kowalski principles)
+// ---------------------------------------------------------------------------
+
+const EASING_OUT = "cubic-bezier(0.23, 1, 0.32, 1)" as const;
+const ENTRY_DURATION = 200; // ms - fast UI animations under 300ms
+
+// ---------------------------------------------------------------------------
 // Animation variants (GPU-only, ≤300ms)
 // ---------------------------------------------------------------------------
 
 const containerVariants = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.04 } },
+  visible: (reducedMotion: boolean) => ({
+    transition: { staggerChildren: reducedMotion ? 0 : 0.04 },
+  }),
 };
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 6 },
+const itemVariants = (reducedMotion: boolean) => ({
+  hidden: { opacity: 0, y: reducedMotion ? 0 : 6 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] },
+    transition: { duration: reducedMotion ? 0 : ENTRY_DURATION / 1000, ease: EASING_OUT },
   },
-};
+});
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -97,8 +107,8 @@ function ConstraintCard({
   onCopy: (text: string) => void;
 }) {
   return (
-    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
+    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors duration-150 ease-out">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <KeyRound className="size-3.5 text-emerald-500/70 shrink-0" />
           <span className="font-mono text-sm font-medium truncate">
@@ -119,7 +129,7 @@ function ConstraintCard({
                       `${constraint.type} "${constraint.name}" on ${constraint.table}(${constraint.columns.join(", ")})`,
                     )
                   }
-                  className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 rounded p-0.5 hover:bg-foreground/10"
+                  className="opacity-0 group-hover:opacity-100 transition-all duration-150 ease-out shrink-0 rounded-md p-0.5 hover:bg-foreground/10 active:scale-[0.97]"
                 >
                   <Copy className="size-3 text-muted-foreground" />
                 </button>
@@ -129,7 +139,7 @@ function ConstraintCard({
           </Tooltip>
         </div>
       </div>
-      <div className="flex items-center gap-2 mt-1 pl-[22px]">
+      <div className="flex items-center gap-2 pb-2 pl-[22px]">
         <span className="text-[11px] text-muted-foreground">
           on{" "}
           <span className="font-mono text-foreground/70">
@@ -152,8 +162,8 @@ function EnumCard({
   onCopy: (text: string) => void;
 }) {
   return (
-    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
+    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors duration-150 ease-out">
+      <div className="flex items-center justify-between gap-2 px-3 pt-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <Braces className="size-3.5 text-violet-500/70 shrink-0" />
           <span className="font-mono text-sm font-medium truncate">
@@ -174,7 +184,7 @@ function EnumCard({
                 onClick={() =>
                   onCopy(enumDef.values.map((v) => `'${v}'`).join(", "))
                 }
-                className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 rounded p-0.5 hover:bg-foreground/10"
+                className="opacity-0 group-hover:opacity-100 transition-all duration-150 ease-out shrink-0 rounded-md p-0.5 hover:bg-foreground/10 active:scale-[0.97]"
               >
                 <Copy className="size-3 text-muted-foreground" />
               </button>
@@ -183,7 +193,7 @@ function EnumCard({
           <TooltipContent>Copy values</TooltipContent>
         </Tooltip>
       </div>
-      <div className="flex flex-wrap gap-1 mt-2">
+      <div className="flex flex-wrap gap-1 px-3 pb-2.5 pt-2">
         {enumDef.values.map((v) => (
           <Badge
             key={v}
@@ -201,25 +211,28 @@ function EnumCard({
 function FunctionCard({
   fn,
   onCopy,
+  reducedMotion,
 }: {
   fn: SchemaFunction;
   onCopy: (text: string) => void;
+  reducedMotion?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isProcedure = fn.type === "procedure";
 
   return (
-    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
+    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors duration-150 ease-out">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 min-w-0 text-left flex-1"
+          className="flex items-center gap-2 min-w-0 text-left flex-1 active:scale-[0.97] transition-transform duration-150 ease-out"
         >
           <ChevronRight
             className={cn(
-              "size-3 text-muted-foreground/50 shrink-0 transition-transform",
+              "size-3 text-muted-foreground/50 shrink-0 transition-transform duration-150 ease-out",
               expanded && "rotate-90",
+              reducedMotion && "transition-none"
             )}
           />
           <Code2
@@ -267,7 +280,9 @@ function FunctionCard({
                   <button
                     type="button"
                     onClick={() => fn.definition && onCopy(fn.definition)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-foreground/10"
+                    className="opacity-0 group-hover:opacity-100 transition-all duration-[160ms] ease-out rounded-md p-0.5 
+                      @media (hover: hover) and (pointer: fine):hover:bg-foreground/10
+                      active:scale-[0.97]"
                   >
                     <Copy className="size-3 text-muted-foreground" />
                   </button>
@@ -280,7 +295,7 @@ function FunctionCard({
       </div>
 
       {/* Meta row */}
-      <div className="flex items-center gap-2 mt-1 pl-[22px]">
+      <div className="flex items-center gap-2 pb-2 pl-[22px]">
         {fn.return_type && (
           <span className="text-[11px] text-muted-foreground">
             returns{" "}
@@ -296,18 +311,19 @@ function FunctionCard({
         )}
       </div>
 
-      {/* Expanded source */}
+      {/* Expanded source - GPU-only transform animation */}
       {expanded && fn.definition && (
         <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
+          initial={reducedMotion ? { opacity: 1 } : { opacity: 0, scaleY: 0.95 }}
+          animate={{ opacity: 1, scaleY: 1 }}
           transition={{
-            duration: 0.2,
-            ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+            duration: reducedMotion ? 0 : ENTRY_DURATION / 1000,
+            ease: EASING_OUT,
           }}
+          style={{ transformOrigin: "top" }}
           className="overflow-hidden"
         >
-          <pre className="mt-2 ml-[22px] text-[11px] font-mono text-muted-foreground bg-muted/30 rounded-md p-2 overflow-x-auto whitespace-pre-wrap break-all">
+          <pre className="ml-[22px] mr-3 mb-2.5 text-[11px] font-mono text-muted-foreground bg-muted/30 rounded-md p-2 overflow-x-auto whitespace-pre-wrap break-all">
             {fn.definition}
           </pre>
         </motion.div>
@@ -324,8 +340,8 @@ function IndexCard({
   onCopy: (text: string) => void;
 }) {
   return (
-    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
+    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors duration-150 ease-out">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <ListOrdered className="size-3.5 text-sky-500/70 shrink-0" />
           <span className="font-mono text-sm font-medium truncate">
@@ -353,7 +369,7 @@ function IndexCard({
                       `${index.isUnique ? "UNIQUE " : ""}INDEX "${index.name}" ON ${index.table}(${index.columns.join(", ")})`,
                     )
                   }
-                  className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 rounded p-0.5 hover:bg-foreground/10"
+                  className="opacity-0 group-hover:opacity-100 transition-all duration-150 ease-out shrink-0 rounded-md p-0.5 hover:bg-foreground/10 active:scale-[0.97]"
                 >
                   <Copy className="size-3 text-muted-foreground" />
                 </button>
@@ -363,7 +379,7 @@ function IndexCard({
           </Tooltip>
         </div>
       </div>
-      <div className="flex items-center gap-2 mt-1 pl-[22px]">
+      <div className="flex items-center gap-2 pb-2 pl-[22px]">
         <span className="text-[11px] text-muted-foreground">
           on{" "}
           <span className="font-mono text-foreground/70">{index.table}</span>
@@ -384,8 +400,8 @@ function TriggerCard({
   onCopy: (text: string) => void;
 }) {
   return (
-    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
+    <div className="group rounded-lg border border-border/50 bg-muted/10 hover:bg-muted/20 transition-colors duration-150 ease-out">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <Zap className="size-3.5 text-orange-500/70 shrink-0" />
           <span className="font-mono text-sm font-medium truncate">
@@ -411,7 +427,7 @@ function TriggerCard({
                   <button
                     type="button"
                     onClick={() => trigger.definition && onCopy(trigger.definition)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-0.5 hover:bg-foreground/10"
+                    className="opacity-0 group-hover:opacity-100 transition-all duration-150 ease-out rounded-md p-0.5 hover:bg-foreground/10 active:scale-[0.97]"
                   >
                     <Copy className="size-3 text-muted-foreground" />
                   </button>
@@ -422,7 +438,7 @@ function TriggerCard({
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2 mt-1 pl-[22px]">
+      <div className="flex items-center gap-2 pb-2 pl-[22px]">
         <span className="text-[11px] text-muted-foreground">
           on{" "}
           <span className="font-mono text-foreground/70">{trigger.table}</span>
@@ -437,7 +453,7 @@ function TriggerCard({
         )}
       </div>
       {trigger.definition && (
-        <pre className="mt-2 ml-[22px] text-[11px] font-mono text-muted-foreground bg-muted/30 rounded-md p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-32">
+        <pre className="mx-3 mb-2.5 text-[11px] font-mono text-muted-foreground bg-muted/30 rounded-md p-2 overflow-x-auto whitespace-pre-wrap break-all max-h-32">
           {trigger.definition}
         </pre>
       )}
@@ -528,6 +544,7 @@ export function DefinitionsBrowserPanel({
   const [activeTab, setActiveTab] = useState<DefinitionTab>("enums");
   const [search, setSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const reducedMotion = useReducedMotion();
 
   // Fetch all definition data via React Query
   const constraintsQuery = useQuery({
@@ -668,10 +685,11 @@ export function DefinitionsBrowserPanel({
       initial="hidden"
       animate="visible"
       variants={containerVariants}
+      custom={reducedMotion}
     >
       {/* ── Header ──────────────────────────────────────────── */}
       <motion.div
-        variants={itemVariants}
+        variants={itemVariants(reducedMotion)}
         className="shrink-0 px-5 pt-4 pb-3 space-y-3"
       >
         <div className="flex items-center justify-between gap-3">
@@ -720,7 +738,7 @@ export function DefinitionsBrowserPanel({
 
       {/* ── Tabs ─────────────────────────────────────────────── */}
       <motion.div
-        variants={itemVariants}
+        variants={itemVariants(reducedMotion)}
         className="flex-1 min-h-0 flex flex-col px-5"
       >
         <Tabs
@@ -855,6 +873,7 @@ export function DefinitionsBrowserPanel({
                         key={`${fn.name}-${fn.type}-${i}`}
                         fn={fn}
                         onCopy={handleCopy}
+                        reducedMotion={reducedMotion}
                       />
                     ))}
                   </div>

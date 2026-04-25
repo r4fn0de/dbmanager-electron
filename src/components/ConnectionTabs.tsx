@@ -9,6 +9,7 @@ import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
 import { ClickHouse } from "@/components/icons/ClickHouse";
+import { Redis } from "@/components/icons/Redis";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -315,6 +316,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 <MySql className="size-3.5 shrink-0" />
               ) : tab.provider === "clickhouse" ? (
                 <ClickHouse className="size-3.5 shrink-0" />
+              ) : tab.provider === "redis" ? (
+                <Redis className="size-3.5 shrink-0" />
               ) : tab.isLocal ? (
                 <HardDrive className="size-3 shrink-0 text-emerald-500" />
               ) : colorDot ? (
