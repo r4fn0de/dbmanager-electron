@@ -73,7 +73,7 @@ export function DatabaseNavSidebar({
 
   return (
     <motion.aside
-      className="min-h-0 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground overflow-hidden w-12"
+      className="min-h-0 -ml-1 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground overflow-hidden w-12"
       initial={{ x: -48, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: -48, opacity: 0 }}
