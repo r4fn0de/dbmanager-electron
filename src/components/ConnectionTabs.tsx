@@ -3,8 +3,8 @@ import {
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { Globe, HardDrive, Server, X } from "lucide-react";
 import { motion, Reorder } from "motion/react";
+import { Icon } from "@/components/ui/Icon";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
@@ -319,16 +319,16 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               ) : tab.provider === "redis" ? (
                 <Redis className="size-3.5 shrink-0" />
               ) : tab.isLocal ? (
-                <HardDrive className="size-3 shrink-0 text-emerald-500" />
+                <Icon name="hard-drive" className="size-3 shrink-0 text-emerald-500" />
               ) : colorDot ? (
                 <span
                   className="size-2 rounded-full shrink-0"
                   style={{ backgroundColor: colorDot }}
                 />
               ) : tab.provider === "url" ? (
-                <Globe className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
+                <Icon name="globe" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
               ) : (
-                <Server className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
+                <Icon name="server" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
               )}
 
               <div className="relative min-w-0 flex-1 pr-1 transition-[padding-right] duration-150 group-hover:pr-5">
@@ -358,7 +358,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               )}
               aria-label={`Close ${tab.name}`}
             >
-              <X className="size-3" />
+              <Icon name="x" className="size-3" />
             </button>
           </Reorder.Item>
         );

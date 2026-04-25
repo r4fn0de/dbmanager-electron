@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import {
   ButtonGroup,
   ButtonGroupText,
@@ -15,7 +16,6 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
@@ -269,7 +269,7 @@ export const MessageBranchPrevious = ({
       variant="ghost"
       {...props}
     >
-      {children ?? <ChevronLeftIcon size={14} />}
+      {children ?? <Icon name="chevron-left" size={14} />}
     </Button>
   );
 };
@@ -292,7 +292,7 @@ export const MessageBranchNext = ({
       variant="ghost"
       {...props}
     >
-      {children ?? <ChevronRightIcon size={14} />}
+      {children ?? <Icon name="chevron-right" size={14} />}
     </Button>
   );
 };

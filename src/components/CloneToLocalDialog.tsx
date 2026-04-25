@@ -25,16 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  AlertCircle,
-  Check,
-  Database,
-  HardDrive,
-  Loader2,
-  Table2,
-  FileCode,
-  XCircle,
-} from "lucide-react";
+import { Icon } from "@/components/ui/Icon";
 import type { Connection, TableRowCount } from "@/ipc/db/types";
 import type { CloneToLocalProgress } from "@/hooks/useCloneToLocal";
 import { cn } from "@/utils/tailwind";
@@ -195,7 +186,7 @@ export function CloneToLocalDialog({
         <div className="p-5 pb-0 shrink-0">
           <DialogHeader className="gap-1">
             <DialogTitle className="flex items-center gap-2">
-              <HardDrive className="size-4 text-muted-foreground" />
+              <Icon name="hard-drive" className="size-4 text-muted-foreground" />
               Clone to Local Database
             </DialogTitle>
             {sourceConnection && (
@@ -218,7 +209,7 @@ export function CloneToLocalDialog({
             <div className="flex flex-col gap-5 p-5">
               {isLoadingSchema ? (
                 <div className="flex flex-col items-center justify-center py-8 gap-3">
-                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                  <Icon name="loader" className="size-6 animate-spin text-muted-foreground" />
                   <p className="text-xs text-muted-foreground">Loading schema information...</p>
                 </div>
               ) : isCloning || isComplete || hasError ? (
@@ -267,7 +258,7 @@ export function CloneToLocalDialog({
                   {/* Error */}
                   {hasError && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 flex items-start gap-2.5">
-                      <AlertCircle className="size-4 shrink-0 mt-px text-destructive" />
+                      <Icon name="alert-circle" className="size-4 shrink-0 mt-px text-destructive" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-destructive">Clone failed</p>
                         <p className="text-[11px] text-muted-foreground">{error || progress?.message}</p>
@@ -278,7 +269,7 @@ export function CloneToLocalDialog({
                   {/* Success */}
                   {isComplete && (
                     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 flex items-start gap-2.5">
-                      <Check className="size-4 shrink-0 mt-px text-emerald-600 dark:text-emerald-400" />
+                      <Icon name="check" className="size-4 shrink-0 mt-px text-emerald-600 dark:text-emerald-400" />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
                           Database cloned successfully!
@@ -357,7 +348,7 @@ export function CloneToLocalDialog({
                           )}
                           onClick={() => setCloneMode("schema_and_data")}
                         >
-                          <Table2 className="size-3" />
+                          <Icon name="database" className="size-3" />
                           Schema + Data
                         </button>
                         <button
@@ -370,7 +361,7 @@ export function CloneToLocalDialog({
                           )}
                           onClick={() => setCloneMode("schema_only")}
                         >
-                          <FileCode className="size-3" />
+                          <Icon name="file-code" className="size-3" />
                           Schema Only
                         </button>
                       </div>
@@ -467,7 +458,7 @@ export function CloneToLocalDialog({
                 onClick={onCancelClone}
                 className="h-7 text-xs gap-1"
               >
-                <XCircle className="size-3" />
+                <Icon name="x-circle" className="size-3" />
                 Cancel Clone
               </Button>
             ) : isComplete || hasError ? (
@@ -491,7 +482,7 @@ export function CloneToLocalDialog({
                   disabled={!targetName.trim() || (!isSchemaOnly && selectedCount === 0)}
                   className="h-7 text-xs gap-1"
                 >
-                  <Database className="size-3" />
+                  <Icon name="database" className="size-3" />
                   {isSchemaOnly ? "Clone Schema Only" : `Clone ${selectedCount} Tables`}
                 </Button>
               </>

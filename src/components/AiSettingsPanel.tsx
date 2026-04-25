@@ -5,17 +5,6 @@
  * and select a model. Uses the ai-actions module for IPC calls.
  */
 import {
-  Bot,
-  Check,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  Loader2,
-  Settings,
-  Sparkles,
-  X,
-} from "lucide-react";
-import {
   AnthropicIcon,
   GoogleAiIcon,
   OpenAiIcon,
@@ -26,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -245,7 +235,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        <UiIcon name="loader" className="size-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -254,7 +244,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <div className="text-center max-w-md">
-          <Bot className="size-10 text-muted-foreground mx-auto mb-3" />
+          <UiIcon name="bot" className="size-10 text-muted-foreground mx-auto mb-3" />
           <p className="text-sm font-medium">Could not load AI settings</p>
           <Button
             variant="outline"
@@ -275,7 +265,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       {!compact && (
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-xl bg-primary/[0.12] ring-1 ring-primary/20">
-            <Sparkles className="size-5 text-primary" />
+            <UiIcon name="sparkles" className="size-5 text-primary" />
           </div>
           <div>
             <h2 className="font-heading text-lg font-semibold tracking-tight">
@@ -306,14 +296,14 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
           >
             {configured ? (
               <>
-                <CheckCircle2 className="size-4 shrink-0" />
+                <UiIcon name="circle-check" className="size-4 shrink-0" />
                 <span className="font-medium">
                   AI is configured and ready to use
                 </span>
               </>
             ) : (
               <>
-                <X className="size-4 shrink-0" />
+                <UiIcon name="x" className="size-4 shrink-0" />
                 <span className="font-medium">
                   {settings.current.provider === "openai-compatible"
                     ? "Set the Base URL to enable OpenAI-compatible provider"
@@ -360,7 +350,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   </div>
                   <div className="flex items-center gap-2">
                     {isSavingThis && (
-                      <Loader2 className="size-3.5 animate-spin" />
+                      <UiIcon name="loader" className="size-3.5 animate-spin" />
                     )}
                   </div>
                 </button>
@@ -371,7 +361,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                     className="mr-2 flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-150 ease-out"
                     title="Provider settings"
                   >
-                    <Settings className="size-4" />
+                    <UiIcon name="settings" className="size-4" />
                   </button>
                 )}
               </div>
@@ -386,7 +376,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
             if (!activeProvider?.hasApiKey) {
               return (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/6 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  <X className="size-3.5 shrink-0" />
+                  <UiIcon name="x" className="size-3.5 shrink-0" />
                   <span>
                     {settings.current.provider === "openai-compatible"
                       ? "Configure the Base URL and API key to use this provider"
@@ -469,16 +459,16 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                       >
                         {showApiKeys[provider.name] ? (
-                          <EyeOff className="size-3" />
+                          <UiIcon name="eye-off" className="size-3" />
                         ) : (
-                          <Eye className="size-3" />
+                          <UiIcon name="eye" className="size-3" />
                         )}
                       </button>
                     </div>
                     {provider.hasApiKey && (
                       <div className="flex items-center gap-3">
                         <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                          <CheckCircle2 className="size-3" />
+                          <UiIcon name="circle-check" className="size-3" />
                           API key is set
                         </p>
                         <Button
@@ -555,7 +545,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                           className="h-6 text-[10px] text-muted-foreground hover:text-primary"
                         >
                           {isFetchingModels ? (
-                            <Loader2 className="size-3 animate-spin mr-1" />
+                            <UiIcon name="loader" className="size-3 animate-spin mr-1" />
                           ) : (
                             "Fetch models"
                           )}
@@ -649,7 +639,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                     >
                       {isSavingKey[openConfigProvider] ? (
                         <>
-                          <Loader2 className="size-3 animate-spin mr-1.5" />
+                          <UiIcon name="loader" className="size-3 animate-spin mr-1.5" />
                           Saving...
                         </>
                       ) : (

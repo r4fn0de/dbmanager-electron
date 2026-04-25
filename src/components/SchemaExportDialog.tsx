@@ -1,4 +1,3 @@
-import { Copy, FileCode2, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Icon } from "@/components/ui/Icon";
 import {
   Select,
   SelectContent,
@@ -133,7 +133,7 @@ export function SchemaExportDialog({
       <DialogContent className="sm:max-w-[720px] max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileCode2 className="size-4 text-muted-foreground" />
+            <Icon name="file-code" className="size-4 text-muted-foreground" />
             Export Schema
           </DialogTitle>
           <DialogDescription>
@@ -177,7 +177,7 @@ export function SchemaExportDialog({
         <div className="flex-1 min-h-0 overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              <Icon name="loader" className="size-5 animate-spin text-muted-foreground" />
               <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
             </div>
           ) : error ? (
@@ -197,7 +197,7 @@ export function SchemaExportDialog({
                     className="h-6 px-2 text-xs gap-1.5"
                     onClick={() => { void handleCopy(); }}
                   >
-                    <Copy className="size-3" />
+                    <Icon name="copy" className="size-3" />
                     {copyFeedback ? "Copied!" : "Copy"}
                   </Button>
                 </CodeBlockGroup>
@@ -220,7 +220,7 @@ export function SchemaExportDialog({
               <span className="text-emerald-500">Copied!</span>
             ) : (
               <>
-                <Copy className="size-3.5" />
+                <Icon name="copy" className="size-3.5" />
                 Copy code
               </>
             )}

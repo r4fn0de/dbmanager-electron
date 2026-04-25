@@ -1,14 +1,3 @@
-import {
-  AlertTriangle,
-  Copy,
-  Database,
-  Loader2,
-  Plus,
-  ScrollText,
-  Trash2,
-  Upload,
-  Wand,
-} from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -44,6 +33,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-block";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Icon } from "@/components/ui/Icon";
 import { getTableDetails } from "@/hooks/db-actions";
 import { qi, qt } from "@/ipc/db/ddl-sql";
 import type { DatabaseType } from "@/ipc/db/types";
@@ -245,7 +235,7 @@ export function CreateTableDialog({
                 size="sm"
                 onClick={addColumn}
               >
-                <Plus className="h-3 w-3" />
+                <Icon name="plus" className="h-3 w-3" />
                 Add column
               </Button>
             </div>
@@ -338,7 +328,7 @@ export function CreateTableDialog({
                   onClick={() => removeColumn(col.id)}
                   disabled={columns.length <= 1}
                 >
-                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                  <Icon name="trash" className="h-3 w-3 text-muted-foreground" />
                 </Button>
               </div>
             ))}
@@ -350,7 +340,7 @@ export function CreateTableDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
             Create table
           </Button>
         </DialogFooter>
@@ -418,7 +408,7 @@ export function DropTableDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
-            <AlertTriangle />
+            <Icon name="alert-triangle" />
           </AlertDialogMedia>
           <AlertDialogTitle>
             Drop table{" "}
@@ -457,9 +447,9 @@ export function DropTableDialog({
             disabled={isSubmitting}
           >
             {isSubmitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Trash2 className="h-3.5 w-3.5" />
+              <Icon name="trash" className="h-3.5 w-3.5" />
             )}
             Drop table
           </AlertDialogAction>
@@ -552,7 +542,7 @@ export function RenameTableDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
             Rename
           </Button>
         </DialogFooter>
@@ -710,7 +700,7 @@ export function AddColumnDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
             Add column
           </Button>
         </DialogFooter>
@@ -782,7 +772,7 @@ export function DropColumnDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
-            <AlertTriangle />
+            <Icon name="alert-triangle" />
           </AlertDialogMedia>
           <AlertDialogTitle>
             Drop column <code className="font-mono">{columnName}</code>?
@@ -819,9 +809,9 @@ export function DropColumnDialog({
             disabled={isSubmitting}
           >
             {isSubmitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Trash2 className="h-3.5 w-3.5" />
+              <Icon name="trash" className="h-3.5 w-3.5" />
             )}
             Drop column
           </AlertDialogAction>
@@ -906,8 +896,8 @@ export function CreateSchemaDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            <Database className="h-3.5 w-3.5" />
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+            <Icon name="database" className="h-3.5 w-3.5" />
             Create schema
           </Button>
         </DialogFooter>
@@ -1042,8 +1032,8 @@ export function CreateIndexDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            <Wand className="h-3.5 w-3.5" />
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+            <Icon name="wand" className="h-3.5 w-3.5" />
             Create index
           </Button>
         </DialogFooter>
@@ -1258,8 +1248,8 @@ export function ImportCsvDialog({
             Cancel
           </Button>
           <Button onClick={handleImport} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            <Upload className="h-3.5 w-3.5" />
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+            <Icon name="upload" className="h-3.5 w-3.5" />
             Import CSV
           </Button>
         </DialogFooter>
@@ -1356,7 +1346,7 @@ export function RenameColumnDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
             Rename column
           </Button>
         </DialogFooter>
@@ -1471,7 +1461,7 @@ export function AlterColumnTypeDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
             Save type
           </Button>
         </DialogFooter>
@@ -1589,7 +1579,7 @@ export function SetColumnDefaultDialog({
             }}
             disabled={isSubmitting || defaultExpr.trim().length === 0}
           >
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
             Save default
           </Button>
         </DialogFooter>
@@ -1685,7 +1675,7 @@ export function SetColumnNullableDialog({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
             Save
           </Button>
         </DialogFooter>
@@ -1840,7 +1830,7 @@ export function ViewDdlDialog({
       <DialogContent className="sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ScrollText className="size-4 text-muted-foreground" />
+            <Icon name="script" className="size-4 text-muted-foreground" />
             DDL Script
           </DialogTitle>
           <DialogDescription>
@@ -1851,7 +1841,7 @@ export function ViewDdlDialog({
         <div className="flex-1 min-h-0 overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              <Icon name="loader" className="size-5 animate-spin text-muted-foreground" />
               <span className="ml-2 text-sm text-muted-foreground">Loading DDL...</span>
             </div>
           ) : error ? (
@@ -1869,7 +1859,7 @@ export function ViewDdlDialog({
                     className="h-6 px-2 text-xs gap-1.5"
                     onClick={() => { void handleCopy(); }}
                   >
-                    <Copy className="size-3" />
+                    <Icon name="copy" className="size-3" />
                     {copyFeedback ? "Copied!" : "Copy"}
                   </Button>
                 </CodeBlockGroup>

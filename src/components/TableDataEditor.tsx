@@ -3,23 +3,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Columns3,
-  Database,
-  Download,
-  Expand,
-  Filter,
-  Loader2,
-  PanelLeft,
-  PanelLeftClose,
-  Plus,
-  RefreshCw,
-  Save,
-  Trash2,
-  Undo2,
-} from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
@@ -30,6 +13,7 @@ import {
   useState,
 } from "react";
 import { setUnsavedChanges as setWindowUnsavedChanges } from "@/actions/window";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import { CellExpandPopover } from "@/components/CellExpandPopover";
 import {
   AlertDialog,
@@ -1358,9 +1342,9 @@ export function TableDataEditor({
                     onClick={onToggleSidebar}
                   >
                     {isSidebarVisible ? (
-                      <PanelLeftClose className="h-4 w-4" />
+                      <UiIcon name="panel-left-close" className="h-4 w-4" />
                     ) : (
-                      <PanelLeft className="h-4 w-4" />
+                      <UiIcon name="panel-left" className="h-4 w-4" />
                     )}
                   </Button>
                 }
@@ -1377,7 +1361,7 @@ export function TableDataEditor({
             className={pressableClass}
             onClick={handleAddDraftRecord}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <UiIcon name="plus" className="h-3.5 w-3.5" />
             Add row
           </Button>
 
@@ -1388,7 +1372,7 @@ export function TableDataEditor({
               className={pressableClass}
               onClick={onRequestAddColumn}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <UiIcon name="plus" className="h-3.5 w-3.5" />
               Column
             </Button>
           )}
@@ -1399,7 +1383,7 @@ export function TableDataEditor({
             className={pressableClass}
             onClick={() => setShowFilters((v) => !v)}
           >
-            <Filter className="h-3.5 w-3.5" />
+            <UiIcon name="filter" className="h-3.5 w-3.5" />
             Filter
           </Button>
 
@@ -1413,7 +1397,7 @@ export function TableDataEditor({
                 />
               }
             >
-              <Columns3 className="h-3.5 w-3.5" />
+              <UiIcon name="columns-3" className="h-3.5 w-3.5" />
               Columns
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-48">
@@ -1531,7 +1515,7 @@ export function TableDataEditor({
               onClick={() => setPendingBatchDelete(true)}
               disabled={primaryKey.length === 0}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <UiIcon name="trash" className="h-3.5 w-3.5" />
               Delete {selectedRowKeys.size}
             </Button>
           )}
@@ -1539,7 +1523,7 @@ export function TableDataEditor({
 
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
           {(isLoading || isSwitchingTable) && rowsResponse && (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <UiIcon name="loader" className="h-3 w-3 animate-spin" />
           )}
           <span>{(rowsResponse?.totalEstimate ?? 0).toLocaleString()} rows</span>
           {hasDraftChanges && (
@@ -1567,7 +1551,7 @@ export function TableDataEditor({
               })
             }
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <UiIcon name="refresh" className="h-3.5 w-3.5" />
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -1582,7 +1566,7 @@ export function TableDataEditor({
                 />
               }
             >
-              <Download className="h-3.5 w-3.5" />
+              <UiIcon name="download" className="h-3.5 w-3.5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => exportData("csv")}>
@@ -1605,7 +1589,7 @@ export function TableDataEditor({
               setConfirmText("");
             }}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <UiIcon name="trash" className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
@@ -1652,7 +1636,7 @@ export function TableDataEditor({
       <div className="flex-1 min-h-0 overflow-hidden">
         {isBlockingTableLoading ? (
           <div className="h-full flex items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <UiIcon name="loader" className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
           <div ref={scrollRef} className="h-full overflow-auto">
@@ -1876,7 +1860,7 @@ export function TableDataEditor({
                                   }
                                   className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
                                 >
-                                  <Expand className="h-3 w-3" />
+                                  <UiIcon name="arrows-maximize" className="h-3 w-3" />
                                 </button>
                               }
                             />
@@ -2090,7 +2074,7 @@ export function TableDataEditor({
                                     }
                                     className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocused ? "opacity-100" : ""}`}
                                   >
-                                    <Expand className="h-3 w-3" />
+                                    <UiIcon name="arrows-maximize" className="h-3 w-3" />
                                   </button>
                                 }
                               />
@@ -2134,7 +2118,7 @@ export function TableDataEditor({
             onClick={() => setPage((current) => Math.max(current - 1, 0))}
             disabled={page === 0 || isLoading}
           >
-            <ChevronLeft className="h-3.5 w-3.5" />
+            <UiIcon name="chevron-left" className="h-3.5 w-3.5" />
           </Button>
           <span className="text-xs text-muted-foreground">
             Page {page + 1} / {totalPages}
@@ -2146,7 +2130,7 @@ export function TableDataEditor({
             onClick={() => setPage((current) => current + 1)}
             disabled={isLoading || page + 1 >= totalPages}
           >
-            <ChevronRight className="h-3.5 w-3.5" />
+            <UiIcon name="chevron-right" className="h-3.5 w-3.5" />
           </Button>
           <span className="text-xs text-muted-foreground ml-2">
             Rows per page
@@ -2175,7 +2159,7 @@ export function TableDataEditor({
             onClick={discardDrafts}
             disabled={!hasDraftChanges || isSaving}
           >
-            <Undo2 className="h-3.5 w-3.5" />
+            <UiIcon name="undo" className="h-3.5 w-3.5" />
             Discard
           </Button>
           <Button
@@ -2186,9 +2170,9 @@ export function TableDataEditor({
             disabled={!hasDraftChanges || isSaving}
           >
             {isSaving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <UiIcon name="loader" className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Save className="h-3.5 w-3.5" />
+              <UiIcon name="device-floppy" className="h-3.5 w-3.5" />
             )}
             Save Changes
           </Button>
@@ -2259,9 +2243,9 @@ export function TableDataEditor({
               disabled={confirmText !== table.name || isTruncating}
             >
               {isTruncating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <UiIcon name="loader" className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Database className="h-3.5 w-3.5" />
+                <UiIcon name="database" className="h-3.5 w-3.5" />
               )}
               Truncate
             </AlertDialogAction>

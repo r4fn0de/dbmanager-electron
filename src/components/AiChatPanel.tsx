@@ -4,28 +4,6 @@
  * Embedded in the SQL Editor view as a collapsible side panel.
  * Uses the useAiChat hook to manage streaming chat over Electron IPC.
  */
-import {
-  Bot,
-  Check,
-  ChevronDown,
-  Code2,
-  Copy,
-  Database,
-  Key,
-  Lightbulb,
-  PanelRight,
-  Plus,
-  Search,
-  Send,
-  Shield,
-  Square,
-  Table2,
-  ThumbsDown,
-  ThumbsUp,
-  Trash2,
-  X,
-  Zap,
-} from "lucide-react";
 import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
@@ -51,6 +29,7 @@ import { useTheme } from "next-themes";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { StickToBottomContext } from "use-stick-to-bottom";
 import { Button } from "@/components/ui/button";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import { CodeBlockCode } from "@/components/ui/code-block";
 import {
   DropdownMenu,
@@ -122,7 +101,7 @@ function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
     case "redis":
       return Redis;
     default:
-      return Database;
+      return PostgreSql;
   }
 }
 
@@ -217,7 +196,7 @@ function AssistantCodeBlock({
               }
             }}
           >
-            {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+            {copied ? <UiIcon name="check" className="size-3" /> : <UiIcon name="copy" className="size-3" />}
           </MessageAction>
           {!isStreaming && isSqlLike && onInsertSql && (
             <MessageAction
@@ -225,7 +204,7 @@ function AssistantCodeBlock({
               label="Insert SQL"
               onClick={() => onInsertSql(code)}
             >
-              <Code2 className="size-3" />
+              <UiIcon name="code" className="size-3" />
             </MessageAction>
           )}
         </div>
@@ -427,12 +406,12 @@ function AiMessageFeedback({
       <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
         {activeRating === "positive" ? (
           <>
-            <ThumbsUp className="h-3 w-3 text-green-600" />
+            <UiIcon name="thumbs-up" className="h-3 w-3 text-green-600" />
             <span>Thanks for the feedback!</span>
           </>
         ) : activeRating === "negative" ? (
           <>
-            <ThumbsDown className="h-3 w-3 text-red-600" />
+            <UiIcon name="thumbs-down" className="h-3 w-3 text-red-600" />
             <span>Thanks for the feedback!</span>
           </>
         ) : null}
@@ -544,7 +523,7 @@ function ChatMessage({
                   "
                   style={{ animationTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}
                 >
-                  <Code2 className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="min-w-0">
                     <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
                       {message.contextSnapshot.errorPreview}
@@ -651,7 +630,7 @@ function ChatMessage({
                               onClick={() => onInsertSql(sqlFromTool)}
                               className="mt-1 ml-1"
                             >
-                              <Code2 className="size-3.5" />
+                              <UiIcon name="code" className="size-3.5" />
                             </MessageAction>
                           )}
                         </div>
@@ -700,7 +679,7 @@ function ChatMessage({
                 onClick={handleCopyMessage}
                 disabled={!message.content}
               >
-                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                {copied ? <UiIcon name="check" className="size-3.5" /> : <UiIcon name="copy" className="size-3.5" />}
               </MessageAction>
               <MessageAction
                 tooltip="Insert first SQL block"
@@ -712,7 +691,7 @@ function ChatMessage({
                 }}
                 disabled={!onInsertSql || !firstSqlBlock}
               >
-                <Code2 className="size-3.5" />
+                <UiIcon name="code" className="size-3.5" />
               </MessageAction>
             </MessageToolbar>
           )}
@@ -1106,7 +1085,7 @@ export function AiChatPanel({
                 transition-[background,color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
               "
             >
-              <Database className="size-3" />
+              <UiIcon name="database" className="size-3" />
               <span>Global</span>
             </span>
           )}
@@ -1128,7 +1107,7 @@ export function AiChatPanel({
                   >
                     {activeConversation?.title ?? "AI Chat"}
                   </span>
-                  <ChevronDown className="size-3 shrink-0 opacity-70" />
+                  <UiIcon name="chevron-down" className="size-3 shrink-0 opacity-70" />
                 </Button>
               }
             />
@@ -1141,7 +1120,7 @@ export function AiChatPanel({
                 disabled={isLoading}
                 className="gap-2 rounded-md my-0.5 active:scale-[0.97] transition-[transform,background] duration-150 ease-out"
               >
-                <Plus className="size-3.5" />
+                <UiIcon name="plus" className="size-3.5" />
                 New conversation
               </DropdownMenuItem>
               <DropdownMenuSeparator className="my-1" />
@@ -1206,7 +1185,7 @@ export function AiChatPanel({
                           className="rounded p-1 text-muted-foreground/50 transition-[color,transform] duration-150 ease-out hover:text-destructive active:scale-[0.93] disabled:opacity-30"
                           disabled={conversations.length === 1 || isLoading}
                         >
-                          <Trash2 className="size-3" />
+                          <UiIcon name="trash" className="size-3" />
                         </button>
                       </DropdownMenuItem>
                     );
@@ -1219,7 +1198,7 @@ export function AiChatPanel({
                 disabled={isLoading || conversations.length === 0}
                 className="gap-2 rounded-md my-0.5 text-muted-foreground active:scale-[0.97] transition-[transform,background] duration-150 ease-out"
               >
-                <Trash2 className="size-3.5" />
+                <UiIcon name="trash" className="size-3.5" />
                 Clear all
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -1236,7 +1215,7 @@ export function AiChatPanel({
                   disabled={isLoading}
                   className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
                 >
-                  <Plus className="size-3.5" />
+                  <UiIcon name="plus" className="size-3.5" />
                 </Button>
               }
             />
@@ -1252,7 +1231,7 @@ export function AiChatPanel({
                   disabled={isEmpty || isLoading}
                   className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
                 >
-                  <Trash2 className="size-3.5" />
+                  <UiIcon name="trash" className="size-3.5" />
                 </Button>
               }
             />
@@ -1268,7 +1247,7 @@ export function AiChatPanel({
                     onClick={onClose}
                     className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
                   >
-                    <PanelRight className="size-3.5" />
+                    <UiIcon name="panel-right" className="size-3.5" />
                   </Button>
                 }
               />
@@ -1287,7 +1266,7 @@ export function AiChatPanel({
           {isEmpty ? (
             <ConversationEmptyState>
               <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                <Bot className="size-5 text-primary" />
+                <UiIcon name="bot" className="size-5 text-primary" />
               </div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">AI SQL Assistant</p>
@@ -1384,7 +1363,7 @@ export function AiChatPanel({
                     className="absolute -right-2 -top-2 rounded-full border border-border/60 bg-background p-0.5 text-muted-foreground opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-foreground group-hover/ctx:opacity-100"
                     onClick={() => handleDismissContextChip("selection")}
                   >
-                    <X className="size-3" />
+                    <UiIcon name="x" className="size-3" />
                   </button>
                 </div>
               )}
@@ -1397,7 +1376,7 @@ export function AiChatPanel({
                     exitingContext.error && "-translate-y-1 scale-[0.98] opacity-0",
                   )}
                 >
-                  <Code2 className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="min-w-0">
                     <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
                       {contextPreview.errorPreview}
@@ -1410,7 +1389,7 @@ export function AiChatPanel({
                     className="absolute -right-2 -top-2 rounded-full border border-amber-400/35 bg-background p-0.5 text-amber-700/70 opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-amber-900 group-hover/ctx:opacity-100 dark:text-amber-300/80 dark:hover:text-amber-200"
                     onClick={() => handleDismissContextChip("error")}
                   >
-                    <X className="size-3" />
+                    <UiIcon name="x" className="size-3" />
                   </button>
                 </div>
               )}
@@ -1445,7 +1424,7 @@ export function AiChatPanel({
                   active:scale-[0.96]
                 "
               >
-                <Square className="size-3.5" />
+                <UiIcon name="square" className="size-3.5" />
               </Button>
             ) : (
               <Button
@@ -1464,7 +1443,7 @@ export function AiChatPanel({
                   active:scale-[0.96]
                 "
               >
-                <Send className="size-3.5" />
+                <UiIcon name="send" className="size-3.5" />
               </Button>
             )}
           </PromptInputActions>
@@ -1481,10 +1460,10 @@ export function AiChatPanel({
 function getContextualSuggestions(dbType: DatabaseType, hasConnection: boolean): Array<{ label: string; icon: ReactNode }> {
   if (!hasConnection) {
     return [
-      { label: "SQL best practices", icon: <Lightbulb className="size-3" /> },
-      { label: "Database design tips", icon: <Table2 className="size-3" /> },
-      { label: "Index optimization", icon: <Zap className="size-3" /> },
-      { label: "Query examples", icon: <Code2 className="size-3" /> },
+      { label: "SQL best practices", icon: <UiIcon name="bulb" className="size-3" /> },
+      { label: "Database design tips", icon: <UiIcon name="table" className="size-3" /> },
+      { label: "Index optimization", icon: <UiIcon name="zap" className="size-3" /> },
+      { label: "Query examples", icon: <UiIcon name="code" className="size-3" /> },
     ];
   }
 
@@ -1492,44 +1471,44 @@ function getContextualSuggestions(dbType: DatabaseType, hasConnection: boolean):
   switch (dbType) {
     case "postgresql":
       return [
-        { label: "List all tables", icon: <Table2 className="size-3" /> },
-        { label: "Show table sizes", icon: <Database className="size-3" /> },
-        { label: "Find slow queries", icon: <Zap className="size-3" /> },
-        { label: "Check indexes", icon: <Search className="size-3" /> },
-        { label: "RLS policies", icon: <Shield className="size-3" /> },
+        { label: "List all tables", icon: <UiIcon name="table" className="size-3" /> },
+        { label: "Show table sizes", icon: <UiIcon name="database" className="size-3" /> },
+        { label: "Find slow queries", icon: <UiIcon name="zap" className="size-3" /> },
+        { label: "Check indexes", icon: <UiIcon name="search" className="size-3" /> },
+        { label: "RLS policies", icon: <UiIcon name="shield" className="size-3" /> },
       ];
     case "mysql":
     case "mariadb":
       return [
-        { label: "Show all tables", icon: <Table2 className="size-3" /> },
-        { label: "Table statuses", icon: <Database className="size-3" /> },
-        { label: "Find missing indexes", icon: <Zap className="size-3" /> },
-        { label: "Check constraints", icon: <Search className="size-3" /> },
+        { label: "Show all tables", icon: <UiIcon name="table" className="size-3" /> },
+        { label: "Table statuses", icon: <UiIcon name="database" className="size-3" /> },
+        { label: "Find missing indexes", icon: <UiIcon name="zap" className="size-3" /> },
+        { label: "Check constraints", icon: <UiIcon name="search" className="size-3" /> },
       ];
     case "sqlite":
       return [
-        { label: "List tables", icon: <Table2 className="size-3" /> },
-        { label: "Schema info", icon: <Database className="size-3" /> },
-        { label: "Table sizes", icon: <Zap className="size-3" /> },
+        { label: "List tables", icon: <UiIcon name="table" className="size-3" /> },
+        { label: "Schema info", icon: <UiIcon name="database" className="size-3" /> },
+        { label: "Table sizes", icon: <UiIcon name="zap" className="size-3" /> },
       ];
     case "clickhouse":
       return [
-        { label: "List tables", icon: <Table2 className="size-3" /> },
-        { label: "Table engines", icon: <Database className="size-3" /> },
-        { label: "Partition info", icon: <Zap className="size-3" /> },
+        { label: "List tables", icon: <UiIcon name="table" className="size-3" /> },
+        { label: "Table engines", icon: <UiIcon name="database" className="size-3" /> },
+        { label: "Partition info", icon: <UiIcon name="zap" className="size-3" /> },
       ];
     case "redis":
       return [
-        { label: "List keys", icon: <Key className="size-3" /> },
-        { label: "Memory usage", icon: <Database className="size-3" /> },
-        { label: "Key patterns", icon: <Search className="size-3" /> },
+        { label: "List keys", icon: <UiIcon name="key" className="size-3" /> },
+        { label: "Memory usage", icon: <UiIcon name="database" className="size-3" /> },
+        { label: "Key patterns", icon: <UiIcon name="search" className="size-3" /> },
       ];
     default:
       return [
-        { label: "Show tables", icon: <Table2 className="size-3" /> },
-        { label: "Find recent records", icon: <Search className="size-3" /> },
-        { label: "Explain schema", icon: <Lightbulb className="size-3" /> },
-        { label: "Optimize query", icon: <Zap className="size-3" /> },
+        { label: "Show tables", icon: <UiIcon name="table" className="size-3" /> },
+        { label: "Find recent records", icon: <UiIcon name="search" className="size-3" /> },
+        { label: "Explain schema", icon: <UiIcon name="bulb" className="size-3" /> },
+        { label: "Optimize query", icon: <UiIcon name="zap" className="size-3" /> },
       ];
   }
 }

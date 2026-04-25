@@ -5,8 +5,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/utils/tailwind";
-import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export type ChatToolPart = {
@@ -130,7 +130,8 @@ export function ChatTool({ toolPart, defaultOpen = true, className }: ChatToolPr
             <StateLabel state={state} />
           </div>
           {hasExpandableContent && (
-            <ChevronDown
+            <Icon
+              name="chevron-down"
               className={cn(
                 "size-3 shrink-0 text-muted-foreground/50 transition-transform duration-150 ease-out",
                 isOpen && "rotate-180",

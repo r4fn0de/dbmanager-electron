@@ -1,17 +1,5 @@
-import {
-  ChevronRight,
-  Database,
-  HardDrive,
-  Loader2,
-  Lock,
-  Pause,
-  Play,
-  RefreshCw,
-  Table2,
-  Terminal,
-} from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import type {
   Connection,
   DatabaseInfo,
@@ -21,6 +9,7 @@ import type {
 import { cn } from "@/utils/tailwind";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -55,7 +44,7 @@ function StatCard({
 }: {
   label: string;
   value: string | number;
-  icon?: React.ComponentType<{ className?: string }>;
+  icon?: ComponentType<{ className?: string }>;
   isLoading?: boolean;
 }) {
   return (
@@ -313,7 +302,7 @@ export function DatabaseOverview({
                 onClick={onNewQuery}
                 className="gap-1.5 h-7 text-xs"
               >
-                <Terminal className="size-3.5" />
+                <Icon name="terminal" className="size-3.5" />
                 New query
               </Button>
             </motion.div>
@@ -324,7 +313,7 @@ export function DatabaseOverview({
                 onClick={onViewTables}
                 className="gap-1.5 h-7 text-xs"
               >
-                <Table2 className="size-3.5" />
+                <Icon name="table" className="size-3.5" />
                 Tables
               </Button>
             </motion.div>
@@ -336,7 +325,7 @@ export function DatabaseOverview({
                 className="h-7 w-7 p-0 text-muted-foreground"
                 title="Test connection"
               >
-                <RefreshCw className="size-3.5" />
+                <Icon name="refresh" className="size-3.5" />
               </Button>
             </motion.div>
             {isLocal && (
@@ -350,17 +339,17 @@ export function DatabaseOverview({
                 >
                   {isTogglingLocalDbStatus ? (
                     <>
-                      <Loader2 className="size-3 animate-spin" />
+                      <Icon name="loader" className="size-3 animate-spin" />
                       {isRunning ? "Stopping..." : "Starting..."}
                     </>
                   ) : isRunning ? (
                     <>
-                      <Pause className="size-3" />
+                      <Icon name="pause" className="size-3" />
                       Pause
                     </>
                   ) : (
                     <>
-                      <Play className="size-3" />
+                      <Icon name="play" className="size-3" />
                       Start
                     </>
                   )}
@@ -372,7 +361,7 @@ export function DatabaseOverview({
 
         <motion.div variants={itemVariants} className="space-y-3">
           <div className="flex items-center gap-2">
-            <Database className="size-3.5 text-muted-foreground" />
+            <Icon name="database" className="size-3.5 text-muted-foreground" />
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Overview
             </p>
@@ -383,15 +372,15 @@ export function DatabaseOverview({
               tablesWithRls > 0 ? "sm:grid-cols-4" : "sm:grid-cols-3"
             )}
           >
-            <StatCard label="Schemas" value={totalSchemas} icon={Database} />
-            <StatCard label="Tables" value={totalTables} icon={Table2} />
+            <StatCard label="Schemas" value={totalSchemas} icon={(props) => <Icon name="database" {...props} />} />
+            <StatCard label="Tables" value={totalTables} icon={(props) => <Icon name="table" {...props} />} />
             {tablesWithRls > 0 && (
-              <StatCard label="RLS enabled" value={tablesWithRls} icon={Lock} />
+              <StatCard label="RLS enabled" value={tablesWithRls} icon={(props) => <Icon name="lock" {...props} />} />
             )}
             <StatCard
               label="Size"
               value={databaseInfo?.size ?? "—"}
-              icon={HardDrive}
+              icon={(props) => <Icon name="hard-drive" {...props} />}
               isLoading={isLoadingDatabaseInfo}
             />
           </div>
@@ -471,9 +460,9 @@ export function DatabaseOverview({
                     {schema.count}
                   </span>
                   {schema.rlsCount > 0 && (
-                    <Lock className="size-2.5 text-cyan-500/60" />
+                    <Icon name="lock" className="size-2.5 text-cyan-500/60" />
                   )}
-                  <ChevronRight className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
+                  <Icon name="chevron-right" className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
                 </motion.button>
               ))}
             </div>

@@ -1,20 +1,3 @@
-import {
-  Database,
-  FileCode2,
-  FileSearch,
-  Loader2,
-  Lock,
-  LockOpen,
-  LockKeyhole,
-  Pencil,
-  Plus,
-  ScrollText,
-  Search,
-  Table2,
-  Terminal,
-  Trash2,
-  X,
-} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +30,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/utils/tailwind";
 import type { SchemaTableSummary } from "@/ipc/db/types";
 
@@ -132,7 +116,7 @@ export function TablesExplorerSidebar({
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold tracking-tight text-foreground">Explorer</span>
             {isLoading ? (
-              <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              <Icon name="loader" className="size-3 animate-spin text-muted-foreground" />
             ) : !isLoading && filteredTables.length > 0 ? (
               <Badge variant="secondary" className="font-mono text-[10px] h-4 px-1.5 leading-none">
                 {filteredTables.length}
@@ -151,22 +135,22 @@ export function TablesExplorerSidebar({
                   />
                 }
               >
-                <Plus className="size-3.5" />
+                <Icon name="plus" className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="bottom">
                 <DropdownMenuItem onClick={onCreateSchema}>
-                  <Database className="size-3.5" />
+                  <Icon name="database" className="size-3.5" />
                   Create schema
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onCreateTable}>
-                  <Table2 className="size-3.5" />
+                  <Icon name="table" className="size-3.5" />
                   Create table
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={onCreateIndex}
                   disabled={!selectedTableRef}
                 >
-                  <Pencil className="size-3.5" />
+                  <Icon name="pencil" className="size-3.5" />
                   Create index
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -174,7 +158,7 @@ export function TablesExplorerSidebar({
                   onClick={onImportCsv}
                   disabled={!selectedTableRef}
                 >
-                  <Terminal className="size-3.5" />
+                  <Icon name="terminal" className="size-3.5" />
                   Import CSV
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -203,7 +187,7 @@ export function TablesExplorerSidebar({
                 return (
                   <SelectItem key={s} value={s} className="text-xs">
                     <div className="flex items-center gap-2">
-                      <Database className="size-3 text-muted-foreground" />
+                      <Icon name="database" className="size-3 text-muted-foreground" />
                       <span className="font-mono">{s}</span>
                       <Badge variant="secondary" className="ml-auto font-mono text-[10px] h-4 px-1">
                         {count}
@@ -220,7 +204,7 @@ export function TablesExplorerSidebar({
       {/* Search + Filter Bar */}
       <div className="px-3 pb-2 shrink-0">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+          <Icon name="search" className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
           <Input
             type="text"
             placeholder="Filter tables..."
@@ -234,7 +218,7 @@ export function TablesExplorerSidebar({
               className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => onTableSearchChange("")}
             >
-              <X className="size-3" />
+              <Icon name="x" className="size-3" />
             </button>
           )}
         </div>
@@ -256,7 +240,7 @@ export function TablesExplorerSidebar({
             </div>
           ) : filteredTables.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-              <FileSearch className="size-4 text-muted-foreground/50 mb-2" />
+              <Icon name="file-search" className="size-4 text-muted-foreground/50 mb-2" />
               <p className="text-xs text-muted-foreground">
                 {tableSearch ? "No matches found" : "No tables"}
               </p>
@@ -293,7 +277,8 @@ export function TablesExplorerSidebar({
                               : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
                           )}
                         >
-                          <Table2
+                          <Icon
+                            name="table"
                             className={cn(
                               "size-3.5 shrink-0 transition-colors",
                               isActive
@@ -312,14 +297,14 @@ export function TablesExplorerSidebar({
                           {table.has_rls ? (
                             <Tooltip>
                               <TooltipTrigger className="inline-flex shrink-0">
-                                <Lock className="size-3 text-cyan-500 shrink-0" />
+                                <Icon name="lock" className="size-3 text-cyan-500 shrink-0" />
                               </TooltipTrigger>
                               <TooltipContent side="bottom" sideOffset={4}>RLS enabled</TooltipContent>
                             </Tooltip>
                           ) : (
                             <Tooltip>
                               <TooltipTrigger className="inline-flex shrink-0">
-                                <LockOpen className="size-3 text-muted-foreground/40 shrink-0" />
+                                <Icon name="lock-open" className="size-3 text-muted-foreground/40 shrink-0" />
                               </TooltipTrigger>
                               <TooltipContent side="bottom" sideOffset={4}>RLS disabled</TooltipContent>
                             </Tooltip>
@@ -336,7 +321,7 @@ export function TablesExplorerSidebar({
                           })
                         }
                       >
-                        <ScrollText className="size-3.5" />
+                        <Icon name="script" className="size-3.5" />
                         View DDL
                       </ContextMenuItem>
                       <ContextMenuItem
@@ -347,7 +332,7 @@ export function TablesExplorerSidebar({
                           })
                         }
                       >
-                        <FileCode2 className="size-3.5" />
+                        <Icon name="file-code-2" className="size-3.5" />
                         Export Schema
                       </ContextMenuItem>
                       <ContextMenuItem
@@ -358,7 +343,7 @@ export function TablesExplorerSidebar({
                           })
                         }
                       >
-                        <Pencil className="size-3.5" />
+                        <Icon name="pencil" className="size-3.5" />
                         Rename table
                       </ContextMenuItem>
                       {table.has_rls && (
@@ -370,7 +355,7 @@ export function TablesExplorerSidebar({
                             })
                           }
                         >
-                          <LockKeyhole className="size-3.5" />
+                          <Icon name="lock" className="size-3.5" />
                           View RLS policies
                         </ContextMenuItem>
                       )}
@@ -384,7 +369,7 @@ export function TablesExplorerSidebar({
                           })
                         }
                       >
-                        <Trash2 className="size-3.5" />
+                        <Icon name="trash" className="size-3.5" />
                         Drop table
                       </ContextMenuItem>
                     </ContextMenuContent>

@@ -1,16 +1,3 @@
-import {
-  Braces,
-  ChevronRight,
-  Code2,
-  Copy,
-  KeyRound,
-  ListOrdered,
-  Loader2,
-  Power,
-  PowerOff,
-  Search,
-  Zap,
-} from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -52,6 +39,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import { getEnums, getFunctions, getSchemaConstraints, getSchemaIndexes, getTriggers } from "@/hooks/db-actions";
 
 // ---------------------------------------------------------------------------
@@ -108,7 +96,7 @@ function ConstraintCard({
 }) {
   return (
     <div className="group flex items-start gap-3 px-2.5 py-2 rounded-md hover:bg-muted/40 transition-colors duration-150 ease-out">
-      <KeyRound className="size-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
+      <UiIcon name="key" className="size-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[13px] font-medium truncate">
@@ -136,7 +124,7 @@ function ConstraintCard({
               }
               className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0 rounded p-1 hover:bg-muted active:scale-[0.97]"
             >
-              <Copy className="size-3 text-muted-foreground" />
+              <UiIcon name="copy" className="size-3 text-muted-foreground" />
             </button>
           }
         />
@@ -158,7 +146,7 @@ function EnumCard({
   return (
     <div className="group px-2.5 py-2 rounded-md hover:bg-muted/40 transition-colors duration-150 ease-out">
       <div className="flex items-center gap-2 mb-1.5">
-        <Braces className="size-3.5 text-muted-foreground/50 shrink-0" />
+        <UiIcon name="braces" className="size-3.5 text-muted-foreground/50 shrink-0" />
         <span className="font-mono text-[13px] font-medium truncate">
           {enumDef.name}
         </span>
@@ -171,7 +159,7 @@ function EnumCard({
                 disabled={values.length === 0}
                 className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0 rounded p-1 hover:bg-muted active:scale-[0.97] disabled:opacity-30"
               >
-                <Copy className="size-3 text-muted-foreground" />
+                <UiIcon name="copy" className="size-3 text-muted-foreground" />
               </button>
             }
           />
@@ -221,14 +209,15 @@ function FunctionCard({
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-2.5 py-2 text-left active:scale-[0.99] transition-transform duration-150 ease-out"
       >
-        <ChevronRight
+        <UiIcon
+          name="chevron-right"
           className={cn(
             "size-3 text-muted-foreground/50 shrink-0 transition-transform duration-150",
             expanded && "rotate-90",
             reducedMotion && "transition-none"
           )}
         />
-        <Code2 className="size-3.5 text-muted-foreground/50 shrink-0" />
+        <UiIcon name="code" className="size-3.5 text-muted-foreground/50 shrink-0" />
         <span className="font-mono text-[13px] font-medium truncate">
           {fn.name}
         </span>
@@ -253,7 +242,7 @@ function FunctionCard({
                   }}
                   className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0 rounded p-1 hover:bg-muted active:scale-[0.97]"
                 >
-                  <Copy className="size-3 text-muted-foreground" />
+                  <UiIcon name="copy" className="size-3 text-muted-foreground" />
                 </button>
               }
             />
@@ -291,7 +280,7 @@ function IndexCard({
 }) {
   return (
     <div className="group flex items-start gap-3 px-2.5 py-2 rounded-md hover:bg-muted/40 transition-colors duration-150 ease-out">
-      <ListOrdered className="size-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
+      <UiIcon name="list-numbers" className="size-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[13px] font-medium truncate">
@@ -326,7 +315,7 @@ function IndexCard({
               }
               className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0 rounded p-1 hover:bg-muted active:scale-[0.97]"
             >
-              <Copy className="size-3 text-muted-foreground" />
+              <UiIcon name="copy" className="size-3 text-muted-foreground" />
             </button>
           }
         />
@@ -346,7 +335,7 @@ function TriggerCard({
   return (
     <div className="group px-2.5 py-2 rounded-md hover:bg-muted/40 transition-colors duration-150 ease-out">
       <div className="flex items-start gap-2">
-        <Zap className={cn(
+        <UiIcon name="zap" className={cn(
           "size-3.5 shrink-0 mt-0.5",
           trigger.enabled ? "text-muted-foreground/50" : "text-muted-foreground/30"
         )} />
@@ -382,7 +371,7 @@ function TriggerCard({
                   onClick={() => trigger.definition && onCopy(trigger.definition)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 shrink-0 rounded p-1 hover:bg-muted active:scale-[0.97]"
                 >
-                  <Copy className="size-3 text-muted-foreground" />
+                  <UiIcon name="copy" className="size-3 text-muted-foreground" />
                 </button>
               }
             />
@@ -425,31 +414,31 @@ function DefinitionEmptyState({
     constraints: {
       title: "No constraints found",
       desc: "This schema doesn't contain any constraints",
-      icon: KeyRound,
+      icon: (props) => <UiIcon name="key" {...props} />,
     },
     enums: {
       title: isUnsupported ? "Not supported" : "No enums found",
       desc: isUnsupported
         ? "SQLite does not have native enum types"
         : "This schema doesn't contain any enum types",
-      icon: Braces,
+      icon: (props) => <UiIcon name="braces" {...props} />,
     },
     functions: {
       title: isUnsupported ? "Not supported" : "No functions found",
       desc: isUnsupported
         ? "SQLite user-defined functions are not introspectable"
         : "This schema doesn't contain any functions or procedures",
-      icon: Code2,
+      icon: (props) => <UiIcon name="code" {...props} />,
     },
     indexes: {
       title: "No indexes found",
       desc: "This schema doesn't contain any indexes",
-      icon: ListOrdered,
+      icon: (props) => <UiIcon name="list-numbers" {...props} />,
     },
     triggers: {
       title: "No triggers found",
       desc: "This schema doesn't contain any triggers",
-      icon: Zap,
+      icon: (props) => <UiIcon name="zap" {...props} />,
     },
   };
 
@@ -632,7 +621,7 @@ export function DefinitionsBrowserPanel({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Braces className="size-4 text-muted-foreground" />
+            <UiIcon name="braces" className="size-4 text-muted-foreground" />
             <h2 className="text-sm font-semibold">Definitions</h2>
           </div>
           <div className="flex items-center gap-2">
@@ -663,7 +652,7 @@ export function DefinitionsBrowserPanel({
 
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 pointer-events-none" />
+          <UiIcon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 pointer-events-none" />
           <Input
             ref={searchInputRef}
             value={search}
@@ -686,7 +675,7 @@ export function DefinitionsBrowserPanel({
         >
           <TabsList variant="line" className="w-full justify-start gap-0">
             <TabsTrigger value="constraints" className="gap-1">
-              <KeyRound className="size-3" />
+              <UiIcon name="key" className="size-3" />
               Constraints
               {constraints.length > 0 && (
                 <Badge
@@ -698,7 +687,7 @@ export function DefinitionsBrowserPanel({
               )}
             </TabsTrigger>
             <TabsTrigger value="enums" className="gap-1">
-              <Braces className="size-3" />
+              <UiIcon name="braces" className="size-3" />
               Enums
               {enums.length > 0 && (
                 <Badge
@@ -710,7 +699,7 @@ export function DefinitionsBrowserPanel({
               )}
             </TabsTrigger>
             <TabsTrigger value="functions" className="gap-1">
-              <Code2 className="size-3" />
+              <UiIcon name="code" className="size-3" />
               Functions
               {functions.length > 0 && (
                 <Badge
@@ -722,7 +711,7 @@ export function DefinitionsBrowserPanel({
               )}
             </TabsTrigger>
             <TabsTrigger value="indexes" className="gap-1">
-              <ListOrdered className="size-3" />
+              <UiIcon name="list-numbers" className="size-3" />
               Indexes
               {indexes.length > 0 && (
                 <Badge
@@ -734,7 +723,7 @@ export function DefinitionsBrowserPanel({
               )}
             </TabsTrigger>
             <TabsTrigger value="triggers" className="gap-1">
-              <Zap className="size-3" />
+              <UiIcon name="zap" className="size-3" />
               Triggers
               {triggers.length > 0 && (
                 <Badge
@@ -753,7 +742,7 @@ export function DefinitionsBrowserPanel({
               <ScrollArea className="h-full px-1 py-1">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
+                    <UiIcon name="loader" className="size-4 animate-spin" />
                     <span className="text-sm">Loading constraints…</span>
                   </div>
                 ) : filteredConstraints.length > 0 ? (
@@ -777,7 +766,7 @@ export function DefinitionsBrowserPanel({
               <ScrollArea className="h-full px-1 py-1">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
+                    <UiIcon name="loader" className="size-4 animate-spin" />
                     <span className="text-sm">Loading enums…</span>
                   </div>
                 ) : filteredEnums.length > 0 ? (
@@ -801,7 +790,7 @@ export function DefinitionsBrowserPanel({
               <ScrollArea className="h-full px-1 py-1">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
+                    <UiIcon name="loader" className="size-4 animate-spin" />
                     <span className="text-sm">Loading functions…</span>
                   </div>
                 ) : filteredFunctions.length > 0 ? (
@@ -826,7 +815,7 @@ export function DefinitionsBrowserPanel({
               <ScrollArea className="h-full px-1 py-1">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
+                    <UiIcon name="loader" className="size-4 animate-spin" />
                     <span className="text-sm">Loading indexes…</span>
                   </div>
                 ) : filteredIndexes.length > 0 ? (
@@ -850,7 +839,7 @@ export function DefinitionsBrowserPanel({
               <ScrollArea className="h-full px-1 py-1">
                 {isLoading ? (
                   <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
+                    <UiIcon name="loader" className="size-4 animate-spin" />
                     <span className="text-sm">Loading triggers…</span>
                   </div>
                 ) : filteredTriggers.length > 0 ? (

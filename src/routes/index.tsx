@@ -1,5 +1,4 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Database, HardDrive, Plus, Search } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -21,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { ConnectionForm } from "@/components/ConnectionForm";
 import { ConnectionList } from "@/components/ConnectionList";
@@ -346,19 +346,19 @@ function Home() {
               <DropdownMenuTrigger
                 render={
                   <Button size="sm" className="h-7 text-xs gap-1">
-                    <Plus className="size-3.5" />
+                    <Icon name="plus" className="size-3.5" />
                     Add
                   </Button>
                 }
               />
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={handleAdd}>
-                  <Database className="mr-2 size-4" />
+                  <Icon name="database" className="mr-2 size-4" />
                   Remote Connection
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleAddLocalDb}>
-                  <HardDrive className="mr-2 size-4" />
+                  <Icon name="hard-drive" className="mr-2 size-4" />
                   New Local Database
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -369,7 +369,7 @@ function Home() {
           {connections.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                <Icon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
                 <Input
                   placeholder="Search by name, host, or database…"
                   value={searchQuery}

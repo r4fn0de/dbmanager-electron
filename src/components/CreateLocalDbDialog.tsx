@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { HardDrive, Loader2, Pencil, Shuffle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -7,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -176,7 +176,7 @@ export function CreateLocalDbDialog({
         <div className="p-5 pb-0 shrink-0">
           <DialogHeader className="gap-1">
             <DialogTitle className="flex items-center gap-2">
-              <HardDrive className="size-4 text-muted-foreground" />
+              <Icon name="hard-drive" className="size-4 text-muted-foreground" />
               {isEditMode ? "Edit Local Database" : "New Local Database"}
             </DialogTitle>
           </DialogHeader>
@@ -214,7 +214,7 @@ export function CreateLocalDbDialog({
                       onClick={() => updateField("name", generateRandomName())}
                       title="Generate random name"
                     >
-                      <Shuffle className="size-3" />
+                      <Icon name="shuffle" className="size-3" />
                     </Button>
                   </div>
                 </div>
@@ -264,7 +264,7 @@ export function CreateLocalDbDialog({
                         onClick={() => { setUseCustomTag(false); updateField("tag", ""); }}
                         className="h-7 shrink-0 px-2 text-xs text-muted-foreground"
                       >
-                        <X className="size-3" />
+                        <Icon name="x" className="size-3" />
                       </Button>
                     </div>
                   )}
@@ -473,12 +473,12 @@ export function CreateLocalDbDialog({
             >
               {isBusy ? (
                 <>
-                  <Loader2 className="size-3 animate-spin" />
+                  <Icon name="loader" className="size-3 animate-spin" />
                   {isEditMode ? "Saving…" : "Creating…"}
                 </>
               ) : isEditMode ? (
                 <>
-                  <Pencil className="size-3" />
+                  <Icon name="pencil" className="size-3" />
                   Save Changes
                 </>
               ) : (

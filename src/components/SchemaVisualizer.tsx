@@ -26,31 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table2,
-  Key,
-  Eraser,
-  Fingerprint,
-  BookOpen,
-  Link,
-  Search,
-  X,
-  ExternalLink,
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  RotateCcw,
-  LayoutGrid,
-  Maximize2,
-  Minimize2,
-  Eye,
-  EyeOff,
-  GitGraph,
-  ArrowLeftRight,
-  ArrowUpDown,
-  Layers,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import type { SchemaTableDetails, SchemaForeignKey, SchemaIndex, SchemaColumn } from "@/ipc/db/types";
 
 interface SchemaVisualizerProps {
@@ -121,21 +98,21 @@ function FlowToolbarInner() {
           title="Zoom Out"
           className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <ZoomOut className="h-3.5 w-3.5" />
+          <UiIcon name="zoom-out" className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={handleFitView}
           title="Fit View"
           className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <Maximize className="h-3.5 w-3.5" />
+          <UiIcon name="maximize" className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={handleZoomIn}
           title="Zoom In"
           className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <ZoomIn className="h-3.5 w-3.5" />
+          <UiIcon name="zoom-in" className="h-3.5 w-3.5" />
         </button>
       </div>
     </Panel>
@@ -147,11 +124,11 @@ function Legend() {
   const [isOpen, setIsOpen] = useState(false);
 
   const items = [
-    { icon: Key, label: "PK", color: "text-amber-500" },
-    { icon: Eraser, label: "Null", color: "text-slate-400" },
-    { icon: Fingerprint, label: "UQ", color: "text-emerald-500" },
-    { icon: BookOpen, label: "Def", color: "text-blue-500" },
-    { icon: Link, label: "FK", color: "text-violet-500" },
+    { icon: (props: { className?: string }) => <UiIcon name="key" {...props} />, label: "PK", color: "text-amber-500" },
+    { icon: (props: { className?: string }) => <UiIcon name="x" {...props} />, label: "Null", color: "text-slate-400" },
+    { icon: (props: { className?: string }) => <UiIcon name="fingerprint" {...props} />, label: "UQ", color: "text-emerald-500" },
+    { icon: (props: { className?: string }) => <UiIcon name="book" {...props} />, label: "Def", color: "text-blue-500" },
+    { icon: (props: { className?: string }) => <UiIcon name="link" {...props} />, label: "FK", color: "text-violet-500" },
   ];
 
   return (
@@ -162,7 +139,7 @@ function Legend() {
           className="flex h-8 w-8 items-center justify-center rounded-md bg-card border transition-colors hover:bg-muted"
           title="Legend"
         >
-          <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+          <UiIcon name="layers" className="h-3.5 w-3.5 text-muted-foreground" />
         </button>
         {isOpen && (
           <div className="rounded-lg bg-card border p-2">
@@ -264,7 +241,7 @@ function EmptyState({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 bg-background">
       <div className="rounded-2xl bg-muted/50 p-6">
-        <GitGraph className="h-12 w-12 text-muted-foreground" />
+        <UiIcon name="zap" className="h-12 w-12 text-muted-foreground" />
       </div>
       <div className="text-center">
         <p className="text-sm font-medium text-foreground">No tables to visualize</p>
@@ -274,7 +251,7 @@ function EmptyState({ onNavigate }: { onNavigate?: () => void }) {
       </div>
       {onNavigate && (
         <Button variant="outline" size="sm" onClick={onNavigate} className="gap-2">
-          <LayoutGrid className="h-4 w-4" />
+          <UiIcon name="layout-grid" className="h-4 w-4" />
           Go to Tables
         </Button>
       )}
@@ -315,7 +292,7 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
     >
       <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-2.5 py-1.5 rounded-t-lg">
         <div className="flex min-w-0 items-center gap-1.5 text-xs">
-          <Table2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <UiIcon name="table" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span
             className={cn(
               "block truncate font-medium",
@@ -332,7 +309,7 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
             className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100 -mr-1"
             onClick={() => data.onTableClick?.(data.schema, data.table)}
           >
-            <ExternalLink className="h-3 w-3" />
+            <UiIcon name="external-link" className="h-3 w-3" />
           </Button>
         )}
       </div>
@@ -361,16 +338,16 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
             >
               <div className="flex min-w-0 items-center gap-1">
                 {column.primaryKey && (
-                  <Key className="h-3 w-3 shrink-0 text-amber-500" />
+                  <UiIcon name="key" className="h-3 w-3 shrink-0 text-amber-500" />
                 )}
                 {column.unique && !column.primaryKey && (
-                  <Fingerprint className="h-3 w-3 shrink-0 text-emerald-500" />
+                  <UiIcon name="fingerprint" className="h-3 w-3 shrink-0 text-emerald-500" />
                 )}
                 {column.column_default && !column.primaryKey && !column.unique && (
-                  <BookOpen className="h-3 w-3 shrink-0 text-blue-500" />
+                  <UiIcon name="book" className="h-3 w-3 shrink-0 text-blue-500" />
                 )}
                 {column.is_nullable && (
-                  <Eraser className="h-3 w-3 shrink-0 text-slate-400" />
+                  <UiIcon name="x" className="h-3 w-3 shrink-0 text-slate-400" />
                 )}
                 <span className="truncate font-medium">{column.name}</span>
               </div>
@@ -827,14 +804,14 @@ export function SchemaVisualizer({
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <div className="flex h-8 items-center gap-2 rounded-md bg-card border px-3">
-            <GitGraph className="h-3.5 w-3.5 text-muted-foreground" />
+            <UiIcon name="zap" className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-xs font-medium">{schemaTableCount} tables</span>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <div className="relative">
             <div className="flex items-center rounded-md bg-card border">
-              <Search className="ml-3 h-3.5 w-3.5 text-muted-foreground" />
+              <UiIcon name="search" className="ml-3 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 ref={searchRef}
                 placeholder="Search..."
@@ -848,7 +825,7 @@ export function SchemaVisualizer({
                   onClick={() => setSearchQuery("")}
                   className="mr-2"
                 >
-                  <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                  <UiIcon name="x" className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                 </button>
               )}
             </div>
@@ -876,14 +853,14 @@ export function SchemaVisualizer({
             title={direction === "LR" ? "Vertical Layout" : "Horizontal Layout"}
             className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            {direction === "LR" ? <ArrowUpDown className="h-3.5 w-3.5" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+            {direction === "LR" ? <UiIcon name="arrows-up-down" className="h-3.5 w-3.5" /> : <UiIcon name="arrows-left-right" className="h-3.5 w-3.5" />}
           </button>
           <button
             onClick={toggleFullscreen}
             title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
             className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            {isFullscreen ? <UiIcon name="minimize" className="h-3.5 w-3.5" /> : <UiIcon name="maximize" className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>

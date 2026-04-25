@@ -1,7 +1,7 @@
 import type * as monaco from "monaco-editor";
-import { AlertCircle, Check, Dices, Minus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/kbd";
 import { LazyMonacoEditor } from "@/components/LazyMonacoEditor";
 import {
@@ -903,7 +903,7 @@ export function CellExpandPopover({
               }}
               title="Generate UUID v4"
             >
-              <Dices className="h-3.5 w-3.5" />
+              <Icon name="dice" className="h-3.5 w-3.5" />
               Generate
             </Button>
           </div>
@@ -1091,7 +1091,7 @@ export function CellExpandPopover({
               role="alert"
               className="mx-3 flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive"
             >
-              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              <Icon name="alert-circle" className="mt-0.5 h-3 w-3 shrink-0" />
               <span className="font-mono leading-4">{validation.message}</span>
             </div>
           )}
@@ -1119,11 +1119,11 @@ export function CellExpandPopover({
                   nullable ? "Set this value to NULL" : "Column is NOT NULL"
                 }
               >
-                <Minus className="h-3.5 w-3.5" />
+                <Icon name="minus" className="h-3.5 w-3.5" />
                 NULL
               </Button>
               <Button type="button" variant="ghost" size="sm" onClick={cancel}>
-                <X className="h-3.5 w-3.5" />
+                <Icon name="x" className="h-3.5 w-3.5" />
                 Cancel
               </Button>
               <Button
@@ -1135,7 +1135,7 @@ export function CellExpandPopover({
                   !validation.ok && hasChanges ? validation.message : undefined
                 }
               >
-                <Check className="h-3.5 w-3.5" />
+                <Icon name="check" className="h-3.5 w-3.5" />
                 Save
               </Button>
             </div>

@@ -1,20 +1,7 @@
-import {
-  Cable,
-  Check,
-  Copy,
-  Download,
-  FolderOpen,
-  Globe,
-  Pencil,
-  Play,
-  Plus,
-  Server,
-  Trash2,
-  Pause,
-} from "lucide-react";
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -102,9 +89,9 @@ function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
     case "redis":
       return <Redis className="size-4 shrink-0" />;
     case "url":
-      return <Globe className="size-4 shrink-0 text-muted-foreground/50" />;
+      return <Icon name="globe" className="size-4 shrink-0 text-muted-foreground/50" />;
     default:
-      return <Cable className="size-4 shrink-0 text-muted-foreground/50" />;
+      return <Icon name="plug-connected" className="size-4 shrink-0 text-muted-foreground/50" />;
   }
 }
 
@@ -225,9 +212,9 @@ function ConnectionCard({
               }
             >
               {isRunning ? (
-                <Pause className="size-3" />
+                <Icon name="pause" className="size-3" />
               ) : (
-                <Play className="size-3" />
+                <Icon name="play" className="size-3" />
               )}
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4}>
@@ -246,7 +233,7 @@ function ConnectionCard({
                 />
               }
             >
-              <Download className="size-3" />
+              <Icon name="download" className="size-3" />
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4}>
               Clone to local
@@ -264,9 +251,9 @@ function ConnectionCard({
             }
           >
             {copied ? (
-              <Check className="size-3 text-emerald-500" />
+              <Icon name="check" className="size-3 text-emerald-500" />
             ) : (
-              <Copy className="size-3" />
+              <Icon name="copy" className="size-3" />
             )}
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={4}>
@@ -283,7 +270,7 @@ function ConnectionCard({
               />
             }
           >
-            <Pencil className="size-3" />
+            <Icon name="pencil" className="size-3" />
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={4}>
             Edit connection
@@ -300,7 +287,7 @@ function ConnectionCard({
               />
             }
           >
-            <Trash2 className="size-3" />
+            <Icon name="trash" className="size-3" />
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={4}>
             Delete connection
@@ -336,7 +323,7 @@ function ConnectionGroup({
   onCloneToLocal,
 }: {
   label: string;
-  icon: typeof Server;
+  icon: ComponentType<{ className?: string }>;
   connections: Connection[];
   localDbById?: Record<string, LocalDbInfo>;
   onEdit: (c: Connection) => void;
@@ -400,7 +387,7 @@ export function ConnectionList({
   if (connections.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <FolderOpen className="size-5 text-muted-foreground/30 mb-3" />
+        <Icon name="folder-open" className="size-5 text-muted-foreground/30 mb-3" />
         <p className="text-sm text-muted-foreground">
           No connections yet
         </p>
@@ -408,7 +395,7 @@ export function ConnectionList({
           Add a database connection or create a local instance to get started.
         </p>
         <Button size="sm" className="h-7 text-xs gap-1" onClick={onAdd}>
-          <Plus className="size-3.5" />
+          <Icon name="plus" className="size-3.5" />
           Add Connection
         </Button>
       </div>
@@ -433,13 +420,13 @@ export function ConnectionList({
     <div className="space-y-3">
       <ConnectionGroup
         label="Local"
-        icon={Server}
+        icon={(props) => <Icon name="server" {...props} />}
         connections={localConnections}
         {...sharedProps}
       />
       <ConnectionGroup
         label="Remote"
-        icon={Globe}
+        icon={(props) => <Icon name="globe" {...props} />}
         connections={remoteConnections}
         {...sharedProps}
       />

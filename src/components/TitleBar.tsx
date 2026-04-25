@@ -1,5 +1,4 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Cable, Copy, Globe, HardDrive, Minus, Plus, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -24,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import GooeySvgFilter from "@/components/ui/gooey-svg-filter";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/kbd";
 import {
   Tooltip,
@@ -78,9 +78,9 @@ function ProviderIcon({
     case "redis":
       return <Redis className={cls} />;
     case "url":
-      return <Globe className={`${cls} text-muted-foreground/50`} />;
+      return <Icon name="globe" className={`${cls} text-muted-foreground/50`} />;
     default:
-      return <Cable className={`${cls} text-muted-foreground/50`} />;
+      return <Icon name="plug-connected" className={`${cls} text-muted-foreground/50`} />;
   }
 }
 
@@ -203,7 +203,7 @@ export function TitleBar() {
                       className="shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground hover:text-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors after:duration-150 hover:after:bg-muted/60 active:scale-[0.97] after:active:bg-muted/40"
                       aria-label="Open connections"
                     >
-                      <Plus className="h-3.5 w-3.5 -translate-y-[2px]" />
+                      <Icon name="plus" className="h-3.5 w-3.5 -translate-y-[2px]" />
                     </button>
                   }
                 />
@@ -252,7 +252,7 @@ export function TitleBar() {
                     onClick={() => handleOpenConnection(conn)}
                     className="gap-2"
                   >
-                    <HardDrive className="size-3.5 shrink-0 text-emerald-500" />
+                    <Icon name="hard-drive" className="size-3.5 shrink-0 text-emerald-500" />
                     <span className="truncate text-xs">{conn.name}</span>
                     <span
                       className={
@@ -312,7 +312,7 @@ export function TitleBar() {
             onClick={handleMinimize}
             aria-label="Minimize"
           >
-            <Minus className="h-4 w-4" />
+            <Icon name="minus" className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
@@ -322,7 +322,7 @@ export function TitleBar() {
             aria-label={isMaximized ? "Restore" : "Maximize"}
           >
             {isMaximized ? (
-              <Copy className="h-3 w-3 rotate-90" />
+              <Icon name="copy" className="h-3 w-3 rotate-90" />
             ) : (
               <span className="block h-3 w-3 border border-current" />
             )}
@@ -334,7 +334,7 @@ export function TitleBar() {
             onClick={handleClose}
             aria-label="Close"
           >
-            <X className="h-4 w-4" />
+            <Icon name="x" className="h-4 w-4" />
           </Button>
         </div>
       </div>

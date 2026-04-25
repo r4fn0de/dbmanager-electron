@@ -1,21 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Database,
-  Eye,
-  EyeOff,
-  Globe,
-  KeyRound,
-  Loader2,
-  Lock,
-  Save,
-  Server,
-  Shuffle,
-  Wifi,
-  X,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import {
   Dialog,
   DialogContent,
@@ -365,7 +350,7 @@ function DetailsFields({
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               >
-                {showPassword ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                {showPassword ? <UiIcon name="eye-off" className="size-3" /> : <UiIcon name="eye" className="size-3" />}
               </button>
             </div>
           </div>
@@ -429,7 +414,7 @@ function OrganizationFields({
             onClick={() => onUpdateField("name", generateRandomName())}
             title="Generate random name"
           >
-            <Shuffle className="size-3" />
+            <UiIcon name="shuffle" className="size-3" />
           </Button>
         </div>
       </div>
@@ -478,7 +463,7 @@ function OrganizationFields({
               onClick={() => { setUseCustomTag(false); onUpdateField("tag", ""); }}
               className="h-7 shrink-0 px-2 text-xs text-muted-foreground"
             >
-              <X className="size-3" />
+              <UiIcon name="x" className="size-3" />
             </Button>
           </div>
         )}
@@ -677,7 +662,7 @@ export function ConnectionForm({
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <Wifi className="size-3" />
+                    <UiIcon name="wifi" className="size-3" />
                     URL
                   </button>
                   <button
@@ -690,7 +675,7 @@ export function ConnectionForm({
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <Server className="size-3" />
+                    <UiIcon name="server" className="size-3" />
                     Details
                   </button>
                 </div>
@@ -726,12 +711,12 @@ export function ConnectionForm({
             <div className="text-xs">
               {hasTestedCurrent ? (
                 <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                  <CheckCircle2 className="size-3" />
+                  <UiIcon name="circle-check" className="size-3" />
                   Verified
                 </span>
               ) : testStatus && !testStatus.success ? (
                 <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400">
-                  <AlertCircle className="size-3" />
+                  <UiIcon name="alert-circle" className="size-3" />
                   {testStatus.message}
                 </span>
               ) : (
@@ -760,12 +745,12 @@ export function ConnectionForm({
                 >
                   {isSaving ? (
                     <>
-                      <Loader2 className="size-3 animate-spin" />
+                      <UiIcon name="loader" className="size-3 animate-spin" />
                       Saving
                     </>
                   ) : (
                     <>
-                      <Save className="size-3" />
+                      <UiIcon name="device-floppy" className="size-3" />
                       Save
                     </>
                   )}
@@ -780,12 +765,12 @@ export function ConnectionForm({
                 >
                   {isTesting ? (
                     <>
-                      <Loader2 className="size-3 animate-spin" />
+                      <UiIcon name="loader" className="size-3 animate-spin" />
                       Testing
                     </>
                   ) : (
                     <>
-                      <Wifi className="size-3" />
+                      <UiIcon name="wifi" className="size-3" />
                       Test
                     </>
                   )}

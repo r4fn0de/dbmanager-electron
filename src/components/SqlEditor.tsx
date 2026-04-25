@@ -1,23 +1,9 @@
-import {
-  ArrowRightCircle,
-  Bot,
-  Clock,
-  FileCode2,
-  Loader2,
-  Pencil,
-  Play,
-  Save,
-  Search,
-  Sparkles,
-  Star,
-  Trash2,
-  X,
-} from "lucide-react";
 import { useTheme } from "next-themes";
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { QueryResults } from "@/components/QueryResults";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
@@ -1193,10 +1179,10 @@ export function SqlEditor({
               {/* Title Row */}
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <FileCode2 className="size-3.5 text-muted-foreground" />
+                  <UiIcon name="file-code-2" className="size-3.5 text-muted-foreground" />
                   <span className="text-xs font-semibold tracking-tight text-foreground">Workspace</span>
                   {isExecuting ? (
-                    <Loader2 className="size-3 animate-spin text-muted-foreground" />
+                    <UiIcon name="loader" className="size-3 animate-spin text-muted-foreground" />
                   ) : (
                     savedQueries.length > 0 && (
                       <span className="text-[10px] text-muted-foreground tabular-nums">
@@ -1209,7 +1195,7 @@ export function SqlEditor({
 
               {/* Search Bar */}
               <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+                <UiIcon name="search" className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
                 <Input
                   ref={searchInputRef}
                   value={searchText}
@@ -1223,7 +1209,7 @@ export function SqlEditor({
                     className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setSearchText("")}
                   >
-                    <X className="size-3" />
+                    <UiIcon name="x" className="size-3" />
                   </button>
                 )}
               </div>
@@ -1239,11 +1225,11 @@ export function SqlEditor({
             >
               <TabsList variant="line" className="mx-3 shrink-0">
                 <TabsTrigger value="saved" className="gap-1.5 text-xs">
-                  <Star className="size-3" />
+                  <UiIcon name="star" className="size-3" />
                   Saved
                 </TabsTrigger>
                 <TabsTrigger value="history" className="gap-1.5 text-xs">
-                  <Clock className="size-3" />
+                  <UiIcon name="clock" className="size-3" />
                   History
                 </TabsTrigger>
               </TabsList>
@@ -1289,7 +1275,7 @@ export function SqlEditor({
                                     }}
                                     className="text-muted-foreground hover:text-foreground"
                                   >
-                                    <Pencil className="size-3" />
+                                    <UiIcon name="pencil" className="size-3" />
                                   </Button>
                                 }
                               />
@@ -1304,7 +1290,7 @@ export function SqlEditor({
                                     onClick={() => void deleteQuery(entry.id)}
                                     className="text-muted-foreground hover:text-destructive"
                                   >
-                                    <Trash2 className="size-3" />
+                                    <UiIcon name="trash" className="size-3" />
                                   </Button>
                                 }
                               />
@@ -1317,7 +1303,7 @@ export function SqlEditor({
 
                     {filteredSaved.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <Star className="size-4 text-muted-foreground/50 mb-2" />
+                        <UiIcon name="star" className="size-4 text-muted-foreground/50 mb-2" />
                         <p className="text-xs text-muted-foreground">
                           {searchText ? "No matches found" : "No saved queries"}
                         </p>
@@ -1381,7 +1367,7 @@ export function SqlEditor({
 
                     {filteredHistory.length === 0 && (
                       <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <Clock className="size-4 text-muted-foreground/50 mb-2" />
+                        <UiIcon name="clock" className="size-4 text-muted-foreground/50 mb-2" />
                         <p className="text-xs text-muted-foreground">
                           {searchText ? "No matches found" : "No history yet"}
                         </p>
@@ -1421,7 +1407,7 @@ export function SqlEditor({
                     onClick={() => void saveCurrentQuery()}
                     className="gap-1"
                   >
-                    <Save className="size-3" />
+                    <UiIcon name="device-floppy" className="size-3" />
                     Save
                   </Button>
                 }
@@ -1461,7 +1447,7 @@ export function SqlEditor({
                       }}
                       className={cn("gap-1", isGlobalAiChatOpen && "bg-primary/10 text-primary")}
                     >
-                      <Bot className="size-3" />
+                      <UiIcon name="bot" className="size-3" />
                       AI Chat
                     </Button>
                   }
@@ -1480,9 +1466,9 @@ export function SqlEditor({
                         className="gap-1 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
                       >
                         {isFixingSql ? (
-                          <Loader2 className="size-3 animate-spin" />
+                          <UiIcon name="loader" className="size-3 animate-spin" />
                         ) : (
-                          <Sparkles className="size-3" />
+                          <UiIcon name="sparkles" className="size-3" />
                         )}
                         Fix SQL
                       </Button>
@@ -1523,9 +1509,9 @@ export function SqlEditor({
                       className="gap-1.5"
                     >
                       {isExecuting ? (
-                        <Loader2 className="size-3.5 animate-spin" />
+                        <UiIcon name="loader" className="size-3.5 animate-spin" />
                       ) : (
-                        <Play className="size-3.5" />
+                        <UiIcon name="play" className="size-3.5" />
                       )}
                       Run
                     </Button>
@@ -1608,7 +1594,7 @@ export function SqlEditor({
                 <div className="absolute left-[44px] top-[34px] z-20 w-[min(560px,calc(100%-56px))] rounded-lg border border-border/60 bg-background/95 px-2.5 py-2 shadow-lg backdrop-blur-sm">
                   {isGeneratingInlineAi ? (
                     <div className="flex items-center gap-2 px-3 py-2">
-                      <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+                      <UiIcon name="loader" className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
                       <span className="flex-1 truncate text-xs text-muted-foreground">
                         Generating…
                       </span>
@@ -1657,7 +1643,7 @@ export function SqlEditor({
                         onClick={() => void handleGenerateSqlInline()}
                         disabled={!inlineAiPrompt.trim()}
                       >
-                        <ArrowRightCircle className="size-3.5" />
+                        <UiIcon name="arrow-right-circle" className="size-3.5" />
                       </Button>
                       <Button
                         type="button"
@@ -1668,7 +1654,7 @@ export function SqlEditor({
                           setInlineAiPrompt("");
                         }}
                       >
-                        <X className="size-3.5" />
+                        <UiIcon name="x" className="size-3.5" />
                       </Button>
                     </div>
                   )}

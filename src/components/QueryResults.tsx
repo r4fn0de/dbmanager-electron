@@ -1,12 +1,6 @@
-import {
-  Copy,
-  Download,
-  Expand,
-  Terminal,
-  X,
-} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -124,7 +118,7 @@ function CellExpandDialog({
             className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 hover:text-foreground relative z-[2]"
             title="Expand cell"
           >
-            <Expand className="size-3" />
+            <Icon name="arrows-maximize" className="size-3" />
           </button>
         )}
       />
@@ -150,14 +144,14 @@ function CellExpandDialog({
               onClick={() => copyToClipboard(text)}
               title="Copy value"
             >
-              <Copy className="size-3" />
+              <Icon name="copy" className="size-3" />
             </Button>
             <Button
               variant="ghost"
               size="icon-xs"
               onClick={() => setOpen(false)}
             >
-              <X className="size-3" />
+              <Icon name="x" className="size-3" />
             </Button>
           </div>
         </div>
@@ -202,7 +196,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
     return (
       <div className="h-full min-h-0 border-l-2 border-destructive/50 bg-destructive/5 px-3 py-2">
         <div className="flex items-center gap-2">
-          <X className="size-3.5 text-destructive shrink-0" />
+          <Icon name="x" className="size-3.5 text-destructive shrink-0" />
           <code className="font-mono text-xs text-destructive/90 leading-5 break-all">
             {error}
           </code>
@@ -220,7 +214,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
   if (!result) {
     return (
       <div className="h-full min-h-0 flex flex-col items-center justify-center py-12 text-muted-foreground/60">
-        <Terminal className="size-5 mb-2 text-muted-foreground/40" />
+        <Icon name="terminal" className="size-5 mb-2 text-muted-foreground/40" />
         <p className="text-xs">No results yet</p>
       </div>
     );
@@ -284,7 +278,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
             onClick={() => exportAsCsv(result)}
             title="Export as CSV"
           >
-            <Download className="size-3" />
+            <Icon name="download" className="size-3" />
             CSV
           </Button>
           <Button
@@ -293,7 +287,7 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
             onClick={() => exportAsJson(result)}
             title="Export as JSON"
           >
-            <Download className="size-3" />
+            <Icon name="download" className="size-3" />
             JSON
           </Button>
         </div>

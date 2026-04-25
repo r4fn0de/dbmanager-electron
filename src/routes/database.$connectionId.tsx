@@ -1,15 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  Database,
-  Loader2,
-  Pause,
-  Play,
-} from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { Suspense, lazy, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -925,7 +920,7 @@ export function DatabasePageContent({
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 bg-background">
         <div className="mx-auto w-fit rounded-full bg-muted/40 p-3 mb-4">
-          <Database className="h-5 w-5 text-muted-foreground/50" />
+          <Icon name="database" className="h-5 w-5 text-muted-foreground/50" />
         </div>
         <h2 className="text-lg font-semibold mb-2">Connection not found</h2>
         <p className="text-muted-foreground mb-4 text-sm">
@@ -948,7 +943,7 @@ export function DatabasePageContent({
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 bg-background">
         <div className="mx-auto w-fit rounded-full bg-muted/40 p-3 mb-4">
-          <Pause className="h-5 w-5 text-muted-foreground/50" />
+          <Icon name="pause" className="h-5 w-5 text-muted-foreground/50" />
         </div>
         <h2 className="text-lg font-semibold mb-2">{connection.name}</h2>
         <p className="text-muted-foreground mb-6 text-center max-w-md text-sm">
@@ -957,9 +952,9 @@ export function DatabasePageContent({
         <div className="flex items-center gap-2">
           <Button onClick={handleStartLocalDb} disabled={isTogglingLocalDb}>
             {isTogglingLocalDb ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Icon name="loader" className="h-4 w-4 mr-2 animate-spin" />
             ) : (
-              <Play className="h-4 w-4 mr-2" />
+              <Icon name="play" className="h-4 w-4 mr-2" />
             )}
             Start local database
           </Button>
@@ -1055,7 +1050,7 @@ export function DatabasePageContent({
                       <div className="h-full flex items-center justify-center p-8">
                         <div className="text-center space-y-3">
                           <div className="mx-auto w-fit rounded-full bg-muted/40 p-3">
-                            <Database className="h-5 w-5 text-muted-foreground/50" />
+                            <Icon name="database" className="h-5 w-5 text-muted-foreground/50" />
                           </div>
                           <div>
                             <p className="text-sm font-medium text-muted-foreground">
@@ -1074,7 +1069,7 @@ export function DatabasePageContent({
                               onClick={toggleSidebar}
                               className="mt-1"
                             >
-                              <Database className="h-3.5 w-3.5 mr-1.5" />
+                              <Icon name="database" className="h-3.5 w-3.5 mr-1.5" />
                               Show explorer
                             </Button>
                           )}
@@ -1089,7 +1084,7 @@ export function DatabasePageContent({
                         <div className="flex items-center gap-3 text-muted-foreground">
                           {isLoadingTableDetails ? (
                             <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Icon name="loader" className="h-4 w-4 animate-spin" />
                               <span className="text-sm">
                                 Loading {selectedTableRef?.schema}.{selectedTable}…
                               </span>
@@ -1171,7 +1166,7 @@ export function DatabasePageContent({
             </ResizablePanelGroup>
           )}
           {isSqlEditorSection && (
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /></div>}>
               <SqlEditor
                 key={connectionId}
                 connections={connections}
@@ -1220,11 +1215,11 @@ export function DatabasePageContent({
             />
           )}
           {isVisualizerSection && (
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading schema...</span></div>}>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading schema...</span></div>}>
               <div className="flex-1 min-w-0 min-h-0">
                 {isLoadingVisualizer ? (
                   <div className="flex h-full items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" />
                     <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
                   </div>
                 ) : visualizerTables.length === 0 ? (
@@ -1250,7 +1245,7 @@ export function DatabasePageContent({
             </Suspense>
           )}
           {isDefinitionsSection && (
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading definitions...</span></div>}>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading definitions...</span></div>}>
               <DefinitionsBrowserPanel
                 connectionId={connectionId}
                 dbType={connection.db_type || "postgresql"}
