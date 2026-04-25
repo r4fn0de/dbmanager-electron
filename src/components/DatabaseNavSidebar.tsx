@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ChevronLeft, Braces, Key } from "lucide-react";
+import { ChevronLeft, Key } from "lucide-react";
+import { Braces } from "@/components/icons/Braces";
 import { Database } from "@/components/icons/Database";
 import { Table } from "@/components/icons/Table";
 import { Terminal } from "@/components/icons/Terminal";
