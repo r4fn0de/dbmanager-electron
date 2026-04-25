@@ -88,6 +88,7 @@ import {
   IconUser,
   IconWand,
   IconWifi,
+  IconWorld,
   IconX,
   IconZoomIn,
   IconZoomOut,
@@ -186,6 +187,7 @@ export type IconName =
   | "user"
   | "wand"
   | "wifi"
+  | "world"
   | "undo"
   | "x"
   | "x-circle"
@@ -235,6 +237,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   fingerprint: IconFingerprint,
   "folder-open": IconFolderOpen,
   globe: IconGlobe,
+  world: IconWorld,
   "hard-drive": IconDatabase,
   home: IconHome,
   info: IconInfoCircle,

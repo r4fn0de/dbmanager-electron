@@ -10,10 +10,13 @@ import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Redis } from "@/components/icons/Redis";
+import { PostgreSql } from "@/components/icons/PostgreSql";
+import { Sqlite } from "@/components/icons/Sqlite";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useConnectionsList } from "@/hooks/useConnectionsList";
+import { useLocalDatabases } from "@/hooks/useLocalDatabases";
 import {
   detectConnectionProvider,
   useConnectionTabsStore,
@@ -28,6 +31,8 @@ interface ConnectionTabsProps {
 export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const { tabs, activeTabId, removeTab, setActiveTab, reorderTabsByIds } =
     useConnectionTabsStore();
+  const { connections } = useConnectionsList();
+  const { databases: localDatabases } = useLocalDatabases();
   const suppressClickRef = useRef(false);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLUListElement | null>(null);
@@ -199,6 +204,14 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
 
   if (tabs.length === 0) return null;
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+  const connectionsById = useMemo(
+    () => new Map(connections.map((connection) => [connection.id, connection])),
+    [connections],
+  );
+  const localDbsById = useMemo(
+    () => new Map(localDatabases.map((localDb) => [localDb.id, localDb])),
+    [localDatabases],
+  );
   const handleReorder = useCallback(
     (nextOrder: string[]) => {
       reorderTabsByIds(nextOrder);
@@ -225,6 +238,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
       {tabs.map((tab) => {
         const isActive = tab.id === effectiveActiveId;
         const colorDot = tab.color || (tab.isLocal ? "#22c55e" : undefined);
+        const localDbType =
+          localDbsById.get(tab.id)?.engine
+          ?? (connectionsById.get(tab.id)?.db_type === "sqlite" ? "sqlite" : "postgresql");
+        const LocalDbTypeIcon = localDbType === "sqlite" ? Sqlite : PostgreSql;
         const shouldUseSidebarTint = isActive && activeTabOverlapsSidebar && !!tab.chrome;
         const activeChromeClass =
           shouldUseSidebarTint && tab.chrome === "tables-sidebar"
@@ -319,7 +336,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               ) : tab.provider === "redis" ? (
                 <Redis className="size-3.5 shrink-0" />
               ) : tab.isLocal ? (
-                <Icon name="hard-drive" className="size-3 shrink-0 text-emerald-500" />
+                <LocalDbTypeIcon className="size-3.5 shrink-0" />
               ) : colorDot ? (
                 <span
                   className="size-2 rounded-full shrink-0"

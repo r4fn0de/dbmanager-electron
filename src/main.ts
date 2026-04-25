@@ -13,8 +13,51 @@ import { APP_DISPLAY_NAME } from "./appBranding";
 import { configurePrivateUpdates } from "@/updater/private-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
+const SHUTDOWN_TIMEOUT_MS = 5000;
 
 let splashWindow: BrowserWindow | null = null;
+let isShutdownInProgress = false;
+let hasRunSyncShutdown = false;
+
+async function runAsyncShutdown(reason: string): Promise<void> {
+  console.log(`[shutdown] Starting async shutdown (${reason})...`);
+  const startTime = Date.now();
+
+  try {
+    await Promise.race([
+      localDbManager.stopAll(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("stopAll timeout")), SHUTDOWN_TIMEOUT_MS);
+      }),
+    ]);
+    console.log(`[shutdown] localDbManager.stopAll completed in ${Date.now() - startTime}ms`);
+  } catch (error) {
+    console.error("[shutdown] localDbManager.stopAll failed:", error);
+  }
+
+  try {
+    await Promise.race([
+      closeAllPools(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("closeAllPools timeout")), SHUTDOWN_TIMEOUT_MS);
+      }),
+    ]);
+    console.log(`[shutdown] closeAllPools completed in ${Date.now() - startTime}ms`);
+  } catch (error) {
+    console.error("[shutdown] closeAllPools failed:", error);
+  }
+}
+
+function runSyncShutdown(reason: string): void {
+  if (hasRunSyncShutdown) return;
+  hasRunSyncShutdown = true;
+  console.log(`[shutdown] Running sync shutdown (${reason})...`);
+
+  localDbManager.stopAllSync();
+  closeAllPools().catch((error) => {
+    console.error("[shutdown] closeAllPools failed during sync shutdown:", error);
+  });
+}
 
 function createSplashWindow(): BrowserWindow | null {
   try {
@@ -590,11 +633,21 @@ app.whenReady().then(async () => {
 });
 
 // Stop all local DB instances and close database pools on quit
-// (sync — Electron won't await async handlers)
+// Prefer async cleanup in before-quit; keep will-quit as a final sync fallback.
+app.on("before-quit", (event) => {
+  if (isShutdownInProgress) return;
+
+  event.preventDefault();
+  isShutdownInProgress = true;
+
+  void (async () => {
+    await runAsyncShutdown("before-quit");
+    app.quit();
+  })();
+});
+
 app.on("will-quit", () => {
-  localDbManager.stopAllSync();
-  // Close all memoized database pools (pg, mysql, clickhouse)
-  closeAllPools().catch(() => {});
+  runSyncShutdown("will-quit");
 });
 
 //osX only
@@ -610,3 +663,10 @@ app.on("activate", () => {
   }
 });
 //osX only ends
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    runSyncShutdown(`signal:${signal}`);
+    app.exit(0);
+  });
+}

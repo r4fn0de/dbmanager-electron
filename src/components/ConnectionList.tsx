@@ -13,6 +13,8 @@ import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Redis } from "@/components/icons/Redis";
+import { PostgreSql } from "@/components/icons/PostgreSql";
+import { Sqlite } from "@/components/icons/Sqlite";
 import { cn } from "@/utils/tailwind";
 import type { Connection, LocalDbInfo } from "@/ipc/db/types";
 import { getClickhouseEffectivePort } from "@/ipc/db/types";
@@ -89,7 +91,7 @@ function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
     case "redis":
       return <Redis className="size-4 shrink-0" />;
     case "url":
-      return <Icon name="globe" className="size-4 shrink-0 text-muted-foreground/50" />;
+      return <Icon name="world" className="size-4 shrink-0 text-muted-foreground/50" />;
     default:
       return <Icon name="plug-connected" className="size-4 shrink-0 text-muted-foreground/50" />;
   }
@@ -124,6 +126,9 @@ function ConnectionCard({
   const [isTogglingState, setIsTogglingState] = useState(false);
   const isStatusKnown = Boolean(localDbInfo);
   const isRunning = localDbInfo?.running ?? false;
+  const localEngine =
+    localDbInfo?.engine ?? (connection.db_type === "sqlite" ? "sqlite" : "postgresql");
+  const LocalDbTypeIcon = localEngine === "sqlite" ? Sqlite : PostgreSql;
 
   const handleCopy = async () => {
     try {
@@ -158,7 +163,11 @@ function ConnectionCard({
         onClick={() => onSelect(connection)}
       >
         <div className="flex items-center gap-2">
-          <ProviderIcon provider={provider} />
+          {isLocal ? (
+            <LocalDbTypeIcon className="size-4 shrink-0" />
+          ) : (
+            <ProviderIcon provider={provider} />
+          )}
           <span className="font-medium text-sm truncate">
             {connection.name}
           </span>

@@ -25,6 +25,7 @@ import {
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
 import { useConnectionsList } from "@/hooks/useConnectionsList";
+import { useLocalDatabases } from "@/hooks/useLocalDatabases";
 import { cn } from "@/utils/tailwind";
 import type { DatabaseType } from "@/ipc/db/types";
 
@@ -56,6 +57,11 @@ function Root() {
 
   // Get connections list to find connection details
   const { connections } = useConnectionsList();
+  const { databases: localDatabases } = useLocalDatabases();
+  const localDbById = useMemo(
+    () => new Map(localDatabases.map((db) => [db.id, db])),
+    [localDatabases],
+  );
 
   const isAiChatOpen = useAiChatGlobalStore((state) => state.isOpen);
   const aiPanelSize = useAiChatGlobalStore((state) => state.panelSize);
@@ -72,12 +78,14 @@ function Root() {
     if (activeConnection) {
       const provider = detectConnectionProvider(activeConnection);
       const isLocal = activeConnection.is_local ?? isLocalHost(activeConnection.host);
+      const localEngine = isLocal ? localDbById.get(activeConnection.id)?.engine : undefined;
+      const effectiveDbType = (localEngine ?? activeConnection.db_type ?? "postgresql") as DatabaseType;
       return {
         connectionId: activeConnection.id,
         connectionLabel: activeConnection.name?.trim()
           || activeConnection.database?.trim()
           || activeConnection.id,
-        dbType: (activeConnection.db_type || "postgresql") as DatabaseType,
+        dbType: effectiveDbType,
         provider,
         // Use store's schemaContext if available for the same connection, otherwise undefined
         schemaContext: storeContext.connectionId === activeConnection.id
@@ -94,7 +102,7 @@ function Root() {
           connectionLabel: activeConnection.name?.trim()
             || activeConnection.database?.trim()
             || activeConnection.id,
-          dbType: (activeConnection.db_type || "postgresql") as DatabaseType,
+          dbType: effectiveDbType,
           selectionPreview: storeContext.connectionId === activeConnection.id
             ? storeContext.contextPreview?.selectionPreview
             : undefined,
@@ -114,7 +122,7 @@ function Root() {
       connectionInfo: undefined,
       contextPreview: storeContext.contextPreview,
     };
-  }, [activeConnection, storeContext]);
+  }, [activeConnection, localDbById, storeContext]);
 
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const aiPanelRef = useRef<PanelImperativeHandle>(null);
