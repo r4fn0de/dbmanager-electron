@@ -13,7 +13,7 @@ import { Sqlite } from "@/components/icons/Sqlite";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Redis } from "@/components/icons/Redis";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Conversation,
   ConversationContent,
@@ -881,7 +881,6 @@ export function AiChatPanel({
     selection: boolean;
     error: boolean;
   }>({ selection: false, error: false });
-  const [isTitleMorphing, setIsTitleMorphing] = useState(false);
   const [exitingContext, setExitingContext] = useState<{
     selection: boolean;
     error: boolean;
@@ -894,8 +893,6 @@ export function AiChatPanel({
     selection?: ReturnType<typeof setTimeout>;
     error?: ReturnType<typeof setTimeout>;
   }>({});
-  const titleMorphTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previousTitleRef = useRef<string | null>(null);
 
   // Focus input when panel opens
   useEffect(() => {
@@ -944,30 +941,8 @@ export function AiChatPanel({
       if (contextDismissTimeoutsRef.current.error) {
         clearTimeout(contextDismissTimeoutsRef.current.error);
       }
-      if (titleMorphTimeoutRef.current) {
-        clearTimeout(titleMorphTimeoutRef.current);
-      }
     };
   }, []);
-
-  useEffect(() => {
-    const currentTitle =
-      conversations.find((conversation) => conversation.id === activeConversationId)?.title
-      ?? null;
-    const previousTitle = previousTitleRef.current;
-    previousTitleRef.current = currentTitle;
-
-    if (!currentTitle || !previousTitle || currentTitle === previousTitle) return;
-
-    setIsTitleMorphing(true);
-    if (titleMorphTimeoutRef.current) {
-      clearTimeout(titleMorphTimeoutRef.current);
-    }
-    titleMorphTimeoutRef.current = setTimeout(() => {
-      setIsTitleMorphing(false);
-      titleMorphTimeoutRef.current = null;
-    }, 220);
-  }, [activeConversationId, conversations]);
 
   const showSelectionContextChip = Boolean(
     contextPreview?.selectionPreview && !dismissedContext.selection,
@@ -1098,12 +1073,7 @@ export function AiChatPanel({
                   className="h-7 min-w-0 flex-1 justify-start px-2 text-xs font-semibold tracking-tight max-w-[140px] xs:max-w-[180px] sm:max-w-[210px]"
                 >
                   <span
-                    key={`${activeConversation?.id ?? "none"}:${activeConversation?.title ?? "AI Chat"}`}
-                    className={cn(
-                      "truncate transition-[filter,opacity,transform] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
-                      "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-180",
-                      isTitleMorphing && "opacity-80 blur-[1.5px] -translate-y-0.5",
-                    )}
+                    className="truncate"
                   >
                     {activeConversation?.title ?? "AI Chat"}
                   </span>
@@ -1337,23 +1307,28 @@ export function AiChatPanel({
             transition-[background,border-color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
           "
         >
-          {contextPreview && (showSelectionContextChip || showErrorContextChip) && (
-            <div className="mb-2 flex flex-wrap gap-1.5">
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            <AnimatePresence>
               {showSelectionContextChip && (
-                <div
-                  className={cn(
-                    "group/ctx relative inline-flex w-[182px] max-w-full min-h-[52px] cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5",
-                    "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150 motion-safe:ease-out",
-                    "transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
-                    exitingContext.selection && "-translate-y-1 scale-[0.98] opacity-0",
-                  )}
+                <motion.div
+                  key="selection-context"
+                  initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.94, y: -4 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 28,
+                    bounce: 0.1,
+                  }}
+                  className="group/ctx relative inline-flex w-[182px] max-w-full min-h-[52px] cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5"
                 >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
                     AI
                   </span>
                   <div className="min-w-0 overflow-hidden">
                     <p className="truncate text-[12px] font-medium text-foreground">
-                      {contextPreview.selectionPreview}
+                      {contextPreview?.selectionPreview}
                     </p>
                     <p className="text-[11px] text-muted-foreground">Selected Text</p>
                   </div>
@@ -1365,21 +1340,28 @@ export function AiChatPanel({
                   >
                     <UiIcon name="x" className="size-3" />
                   </button>
-                </div>
+                </motion.div>
               )}
+            </AnimatePresence>
+            <AnimatePresence>
               {showErrorContextChip && (
-                <div
-                  className={cn(
-                    "group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1",
-                    "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150 motion-safe:ease-out",
-                    "transition-all duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]",
-                    exitingContext.error && "-translate-y-1 scale-[0.98] opacity-0",
-                  )}
+                <motion.div
+                  key="error-context"
+                  initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.94, y: -4 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 28,
+                    bounce: 0.1,
+                  }}
+                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1"
                 >
                   <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="min-w-0">
                     <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
-                      {contextPreview.errorPreview}
+                      {contextPreview?.errorPreview}
                     </p>
                     <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80">Last Error</p>
                   </div>
@@ -1391,10 +1373,10 @@ export function AiChatPanel({
                   >
                     <UiIcon name="x" className="size-3" />
                   </button>
-                </div>
+                </motion.div>
               )}
-            </div>
-          )}
+            </AnimatePresence>
+          </div>
           <PromptInputTextarea
             ref={inputRef}
             placeholder={

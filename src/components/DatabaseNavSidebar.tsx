@@ -8,7 +8,8 @@ import { Terminal } from "@/components/icons/Terminal";
 import { Branch } from "@/components/icons/Branch";
 import { Refresh } from "@/components/icons/Refresh";
 import { Copy } from "@/components/icons/Copy";
-import { Server } from "@/components/icons/Server";
+import { PostgreSql } from "@/components/icons/PostgreSql";
+import { Sqlite } from "@/components/icons/Sqlite";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
@@ -62,14 +63,17 @@ function getNavItems(dbType?: string): NavItem[] {
   return SQL_NAV_ITEMS;
 }
 
-function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; isLocal?: boolean }) {
+function ProviderIcon({ provider, isLocal, localEngine }: { provider?: ConnectionProvider; isLocal?: boolean; localEngine?: string }) {
   if (provider === "neon") return <Neon className="size-[18px]" />;
   if (provider === "supabase") return <Supabase className="size-[18px]" />;
   if (provider === "mysql") return <MySql className="size-[18px]" />;
   if (provider === "mariadb") return <MySql className="size-[18px]" />;
   if (provider === "clickhouse") return <ClickHouse className="size-[18px]" />;
   if (provider === "redis") return <Redis className="size-[18px]" />;
-  if (isLocal) return <Server className="size-[18px] text-emerald-500" />;
+  if (isLocal) {
+    if (localEngine === "sqlite") return <Sqlite className="size-[18px]" />;
+    return <PostgreSql className="size-[18px]" />;
+  }
   return <Database className="size-[18px] text-foreground/60" />;
 }
 
@@ -111,7 +115,7 @@ export function DatabaseNavSidebar({
                     style={{ borderColor: colorDot }}
                   />
                 )}
-                <ProviderIcon provider={provider} isLocal={connection.is_local} />
+                <ProviderIcon provider={provider} isLocal={connection.is_local} localEngine={connection.db_type === "sqlite" ? "sqlite" : "postgresql"} />
               </button>
             }
           />
@@ -132,44 +136,64 @@ export function DatabaseNavSidebar({
       <div className="w-6 h-px bg-border/30 my-1" />
 
       {/* ── Navigation ─────────────────────────────────────── */}
-      <nav className="flex flex-col items-center gap-0.5 px-1.5">
-        {getNavItems(connection.db_type).map(({ section, icon: Icon, label, shortcut }) => {
+      <motion.nav
+        className="flex flex-col items-center gap-0.5 px-1.5"
+        initial="hidden"
+        animate="visible"
+      >
+        {getNavItems(connection.db_type).map(({ section, icon: Icon, label, shortcut }, index) => {
           const isActive = activeSection === section;
           return (
-            <Tooltip key={section}>
-              <TooltipTrigger
-                render={
-                  <motion.button
-                    type="button"
-                    onClick={() => onSectionChange(section)}
-                    className={cn(
-                      "group relative flex size-9 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 transition-colors duration-150",
-                      isActive
-                        ? "bg-foreground/20"
-                        : "hover:bg-foreground/15"
-                    )}
-                    whileTap={{ scale: 0.95 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  >
-                    <Icon
+            <motion.div
+              key={section}
+              variants={{
+                hidden: { opacity: 0, scale: 0.9 },
+                visible: {
+                  opacity: 1,
+                  scale: 1,
+                  transition: {
+                    delay: index * 0.05,
+                    duration: 0.2,
+                    ease: [0.23, 1, 0.32, 1],
+                  },
+                },
+              }}
+            >
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <motion.button
+                      type="button"
+                      onClick={() => onSectionChange(section)}
                       className={cn(
-                        "size-[18px] transition-colors duration-150",
-                        isActive ? "text-foreground" : "text-foreground/60"
+                        "group relative flex size-9 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 transition-colors duration-150",
+                        isActive
+                          ? "bg-foreground/20"
+                          : "hover:bg-foreground/15"
                       )}
-                    />
-                  </motion.button>
-                }
-              />
-              <TooltipContent side="right" sideOffset={8}>
-                <span className="flex items-center gap-2">
-                  {label}
-                  <Kbd>{shortcut}</Kbd>
-                </span>
-              </TooltipContent>
-            </Tooltip>
+                      whileTap={{ scale: 0.95 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    >
+                      <Icon
+                        className={cn(
+                          "size-[18px] transition-colors duration-150",
+                          isActive ? "text-foreground" : "text-foreground/60"
+                        )}
+                      />
+                    </motion.button>
+                  }
+                />
+                <TooltipContent side="right" sideOffset={8}>
+                  <span className="flex items-center gap-2">
+                    {label}
+                    <Kbd>{shortcut}</Kbd>
+                  </span>
+                </TooltipContent>
+              </Tooltip>
+            </motion.div>
           );
         })}
-      </nav>
+      </motion.nav>
 
       {/* Spacer */}
       <div className="flex-1" />
