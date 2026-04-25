@@ -328,6 +328,18 @@ function toChatToolPart(invocation: ToolCallLike): ChatToolPart {
   };
 }
 
+/**
+ * Deterministic hash to show feedback for ~25% of messages.
+ * Same message ID always produces same result (consistent for user).
+ */
+function shouldShowFeedback(messageId: string): boolean {
+  let hash = 0;
+  for (let i = 0; i < messageId.length; i++) {
+    hash = ((hash << 5) - hash + messageId.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 4 === 0; // 25% chance (1 in 4)
+}
+
 /** Shared typography className for assistant prose content. */
 const ASSISTANT_PROSE_CLASS =
   "!w-full !max-w-none !bg-transparent !p-0 text-[14.5px] leading-7 break-words text-zinc-800 dark:text-zinc-200 [&_a]:font-medium [&_a]:text-primary [&_a]:underline-offset-4 [&_a]:hover:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_hr]:border-muted-foreground/20 [&_hr]:my-4 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-7 [&_p+p]:mt-3 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
@@ -336,11 +348,17 @@ function AiMessageFeedback({
   message,
   connectionId,
   conversationId,
+  showFeedback,
 }: {
   message: AiChatMessage;
   connectionId: string | null;
   conversationId: string;
+  showFeedback: boolean;
 }) {
+  // Only show feedback for ~25% of messages (deterministic based on message ID)
+  if (!showFeedback) {
+    return null;
+  }
   const dismissStorageKey = `ai-feedback-dismissed:${conversationId}:${message.id}`;
   const [isDismissed, setIsDismissed] = useState(() => {
     try {
@@ -699,12 +717,13 @@ function ChatMessage({
             </MessageToolbar>
           )}
 
-          {/* Feedback buttons for completed assistant messages */}
+          {/* Feedback buttons for completed assistant messages — show only ~25% of the time */}
           {!message.isStreaming && message.role === "assistant" && !isUser && (
             <AiMessageFeedback
               message={message}
               connectionId={connectionId}
               conversationId={conversationId}
+              showFeedback={shouldShowFeedback(message.id)}
             />
           )}
 

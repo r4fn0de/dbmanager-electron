@@ -533,10 +533,36 @@ export function createPostgresDriver(): DatabaseDriver {
            ORDER BY t.typname`,
           [schema],
         );
+
+        // Parse PostgreSQL array_agg result — may come as a string like "{val1,val2}"
+        // or as an actual array depending on pg driver version/settings
+        const parsePgArray = (val: unknown): string[] => {
+          if (Array.isArray(val)) return val.map(String);
+          if (typeof val === "string") {
+            // PostgreSQL arrays are formatted as {val1,val2,...}
+            // Strip braces and split by comma, handling quoted values
+            const inner = val.replace(/^\{|\}$/g, "");
+            if (!inner) return [];
+            // Handle quoted values (e.g., {"value with space"})
+            const match = inner.match(/("[^"]+"|'[^']+'|[^,]+)/g);
+            if (!match) return [];
+            return match.map((v) => {
+              const trimmed = v.trim();
+              // Remove surrounding quotes if present
+              if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+                  (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+                return trimmed.slice(1, -1);
+              }
+              return trimmed;
+            });
+          }
+          return [];
+        };
+
         return result.rows.map((row: Record<string, unknown>) => ({
           name: String(row.name),
           schema: String(row.schema),
-          values: (row.values as string[]) ?? [],
+          values: parsePgArray(row.values),
         }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
