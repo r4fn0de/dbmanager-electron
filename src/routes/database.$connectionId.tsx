@@ -923,10 +923,12 @@ export function DatabasePageContent({
 
   if (!connection) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8">
-        <Database className="h-12 w-12 text-muted-foreground mb-4" />
+      <div className="h-full flex flex-col items-center justify-center p-8 bg-background">
+        <div className="mx-auto w-fit rounded-full bg-muted/40 p-3 mb-4">
+          <Database className="h-5 w-5 text-muted-foreground/50" />
+        </div>
         <h2 className="text-lg font-semibold mb-2">Connection not found</h2>
-        <p className="text-muted-foreground mb-4">
+        <p className="text-muted-foreground mb-4 text-sm">
           The connection you are looking for does not exist.
         </p>
         <Button onClick={() => navigate({ to: "/" })}>
@@ -944,11 +946,13 @@ export function DatabasePageContent({
 
   if (isLocalConnectionStopped) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8">
-        <Database className="h-12 w-12 text-muted-foreground mb-4" />
-        <h2 className="text-lg font-semibold mb-2">Local database is paused</h2>
-        <p className="text-muted-foreground mb-6 text-center max-w-md">
-          Start this local database before accessing tables, schema, and queries.
+      <div className="h-full flex flex-col items-center justify-center p-8 bg-background">
+        <div className="mx-auto w-fit rounded-full bg-muted/40 p-3 mb-4">
+          <Pause className="h-5 w-5 text-muted-foreground/50" />
+        </div>
+        <h2 className="text-lg font-semibold mb-2">{connection.name}</h2>
+        <p className="text-muted-foreground mb-6 text-center max-w-md text-sm">
+          This local database is paused. Start it before accessing tables, schema, and queries.
         </p>
         <div className="flex items-center gap-2">
           <Button onClick={handleStartLocalDb} disabled={isTogglingLocalDb}>
