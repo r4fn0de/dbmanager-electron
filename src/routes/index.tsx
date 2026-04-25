@@ -22,17 +22,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
-import { ConnectionForm } from "@/components/ConnectionForm";
-import { ConnectionList } from "@/components/ConnectionList";
+import { ConnectionForm, ConnectionList, useConnectionsList } from "@/features/connection";
 import {
   CreateLocalDbDialog,
   type CreateLocalDbInput,
-} from "@/components/CreateLocalDbDialog";
-import { CloneToLocalDialog } from "@/components/CloneToLocalDialog";
-import { useConnectionsList } from "@/hooks/useConnectionsList";
-import { testConnection } from "@/hooks/db-actions";
-import { useLocalDatabases } from "@/hooks/useLocalDatabases";
-import { useCloneToLocal } from "@/hooks/useCloneToLocal";
+} from "@/features/localDb";
+import { CloneToLocalDialog } from "@/features/localDb";
+import { testConnection } from "@/features/database/hooks/db-actions";
+import { useLocalDatabases } from "@/features/localDb";
+import { useCloneToLocal } from "@/features/localDb";
 import type { TableRowCount } from "@/ipc/db/types";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";

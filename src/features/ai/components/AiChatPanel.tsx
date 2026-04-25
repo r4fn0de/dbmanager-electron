@@ -19,12 +19,12 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
+} from "./ai-elements/conversation";
 import {
   Reasoning,
   ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
-import { Shimmer } from "@/components/ai-elements/shimmer";
+} from "./ai-elements/reasoning";
+import { Shimmer } from "./ai-elements/shimmer";
 import { useTheme } from "next-themes";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { StickToBottomContext } from "use-stick-to-bottom";
@@ -44,7 +44,7 @@ import {
   MessageContent,
   MessageResponse,
   MessageToolbar,
-} from "@/components/ai-elements/message";
+} from "./ai-elements/message";
 import {
   PromptInput,
   PromptInputActions,
@@ -55,11 +55,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAiChat, type AiChatMessage, type TextPart, type ToolInvocationPart } from "@/hooks/useAiChat";
-import { useMessageFeedback } from "@/hooks/useAiFeedback";
+import { useAiChat, type AiChatMessage, type TextPart, type ToolInvocationPart } from "../hooks/useAiChat";
+import { useMessageFeedback } from "../hooks/useAiFeedback";
 import { FeedbackBar } from "@/components/ui/feedback-bar";
-import { ChatTool, type ChatToolPart } from "@/components/ai-elements/tool";
-import { ChatTable } from "@/components/ai-elements/chat-table";
+import { ChatTool, type ChatToolPart } from "./ai-elements/tool";
+import { ChatTable } from "./ai-elements/chat-table";
 import { cn } from "@/lib/utils";
 import type { DatabaseType } from "@/ipc/db/types";
 

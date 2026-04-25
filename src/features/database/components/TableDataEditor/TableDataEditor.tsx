@@ -12,9 +12,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { setUnsavedChanges as setWindowUnsavedChanges } from "@/actions/window";
+import { setUnsavedChanges as setWindowUnsavedChanges } from "@/features/shell/actions/window";
 import { Icon as UiIcon } from "@/components/ui/Icon";
-import { CellExpandPopover } from "@/components/CellExpandPopover";
+import { CellExpandPopover } from "../CellExpandPopover";
 import {
   AlertDialog,
   AlertDialogAction,

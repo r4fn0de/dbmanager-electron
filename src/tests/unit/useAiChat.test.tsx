@@ -1,9 +1,9 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useAiChat } from "@/hooks/useAiChat";
+import { useAiChat } from "@/features/ai/hooks/useAiChat";
 
-vi.mock("@/hooks/ai-actions", () => ({
+vi.mock("@/features/ai/hooks/ai-actions", () => ({
   generateTitle: vi.fn().mockResolvedValue({ title: "Generated Chat Title" }),
 }));
 

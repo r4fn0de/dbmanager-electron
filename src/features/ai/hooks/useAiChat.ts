@@ -4,7 +4,7 @@
  * Global chat state with persistent multi-conversation history.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { generateTitle } from "@/hooks/ai-actions";
+import { generateTitle } from "./ai-actions";
 import type { DatabaseType } from "@/ipc/db/types";
 
 export interface AiChatContextTag {

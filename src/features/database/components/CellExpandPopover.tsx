@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/kbd";
-import { LazyMonacoEditor } from "@/components/LazyMonacoEditor";
+import { LazyMonacoEditor } from "./LazyMonacoEditor";
 import {
   Popover,
   PopoverContent,

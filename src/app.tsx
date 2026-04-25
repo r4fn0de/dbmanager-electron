@@ -3,7 +3,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useTranslation } from "react-i18next";
-import { updateAppLanguage } from "./actions/language";
+import { updateAppLanguage } from "@/features/shell/actions/language";
 import { router } from "@/lib/routes";
 import "./localization/i18n";
 

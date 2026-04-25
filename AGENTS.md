@@ -31,8 +31,16 @@
 
 ## Project Structure
 
-- `src/main.ts` — Electron main process entry
-- `src/preload.ts` — Preload script; **only file** allowed to use `contextBridge` / `ipcRenderer`
+- `src/features/shell/main.ts` — Electron main process entry
+- `src/features/shell/preload.ts` — Preload script; **only file** allowed to use `contextBridge` / `ipcRenderer`
+- `src/features/shell/actions/` — Shell actions (platform, language, window, external links)
+- `src/features/` — Domain-oriented feature modules
+  - `settings/` — Theme, language, settings dialog
+  - `localDb/` — Local database creation and cloning
+  - `ai/` — AI chat, feedback, memory
+  - `connection/` — Connection form, list, tabs
+  - `database/` — SQL editor, table editor, schema browser, DDL dialogs
+  - `shell/` — Main process, preload, shell actions
 - `src/ipc/` — oRPC router and handlers for IPC communication
   - `src/ipc/router.ts` — root oRPC router (aggregates domain routers)
   - `src/ipc/handler.ts` — oRPC MessagePort handler registration
@@ -43,10 +51,9 @@
   - `__root.tsx` — root layout
   - `index.tsx` — home route
   - `database.$connectionId.tsx` — connection detail route
-- `src/components/` — React components
+- `src/components/` — Shared React components (non-domain-specific)
   - `src/components/ui/` — shadcn/ui components (auto-generated, **do not edit directly**)
 - `src/lib/` — utilities and Zustand stores
-- `src/hooks/` — custom React hooks
 - `src/localization/` — i18next resources
 - `src/next-app/` — experimental Next.js-like sub-structure (keep isolated)
 - `src/tests/unit/` — Vitest tests (mirrors `src/` structure where applicable)
@@ -59,7 +66,7 @@
 - **Use oRPC for all new IPC APIs**. Define contracts in `src/ipc/<domain>/` and register them in `src/ipc/router.ts`.
 - The renderer calls oRPC via a MessagePort bridge initialized at startup. Do **not** add new `ipcRenderer.invoke` channels for standard request/response flows.
 - **Exception — AI streaming**: AI chat and inline SQL generation use raw IPC events (`ipcRenderer.send`/`on`) because oRPC MessagePort does not support streaming. New streaming features may follow this pattern only after discussion.
-- `src/preload.ts` is the **only** file that may import `ipcRenderer` or call `contextBridge.exposeInMainWorld`. No exceptions.
+- `src/features/shell/preload.ts` is the **only** file that may import `ipcRenderer` or call `contextBridge.exposeInMainWorld`. No exceptions.
 - `nodeIntegration: true` in main window is intentional for local DB driver support, but renderer code should still prefer oRPC APIs over direct Node usage.
 
 ## Coding Conventions
@@ -100,5 +107,5 @@
 - Adding new major dependencies (especially native modules or Electron rebuilds)
 - Database schema changes (local SQLite schema used by the app)
 - Changes to `forge.config.ts` (packaging, ASAR unpack rules, fuses)
-- Changes to `src/preload.ts` (security boundary)
+- Changes to `src/features/shell/preload.ts` (security boundary)
 - New IPC patterns that bypass oRPC

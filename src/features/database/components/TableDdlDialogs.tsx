@@ -34,7 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-block";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Icon } from "@/components/ui/Icon";
-import { getTableDetails } from "@/hooks/db-actions";
+import { getTableDetails } from "../hooks/db-actions";
 import { qi, qt } from "@/ipc/db/ddl-sql";
 import type { DatabaseType } from "@/ipc/db/types";
 import type {

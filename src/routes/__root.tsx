@@ -8,12 +8,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnimatePresence } from "motion/react";
-import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemeProvider } from "@/features/settings";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/TitleBar";
 import { Toaster } from "@/components/ui/sonner";
-import { TabbedConnectionView } from "@/components/TabbedConnectionView";
-import { AiChatPanel } from "@/components/AiChatPanel";
+import { TabbedConnectionView } from "@/features/database";
+import { AiChatPanel } from "@/features/ai";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -24,8 +24,8 @@ import {
 } from "@/components/ui/resizable";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
-import { useConnectionsList } from "@/hooks/useConnectionsList";
-import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import { useConnectionsList } from "@/features/connection";
+import { useLocalDatabases } from "@/features/localDb";
 import { cn } from "@/lib/utils";
 import type { DatabaseType } from "@/ipc/db/types";
 

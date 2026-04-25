@@ -17,8 +17,8 @@ import {
   DialogContent,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { AiSettingsPanel } from "@/components/AiSettingsPanel";
+import { ThemeToggle } from "./ThemeToggle";
+import { AiSettingsPanel } from "@/features/ai";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 

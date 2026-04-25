@@ -2,12 +2,12 @@ import { useTheme } from "next-themes";
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { QueryResults } from "@/components/QueryResults";
+import { QueryResults } from "../QueryResults";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { LazyMonacoEditor, type OnMount } from "@/components/LazyMonacoEditor";
+import { LazyMonacoEditor, type OnMount } from "../LazyMonacoEditor";
 
 import {
   ResizableHandle,
@@ -19,12 +19,11 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  useSqlWorkspace,
+import { useSqlWorkspace,
   type SqlHistoryEntry,
   type SqlSavedQuery,
-} from "@/hooks/useSqlWorkspace";
-import { fixSql, updateSql } from "@/hooks/ai-actions";
+} from "../../hooks/useSqlWorkspace";
+import { fixSql, updateSql } from "@/features/ai/hooks/ai-actions";
 import { formatDuration } from "@/lib/utils";
 import {
   buildExplainSql,

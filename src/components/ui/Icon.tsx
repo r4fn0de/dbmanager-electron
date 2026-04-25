@@ -302,7 +302,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
 
 export function Icon({
   name,
-  size = 20,
+  size,
   className,
   ...rest
 }: {
@@ -312,5 +312,13 @@ export function Icon({
 } & React.SVGProps<SVGSVGElement>) {
   const Component = ICON_MAP[name];
   if (!Component) return null;
-  return <Component size={size} className={className} {...rest} />;
+
+  // Parse size from Tailwind className (e.g., "size-3" -> 12, "size-4" -> 16)
+  const sizeFromClass = className ? parseInt(className.match(/size-(\d+)/)?.[1] ?? "0") * 4 : 0;
+  const effectiveSize = (size ?? sizeFromClass) || 20;
+  
+  // Increase stroke width for small icons to improve clarity
+  const strokeWidth = effectiveSize <= 14 ? 2 : effectiveSize <= 18 ? 1.75 : 1.5;
+  
+  return <Component size={effectiveSize} strokeWidth={strokeWidth} className={className} {...rest} />;
 }

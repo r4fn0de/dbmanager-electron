@@ -15,8 +15,8 @@ import { Sqlite } from "@/components/icons/Sqlite";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useConnectionsList } from "@/hooks/useConnectionsList";
-import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import { useConnectionsList } from "../hooks/useConnectionsList";
+import { useLocalDatabases } from "@/features/localDb";
 import {
   detectConnectionProvider,
   useConnectionTabsStore,

@@ -1,7 +1,14 @@
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useReducedMotion } from "@/features/settings";
+import {
+  getEnums,
+  getFunctions,
+  getSchemaConstraints,
+  getSchemaIndexes,
+  getTriggers,
+} from "../hooks/db-actions";
 import type {
   ConstraintInfo,
   DatabaseType,
@@ -40,7 +47,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Icon as UiIcon } from "@/components/ui/Icon";
-import { getEnums, getFunctions, getSchemaConstraints, getSchemaIndexes, getTriggers } from "@/hooks/db-actions";
 
 // ---------------------------------------------------------------------------
 // Types

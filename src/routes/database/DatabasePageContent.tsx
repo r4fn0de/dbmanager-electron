@@ -17,7 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useConnectionsList } from "@/hooks/useConnectionsList";
+import { useConnectionsList } from "@/features/connection";
 import {
   getSchemaSummary,
   executeQuery,
@@ -39,8 +39,8 @@ import {
   alterColumnType,
   setColumnDefault,
   setColumnNullable,
-} from "@/hooks/db-actions";
-import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+} from "@/features/database/hooks/db-actions";
+import { useLocalDatabases } from "@/features/localDb";
 import { getClickhouseEffectivePort } from "@/ipc/db/types";
 import {
   buildConnectionTab,
@@ -49,10 +49,7 @@ import {
   type SidebarSection,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
-import { DatabaseNavSidebar } from "@/components/DatabaseNavSidebar";
-import { TablesExplorerSidebar } from "@/components/TablesExplorerSidebar";
-import { DatabaseOverview } from "@/components/DatabaseOverview";
-import { TableDataEditor } from "@/components/TableDataEditor";
+import { DatabaseNavSidebar, TablesExplorerSidebar, DatabaseOverview, TableDataEditor } from "@/features/database";
 import type { SchemaTableSummary, DatabaseInfo, LocalDbInfo, SchemaTableDetails, SchemaPolicy } from "@/ipc/db/types";
 import {
   SqlEditor,

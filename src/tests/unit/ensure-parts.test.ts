@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ensureParts, type AiChatMessage } from "@/hooks/useAiChat";
+import { ensureParts, type AiChatMessage } from "@/features/ai/hooks/useAiChat";
 
 describe("ensureParts", () => {
   it("returns message as-is when parts already exist", () => {

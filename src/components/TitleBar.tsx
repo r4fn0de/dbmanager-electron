@@ -5,9 +5,8 @@ import { toast } from "sonner";
 import {
   ConnectionTabs,
   useConnectionTabSync,
-} from "@/components/ConnectionTabs";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { SettingsDialog } from "@/components/SettingsDialog";
+} from "@/features/connection";
+import { ThemeToggle, SettingsDialog } from "@/features/settings";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { MySql } from "@/components/icons/MySql";
 import { Neon } from "@/components/icons/Neon";
@@ -32,8 +31,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useConnectionsList } from "@/hooks/useConnectionsList";
-import { useLocalDatabases } from "@/hooks/useLocalDatabases";
+import { useConnectionsList } from "@/features/connection";
+import { useLocalDatabases } from "@/features/localDb";
 import {
   buildConnectionTab,
   detectConnectionProvider,

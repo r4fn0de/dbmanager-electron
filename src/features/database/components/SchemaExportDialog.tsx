@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-block";
-import { getTableDetails } from "@/hooks/db-actions";
+import { getTableDetails } from "../hooks/db-actions";
 import {
   generateSchema,
   GENERATOR_COMPATIBILITY,
