@@ -1040,16 +1040,15 @@ export function AiChatPanel({
       exit={{ x: 24, opacity: 0, transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
     >
       {/* Header — minimal, near-transparent */}
-      <div className="flex h-9 shrink-0 items-center justify-between px-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Bot className="size-3.5 text-primary/80" />
+      <div className="flex h-9 shrink-0 items-center justify-between gap-2 px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {hasActiveConnection ? (
             (() => {
               const DbIcon = getDatabaseIcon(dbType, provider);
               return (
                 <span
                   className="
-                    inline-flex h-[18px] items-center gap-1.5 rounded-full
+                    inline-flex h-[18px] shrink-0 items-center gap-1.5 rounded-full
                     bg-primary/[0.07] px-2 text-[10px] font-medium
                     text-foreground/70
                     dark:bg-primary/[0.12] dark:text-foreground/60
@@ -1064,7 +1063,7 @@ export function AiChatPanel({
           ) : (
             <span
               className="
-                inline-flex h-[18px] items-center gap-1.5 rounded-full
+                inline-flex h-[18px] shrink-0 items-center gap-1.5 rounded-full
                 bg-muted/40 px-2 text-[10px] font-medium
                 text-muted-foreground/70
                 dark:bg-muted/30 dark:text-muted-foreground/60
@@ -1081,7 +1080,7 @@ export function AiChatPanel({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 max-w-[210px] justify-start px-2 text-xs font-semibold tracking-tight"
+                  className="h-7 min-w-0 flex-1 justify-start px-2 text-xs font-semibold tracking-tight max-w-[140px] xs:max-w-[180px] sm:max-w-[210px]"
                 >
                   <span
                     key={`${activeConversation?.id ?? "none"}:${activeConversation?.title ?? "AI Chat"}`}
