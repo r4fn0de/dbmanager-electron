@@ -9,7 +9,8 @@
  * and to match the app's existing sidebar-heavy visual language.
  */
 import { useState } from "react";
-import { Cog, Keyboard, Palette, Sparkles } from "lucide-react";
+import { Settings } from "@/components/icons/Settings";
+import { Icon } from "@/components/ui/Icon";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Dialog,
@@ -28,13 +29,13 @@ type SettingsCategory = "appearance" | "ai" | "shortcuts";
 interface SettingsItem {
   id: SettingsCategory;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: 'palette' | 'sparkles' | 'keyboard';
 }
 
 const SETTINGS_ITEMS: SettingsItem[] = [
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "ai", label: "AI Assistant", icon: Sparkles },
-  { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
+  { id: "appearance", label: "Appearance", icon: 'palette' },
+  { id: "ai", label: "AI Assistant", icon: 'sparkles' },
+  { id: "shortcuts", label: "Shortcuts", icon: 'keyboard' },
 ];
 
 function AppearanceSettings() {
@@ -166,7 +167,7 @@ export function SettingsDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger>
         <span className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground cursor-default active:scale-[0.97]">
-          <Cog className="size-4" />
+          <Settings className="size-4" />
         </span>
       </DialogTrigger>
       <DialogContent
@@ -185,7 +186,6 @@ export function SettingsDialog() {
           <div className="w-48 shrink-0 border-r border-border/40 px-2 py-2 flex flex-col gap-0.5">
             {SETTINGS_ITEMS.map((item) => {
               const isActive = activeCategory === item.id;
-              const Icon = item.icon;
               return (
                 <button
                   key={item.id}
@@ -199,8 +199,10 @@ export function SettingsDialog() {
                   )}
                 >
                   <Icon
+                    name={item.icon}
+                    size={16}
                     className={cn(
-                      "size-4 shrink-0 transition-colors duration-150 ease-out",
+                      "shrink-0 transition-colors duration-150 ease-out",
                       isActive ? "text-primary" : "text-muted-foreground"
                     )}
                   />
