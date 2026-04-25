@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS, AI_IPC_CHANNELS } from "./constants";
 
+// Import new AI streaming preload (exposes window.ai)
+import "./preload/ai";
+
 contextBridge.exposeInMainWorld("electron", {
   platform: process.platform,
   setNativeThemeSource: (themeSource: "system" | "light" | "dark") => {

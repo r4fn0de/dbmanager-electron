@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ChevronLeft, Braces } from "lucide-react";
+import { ChevronLeft, Braces, Key } from "lucide-react";
 import { Database } from "@/components/icons/Database";
 import { Table } from "@/components/icons/Table";
 import { Terminal } from "@/components/icons/Terminal";
@@ -35,18 +35,31 @@ interface DatabaseNavSidebarProps {
   onBackToConnections?: () => void;
 }
 
-const NAV_ITEMS: {
+type NavItem = {
   section: SidebarSection;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   shortcut: string;
-}[] = [
+};
+
+const SQL_NAV_ITEMS: NavItem[] = [
   { section: "overview", icon: Database, label: "Overview", shortcut: "1" },
   { section: "tables", icon: Table, label: "Tables", shortcut: "2" },
   { section: "sql-editor", icon: Terminal, label: "SQL Editor", shortcut: "3" },
   { section: "visualizer", icon: Branch, label: "Visualizer", shortcut: "4" },
   { section: "definitions", icon: Braces, label: "Definitions", shortcut: "5" },
 ];
+
+const REDIS_NAV_ITEMS: NavItem[] = [
+  { section: "overview", icon: Database, label: "Overview", shortcut: "1" },
+  { section: "keys", icon: Key, label: "Keys", shortcut: "2" },
+  { section: "commands", icon: Terminal, label: "Commands", shortcut: "3" },
+];
+
+function getNavItems(dbType?: string): NavItem[] {
+  if (dbType === "redis") return REDIS_NAV_ITEMS;
+  return SQL_NAV_ITEMS;
+}
 
 function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; isLocal?: boolean }) {
   if (provider === "neon") return <Neon className="size-[18px]" />;
@@ -119,7 +132,7 @@ export function DatabaseNavSidebar({
 
       {/* ── Navigation ─────────────────────────────────────── */}
       <nav className="flex flex-col items-center gap-0.5 px-1.5">
-        {NAV_ITEMS.map(({ section, icon: Icon, label, shortcut }) => {
+        {getNavItems(connection.db_type).map(({ section, icon: Icon, label, shortcut }) => {
           const isActive = activeSection === section;
           return (
             <Tooltip key={section}>

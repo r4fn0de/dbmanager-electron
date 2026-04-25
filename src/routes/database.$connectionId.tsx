@@ -629,13 +629,20 @@ export function DatabasePageContent({
     return group[1].filter((table) => table.name.toLowerCase().includes(needle));
   }, [selectedSchema, tablesBySchema, tableSearch]);
 
-  // Build a concise schema context string for the AI assistant.
-  // Includes table names grouped by schema, and column names/types for the
-  // selected schema (where the user is most likely to write queries).
-  // Other schemas list table names only to keep context compact.
+  // Build a comprehensive schema context string for the AI assistant.
+  // Includes table names, columns with types, primary keys, foreign keys,
+  // and table relationships to help AI write accurate JOIN queries.
   const schemaContextForAi = useMemo(() => {
     if (tables.length === 0) return undefined;
-    const lines: string[] = ["Schemas: " + schemas.join(", ")];
+
+    const lines: string[] = [];
+
+    // Header with database overview
+    lines.push(`Database Overview:`);
+    lines.push(`- Total schemas: ${schemas.length} (${schemas.join(", ")})`);
+    lines.push(`- Total tables: ${tables.length}`);
+    lines.push(`- Current schema: ${selectedSchema}`);
+    lines.push("");
 
     // Build a lookup of table name → details for the selected schema
     const detailMap = new Map<string, SchemaTableDetails>();
@@ -643,28 +650,99 @@ export function DatabasePageContent({
       detailMap.set(d.name, d);
     }
 
-    for (const [schema, schemaTables] of tablesBySchema) {
-      if (schema === selectedSchema && selectedSchemaDetails.length > 0) {
-        // Selected schema: include column names and types
-        for (const t of schemaTables) {
-          const detail = detailMap.get(t.name);
-          if (detail) {
-            const cols = detail.columns
-              .map((c) => `${c.name} ${c.data_type}${c.is_nullable ? "?" : ""}`)
-              .join(", ");
-            lines.push(`${schema}.${t.name}(${cols})`);
-          } else {
-            lines.push(`${schema}.${t.name}`);
-          }
-        }
-      } else {
-        // Other schemas: table names only
-        const tableNames = schemaTables.map((t) => t.name).join(", ");
-        lines.push(`${schema}: ${tableNames}`);
+    // Collect all foreign key relationships across selected schema tables
+    const relationships: string[] = [];
+
+    for (const d of selectedSchemaDetails) {
+      const tableKey = `${d.schema}.${d.name}`;
+
+      // Extract foreign key relationships from the foreign_keys array
+      for (const fk of d.foreign_keys) {
+        relationships.push(
+          `${tableKey}.${fk.column_name} → ${fk.referenced_schema ?? d.schema}.${fk.referenced_table}.${fk.referenced_column}`,
+        );
       }
     }
+
+    // Add relationship section if we have any FKs
+    if (relationships.length > 0) {
+      lines.push(`Known Foreign Key Relationships:`);
+      for (const rel of relationships.slice(0, 20)) { // Cap at 20 to avoid token overflow
+        lines.push(`- ${rel}`);
+      }
+      lines.push("");
+    }
+
+    // Detailed schema information
+    lines.push(`Schema Details (showing ${selectedSchema} in detail):`);
+    lines.push("");
+
+    for (const [schema, schemaTables] of tablesBySchema) {
+      if (schema === selectedSchema && selectedSchemaDetails.length > 0) {
+        // Selected schema: include detailed table structure
+        for (const t of schemaTables) {
+          const detail = detailMap.get(t.name);
+          const tableKey = `${schema}.${t.name}`;
+
+          if (detail) {
+            // Table header with row count if available
+            const rowCount = t.estimated_row_count > 0 ? ` (~${t.estimated_row_count.toLocaleString()} rows)` : "";
+            const hasRls = t.has_rls ? " [RLS enabled]" : "";
+            lines.push(`${tableKey}${rowCount}${hasRls}`);
+
+            // Build set of PK columns from indexes
+            const pkColumns = new Set<string>();
+            for (const idx of detail.indexes) {
+              if (idx.is_primary) {
+                for (const col of idx.column_names) {
+                  pkColumns.add(col);
+                }
+              }
+            }
+
+            // Build map of FK columns
+            const fkColumns = new Map<string, string>();
+            for (const fk of detail.foreign_keys) {
+              fkColumns.set(fk.column_name, `${fk.referenced_table}.${fk.referenced_column}`);
+            }
+
+            // Columns with PK/FK indicators
+            const colLines: string[] = [];
+            for (const c of detail.columns) {
+              const pk = pkColumns.has(c.name) ? " [PK]" : "";
+              const fk = fkColumns.get(c.name) ? ` → ${fkColumns.get(c.name)}` : "";
+              const nullable = c.is_nullable ? "" : " [NOT NULL]";
+              const defaultVal = c.column_default ? ` = ${c.column_default.slice(0, 30)}` : "";
+              colLines.push(`  - ${c.name}: ${c.data_type}${nullable}${pk}${fk}${defaultVal}`);
+            }
+            lines.push(...colLines);
+          } else {
+            lines.push(`${tableKey} (details not loaded)`);
+          }
+          lines.push("");
+        }
+      } else {
+        // Other schemas: table names only, grouped
+        const tableNames = schemaTables.map((t) => t.name).join(", ");
+        lines.push(`${schema}: ${tableNames}`);
+        lines.push("");
+      }
+    }
+
+    // Add helpful query patterns based on detected relationships
+    if (relationships.length > 0) {
+      lines.push("--");
+      lines.push("Query Tips:");
+      lines.push("- Use JOIN clauses based on the Foreign Key relationships shown above");
+      lines.push("- Primary Keys (PK) are marked on columns");
+      lines.push("- RLS = Row Level Security (PostgreSQL feature)");
+      if (connection?.db_type === "postgresql") {
+        lines.push("- For PostgreSQL: Use ILIKE for case-insensitive matching");
+      }
+    }
+
     return lines.join("\n");
-  }, [tables, schemas, tablesBySchema, selectedSchema, selectedSchemaDetails]);
+  }, [tables, schemas, tablesBySchema, selectedSchema, selectedSchemaDetails, connection?.db_type]);
 
   // Schema completion data for Monaco autocomplete in SQL editor.
   // NOTE: Only the selected schema has column details loaded (via selectedSchemaDetails).

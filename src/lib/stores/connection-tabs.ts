@@ -4,7 +4,7 @@ import { persist } from "zustand/middleware";
 export type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "redis" | "url" | "direct";
 export type ConnectionTabChrome = "tables-sidebar" | "sql-sidebar";
 
-export type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer" | "definitions";
+export type SidebarSection = "overview" | "tables" | "keys" | "sql-editor" | "commands" | "visualizer" | "definitions";
 
 export interface ConnectionTab {
   id: string;

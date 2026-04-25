@@ -113,9 +113,8 @@ function parseInfo(infoStr: string): RedisInfo {
 // Get total key count from all databases
 async function getTotalKeyCount(client: Redis): Promise<number> {
   try {
-    const info = parseInfo(await client.info("keyspace"));
-    let total = 0;
     const keyspaceInfo = await client.info("keyspace");
+    let total = 0;
     const lines = keyspaceInfo.split("\r\n");
 
     for (const line of lines) {
@@ -146,6 +145,52 @@ async function* scanKeys(client: Redis, pattern: string = "*"): AsyncGenerator<s
   } while (cursor !== "0");
 }
 
+// Parse Redis command with proper handling of quoted arguments
+// Handles: GET key, SET "key with spaces" "value", HSET hash field "value with \"quotes\""
+function parseRedisCommand(command: string): { cmd: string; args: string[] } {
+  const args: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (!inQuotes && /\s/.test(char)) {
+      if (current.length > 0) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0) {
+    args.push(current);
+  }
+
+  const cmd = args.shift()?.toLowerCase() ?? "";
+  return { cmd, args };
+}
+
 // Collect all keys from scan (use with caution on large datasets)
 async function collectKeys(client: Redis, pattern: string = "*", limit?: number): Promise<string[]> {
   const keys: string[] = [];
@@ -164,6 +209,7 @@ async function getKeyType(client: Redis, key: string): Promise<string> {
 }
 
 // Get value preview based on type (truncated for display)
+// Uses partial scans (HSCAN, SSCAN, ZRANGE) to avoid loading large structures
 async function getValuePreview(client: Redis, key: string, type: string): Promise<string> {
   try {
     switch (type) {
@@ -187,12 +233,23 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
       case "hash": {
         const hlen = await client.hlen(key);
         if (hlen === 0) return "Hash (empty)";
-        const sample = await client.hgetall(key);
-        const keys = Object.keys(sample);
-        if (keys.length > 3) {
-          return `Hash (${hlen} fields: ${keys.slice(0, 3).join(", ")}...)`;
+        // Use HSCAN to get just a few fields instead of HGETALL
+        const sampleFields: string[] = [];
+        let cursor = "0";
+        let iterations = 0;
+        do {
+          const result = await client.hscan(key, cursor, "COUNT", 5);
+          cursor = result[0];
+          const fields = result[1];
+          for (let i = 0; i < fields.length && sampleFields.length < 3; i += 2) {
+            sampleFields.push(fields[i]);
+          }
+          iterations++;
+        } while (cursor !== "0" && sampleFields.length < 3 && iterations < 3);
+        if (hlen > 3) {
+          return `Hash (${hlen} fields: ${sampleFields.slice(0, 3).join(", ")}...)`;
         }
-        return `Hash (${hlen} fields: ${keys.join(", ")})`;
+        return `Hash (${hlen} fields: ${sampleFields.join(", ")})`;
       }
       case "list": {
         const llen = await client.llen(key);
@@ -204,13 +261,23 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
       case "set": {
         const scard = await client.scard(key);
         if (scard === 0) return "Set (empty)";
-        const members = await client.smembers(key);
-        const preview = members.slice(0, 3).join(", ");
+        // Use SSCAN to get just a few members instead of SMEMBERS
+        const sampleMembers: string[] = [];
+        let cursor = "0";
+        let iterations = 0;
+        do {
+          const result = await client.sscan(key, cursor, "COUNT", 5);
+          cursor = result[0];
+          sampleMembers.push(...result[1]);
+          iterations++;
+        } while (cursor !== "0" && sampleMembers.length < 3 && iterations < 3);
+        const preview = sampleMembers.slice(0, 3).join(", ");
         return scard > 3 ? `Set (${scard} members: ${preview}...)` : `Set (${scard} members: ${preview})`;
       }
       case "zset": {
         const zcard = await client.zcard(key);
         if (zcard === 0) return "Sorted Set (empty)";
+        // Use ZRANGE with LIMIT to get just a few members
         const items = await client.zrange(key, 0, 2, "WITHSCORES");
         return `Sorted Set (${zcard} members)`;
       }
@@ -229,18 +296,65 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
   }
 }
 
-// Get full value for a key (with limits to prevent memory issues)
+// Get full value for a key (with strict limits to prevent memory issues)
+// For large structures, returns partial data with warning indicator
 async function getKeyValue(client: Redis, key: string, type: string): Promise<unknown> {
+  const LARGE_STRUCTURE_THRESHOLD = 1000; // Consider large if > 1000 items
+
   try {
     switch (type) {
-      case "string":
-        return await client.get(key);
-      case "hash":
+      case "string": {
+        const value = await client.get(key);
+        if (value && value.length > 10000) {
+          return value.substring(0, 10000) + "...[truncated: value exceeds 10KB]";
+        }
+        return value;
+      }
+      case "hash": {
+        const hlen = await client.hlen(key);
+        if (hlen > LARGE_STRUCTURE_THRESHOLD) {
+          // For large hashes, return partial data using HSCAN
+          const partialData: Record<string, string> = {};
+          let cursor = "0";
+          let count = 0;
+          do {
+            const result = await client.hscan(key, cursor, "COUNT", 100);
+            cursor = result[0];
+            const fields = result[1];
+            for (let i = 0; i < fields.length && count < MAX_VALUE_ITEMS; i += 2) {
+              partialData[fields[i]] = fields[i + 1];
+              count++;
+            }
+          } while (cursor !== "0" && count < MAX_VALUE_ITEMS);
+          partialData["__truncated__"] = `Showing ${count} of ${hlen} fields. Use HSCAN to iterate full hash.`;
+          return partialData;
+        }
         return await client.hgetall(key);
+      }
       case "list":
         return await client.lrange(key, 0, MAX_VALUE_ITEMS - 1);
-      case "set":
+      case "set": {
+        const scard = await client.scard(key);
+        if (scard > LARGE_STRUCTURE_THRESHOLD) {
+          // For large sets, return partial data using SSCAN
+          const members: string[] = [];
+          let cursor = "0";
+          let iterations = 0;
+          do {
+            const result = await client.sscan(key, cursor, "COUNT", 100);
+            cursor = result[0];
+            members.push(...result[1]);
+            iterations++;
+          } while (cursor !== "0" && members.length < MAX_VALUE_ITEMS && iterations < 10);
+          return {
+            __partial_set__: true,
+            members: members,
+            total: scard,
+            note: `Showing ${members.length} of ${scard} members. Use SSCAN to iterate full set.`,
+          };
+        }
         return await client.smembers(key);
+      }
       case "zset":
         return await client.zrange(key, 0, MAX_VALUE_ITEMS - 1, "WITHSCORES");
       case "stream": {
@@ -282,6 +396,38 @@ function groupKeysByPrefix(keys: string[]): Map<string, string[]> {
   return groups;
 }
 
+// Check if key has no prefix (no colon)
+function hasNoPrefix(key: string): boolean {
+  return key.indexOf(":") === -1;
+}
+
+// Scan keys with optional filter for no-prefix keys only
+async function* scanKeysWithFilter(
+  client: Redis,
+  table: string,
+  maxKeys: number
+): AsyncGenerator<string> {
+  const pattern = table === "(no prefix)" ? "*" : `${table}:*`;
+  let cursor = "0";
+  let count = 0;
+
+  do {
+    const result = await client.scan(cursor, "MATCH", pattern, "COUNT", SCAN_COUNT);
+    cursor = result[0];
+    const keys = result[1];
+
+    for (const key of keys) {
+      // For "(no prefix)", filter out keys that DO have a colon
+      if (table === "(no prefix)" && !hasNoPrefix(key)) {
+        continue;
+      }
+      yield key;
+      count++;
+      if (count >= maxKeys) return;
+    }
+  } while (cursor !== "0");
+}
+
 export function createRedisDriver(): DatabaseDriver {
   return {
     type: DB_TYPE,
@@ -315,9 +461,9 @@ export function createRedisDriver(): DatabaseDriver {
       const client = await getRedisClient(connectionString);
 
       try {
-        // Parse command: COMMAND arg1 arg2 ...
-        const parts = command.trim().split(/\s+/);
-        const [cmd, ...args] = parts;
+        // Parse command with proper handling of quoted arguments
+        const parsed = parseRedisCommand(command);
+        const { cmd, args } = parsed;
 
         if (!cmd) {
           throw new Error("Empty command");
@@ -441,9 +587,12 @@ export function createRedisDriver(): DatabaseDriver {
       const client = await getRedisClient(connectionString);
 
       try {
-        // Find keys matching this "table" (prefix)
-        const pattern = table === "(no prefix)" ? "*" : `${table}:*`;
-        const keys = await client.keys(pattern);
+        // Use SCAN to get keys iteratively (production-safe)
+        // For "(no prefix)", we scan all but will filter in other methods
+        const keys: string[] = [];
+        for await (const key of scanKeysWithFilter(client, table, 100)) {
+          keys.push(key);
+        }
 
         const columns: SchemaTableDetails["columns"] = [
           { name: "key", data_type: "string", udt_name: null, is_nullable: false, column_default: null },
@@ -524,8 +673,11 @@ export function createRedisDriver(): DatabaseDriver {
       const client = await getRedisClient(connectionString);
 
       try {
-        const pattern = table === "(no prefix)" ? "*" : `${table}:*`;
-        const keys = await collectKeys(client, pattern, sampleSize);
+        // Use scanKeysWithFilter for consistent (no prefix) handling
+        const keys: string[] = [];
+        for await (const key of scanKeysWithFilter(client, table, sampleSize)) {
+          keys.push(key);
+        }
 
         const rows: Record<string, unknown>[] = [];
         for (const key of keys) {
@@ -562,11 +714,17 @@ export function createRedisDriver(): DatabaseDriver {
       const client = await getRedisClient(connectionString);
 
       try {
-        const pattern = table === "(no prefix)" ? "*" : `${table}:*`;
         // For pagination with SCAN, we need to collect keys up to the page we need
         // This is not efficient for large pages but SCAN doesn't support offset
-        const targetCount = page * pageSize;
-        const allKeys = await collectKeys(client, pattern, targetCount);
+        // For Redis, we limit to a reasonable max to avoid memory issues
+        const MAX_SCAN_KEYS = 10000;
+        const targetCount = Math.min(page * pageSize, MAX_SCAN_KEYS);
+
+        // Use scanKeysWithFilter for consistent (no prefix) handling
+        const allKeys: string[] = [];
+        for await (const key of scanKeysWithFilter(client, table, targetCount)) {
+          allKeys.push(key);
+        }
 
         const start = (page - 1) * pageSize;
         const end = start + pageSize;
@@ -587,6 +745,11 @@ export function createRedisDriver(): DatabaseDriver {
           });
         }
 
+        // totalEstimate is partial because SCAN doesn't give us total count
+        // Use negative value to indicate partial result: -N means "at least N"
+        const hitLimit = allKeys.length >= MAX_SCAN_KEYS;
+        const totalEstimate = hitLimit ? -allKeys.length : allKeys.length;
+
         return {
           columns: [
             { name: "key", type_name: "string" },
@@ -599,7 +762,7 @@ export function createRedisDriver(): DatabaseDriver {
           primaryKey: ["key"],
           foreignKeys: [],
           pageInfo: { page, pageSize },
-          totalEstimate: allKeys.length,
+          totalEstimate,
         };
       } catch (err) {
         throw new Error(`Failed to list Redis rows: ${err instanceof Error ? err.message : String(err)}`);

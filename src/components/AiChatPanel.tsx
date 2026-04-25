@@ -11,11 +11,13 @@ import {
   Code2,
   Copy,
   Database,
+  Key,
   Lightbulb,
   PanelRight,
   Plus,
   Search,
   Send,
+  Shield,
   Square,
   Table2,
   ThumbsDown,
@@ -1275,11 +1277,11 @@ export function AiChatPanel({
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                {SUGGESTIONS.map((s, i) => (
+                {getContextualSuggestions(dbType, hasActiveConnection).map((suggestion, index) => (
                   <button
-                    key={s.label}
+                    key={suggestion.label}
                     type="button"
-                    onClick={() => sendMessage(s.label)}
+                    onClick={() => sendMessage(suggestion.label)}
                     className="
                       group/suggest inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium
                       bg-muted/40 text-muted-foreground/80
@@ -1292,10 +1294,10 @@ export function AiChatPanel({
                       motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1.5
                       motion-safe:duration-200 motion-safe:ease-out
                     "
-                    style={{ animationDelay: `${i * 60}ms`, animationFillMode: "backwards" }}
+                    style={{ animationDelay: `${index * 60}ms`, animationFillMode: "backwards" }}
                   >
-                    <span className="shrink-0 text-muted-foreground/60 transition-transform duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] group-active/suggest:scale-95">{s.icon}</span>
-                    {s.label}
+                    <span className="shrink-0 text-muted-foreground/60 transition-transform duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] group-active/suggest:scale-95">{suggestion.icon}</span>
+                    {suggestion.label}
                   </button>
                 ))}
               </div>
@@ -1457,9 +1459,58 @@ export function AiChatPanel({
 // Suggestion chips for empty state
 // ---------------------------------------------------------------------------
 
-const SUGGESTIONS: Array<{ label: string; icon: ReactNode }> = [
-  { label: "Show tables", icon: <Table2 className="size-3" /> },
-  { label: "Find recent users", icon: <Search className="size-3" /> },
-  { label: "Explain schema", icon: <Lightbulb className="size-3" /> },
-  { label: "Optimize query", icon: <Zap className="size-3" /> },
-];
+function getContextualSuggestions(dbType: DatabaseType, hasConnection: boolean): Array<{ label: string; icon: ReactNode }> {
+  if (!hasConnection) {
+    return [
+      { label: "SQL best practices", icon: <Lightbulb className="size-3" /> },
+      { label: "Database design tips", icon: <Table2 className="size-3" /> },
+      { label: "Index optimization", icon: <Zap className="size-3" /> },
+      { label: "Query examples", icon: <Code2 className="size-3" /> },
+    ];
+  }
+
+  // Database-specific suggestions
+  switch (dbType) {
+    case "postgresql":
+      return [
+        { label: "List all tables", icon: <Table2 className="size-3" /> },
+        { label: "Show table sizes", icon: <Database className="size-3" /> },
+        { label: "Find slow queries", icon: <Zap className="size-3" /> },
+        { label: "Check indexes", icon: <Search className="size-3" /> },
+        { label: "RLS policies", icon: <Shield className="size-3" /> },
+      ];
+    case "mysql":
+    case "mariadb":
+      return [
+        { label: "Show all tables", icon: <Table2 className="size-3" /> },
+        { label: "Table statuses", icon: <Database className="size-3" /> },
+        { label: "Find missing indexes", icon: <Zap className="size-3" /> },
+        { label: "Check constraints", icon: <Search className="size-3" /> },
+      ];
+    case "sqlite":
+      return [
+        { label: "List tables", icon: <Table2 className="size-3" /> },
+        { label: "Schema info", icon: <Database className="size-3" /> },
+        { label: "Table sizes", icon: <Zap className="size-3" /> },
+      ];
+    case "clickhouse":
+      return [
+        { label: "List tables", icon: <Table2 className="size-3" /> },
+        { label: "Table engines", icon: <Database className="size-3" /> },
+        { label: "Partition info", icon: <Zap className="size-3" /> },
+      ];
+    case "redis":
+      return [
+        { label: "List keys", icon: <Key className="size-3" /> },
+        { label: "Memory usage", icon: <Database className="size-3" /> },
+        { label: "Key patterns", icon: <Search className="size-3" /> },
+      ];
+    default:
+      return [
+        { label: "Show tables", icon: <Table2 className="size-3" /> },
+        { label: "Find recent records", icon: <Search className="size-3" /> },
+        { label: "Explain schema", icon: <Lightbulb className="size-3" /> },
+        { label: "Optimize query", icon: <Zap className="size-3" /> },
+      ];
+  }
+}

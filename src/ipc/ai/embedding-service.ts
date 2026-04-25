@@ -5,7 +5,21 @@
  * Uses Xenova/all-MiniLM-L6-v2 model (optimized for semantic similarity).
  * No data leaves the machine — 100% privacy.
  */
-import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+
+type FeatureExtractionOutput = {
+  data: Float32Array;
+};
+
+type FeatureExtractionPipeline = (
+  input: string | string[],
+  options: { normalize: boolean; pooling: "mean" },
+) => Promise<FeatureExtractionOutput>;
+
+type PipelineFactory = (
+  task: "feature-extraction",
+  model: string,
+  options: { quantized: boolean },
+) => Promise<FeatureExtractionPipeline>;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -21,6 +35,7 @@ const EMBEDDING_DIM = 384;
 let embedder: FeatureExtractionPipeline | null = null;
 let isLoading = false;
 let loadPromise: Promise<FeatureExtractionPipeline> | null = null;
+let pipelineFactory: PipelineFactory | null = null;
 
 // ---------------------------------------------------------------------------
 // Model Loading
@@ -50,17 +65,25 @@ async function loadModel(): Promise<FeatureExtractionPipeline> {
   }
 
   isLoading = true;
-  loadPromise = pipeline("feature-extraction", MODEL_NAME, {
-    quantized: true, // Use quantized model for faster inference
-  }).then((model) => {
-    embedder = model;
-    isLoading = false;
-    return model;
-  }).catch((err) => {
-    isLoading = false;
-    loadPromise = null;
-    throw err;
-  });
+  loadPromise = (async () => {
+    try {
+      if (!pipelineFactory) {
+        const transformersModule = await import("@xenova/transformers");
+        pipelineFactory = transformersModule.pipeline as PipelineFactory;
+      }
+
+      const model = await pipelineFactory("feature-extraction", MODEL_NAME, {
+        quantized: true, // Use quantized model for faster inference
+      });
+      embedder = model;
+      isLoading = false;
+      return model;
+    } catch (err) {
+      isLoading = false;
+      loadPromise = null;
+      throw err;
+    }
+  })();
 
   return loadPromise;
 }
