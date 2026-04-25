@@ -1,5 +1,5 @@
 import { cn } from "@/utils/tailwind"
-import { ThumbsDown, ThumbsUp, X } from "lucide-react"
+import { Icon } from "@/components/ui/Icon"
 
 type FeedbackBarProps = {
   className?: string
@@ -37,7 +37,7 @@ export function FeedbackBar({
             aria-label="Helpful"
             onClick={onHelpful}
           >
-            <ThumbsUp className="size-4" />
+            <Icon name="thumbs-up" className="size-4" />
           </button>
           <button
             type="button"
@@ -45,7 +45,7 @@ export function FeedbackBar({
             aria-label="Not helpful"
             onClick={onNotHelpful}
           >
-            <ThumbsDown className="size-4" />
+            <Icon name="thumbs-down" className="size-4" />
           </button>
         </div>
         <div className="border-border flex items-center justify-center border-l">
@@ -55,7 +55,7 @@ export function FeedbackBar({
             className="text-muted-foreground hover:text-foreground flex items-center justify-center rounded-md p-3"
             aria-label="Close"
           >
-            <X className="size-5" />
+            <Icon name="x" className="size-5" />
           </button>
         </div>
       </div>

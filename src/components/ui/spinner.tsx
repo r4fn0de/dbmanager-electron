@@ -1,9 +1,12 @@
 import { cn } from "@/utils/tailwind"
-import { Loader2Icon } from "lucide-react"
+import { Icon } from "@/components/ui/Icon"
 
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
+function Spinner({
+  className,
+  ...props
+}: Omit<React.ComponentProps<"svg">, "name">) {
   return (
-    <Loader2Icon role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
+    <Icon name="loader" role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
   )
 }
 

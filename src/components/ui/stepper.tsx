@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/utils/tailwind";
 import { motion, useReducedMotion } from "motion/react";
 import { createContext, useContext, useMemo, useRef } from "react";
@@ -105,7 +105,7 @@ export function StepperTrigger({
           transition={{ transform: { type: "spring", stiffness: 500, damping: 25 } }}
         >
           {isCompleted ? (
-            <Check className="size-3" strokeWidth={2.5} />
+            <Icon name="check" className="size-3" strokeWidth={2.5} />
           ) : (
             <span>{stepIndex + 1}</span>
           )}

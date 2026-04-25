@@ -7,13 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { cn } from "@/utils/tailwind"
-import {
-  CheckCircle,
-  ChevronDown,
-  Loader2,
-  Settings,
-  XCircle,
-} from "lucide-react"
+import { Icon } from "@/components/ui/Icon"
 import { useState } from "react"
 
 export type ToolPart = {
@@ -43,15 +37,15 @@ const Tool = ({ toolPart, defaultOpen = false, className }: ToolProps) => {
   const getStateIcon = () => {
     switch (state) {
       case "input-streaming":
-        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+        return <Icon name="loader" className="h-4 w-4 animate-spin text-blue-500" />
       case "input-available":
-        return <Settings className="h-4 w-4 text-orange-500" />
+        return <Icon name="settings" className="h-4 w-4 text-orange-500" />
       case "output-available":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
+        return <Icon name="circle-check" className="h-4 w-4 text-green-500" />
       case "output-error":
-        return <XCircle className="h-4 w-4 text-red-500" />
+        return <Icon name="x-circle" className="h-4 w-4 text-red-500" />
       default:
-        return <Settings className="text-muted-foreground h-4 w-4" />
+        return <Icon name="settings" className="text-muted-foreground h-4 w-4" />
     }
   }
 
@@ -140,7 +134,7 @@ const Tool = ({ toolPart, defaultOpen = false, className }: ToolProps) => {
                               {toolPart.type}
                             </span>
                             {getStateBadge()}
-                          </div><ChevronDown className={cn("h-4 w-4", isOpen && "rotate-180")} /></CollapsibleTrigger>
+                          </div><Icon name="chevron-down" className={cn("h-4 w-4", isOpen && "rotate-180")} /></CollapsibleTrigger>
         <CollapsibleContent
           className={cn(
             "border-border border-t",

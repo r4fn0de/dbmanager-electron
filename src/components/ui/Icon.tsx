@@ -16,6 +16,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconChevronDown,
+  IconChevronUp,
   IconCheck,
   IconCircleCheck,
   IconCircleX,
@@ -23,6 +24,7 @@ import {
   IconCode,
   IconColumns3,
   IconCopy,
+  IconDots,
   IconDatabase,
   IconDeviceFloppy,
   IconDice5,
@@ -38,6 +40,7 @@ import {
   IconFolderOpen,
   IconGlobe,
   IconHome,
+  IconInfoCircle,
   IconKeyboard,
   IconKey,
   IconBulb,
@@ -105,6 +108,7 @@ export type IconName =
   | "calendar"
   | "braces"
   | "chevron-down"
+  | "chevron-up"
   | "chevron-left"
   | "chevron-right"
   | "check"
@@ -113,6 +117,7 @@ export type IconName =
   | "clock"
   | "columns-3"
   | "copy"
+  | "dots"
   | "database"
   | "device-floppy"
   | "dice"
@@ -129,6 +134,7 @@ export type IconName =
   | "globe"
   | "hard-drive"
   | "home"
+  | "info"
   | "keyboard"
   | "key"
   | "layout-grid"
@@ -146,6 +152,7 @@ export type IconName =
   | "maximize-off"
   | "minimize"
   | "minus"
+  | "more-horizontal"
   | "moon"
   | "palette"
   | "panel-right"
@@ -204,6 +211,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   bulb: IconBulb,
   calendar: IconCalendar,
   "chevron-down": IconChevronDown,
+  "chevron-up": IconChevronUp,
   "chevron-left": IconChevronLeft,
   "chevron-right": IconChevronRight,
   check: IconCheck,
@@ -212,6 +220,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   code: IconCode,
   "columns-3": IconColumns3,
   copy: IconCopy,
+  dots: IconDots,
   database: IconDatabase,
   "device-floppy": IconDeviceFloppy,
   dice: IconDice5,
@@ -228,6 +237,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   globe: IconGlobe,
   "hard-drive": IconDatabase,
   home: IconHome,
+  info: IconInfoCircle,
   keyboard: IconKeyboard,
   key: IconKey,
   "layout-grid": IconLayoutGrid,
@@ -245,6 +255,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   "maximize-off": IconMaximizeOff,
   minimize: IconMinimize,
   minus: IconMinus,
+  "more-horizontal": IconDots,
   moon: IconMoon,
   palette: IconPalette,
   "panel-right": IconLayoutSidebarRight,
