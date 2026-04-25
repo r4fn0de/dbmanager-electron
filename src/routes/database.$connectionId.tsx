@@ -51,6 +51,7 @@ import {
   buildConnectionTab,
   detectConnectionProvider,
   type ConnectionTabChrome,
+  type SidebarSection,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 import { DatabaseNavSidebar } from "@/components/DatabaseNavSidebar";
@@ -81,14 +82,15 @@ const CreateIndexDialog = lazy(() => import("@/components/TableDdlDialogs").then
 const ImportCsvDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.ImportCsvDialog })));
 const RlsPoliciesDialog = lazy(() => import("@/components/RlsPoliciesDialog").then((m) => ({ default: m.RlsPoliciesDialog })));
 const ViewDdlDialog = lazy(() => import("@/components/TableDdlDialogs").then((m) => ({ default: m.ViewDdlDialog })));
-
-type SidebarSection = "overview" | "tables" | "sql-editor" | "visualizer";
+const SchemaExportDialog = lazy(() => import("@/components/SchemaExportDialog").then((m) => ({ default: m.SchemaExportDialog })));
+const DefinitionsBrowserPanel = lazy(() => import("@/components/DefinitionsBrowserPanel").then((m) => ({ default: m.DefinitionsBrowserPanel })));
 
 const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
   "1": "overview",
   "2": "tables",
   "3": "sql-editor",
   "4": "visualizer",
+  "5": "definitions",
 };
 
 export const Route = createFileRoute("/database/$connectionId")({
@@ -299,6 +301,7 @@ export function DatabasePageContent({
   } | null>(null);
   const [rlsPoliciesTarget, setRlsPoliciesTarget] = useState<{ schema: string; name: string } | null>(null);
   const [ddlViewTarget, setDdlViewTarget] = useState<{ schema: string; name: string } | null>(null);
+  const [schemaExportTarget, setSchemaExportTarget] = useState<{ schema: string; name: string } | null>(null);
   const [rlsPolicies, setRlsPolicies] = useState<SchemaPolicy[]>([]);
   const [isLoadingRlsPolicies, setIsLoadingRlsPolicies] = useState(false);
   const queryClient = useQueryClient();
@@ -308,6 +311,7 @@ export function DatabasePageContent({
   const isSqlEditorSection = activeSection === "sql-editor";
   const isOverviewSection = activeSection === "overview";
   const isVisualizerSection = activeSection === "visualizer";
+  const isDefinitionsSection = activeSection === "definitions";
   const tabChrome = useMemo<ConnectionTabChrome | undefined>(() => {
     if (isTablesSection && isSidebarVisible) return "tables-sidebar";
     if (isSqlEditorSection) return "sql-sidebar";
@@ -955,6 +959,7 @@ export function DatabasePageContent({
                   onDropTable={setDdlDropTarget}
                   onViewRlsPolicies={setRlsPoliciesTarget}
                   onViewDdl={setDdlViewTarget}
+                  onExportSchema={setSchemaExportTarget}
                 />
               </ResizablePanel>
 
@@ -1162,6 +1167,17 @@ export function DatabasePageContent({
               </div>
             </Suspense>
           )}
+          {isDefinitionsSection && (
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading definitions...</span></div>}>
+              <DefinitionsBrowserPanel
+                connectionId={connectionId}
+                dbType={connection.db_type || "postgresql"}
+                schemas={schemas}
+                selectedSchema={selectedSchema}
+                onSchemaChange={changeSchema}
+              />
+            </Suspense>
+          )}
         </div>
         </div>
       </div>
@@ -1352,6 +1368,23 @@ export function DatabasePageContent({
             selectedTableDetails &&
             selectedTableDetails.schema === ddlViewTarget.schema &&
             selectedTableDetails.name === ddlViewTarget.name
+              ? selectedTableDetails
+              : null
+          }
+        />
+      )}
+      {schemaExportTarget && (
+        <SchemaExportDialog
+          isOpen
+          onClose={() => setSchemaExportTarget(null)}
+          connectionId={connection.id}
+          schema={schemaExportTarget.schema}
+          tableName={schemaExportTarget.name}
+          dbType={connection.db_type || "postgresql"}
+          cachedDetails={
+            selectedTableDetails &&
+            selectedTableDetails.schema === schemaExportTarget.schema &&
+            selectedTableDetails.name === schemaExportTarget.name
               ? selectedTableDetails
               : null
           }

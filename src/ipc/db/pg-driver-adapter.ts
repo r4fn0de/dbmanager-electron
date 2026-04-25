@@ -8,7 +8,7 @@
  * names and result.fields type mapping), plus Kysely for PK/FK introspection.
  * DDL and clone/export operations are delegated to pg-runtime helpers.
  */
-import type { DatabaseType, SslMode, ConstraintInfo } from "./types";
+import type { DatabaseType, SslMode, ConstraintInfo, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getPgKysely, getPgPool } from "./kysely-factory";
 import {
@@ -515,6 +515,119 @@ export function createPostgresDriver(): DatabaseDriver {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`PostgreSQL getConstraints error for ${schema}.${table}: ${msg}`);
+      }
+    },
+
+    async getEnums(connectionString, schema): Promise<SchemaEnum[]> {
+      const pool = getPgPool(connectionString);
+      try {
+        const result = await pool.query(
+          `SELECT t.typname   AS name,
+                  n.nspname   AS schema,
+                  array_agg(e.enumlabel ORDER BY e.enumsortorder) AS values
+           FROM pg_type t
+           JOIN pg_enum e        ON t.oid = e.enumtypid
+           JOIN pg_namespace n   ON t.typnamespace = n.oid
+           WHERE n.nspname = $1
+           GROUP BY t.typname, n.nspname
+           ORDER BY t.typname`,
+          [schema],
+        );
+        return result.rows.map((row: Record<string, unknown>) => ({
+          name: String(row.name),
+          schema: String(row.schema),
+          values: (row.values as string[]) ?? [],
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getEnums error for ${schema}: ${msg}`);
+      }
+    },
+
+    async getFunctions(connectionString, schema): Promise<SchemaFunction[]> {
+      const pool = getPgPool(connectionString);
+      try {
+        const result = await pool.query(
+          `SELECT p.proname            AS name,
+                  n.nspname            AS schema,
+                  CASE p.prokind
+                    WHEN 'f' THEN 'function'
+                    WHEN 'p' THEN 'procedure'
+                    ELSE 'function'
+                  END                AS type,
+                  l.lanname            AS language,
+                  pg_get_function_result(p.oid) AS return_type,
+                  p.pronargs           AS argument_count,
+                  pg_get_function_arguments(p.oid) AS arguments,
+                  pg_get_functiondef(p.oid)    AS definition
+           FROM pg_proc p
+           JOIN pg_namespace n ON p.pronamespace = n.oid
+           LEFT JOIN pg_language l ON p.prolang = l.oid
+           WHERE n.nspname = $1
+             AND p.prokind IN ('f', 'p')
+           ORDER BY p.proname`,
+          [schema],
+        );
+        return result.rows.map((row: Record<string, unknown>) => ({
+          name: String(row.name),
+          schema: String(row.schema),
+          type: String(row.type) as "function" | "procedure",
+          language: row.language ? String(row.language) : null,
+          return_type: row.return_type ? String(row.return_type) : null,
+          argument_count: Number(row.argument_count ?? 0),
+          arguments: row.arguments ? String(row.arguments) : null,
+          definition: row.definition ? String(row.definition) : null,
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getFunctions error for ${schema}: ${msg}`);
+      }
+    },
+
+    async getTriggers(connectionString, schema): Promise<SchemaTrigger[]> {
+      const pool = getPgPool(connectionString);
+      try {
+        const result = await pool.query(
+          `SELECT t.tgname            AS name,
+                  n.nspname            AS schema,
+                  c.relname            AS table,
+                  CASE
+                    WHEN t.tgtype & 4 = 4 THEN 'INSERT'
+                    WHEN t.tgtype & 8 = 8 THEN 'DELETE'
+                    WHEN t.tgtype & 16 = 16 THEN 'UPDATE'
+                    ELSE 'UNKNOWN'
+                  END                AS event,
+                  CASE
+                    WHEN t.tgtype & 2 = 2 THEN 'AFTER'
+                    WHEN t.tgtype & 1 = 1 THEN 'BEFORE'
+                    WHEN t.tgtype & 64 = 64 THEN 'INSTEAD OF'
+                    ELSE 'UNKNOWN'
+                  END                AS timing,
+                  NOT t.tgenabled      AS enabled,
+                  p.proname            AS function_name,
+                  pg_get_triggerdef(t.oid) AS definition
+           FROM pg_trigger t
+           JOIN pg_class c     ON t.tgrelid = c.oid
+           JOIN pg_namespace n ON c.relnamespace = n.oid
+           LEFT JOIN pg_proc p ON t.tgfoid = p.oid
+           WHERE n.nspname = $1
+             AND NOT t.tgisinternal
+           ORDER BY c.relname, t.tgname`,
+          [schema],
+        );
+        return result.rows.map((row: Record<string, unknown>) => ({
+          name: String(row.name),
+          schema: String(row.schema),
+          table: String(row.table),
+          event: String(row.event),
+          timing: String(row.timing),
+          enabled: !row.enabled, // tgenabled=false means disabled, NOT tgenabled = enabled
+          function_name: row.function_name ? String(row.function_name) : null,
+          definition: row.definition ? String(row.definition) : null,
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getTriggers error for ${schema}: ${msg}`);
       }
     },
 

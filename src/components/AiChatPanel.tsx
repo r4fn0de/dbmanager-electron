@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Code2,
   Copy,
+  Database,
   Lightbulb,
   PanelRight,
   Plus,
@@ -23,6 +24,14 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { PostgreSql } from "@/components/icons/PostgreSql";
+import { Neon } from "@/components/icons/Neon";
+import { Supabase } from "@/components/icons/Supabase";
+import { MySql } from "@/components/icons/MySql";
+import { Sqlite } from "@/components/icons/Sqlite";
+import { ClickHouse } from "@/components/icons/ClickHouse";
+import { MariaDb } from "@/components/icons/MariaDb";
+import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import { motion } from "motion/react";
 import {
   Conversation,
@@ -73,6 +82,44 @@ import { cn } from "@/utils/tailwind";
 import type { DatabaseType } from "@/ipc/db/types";
 
 // ---------------------------------------------------------------------------
+// Database icon helper
+// ---------------------------------------------------------------------------
+
+function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
+  // Cloud providers take precedence
+  if (provider) {
+    switch (provider) {
+      case "neon":
+        return Neon;
+      case "supabase":
+        return Supabase;
+      case "mysql":
+        return MySql;
+      case "mariadb":
+        return MariaDb;
+      case "clickhouse":
+        return ClickHouse;
+    }
+  }
+
+  // Fallback to dbType
+  switch (dbType) {
+    case "postgresql":
+      return PostgreSql;
+    case "mysql":
+      return MySql;
+    case "mariadb":
+      return MariaDb;
+    case "sqlite":
+      return Sqlite;
+    case "clickhouse":
+      return ClickHouse;
+    default:
+      return Database;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
 
@@ -83,6 +130,8 @@ interface AiChatPanelProps {
   connectionLabel?: string;
   /** Database engine type */
   dbType: DatabaseType;
+  /** Cloud provider (neon, supabase, etc.) — overrides dbType icon when available */
+  provider?: ConnectionProvider;
   /** Optional schema context (table/column names) */
   schemaContext?: string;
   /** Compact preview of what editor context will be sent to AI */
@@ -781,6 +830,7 @@ export function AiChatPanel({
   connectionId,
   connectionLabel,
   dbType,
+  provider,
   schemaContext,
   contextPreview,
   isOpen,
@@ -994,18 +1044,23 @@ export function AiChatPanel({
         <div className="flex min-w-0 items-center gap-1.5">
           <Bot className="size-3.5 text-primary/80" />
           {hasActiveConnection ? (
-            <span
-              className="
-                inline-flex h-[18px] items-center gap-1 rounded-full
-                bg-primary/[0.07] px-2 text-[10px] font-medium
-                text-foreground/70
-                dark:bg-primary/[0.12] dark:text-foreground/60
-                transition-[background,color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
-              "
-            >
-              <span className="size-1.5 rounded-full bg-primary/60 dark:bg-primary/50" />
-              {currentConnectionLabel}
-            </span>
+            (() => {
+              const DbIcon = getDatabaseIcon(dbType, provider);
+              return (
+                <span
+                  className="
+                    inline-flex h-[18px] items-center gap-1.5 rounded-full
+                    bg-primary/[0.07] px-2 text-[10px] font-medium
+                    text-foreground/70
+                    dark:bg-primary/[0.12] dark:text-foreground/60
+                    transition-[background,color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
+                  "
+                >
+                  <DbIcon className="size-3.5" />
+                  <span className="truncate">{currentConnectionLabel}</span>
+                </span>
+              );
+            })()
           ) : (
             <span
               className="
@@ -1016,8 +1071,8 @@ export function AiChatPanel({
                 transition-[background,color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
               "
             >
-              <span className="size-1 rounded-full bg-muted-foreground/25 dark:bg-muted-foreground/20" />
-              Global
+              <Database className="size-3" />
+              <span>Global</span>
             </span>
           )}
           <DropdownMenu>

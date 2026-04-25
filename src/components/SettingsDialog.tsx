@@ -57,7 +57,6 @@ export function SettingsDialog() {
     useState<SettingsCategory>("appearance");
 
   const activeItem = SETTINGS_ITEMS.find((i) => i.id === activeCategory)!;
-  const ActiveIcon = activeItem.icon;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -70,15 +69,11 @@ export function SettingsDialog() {
         className="p-0 overflow-hidden flex flex-col !max-w-none gap-0"
         style={{ width: 880, height: 640, maxWidth: 880 }}
       >
-        {/* Header como div simples, sem DialogHeader */}
-        <div className="px-6 pt-3 shrink-0">
-          <div className="flex items-center gap-2.5 text-base font-medium">
-            <ActiveIcon className="size-4 text-primary" />
-            Settings
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
+        {/* Header minimalista */}
+        <div className="px-5 py-3 shrink-0 border-b border-border/40">
+          <h2 className="text-sm font-medium text-foreground">
             {activeItem.label}
-          </p>
+          </h2>
         </div>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">

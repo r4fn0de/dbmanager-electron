@@ -439,6 +439,43 @@ export interface CloneToLocalInput {
 }
 
 // ---------------------------------------------------------------------------
+// Schema definition types — Constraints, Enums, Functions, Triggers
+// ---------------------------------------------------------------------------
+
+export interface SchemaEnum {
+  name: string;
+  schema: string;
+  values: string[];
+}
+
+export interface SchemaFunction {
+  name: string;
+  schema: string;
+  type: "function" | "procedure";
+  language: string | null;
+  return_type: string | null;
+  argument_count: number;
+  /** Full argument list as a string, e.g. "(a integer, b text)" */
+  arguments: string | null;
+  /** Source/body of the function, if available */
+  definition: string | null;
+}
+
+export interface SchemaTrigger {
+  name: string;
+  schema: string;
+  table: string;
+  event: string;
+  timing: string;
+  /** Whether the trigger is currently enabled */
+  enabled: boolean;
+  /** The function/procedure called by the trigger */
+  function_name: string | null;
+  /** Full trigger definition statement */
+  definition: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // AI Tool Types — for database introspection tools
 // ---------------------------------------------------------------------------
 

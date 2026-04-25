@@ -25,6 +25,17 @@ import {
   getFeedbackStatsHandler,
   getNegativeFeedbackHandler,
 } from "./feedback-handlers";
+import {
+  getEmbeddingStatusHandler,
+  storeMemoryHandler,
+  storeMemoriesBatchHandler,
+  searchMemoryHandler,
+  getMemoryContextHandler,
+  getMemoryStatsHandler,
+  clearMemoryHandler,
+  cleanupMemoryHandler,
+  getRecentHistoryHandler,
+} from "./memory-handlers";
 
 export { registerAiStreamingHandlers } from "./streaming";
 export { AI_IPC_CHANNELS } from "@/constants";
@@ -52,4 +63,14 @@ export const ai = {
   listFeedback: listFeedbackHandler,
   getFeedbackStats: getFeedbackStatsHandler,
   getNegativeFeedback: getNegativeFeedbackHandler,
+  // Memory
+  getEmbeddingStatus: getEmbeddingStatusHandler,
+  storeMemory: storeMemoryHandler,
+  storeMemoriesBatch: storeMemoriesBatchHandler,
+  searchMemory: searchMemoryHandler,
+  getMemoryContext: getMemoryContextHandler,
+  getMemoryStats: getMemoryStatsHandler,
+  clearMemory: clearMemoryHandler,
+  cleanupMemory: cleanupMemoryHandler,
+  getRecentHistory: getRecentHistoryHandler,
 };

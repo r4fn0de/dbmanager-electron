@@ -23,7 +23,7 @@ import {
   type PanelImperativeHandle,
 } from "@/components/ui/resizable";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
-import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
+import { useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
 import { useConnectionsList } from "@/hooks/useConnectionsList";
 import { cn } from "@/utils/tailwind";
 import type { DatabaseType } from "@/ipc/db/types";
@@ -65,12 +65,14 @@ function Root() {
 
   const effectiveContext = useMemo(() => {
     if (activeConnection) {
+      const provider = detectConnectionProvider(activeConnection);
       return {
         connectionId: activeConnection.id,
         connectionLabel: activeConnection.name?.trim()
           || activeConnection.database?.trim()
           || activeConnection.id,
         dbType: (activeConnection.db_type || "postgresql") as DatabaseType,
+        provider,
         // Use store's schemaContext if available for the same connection, otherwise undefined
         schemaContext: storeContext.connectionId === activeConnection.id
           ? storeContext.schemaContext
@@ -392,6 +394,7 @@ function Root() {
                         connectionId={effectiveContext.connectionId}
                         connectionLabel={effectiveContext.connectionLabel}
                         dbType={effectiveContext.dbType}
+                        provider={effectiveContext.provider}
                         schemaContext={effectiveContext.schemaContext}
                         contextPreview={effectiveContext.contextPreview}
                         isOpen={isAiChatOpen}

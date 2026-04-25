@@ -6,7 +6,7 @@
  * Connection strings use the format: sqlite:///absolute/path/to/file.db
  */
 import BetterSqlite3 from "better-sqlite3";
-import type { DatabaseType, SslMode } from "./types";
+import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import {
   buildCreateTableSql,
@@ -467,6 +467,49 @@ export function createSqliteDriver(): DatabaseDriver {
         return constraints;
       } catch (err) {
         throw new Error(`SQLite getConstraints error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+
+    async getEnums(_connectionString, _schema): Promise<SchemaEnum[]> {
+      // SQLite doesn't have native enum types
+      return [];
+    },
+
+    async getFunctions(connectionString, _schema): Promise<SchemaFunction[]> {
+      const db = getDb(connectionString);
+      try {
+        // SQLite doesn't have user-defined functions accessible via SQL
+        // Application-defined functions are not introspectable
+        return [];
+      } catch {
+        return [];
+      }
+    },
+
+    async getTriggers(connectionString, _schema): Promise<SchemaTrigger[]> {
+      const db = getDb(connectionString);
+      try {
+        const triggers = db
+          .prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, name")
+          .all() as Array<{ name: string; tbl_name: string; sql: string | null }>;
+
+        return triggers.map((t) => {
+          // Parse event and timing from the trigger SQL
+          const sql = t.sql ?? "";
+          const eventMatch = sql.match(/\b(AFTER|BEFORE|INSTEAD OF)\s+(INSERT|UPDATE|DELETE)\b/i);
+          return {
+            name: t.name,
+            schema: "main",
+            table: t.tbl_name,
+            event: eventMatch?.[2]?.toUpperCase() ?? "UNKNOWN",
+            timing: eventMatch?.[1]?.toUpperCase() ?? "AFTER",
+            enabled: true, // SQLite doesn't have disabled triggers
+            function_name: null,
+            definition: t.sql ?? null,
+          };
+        });
+      } catch {
+        return [];
       }
     },
 

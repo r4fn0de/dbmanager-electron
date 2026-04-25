@@ -8,7 +8,7 @@
  * DDL uses shared builders (ddl-sql.ts) executed via pool.
  */
 import mysql from "mysql2/promise";
-import type { DatabaseType, SslMode, ConstraintInfo } from "./types";
+import type { DatabaseType, SslMode, ConstraintInfo, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getMysqlPool, getMysqlKysely } from "./kysely-factory";
 import {
@@ -705,6 +705,129 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`MySQL getConstraints error for ${schema}.${table}: ${msg}`);
+        }
+      });
+    },
+
+    async getEnums(connectionString, schema): Promise<SchemaEnum[]> {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          // MySQL stores ENUM column info in COLUMN_TYPE, e.g. enum('a','b','c')
+          // There's no dedicated enum catalog — extract from information_schema.columns
+          const [rows] = await conn.query(
+            `SELECT COLUMN_NAME, COLUMN_TYPE, TABLE_NAME
+             FROM information_schema.columns
+             WHERE TABLE_SCHEMA = ? AND DATA_TYPE = 'enum'
+             ORDER BY TABLE_NAME, COLUMN_NAME`,
+            [schema],
+          );
+
+          // Group unique enum types by extracting values from COLUMN_TYPE
+          const enumMap = new Map<string, SchemaEnum>();
+          for (const row of rows as Array<{ COLUMN_NAME: string; COLUMN_TYPE: string; TABLE_NAME: string }>) {
+            const match = row.COLUMN_TYPE.match(/^enum\((.*)\)$/i);
+            if (!match) continue;
+            // Parse enum values from MySQL format: 'val1','val2',...
+            const values = match[1].split(',').map((v: string) => v.trim().replace(/^'|'$/g, ''));
+            const enumName = `${row.TABLE_NAME}_${row.COLUMN_NAME}_enum`;
+            if (!enumMap.has(enumName)) {
+              enumMap.set(enumName, {
+                name: enumName,
+                schema,
+                values,
+              });
+            }
+          }
+          return Array.from(enumMap.values());
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL getEnums error for ${schema}: ${msg}`);
+        }
+      });
+    },
+
+    async getFunctions(connectionString, schema): Promise<SchemaFunction[]> {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          const [rows] = await conn.query(
+            `SELECT
+              r.ROUTINE_NAME   AS name,
+              r.ROUTINE_SCHEMA  AS schema,
+              r.ROUTINE_TYPE    AS type,
+              r.EXTERNAL_LANGUAGE AS language,
+              r.DTD_IDENTIFIER  AS return_type,
+              r.ROUTINE_DEFINITION AS definition
+             FROM information_schema.routines r
+             WHERE r.ROUTINE_SCHEMA = ?
+             ORDER BY r.ROUTINE_NAME`,
+            [schema],
+          );
+
+          // Get parameter counts separately
+          const [paramRows] = await conn.query(
+            `SELECT SPECIFIC_NAME, COUNT(*) AS param_count
+             FROM information_schema.parameters
+             WHERE SPECIFIC_SCHEMA = ? AND ORDINAL_POSITION > 0
+             GROUP BY SPECIFIC_NAME`,
+            [schema],
+          );
+          const paramMap = new Map<string, number>();
+          for (const row of paramRows as Array<{ SPECIFIC_NAME: string; param_count: bigint }>) {
+            paramMap.set(row.SPECIFIC_NAME, Number(row.param_count));
+          }
+
+          return (rows as Array<{
+            name: string; schema: string; type: string;
+            language: string | null; return_type: string | null; definition: string | null;
+          }>).map((row) => ({
+            name: row.name,
+            schema: row.schema,
+            type: (row.type === 'PROCEDURE' ? 'procedure' : 'function') as 'function' | 'procedure',
+            language: row.language ?? null,
+            return_type: row.type === 'PROCEDURE' ? null : (row.return_type ?? null),
+            argument_count: paramMap.get(row.name) ?? 0,
+            arguments: null, // MySQL doesn't provide argument signatures easily
+            definition: row.definition ?? null,
+          }));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL getFunctions error for ${schema}: ${msg}`);
+        }
+      });
+    },
+
+    async getTriggers(connectionString, schema): Promise<SchemaTrigger[]> {
+      return withConnection(connectionString, async (conn) => {
+        try {
+          const [rows] = await conn.query(
+            `SELECT
+              TRIGGER_NAME,
+              EVENT_OBJECT_TABLE   AS table_name,
+              EVENT_MANIPULATION   AS event,
+              ACTION_TIMING        AS timing,
+              ACTION_STATEMENT    AS definition
+             FROM information_schema.triggers
+             WHERE TRIGGER_SCHEMA = ?
+             ORDER BY EVENT_OBJECT_TABLE, TRIGGER_NAME`,
+            [schema],
+          );
+
+          return (rows as Array<{
+            TRIGGER_NAME: string; table_name: string;
+            event: string; timing: string; definition: string;
+          }>).map((row) => ({
+            name: row.TRIGGER_NAME,
+            schema,
+            table: row.table_name,
+            event: row.event,
+            timing: row.timing,
+            enabled: true, // MySQL doesn't have disabled triggers
+            function_name: null, // MySQL doesn't expose trigger function separately
+            definition: row.definition ?? null,
+          }));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MySQL getTriggers error for ${schema}: ${msg}`);
         }
       });
     },

@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Braces } from "lucide-react";
 import { Database } from "@/components/icons/Database";
 import { Table } from "@/components/icons/Table";
 import { Terminal } from "@/components/icons/Terminal";
@@ -44,6 +44,7 @@ const NAV_ITEMS: {
   { section: "tables", icon: Table, label: "Tables", shortcut: "2" },
   { section: "sql-editor", icon: Terminal, label: "SQL Editor", shortcut: "3" },
   { section: "visualizer", icon: Branch, label: "Visualizer", shortcut: "4" },
+  { section: "definitions", icon: Braces, label: "Definitions", shortcut: "5" },
 ];
 
 function ProviderIcon({ provider, isLocal }: { provider?: ConnectionProvider; isLocal?: boolean }) {

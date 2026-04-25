@@ -1,11 +1,16 @@
 import { ORPCError, os } from "@orpc/server";
 import type {
   Connection,
+  ConstraintInfo,
+  IndexInfo,
   LocalDbInfo,
   QueryResult,
   DatabaseSchema,
   SchemaSummary,
   SchemaTableDetails,
+  SchemaEnum,
+  SchemaFunction,
+  SchemaTrigger,
   TableRowsResponse,
   SaveChangesResponse,
   FkLookupResponse,
@@ -40,6 +45,7 @@ import {
   executeBatchDdlSchema,
   importTableRowsSchema,
   waitForDatabaseSchema,
+  schemaDefinitionInputSchema,
 } from "./schemas";
 import {
   loadConnections,
@@ -612,4 +618,63 @@ export const importTableRows = os
       input.columns,
       input.rows,
     );
+  });
+
+// ---------------------------------------------------------------------------
+// Schema definition handlers (enums, functions, triggers)
+// ---------------------------------------------------------------------------
+
+export const getEnums = os
+  .input(schemaDefinitionInputSchema)
+  .handler(async ({ input }): Promise<SchemaEnum[]> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.getEnums(connStr, input.schema);
+  });
+
+export const getFunctions = os
+  .input(schemaDefinitionInputSchema)
+  .handler(async ({ input }): Promise<SchemaFunction[]> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.getFunctions(connStr, input.schema);
+  });
+
+export const getTriggers = os
+  .input(schemaDefinitionInputSchema)
+  .handler(async ({ input }): Promise<SchemaTrigger[]> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    return await driver.getTriggers(connStr, input.schema);
+  });
+
+export const getSchemaConstraints = os
+  .input(schemaDefinitionInputSchema)
+  .handler(async ({ input }): Promise<ConstraintInfo[]> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    // Get table list for the schema, then aggregate per-table constraints
+    const summary = await driver.getSchemaSummary(connStr);
+    const schemaTables = summary.tables.filter((t) => t.schema === input.schema);
+    const results = await Promise.allSettled(
+      schemaTables.map((t) => driver.getConstraints(connStr, input.schema, t.name)),
+    );
+    return results
+      .filter((r): r is PromiseFulfilledResult<ConstraintInfo[]> => r.status === "fulfilled")
+      .flatMap((r) => r.value);
+  });
+
+export const getSchemaIndexes = os
+  .input(schemaDefinitionInputSchema)
+  .handler(async ({ input }): Promise<IndexInfo[]> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const summary = await driver.getSchemaSummary(connStr);
+    const schemaTables = summary.tables.filter((t) => t.schema === input.schema);
+    const results = await Promise.allSettled(
+      schemaTables.map((t) => driver.getIndexes(connStr, input.schema, t.name)),
+    );
+    return results
+      .filter((r): r is PromiseFulfilledResult<IndexInfo[]> => r.status === "fulfilled")
+      .flatMap((r) => r.value);
   });

@@ -9,7 +9,7 @@
  * - Schema introspection via system tables + information_schema
  * - SSL via protocol (clickhouses:// → https://)
  */
-import type { DatabaseType, SslMode } from "./types";
+import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import { getClickhouseEffectivePort } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getClickhouseClient } from "./kysely-factory";
@@ -378,6 +378,53 @@ export function createClickhouseDriver(): DatabaseDriver {
     async getConstraints(connectionString, schema, table) {
       // ClickHouse doesn't have traditional constraints (FK, unique, check)
       // It only has data skipping indices and primary keys via ORDER BY
+      return [];
+    },
+
+    async getEnums(connectionString, schema): Promise<SchemaEnum[]> {
+      const client = await getClickhouseClient(connectionString);
+      try {
+        // ClickHouse Enum types are embedded in column definitions, e.g. Enum8('a'=1,'b'=2)
+        // Extract from system.columns
+        const result = await client.query({
+          query: `SELECT name, type, table
+                   FROM system.columns
+                   WHERE database = ${escVal(schema)}
+                     AND type LIKE 'Enum%'
+                   ORDER BY table, name`,
+          format: "JSONEachRow",
+        });
+        const rows = await result.json() as Array<{ name: string; type: string; table: string }>;
+
+        const enumMap = new Map<string, SchemaEnum>();
+        for (const row of rows) {
+          // Parse Enum8('val1'=1,'val2'=2) or Enum16(...)
+          const match = row.type.match(/^Enum\d+\((.*)\)$/);
+          if (!match) continue;
+          const values = match[1].split(',').map((v: string) => {
+            const valMatch = v.trim().match(/^'([^']*)'/);
+            return valMatch ? valMatch[1] : v.trim();
+          });
+          const enumName = `${row.table}_${row.name}_enum`;
+          if (!enumMap.has(enumName)) {
+            enumMap.set(enumName, { name: enumName, schema, values });
+          }
+        }
+        return Array.from(enumMap.values());
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`ClickHouse getEnums error for ${schema}: ${msg}`);
+      }
+    },
+
+    async getFunctions(connectionString, schema): Promise<SchemaFunction[]> {
+      // ClickHouse doesn't have user-defined functions in the traditional sense
+      // It has lambda functions in column expressions, but those aren't introspectable
+      return [];
+    },
+
+    async getTriggers(connectionString, schema): Promise<SchemaTrigger[]> {
+      // ClickHouse doesn't have triggers
       return [];
     },
 

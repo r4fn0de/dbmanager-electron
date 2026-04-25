@@ -14,6 +14,7 @@ import type {
   AlterColumnTypeInput,
   Connection,
   ConnectionInput,
+  ConstraintInfo,
   CreateIndexInput,
   CreateSchemaInput,
   CreateTableInput,
@@ -25,14 +26,18 @@ import type {
   DropTableInput,
   FkLookupInput,
   FkLookupResponse,
+  IndexInfo,
   ListRowsInput,
   QueryResult,
   RenameColumnInput,
   RenameTableInput,
   SaveChangesInput,
   SaveChangesResponse,
+  SchemaEnum,
+  SchemaFunction,
   SchemaSummary,
   SchemaTableDetails,
+  SchemaTrigger,
   SetColumnDefaultInput,
   SetColumnNullableInput,
   TableRef,
@@ -316,6 +321,73 @@ export async function createSchema(
   } catch (err) {
     throw new Error(
       err instanceof Error ? err.message : "Failed to create schema",
+    );
+  }
+}
+
+// ── Schema definition operations ──────────────────────────────────────
+
+export async function getEnums(
+  connectionId: string,
+  schema: string,
+): Promise<SchemaEnum[]> {
+  try {
+    return await ipc.client.db.getEnums({ connectionId, schema });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to fetch enums",
+    );
+  }
+}
+
+export async function getFunctions(
+  connectionId: string,
+  schema: string,
+): Promise<SchemaFunction[]> {
+  try {
+    return await ipc.client.db.getFunctions({ connectionId, schema });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to fetch functions",
+    );
+  }
+}
+
+export async function getTriggers(
+  connectionId: string,
+  schema: string,
+): Promise<SchemaTrigger[]> {
+  try {
+    return await ipc.client.db.getTriggers({ connectionId, schema });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to fetch triggers",
+    );
+  }
+}
+
+export async function getSchemaConstraints(
+  connectionId: string,
+  schema: string,
+): Promise<ConstraintInfo[]> {
+  try {
+    return await ipc.client.db.getSchemaConstraints({ connectionId, schema });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to fetch schema constraints",
+    );
+  }
+}
+
+export async function getSchemaIndexes(
+  connectionId: string,
+  schema: string,
+): Promise<IndexInfo[]> {
+  try {
+    return await ipc.client.db.getSchemaIndexes({ connectionId, schema });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to fetch schema indexes",
     );
   }
 }

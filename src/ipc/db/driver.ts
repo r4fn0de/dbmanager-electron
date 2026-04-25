@@ -12,6 +12,9 @@ import type {
   DatabaseType,
   IndexInfo,
   ConstraintInfo,
+  SchemaEnum,
+  SchemaFunction,
+  SchemaTrigger,
   TableStats,
   QueryResult,
   QueryPlanResult,
@@ -98,6 +101,24 @@ export interface DatabaseDriver {
     schema: string,
     table: string,
   ): Promise<ConstraintInfo[]>;
+
+  /** Fetch all enums in a schema (or entire database for SQLite). */
+  getEnums(
+    connectionString: string,
+    schema: string,
+  ): Promise<SchemaEnum[]>;
+
+  /** Fetch all functions/procedures in a schema. */
+  getFunctions(
+    connectionString: string,
+    schema: string,
+  ): Promise<SchemaFunction[]>;
+
+  /** Fetch all triggers in a schema. */
+  getTriggers(
+    connectionString: string,
+    schema: string,
+  ): Promise<SchemaTrigger[]>;
 
   /** Fetch statistics for a specific table. */
   getTableStats(

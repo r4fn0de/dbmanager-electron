@@ -1,5 +1,6 @@
 import {
   Database,
+  FileCode2,
   FileSearch,
   Loader2,
   Lock,
@@ -96,6 +97,7 @@ export interface TablesExplorerSidebarProps {
   onDropTable: (target: { schema: string; name: string }) => void;
   onViewRlsPolicies: (target: { schema: string; name: string }) => void;
   onViewDdl: (target: { schema: string; name: string }) => void;
+  onExportSchema: (target: { schema: string; name: string }) => void;
 }
 
 export function TablesExplorerSidebar({
@@ -119,6 +121,7 @@ export function TablesExplorerSidebar({
   onDropTable,
   onViewRlsPolicies,
   onViewDdl,
+  onExportSchema,
 }: TablesExplorerSidebarProps) {
   return (
     <aside className="h-full min-h-0 flex flex-col bg-sidebar">
@@ -335,6 +338,17 @@ export function TablesExplorerSidebar({
                       >
                         <ScrollText className="size-3.5" />
                         View DDL
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onClick={() =>
+                          onExportSchema({
+                            schema: table.schema,
+                            name: table.name,
+                          })
+                        }
+                      >
+                        <FileCode2 className="size-3.5" />
+                        Export Schema
                       </ContextMenuItem>
                       <ContextMenuItem
                         onClick={() =>

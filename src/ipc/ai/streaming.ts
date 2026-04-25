@@ -19,6 +19,8 @@ import { createAiTools } from "./tools";
 import { ipcContext } from "@/ipc/context";
 import { AI_IPC_CHANNELS } from "@/constants";
 import type { DatabaseType } from "@/ipc/db/types";
+import { saveMemory, searchSimilarMemories, getRecentMemories } from "./memory-store";
+import { generateEmbedding, getEmbeddingStatus, optimizeQueryForSearch } from "./embedding-service";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,16 +79,49 @@ function abortInlineStream(requestId: string) {
 // System prompt builder
 // ---------------------------------------------------------------------------
 
+interface MemoryContextData {
+  recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
+  similarQueries: Array<{ query: string; response: string; similarity: number }>;
+}
+
 function buildSystemPrompt(
   dbType: DatabaseType,
   schemaContext?: string,
   hasConnection = true,
+  memoryContext?: MemoryContextData,
 ): string {
   const now = new Date().toISOString();
 
   let prompt = `You are an AI SQL assistant for ${dbType}. Your primary role is to help users write, optimize, and debug SQL queries.
 
-Current date/time: ${now}
+Current date/time: ${now}`;
+
+  // Add memory context if available
+  if (memoryContext && (memoryContext.recentMessages.length > 0 || memoryContext.similarQueries.length > 0)) {
+    prompt += `
+
+## Memory Context (Previous Conversations)
+The following information is from your previous conversations with this user. Use it to provide more relevant and personalized assistance.`;
+
+    if (memoryContext.recentMessages.length > 0) {
+      prompt += `
+
+### Recent Conversation History:
+${memoryContext.recentMessages.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.slice(0, 200)}${m.content.length > 200 ? "..." : ""}`).join("\n")}`;
+    }
+
+    if (memoryContext.similarQueries.length > 0) {
+      prompt += `
+
+### Similar Past Queries (may provide helpful context):
+${memoryContext.similarQueries.map((q, i) => `
+Query ${i + 1} (similarity: ${Math.round(q.similarity * 100)}%):
+User: ${q.query.slice(0, 150)}${q.query.length > 150 ? "..." : ""}
+Assistant: ${q.response.slice(0, 300)}${q.response.length > 300 ? "..." : ""}`).join("\n")}`;
+    }
+  }
+
+  prompt += `
 
 ## Rules
 - Always use quoted identifiers to avoid case-sensitivity issues
@@ -170,6 +205,104 @@ ${contextSection}`;
 }
 
 // ---------------------------------------------------------------------------
+// Message content helper
+// ---------------------------------------------------------------------------
+
+function extractMessageContent(content: string | { type: string; text?: string }[]): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part.type === "text" && part.text)
+      .map((part) => part.text)
+      .join("\n");
+  }
+  return "";
+}
+
+// ---------------------------------------------------------------------------
+// Memory context builder
+// ---------------------------------------------------------------------------
+
+async function fetchMemoryContext(
+  userMessage: string,
+  connectionId: string | null,
+): Promise<MemoryContextData> {
+  const context: MemoryContextData = {
+    recentMessages: [],
+    similarQueries: [],
+  };
+
+  try {
+    // Get recent messages from this connection
+    const recentMemories = getRecentMemories({
+      connectionId: connectionId ?? undefined,
+      limit: 6,
+      hours: 24,
+    });
+
+    context.recentMessages = recentMemories.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    // Get semantically similar queries if model is ready
+    if (getEmbeddingStatus() === "ready") {
+      try {
+        const queryEmbedding = await generateEmbedding(
+          optimizeQueryForSearch(userMessage),
+        );
+
+        const similarResults = searchSimilarMemories(queryEmbedding, {
+          connectionId: connectionId ?? undefined,
+          limit: 10,
+          minSimilarity: 0.75,
+          lookbackHours: 168, // 7 days
+        });
+
+        // Pair user-assistant messages from similar conversations
+        const seenConversations = new Set<string>();
+        for (const result of similarResults) {
+          const convId = result.entry.conversationId;
+          if (seenConversations.has(convId)) continue;
+
+          // Get conversation context
+          const conversationMemories = getRecentMemories({
+            conversationId: convId,
+            limit: 6,
+          });
+
+          // Find user query and assistant response pairs
+          for (let i = 0; i < conversationMemories.length - 1; i++) {
+            const userMsg = conversationMemories[i];
+            const assistantMsg = conversationMemories[i + 1];
+
+            if (userMsg?.role === "user" && assistantMsg?.role === "assistant") {
+              context.similarQueries.push({
+                query: userMsg.content,
+                response: assistantMsg.content,
+                similarity: result.similarity,
+              });
+              break;
+            }
+          }
+
+          seenConversations.add(convId);
+          if (context.similarQueries.length >= 3) break;
+        }
+      } catch (err) {
+        console.warn("[ai:memory] Failed to get similar queries:", err);
+      }
+    }
+  } catch (err) {
+    console.warn("[ai:memory] Failed to fetch memory context:", err);
+  }
+
+  return context;
+}
+
+// ---------------------------------------------------------------------------
 // Stream handler — runs in main process, sends chunks to renderer
 // ---------------------------------------------------------------------------
 
@@ -185,8 +318,19 @@ async function handleChatStart(
   const abortController = new AbortController();
   activeAbortControllers.set(chatId, abortController);
 
+  // Get the last user message for memory context
+  const lastUserMessage = messages.findLast((m) => m.role === "user");
+  const userContentRaw = lastUserMessage?.content ?? "";
+  const userContent = extractMessageContent(userContentRaw);
+
+  // Collect assistant response for memory storage
+  let assistantResponse = "";
+
   try {
     const model = getCurrentModel();
+
+    // Fetch memory context before starting the stream
+    const memoryContext = await fetchMemoryContext(userContent, connectionId);
 
     // Use the factory pattern to create tools with connectionId in closure.
     // The AI SDK does NOT forward experimental_context to tool execute functions.
@@ -196,7 +340,7 @@ async function handleChatStart(
     // NOT a Promise. Do NOT await it before accessing .textStream etc.
     const result = streamText({
       model,
-      system: buildSystemPrompt(dbType, schemaContext, Boolean(connectionId)),
+      system: buildSystemPrompt(dbType, schemaContext, Boolean(connectionId), memoryContext),
       messages,
       ...(tools ? { tools } : {}),
       abortSignal: abortController.signal,
@@ -207,6 +351,7 @@ async function handleChatStart(
         // Forward chunks to renderer
         // AI SDK v6 chunk types: 'text-delta' (not 'text'), 'tool-call', 'tool-result'
         if (event.chunk.type === "text-delta") {
+          assistantResponse += event.chunk.text;
           window.webContents.send(AI_IPC_CHANNELS.CHAT_CHUNK, {
             chatId,
             type: "text",
@@ -251,6 +396,45 @@ async function handleChatStart(
       finishReason,
       usage,
     });
+
+    // Save to memory after successful completion
+    if (userContent && assistantResponse) {
+      try {
+        // Generate embedding for user message if model is ready
+        let userEmbedding: Float32Array | undefined;
+        if (getEmbeddingStatus() === "ready") {
+          try {
+            userEmbedding = await generateEmbedding(
+              optimizeQueryForSearch(userContent),
+            );
+          } catch (embErr) {
+            console.warn("[ai:memory] Failed to generate embedding:", embErr);
+          }
+        }
+
+        // Save user message
+        saveMemory({
+          conversationId: chatId,
+          messageId: `${chatId}_user`,
+          connectionId: connectionId ?? undefined,
+          role: "user",
+          content: userContent,
+          embedding: userEmbedding,
+        });
+
+        // Save assistant response (no embedding needed)
+        saveMemory({
+          conversationId: chatId,
+          messageId: `${chatId}_assistant`,
+          connectionId: connectionId ?? undefined,
+          role: "assistant",
+          content: assistantResponse,
+        });
+      } catch (memErr) {
+        console.warn("[ai:memory] Failed to save memory:", memErr);
+        // Don't fail the chat if memory save fails
+      }
+    }
   } catch (err) {
     if (abortController.signal.aborted) {
       // Stream was aborted — don't send error

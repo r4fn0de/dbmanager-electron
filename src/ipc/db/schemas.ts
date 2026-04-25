@@ -281,3 +281,9 @@ export const waitForDatabaseSchema = z.object({
   maxRetries: z.number().optional(),
   intervalMs: z.number().optional(),
 });
+
+// Schema definition browsers — enums, functions, triggers
+export const schemaDefinitionInputSchema = z.object({
+  connectionId: z.string(),
+  schema: z.string(),
+});

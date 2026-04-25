@@ -36,6 +36,11 @@ import {
   executeBatchDdl,
   waitForDatabase,
   importTableRows,
+  getEnums,
+  getFunctions,
+  getSchemaConstraints,
+  getSchemaIndexes,
+  getTriggers,
 } from "./handlers";
 
 export { driverRegistry, registerDrivers } from "./registry";
@@ -87,4 +92,10 @@ export const db = {
   executeBatchDdl,
   waitForDatabase,
   importTableRows,
+  // Schema definitions
+  getEnums,
+  getFunctions,
+  getSchemaConstraints,
+  getSchemaIndexes,
+  getTriggers,
 };
