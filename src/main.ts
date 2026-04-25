@@ -14,6 +14,81 @@ import { configurePrivateUpdates } from "@/updater/private-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
 
+let splashWindow: BrowserWindow | null = null;
+
+function createSplashWindow(): BrowserWindow | null {
+  try {
+    const splash = new BrowserWindow({
+      width: 320,
+      height: 200,
+      frame: false,
+      alwaysOnTop: true,
+      center: true,
+      resizable: false,
+      skipTaskbar: true,
+      show: false,
+      transparent: true,
+      backgroundColor: "#00000000",
+      webPreferences: {
+        devTools: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+
+    // Minimalist splash - clean and simple
+    const splashHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:320px;height:200px;background:#0a0a0a;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+.container{text-align:center}
+.icon{font-size:32px;margin-bottom:12px;opacity:.9}
+.text{color:#e5e5e5;font-size:14px;font-weight:400;letter-spacing:.5px}
+</style></head>
+<body><div class="container"><div class="icon">◐</div><div class="text">DBManager</div></div></body></html>`;
+
+    splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`);
+
+    splash.once("ready-to-show", () => {
+      splash.show();
+    });
+
+    // Auto-close after 10s max to prevent blocking
+    setTimeout(() => {
+      if (!splash.isDestroyed()) splash.close();
+    }, 10000);
+
+    return splash;
+  } catch (err) {
+    console.log("[startup] Failed to create splash:", err);
+    return null;
+  }
+}
+
+function updateSplashStatus(message: string) {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send("splash-status", message);
+  }
+}
+
+function closeSplashWindow() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    // Fade out effect
+    splashWindow.setOpacity(0.9);
+    const fadeInterval = setInterval(() => {
+      const current = splashWindow?.getOpacity() ?? 0;
+      if (current <= 0.1) {
+        clearInterval(fadeInterval);
+        splashWindow?.close();
+        splashWindow = null;
+      } else {
+        splashWindow?.setOpacity(current - 0.1);
+      }
+    }, 30);
+  }
+}
+
 function createWindow() {
   const basePath = getBasePath();
   const preload = path.join(basePath, "preload.js");
@@ -64,16 +139,49 @@ function createWindow() {
   let isQuitting = false;
 
   let windowShown = false;
-  const showMainWindow = () => {
-    if (windowShown || mainWindow.isDestroyed()) return;
+  const showMainWindow = (source: string) => {
+    console.log(`[window] showMainWindow called from: ${source}`);
+    if (windowShown) {
+      console.log("[window] already shown, skipping");
+      return;
+    }
+    if (mainWindow.isDestroyed()) {
+      console.log("[window] destroyed, skipping");
+      return;
+    }
     windowShown = true;
-    mainWindow.show();
+    console.log(`[window] isVisible: ${mainWindow.isVisible()}, isLoading: ${mainWindow.webContents.isLoading()}`);
+
+    // Even if window is visible, ensure it's shown and focused
+    if (!mainWindow.isVisible()) {
+      console.log("[window] showing window...");
+      mainWindow.show();
+    }
+
+    // Force focus and raise to front
     mainWindow.focus();
+    if (process.platform === "darwin") {
+      mainWindow.setAlwaysOnTop(true);
+      setTimeout(() => mainWindow.setAlwaysOnTop(false), 100);
+    }
+    app.focus({ steal: true });
+
+    console.log("[window] window focused");
+    closeSplashWindow();
+    console.log("[window] splash closed");
   };
 
-  mainWindow.once("ready-to-show", showMainWindow);
+  mainWindow.once("ready-to-show", () => {
+    console.log("[window] ready-to-show event fired");
+    showMainWindow("ready-to-show");
+  });
+
   // Fallback for cases where renderer never emits ready-to-show in dev.
-  setTimeout(showMainWindow, 3000);
+  // macOS sometimes needs this due to vibrancy/transparency settings
+  setTimeout(() => {
+    console.log("[window] fallback timeout triggered");
+    showMainWindow("fallback-timeout");
+  }, 1500);
 
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
@@ -170,33 +278,57 @@ function createWindow() {
         errorDescription,
         validatedURL,
       });
-      showMainWindow();
+      showMainWindow("did-fail-load");
     },
   );
+
+  // Ensure window shows even if something goes wrong with loading
+  mainWindow.webContents.on("did-start-loading", () => {
+    console.log("[window] started loading");
+  });
+
+  mainWindow.webContents.on("did-stop-loading", () => {
+    console.log("[window] stopped loading");
+    showMainWindow("did-stop-loading");
+  });
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     console.error("[window] renderer process gone", details);
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    console.log(`[window] loading dev server URL: ${MAIN_WINDOW_VITE_DEV_SERVER_URL}`);
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL).catch((err) => {
+      console.error("[window] failed to load dev server URL:", err);
+    });
   } else {
-    mainWindow.loadFile(
-      path.join(basePath, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
-    );
+    const filePath = path.join(basePath, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    console.log(`[window] loading file: ${filePath}`);
+    mainWindow.loadFile(filePath).catch((err) => {
+      console.error("[window] failed to load file:", err);
+    });
   }
 }
 
 async function installExtensions() {
+  const startTime = Date.now();
+  const TIMEOUT_MS = 10000; // 10 second timeout
+
   try {
     const extensionApi = session.defaultSession.extensions;
     const installedExtension = extensionApi
       .getAllExtensions()
       .find((extension) => extension.id === REACT_DEVELOPER_TOOLS_EXTENSION_ID);
 
-    const extensionFolder = await downloadChromeExtension(
-      REACT_DEVELOPER_TOOLS_EXTENSION_ID,
-      { forceDownload: false },
-    );
+    // Race between download and timeout
+    const extensionFolder = await Promise.race([
+      downloadChromeExtension(
+        REACT_DEVELOPER_TOOLS_EXTENSION_ID,
+        { forceDownload: false, attempts: 3 },
+      ),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Extension download timeout")), TIMEOUT_MS)
+      ),
+    ]);
 
     if (installedExtension?.id) {
       const unloadPromise = new Promise<void>((resolve) => {
@@ -215,9 +347,10 @@ async function installExtensions() {
     }
 
     const loadedExtension = await extensionApi.loadExtension(extensionFolder);
-    console.log(`Extensions installed successfully: ${loadedExtension.name}`);
+    console.log(`[startup] Extensions installed in ${Date.now() - startTime}ms: ${loadedExtension.name}`);
   } catch (error) {
-    console.error("Failed to install extensions", error);
+    console.error(`[startup] Failed to install extensions after ${Date.now() - startTime}ms:`, error);
+    // Non-fatal: continue without extensions
   }
 }
 
@@ -226,38 +359,68 @@ async function checkForUpdates() {
 }
 
 async function runPostWindowInitialization() {
-  try {
-    await installExtensions();
-  } catch (error) {
-    console.error("[startup] Failed to install dev extensions:", error);
-  }
+  const startTime = Date.now();
+  console.log("[startup] Starting post-window initialization...");
 
-  try {
-    await checkForUpdates();
-  } catch (error) {
-    console.error("[startup] Failed to configure auto-updates:", error);
-  }
+  // Run independent operations in parallel
+  const operations = [
+    {
+      name: "installExtensions",
+      fn: () => installExtensions(),
+      timeout: 15000,
+    },
+    {
+      name: "checkForUpdates",
+      fn: () => checkForUpdates(),
+      timeout: 5000,
+    },
+    {
+      name: "registerDrivers",
+      fn: () => registerDrivers(),
+      timeout: 10000,
+    },
+    {
+      name: "registerAiHandlers",
+      fn: () => registerAiStreamingHandlers(),
+      timeout: 5000,
+    },
+    {
+      name: "hydrateLocalDbs",
+      fn: () => localDbManager.hydrate(),
+      timeout: 30000,
+    },
+  ];
 
-  try {
-    // Register database drivers (PostgreSQL, MySQL, MariaDB)
-    await registerDrivers();
-  } catch (error) {
-    console.error("[startup] Failed to register DB drivers:", error);
-  }
+  const runWithTimeout = async <T>(name: string, fn: () => T | Promise<T>, timeoutMs: number) => {
+    const opStart = Date.now();
+    try {
+      const result = await Promise.race([
+        Promise.resolve(fn()),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`${name} timeout`)), timeoutMs)
+        ),
+      ]);
+      console.log(`[startup] ${name} completed in ${Date.now() - opStart}ms`);
+      return { name, success: true, duration: Date.now() - opStart };
+    } catch (error) {
+      console.error(`[startup] ${name} failed after ${Date.now() - opStart}ms:`, error);
+      return { name, success: false, error, duration: Date.now() - opStart };
+    }
+  };
 
-  try {
-    // Register AI streaming chat handlers (IPC event-based)
-    registerAiStreamingHandlers();
-  } catch (error) {
-    console.error("[startup] Failed to register AI handlers:", error);
-  }
+  // Run all operations in parallel
+  const results = await Promise.all(
+    operations.map(op => runWithTimeout(op.name, op.fn, op.timeout))
+  );
 
-  try {
-    // Hydrate local databases (auto-start instances that were running before)
-    await localDbManager.hydrate();
-  } catch (error) {
-    console.error("[startup] Failed to hydrate local databases:", error);
-  }
+  const totalTime = Date.now() - startTime;
+  const successful = results.filter(r => r.success).length;
+  console.log(`[startup] Post-window initialization complete in ${totalTime}ms (${successful}/${operations.length} ops succeeded)`);
+
+  // Log any failures
+  results.filter(r => !r.success).forEach(r => {
+    console.error(`[startup] Failed operation: ${r.name}`);
+  });
 }
 
 function setupMenu() {
@@ -366,17 +529,63 @@ function configureAppIdentity(): void {
 }
 
 app.whenReady().then(async () => {
+  const startTime = Date.now();
+  console.log("[startup] App ready, starting initialization...");
+
+  // Create splash screen immediately for visual feedback
+  console.log("[startup] Creating splash screen...");
+  splashWindow = createSplashWindow();
+
   try {
     configureAppIdentity();
-    // Register IPC handlers before creating the renderer window so
-    // initial theme sync events from the renderer are not lost.
-    await setupORPC();
+    console.log("[startup] App identity configured");
+
+    // Setup ORPC with retry logic
+    let orpcRetries = 0;
+    const maxRetries = 3;
+    while (orpcRetries < maxRetries) {
+      try {
+        await setupORPC();
+        console.log(`[startup] ORPC setup succeeded (attempt ${orpcRetries + 1})`);
+        break;
+      } catch (error) {
+        orpcRetries++;
+        console.error(`[startup] ORPC setup failed (attempt ${orpcRetries}/${maxRetries}):`, error);
+        if (orpcRetries >= maxRetries) {
+          console.error("[startup] ORPC setup failed after all retries, continuing without IPC");
+        } else {
+          await new Promise(r => setTimeout(r, 100 * orpcRetries)); // Exponential backoff
+        }
+      }
+    }
+
+    console.log("[startup] Creating window...");
     createWindow();
+
+    console.log("[startup] Setting up menu...");
     setupMenu();
+
     // Keep the window startup path fast and run non-critical setup in background.
+    console.log("[startup] Starting post-window initialization (background)...");
     void runPostWindowInitialization();
+
+    console.log(`[startup] Core initialization complete in ${Date.now() - startTime}ms`);
+
+    // Close splash when main window is ready
+    setTimeout(() => {
+      closeSplashWindow();
+    }, 500); // Small delay for smooth transition
+
   } catch (error) {
-    console.error("Error during app initialization:", error);
+    console.error("[startup] Fatal error during app initialization:", error);
+    closeSplashWindow();
+
+    // Show error dialog to user
+    dialog.showErrorBox(
+      "Startup Error",
+      `Failed to initialize ${APP_DISPLAY_NAME}. Please check the logs and try again.\n\nError: ${error instanceof Error ? error.message : String(error)}`
+    );
+    app.quit();
   }
 });
 

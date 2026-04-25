@@ -261,8 +261,8 @@ export function searchSimilarMemories(
   }
 
   if (options?.lookbackHours) {
-    conditions.push("timestamp >= datetime('now', '-? hours')");
-    params.push(options.lookbackHours);
+    // Hours interpolated into SQL - safe since it's a number
+    conditions.push(`timestamp >= datetime('now', '-${options.lookbackHours} hours')`);
   }
 
   conditions.push("embedding IS NOT NULL");
@@ -398,8 +398,9 @@ export function getRecentMemories(
   }
 
   if (options.hours) {
-    conditions.push("timestamp >= datetime('now', '-? hours')");
-    params.push(options.hours);
+    // Hours must be interpolated into SQL since SQLite datetime function
+    // doesn't accept parameterized intervals. This is safe since hours is a number.
+    conditions.push(`timestamp >= datetime('now', '-${options.hours} hours')`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
