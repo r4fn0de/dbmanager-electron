@@ -37,6 +37,11 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLUListElement | null>(null);
   const tabRefs = useRef<Record<string, HTMLLIElement | null>>({});
+  // Track new tab IDs for entrance animation
+  const prevTabIdsRef = useRef<Set<string>>(new Set());
+  const [newTabIds, setNewTabIds] = useState<Set<string>>(new Set());
+  // Track closing tab IDs for exit animation
+  const [closingTabIds, setClosingTabIds] = useState<Set<string>>(new Set());
   const matchRoute = useMatchRoute();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -86,25 +91,49 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
       const idx = tabs.findIndex((t) => t.id === id);
       const remaining = tabs.filter((t) => t.id !== id);
 
-      removeTab(id);
+      // Trigger exit animation before actual removal
+      setClosingTabIds((prev) => new Set([...prev, id]));
 
-      if (wasActive) {
-        if (remaining.length > 0) {
-          const nextIdx = Math.min(idx, remaining.length - 1);
-          const nextTab = remaining[nextIdx];
-          if (nextTab) {
-            navigate({
-              to: "/database/$connectionId",
-              params: { connectionId: nextTab.id },
-            });
+      // Animate out, then remove
+      const timer = setTimeout(() => {
+        removeTab(id);
+        setClosingTabIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+
+        if (wasActive) {
+          if (remaining.length > 0) {
+            const nextIdx = Math.min(idx, remaining.length - 1);
+            const nextTab = remaining[nextIdx];
+            if (nextTab) {
+              navigate({
+                to: "/database/$connectionId",
+                params: { connectionId: nextTab.id },
+              });
+            }
+          } else {
+            navigate({ to: "/" });
           }
-        } else {
-          navigate({ to: "/" });
         }
-      }
+      }, 300);
+
+      // Store timer for cleanup if needed
+      closeTimersRef.current[id] = timer;
     },
     [activeTabId, tabs, removeTab, navigate],
   );
+
+  // Ref to store close timers for cleanup
+  const closeTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Cleanup all close timers on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      Object.values(closeTimersRef.current).forEach(clearTimeout);
+    };
+  }, []);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, id: string) => {
@@ -202,6 +231,26 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     el.scrollLeft += e.deltaY;
   }, []);
 
+  // Detect new tabs and clear the animation flag after animation completes
+  useEffect(() => {
+    const currentIds = new Set(tabs.map((t) => t.id));
+    const newIds = [...currentIds].filter((id) => !prevTabIdsRef.current.has(id));
+
+    if (newIds.length > 0) {
+      setNewTabIds(new Set(newIds));
+
+      // Clear the "new" flag and update ref after animation completes
+      const timer = setTimeout(() => {
+        setNewTabIds(new Set());
+        prevTabIdsRef.current = currentIds;
+      }, 250);
+
+      return () => clearTimeout(timer);
+    }
+
+    prevTabIdsRef.current = currentIds;
+  }, [tabs]);
+
   if (tabs.length === 0) return null;
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const connectionsById = useMemo(
@@ -250,6 +299,9 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               ? "bg-sidebar"
               : "bg-background";
 
+        const isNewTab = newTabIds.has(tab.id);
+        const isClosing = closingTabIds.has(tab.id);
+
         return (
           <Reorder.Item
             key={tab.id}
@@ -259,7 +311,18 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             dragElastic={0}
             dragConstraints={containerRef}
             whileDrag={{ zIndex: 40 }}
-            transition={{ type: "spring", stiffness: 550, damping: 42, mass: 0.7 }}
+            initial={isNewTab ? { opacity: 0, scale: 0.9 } : false}
+            animate={
+              isClosing
+                ? { opacity: 0, scale: 0.9 }
+                : { opacity: 1, scale: 1 }
+            }
+            transition={{
+              type: "spring",
+              stiffness: 400,
+              damping: 20,
+              bounce: 0.15,
+            }}
             ref={(el: HTMLLIElement | null) => {
               tabRefs.current[tab.id] = el;
             }}

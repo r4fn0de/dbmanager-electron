@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   ConnectionTabs,
@@ -185,8 +186,10 @@ export function TitleBar() {
               render={
                 <DropdownMenuTrigger
                   render={
-                    <button
+                    <motion.button
                       type="button"
+                      layout
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => {
                         if (isConnectionMenuOpen) {
                           setIsConnectionMenuOpen(false);
@@ -200,11 +203,17 @@ export function TitleBar() {
                           setIsConnectionMenuOpen(true);
                         }
                       }}
-                      className="shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground hover:text-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors after:duration-150 hover:after:bg-muted/60 active:scale-[0.97] after:active:bg-muted/40"
+                      className="shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground hover:text-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors after:duration-150 hover:after:bg-muted/60"
                       aria-label="Open connections"
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 25,
+                        bounce: 0.1,
+                      }}
                     >
                       <Icon name="plus" className="h-3.5 w-3.5 -translate-y-[2px]" />
-                    </button>
+                    </motion.button>
                   }
                 />
               }
