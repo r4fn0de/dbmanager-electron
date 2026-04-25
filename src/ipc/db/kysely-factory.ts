@@ -161,4 +161,8 @@ export async function closeAllPools(): Promise<void> {
 
   // SQLite — close all cached better-sqlite3 handles
   closeAllSqliteDbs();
+
+  // Redis — close all cached clients
+  const { closeAllRedisClients } = await import("./redis-driver");
+  closeAllRedisClients();
 }

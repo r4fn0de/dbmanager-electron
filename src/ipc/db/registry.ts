@@ -41,6 +41,7 @@ class DriverRegistry {
         if (protocol === "clickhouse:" || protocol === "clickhouses:") return "clickhouse";
         if (protocol === "postgres:" || protocol === "postgresql:") return "postgresql";
         if (protocol === "sqlite:") return "sqlite";
+        if (protocol === "redis:" || protocol === "rediss:") return "redis";
       } catch {
         // fall through
       }
@@ -70,4 +71,7 @@ export async function registerDrivers(): Promise<void> {
 
   const { createSqliteDriver } = await import("./sqlite-driver");
   driverRegistry.register(createSqliteDriver());
+
+  const { createRedisDriver } = await import("./redis-driver");
+  driverRegistry.register(createRedisDriver());
 }

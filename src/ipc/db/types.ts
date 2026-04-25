@@ -1,6 +1,6 @@
 // Types migrated from dblocal - Database connection and schema types
 
-export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite";
+export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite" | "redis";
 
 export type SslMode =
   | "disable"
