@@ -35,6 +35,14 @@ interface ChatStartInput {
   dbType: DatabaseType;
   /** Optional schema context to inject into system prompt */
   schemaContext?: string;
+  /** Optional connection metadata so the AI knows host/port/local-vs-remote */
+  connectionInfo?: {
+    name: string;
+    host: string;
+    port: number;
+    database: string;
+    isLocal?: boolean;
+  };
   /** Chat messages in ModelMessage format */
   messages: ModelMessage[];
 }
@@ -89,6 +97,7 @@ function buildSystemPrompt(
   schemaContext?: string,
   hasConnection = true,
   memoryContext?: MemoryContextData,
+  connectionInfo?: ChatStartInput["connectionInfo"],
 ): string {
   const now = new Date().toISOString();
 
@@ -96,7 +105,11 @@ function buildSystemPrompt(
 
 Current date/time: ${now}`;
 
-  // Add memory context if available
+  if (connectionInfo) {
+    const locality = connectionInfo.isLocal ? "local" : "remote";
+    prompt += `\n\n## Connection Info\n- Name: ${connectionInfo.name}\n- Host: ${connectionInfo.host}\n- Port: ${connectionInfo.port}\n- Database: ${connectionInfo.database}\n- Type: ${locality} database`;
+  }
+
   if (memoryContext && (memoryContext.recentMessages.length > 0 || memoryContext.similarQueries.length > 0)) {
     prompt += `
 
@@ -340,7 +353,7 @@ async function handleChatStart(
     // NOT a Promise. Do NOT await it before accessing .textStream etc.
     const result = streamText({
       model,
-      system: buildSystemPrompt(dbType, schemaContext, Boolean(connectionId), memoryContext),
+      system: buildSystemPrompt(dbType, schemaContext, Boolean(connectionId), memoryContext, input.connectionInfo),
       messages,
       ...(tools ? { tools } : {}),
       abortSignal: abortController.signal,

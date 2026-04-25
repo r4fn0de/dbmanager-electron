@@ -139,6 +139,14 @@ interface AiChatPanelProps {
   provider?: ConnectionProvider;
   /** Optional schema context (table/column names) */
   schemaContext?: string;
+  /** Optional connection metadata for AI context (host, port, local vs remote) */
+  connectionInfo?: {
+    name: string;
+    host: string;
+    port: number;
+    database: string;
+    isLocal?: boolean;
+  };
   /** Compact preview of what editor context will be sent to AI */
   contextPreview?: {
     connectionLabel: string;
@@ -837,6 +845,7 @@ export function AiChatPanel({
   dbType,
   provider,
   schemaContext,
+  connectionInfo,
   contextPreview,
   isOpen,
   className,
@@ -864,6 +873,7 @@ export function AiChatPanel({
     dbType,
     connectionLabel,
     schemaContext,
+    connectionInfo,
   });
 
   const [input, setInput] = useState("");

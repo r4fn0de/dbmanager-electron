@@ -41,6 +41,11 @@ function isAiChatShortcut(event: KeyboardEvent): boolean {
   return event.code === "KeyJ" || event.key.toLowerCase() === "j";
 }
 
+function isLocalHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0";
+}
+
 function Root() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isDatabaseRoute = pathname.startsWith("/database/");
@@ -66,6 +71,7 @@ function Root() {
   const effectiveContext = useMemo(() => {
     if (activeConnection) {
       const provider = detectConnectionProvider(activeConnection);
+      const isLocal = activeConnection.is_local ?? isLocalHost(activeConnection.host);
       return {
         connectionId: activeConnection.id,
         connectionLabel: activeConnection.name?.trim()
@@ -77,6 +83,13 @@ function Root() {
         schemaContext: storeContext.connectionId === activeConnection.id
           ? storeContext.schemaContext
           : undefined,
+        connectionInfo: {
+          name: activeConnection.name?.trim() || activeConnection.id,
+          host: activeConnection.host,
+          port: activeConnection.port,
+          database: activeConnection.database,
+          isLocal,
+        },
         contextPreview: {
           connectionLabel: activeConnection.name?.trim()
             || activeConnection.database?.trim()
@@ -98,6 +111,7 @@ function Root() {
       connectionLabel: storeContext.connectionLabel,
       dbType: storeContext.dbType,
       schemaContext: storeContext.schemaContext,
+      connectionInfo: undefined,
       contextPreview: storeContext.contextPreview,
     };
   }, [activeConnection, storeContext]);
@@ -396,6 +410,7 @@ function Root() {
                         dbType={effectiveContext.dbType}
                         provider={effectiveContext.provider}
                         schemaContext={effectiveContext.schemaContext}
+                        connectionInfo={effectiveContext.connectionInfo}
                         contextPreview={effectiveContext.contextPreview}
                         isOpen={isAiChatOpen}
                         className="-mt-[6px] h-[calc(100%+6px)] pl-2 pr-0"

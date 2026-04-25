@@ -18,6 +18,13 @@ declare global {
           connectionId: string | null;
           dbType: string;
           schemaContext?: string;
+          connectionInfo?: {
+            name: string;
+            host: string;
+            port: number;
+            database: string;
+            isLocal?: boolean;
+          };
           messages: Array<{ role: string; content: string }>;
         }) => void;
         abort: (chatId: string) => void;

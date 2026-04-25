@@ -72,6 +72,14 @@ interface UseAiChatOptions {
   connectionLabel?: string;
   /** Optional schema context to inject into system prompt */
   schemaContext?: string;
+  /** Optional connection metadata (host, port, local vs remote) for AI context */
+  connectionInfo?: {
+    name: string;
+    host: string;
+    port: number;
+    database: string;
+    isLocal?: boolean;
+  };
 }
 
 interface UseAiChatReturn {
@@ -403,6 +411,7 @@ export function useAiChat({
   dbType,
   connectionLabel,
   schemaContext,
+  connectionInfo,
 }: UseAiChatOptions): UseAiChatReturn {
   const [conversations, setConversations] = useState<AiChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -740,6 +749,7 @@ export function useAiChat({
         connectionId,
         dbType,
         schemaContext,
+        connectionInfo,
         messages: coreMessages,
       });
 
