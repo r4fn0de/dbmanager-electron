@@ -10,7 +10,7 @@ import type {
   SchemaFunction,
   SchemaTrigger,
 } from "@/ipc/db/types";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";

@@ -1,5 +1,5 @@
 import { Icon } from "@/components/ui/Icon";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "motion/react";
 import { createContext, useContext, useMemo, useRef } from "react";
 

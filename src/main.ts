@@ -4,7 +4,7 @@ import { ipcMain } from "electron/main";
 import { downloadChromeExtension } from "electron-devtools-installer/dist/downloadChromeExtension";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, inDevelopment } from "./constants";
-import { getBasePath } from "./utils/path";
+import { getBasePath } from "@/lib/path";
 import { localDbManager } from "./ipc/db/local-db-manager";
 import { registerDrivers } from "./ipc/db/registry";
 import { closeAllPools } from "./ipc/db/kysely-factory";

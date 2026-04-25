@@ -6,7 +6,7 @@ import type {
   LocalDbInfo,
   SchemaSummary,
 } from "@/ipc/db/types";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";

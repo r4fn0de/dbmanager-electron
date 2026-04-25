@@ -1,4 +1,4 @@
-import { cn } from "@/utils/tailwind"
+import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/Icon"
 
 type FeedbackBarProps = {

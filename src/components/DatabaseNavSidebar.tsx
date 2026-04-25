@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import type { ConnectionProvider, SidebarSection } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 

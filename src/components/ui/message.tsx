@@ -5,7 +5,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { cn } from "@/utils/tailwind"
+import { cn } from "@/lib/utils"
 import { Markdown } from "./markdown"
 
 export type MessageProps = {

@@ -1,4 +1,4 @@
-import { cn } from "@/utils/tailwind"
+import { cn } from "@/lib/utils"
 import React, { useEffect, useState } from "react"
 import { codeToHtml } from "shiki/bundle/web"
 

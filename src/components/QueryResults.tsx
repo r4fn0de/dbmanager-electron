@@ -10,7 +10,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { QueryResult } from "@/ipc/db/types";
 import { formatDuration } from "@/lib/utils";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 
 interface QueryResultsProps {
   result: QueryResult | null;

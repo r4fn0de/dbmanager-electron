@@ -35,7 +35,7 @@ import {
   supportsExplainAnalyze,
   type SchemaCompletionData,
 } from "@/lib/monaco-sql-setup";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import * as monaco from "monaco-editor";
 import "@/lib/monaco-loader";

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
-import { cn } from "@/utils/tailwind"
+import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/Icon"
 
 const Select = SelectPrimitive.Root

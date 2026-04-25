@@ -23,7 +23,7 @@ import { MariaDb } from "@/components/icons/MariaDb";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Sqlite } from "@/components/icons/Sqlite";
 import type { Connection, ConnectionInput, DatabaseType, SslMode } from "@/ipc/db/types";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Constants

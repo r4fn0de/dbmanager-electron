@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Sqlite } from "@/components/icons/Sqlite";
 import type { LocalDbEngine } from "@/ipc/db/types";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 
 // ── Shared constants ──────────────────────────────────────────────────
 

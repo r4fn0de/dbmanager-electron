@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { openExternalLink } from "@/actions/shell";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 
 type ExternalLinkProps = ComponentProps<"button"> & { href?: string };
 

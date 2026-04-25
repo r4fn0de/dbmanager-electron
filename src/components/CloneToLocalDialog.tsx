@@ -28,7 +28,7 @@ import {
 import { Icon } from "@/components/ui/Icon";
 import type { Connection, TableRowCount } from "@/ipc/db/types";
 import type { CloneToLocalProgress } from "@/hooks/useCloneToLocal";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 
 // ── Constants ──────────────────────────────────────────────────────────
 

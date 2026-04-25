@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
-import { cn } from "@/utils/tailwind"
+import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/Icon"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {

@@ -31,7 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Icon } from "@/components/ui/Icon";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import type { SchemaTableSummary } from "@/ipc/db/types";
 
 /** Format large row counts compactly (e.g. 1.2K, 3.4M, ~0). */

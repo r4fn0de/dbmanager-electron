@@ -26,7 +26,7 @@ import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
 import { useConnectionsList } from "@/hooks/useConnectionsList";
 import { useLocalDatabases } from "@/hooks/useLocalDatabases";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import type { DatabaseType } from "@/ipc/db/types";
 
 import "../styles/global.css";

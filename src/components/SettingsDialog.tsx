@@ -20,7 +20,7 @@ import {
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AiSettingsPanel } from "@/components/AiSettingsPanel";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 

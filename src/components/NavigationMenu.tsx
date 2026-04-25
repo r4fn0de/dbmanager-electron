@@ -6,7 +6,7 @@ import {
   NavigationMenuList,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
-import ExternalLink from "./external-link";
+import ExternalLink from "./ExternalLink";
 
 export default function NavigationMenu() {
   const { t } = useTranslation();

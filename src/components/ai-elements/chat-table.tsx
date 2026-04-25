@@ -1,6 +1,6 @@
 "use no memo"
 
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import { useMemo } from "react";
 
 export interface ChatTableProps {

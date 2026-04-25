@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import NavigationMenu from "@/components/navigation-menu";
+import NavigationMenu from "@/components/NavigationMenu";
 
 /*
  * You can delete this page or modify it to your needs.

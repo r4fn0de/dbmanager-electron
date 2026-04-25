@@ -6,7 +6,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Icon } from "@/components/ui/Icon";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 
 export type ChatToolPart = {

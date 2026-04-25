@@ -15,7 +15,7 @@ import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Redis } from "@/components/icons/Redis";
 import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Sqlite } from "@/components/icons/Sqlite";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import type { Connection, LocalDbInfo } from "@/ipc/db/types";
 import { getClickhouseEffectivePort } from "@/ipc/db/types";
 

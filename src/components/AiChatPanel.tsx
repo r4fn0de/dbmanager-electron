@@ -60,7 +60,7 @@ import { useMessageFeedback } from "@/hooks/useAiFeedback";
 import { FeedbackBar } from "@/components/ui/feedback-bar";
 import { ChatTool, type ChatToolPart } from "@/components/ai-elements/tool";
 import { ChatTable } from "@/components/ai-elements/chat-table";
-import { cn } from "@/utils/tailwind";
+import { cn } from "@/lib/utils";
 import type { DatabaseType } from "@/ipc/db/types";
 
 // ---------------------------------------------------------------------------

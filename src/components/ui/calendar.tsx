@@ -6,7 +6,7 @@ import {
   type Locale,
 } from "react-day-picker"
 
-import { cn } from "@/utils/tailwind"
+import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Icon } from "@/components/ui/Icon"
 
