@@ -1,7 +1,7 @@
 import { useRouterState } from "@tanstack/react-router";
 import { memo, useEffect, useState } from "react";
 import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
-import { DatabasePageContent } from "@/routes/database/DatabasePageContent";
+import { DatabasePageContent } from "@/routes/database/-DatabasePageContent";
 
 /**
  * Memoized wrapper — inactive tabs skip re-renders entirely.

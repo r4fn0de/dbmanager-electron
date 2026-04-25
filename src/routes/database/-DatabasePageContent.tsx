@@ -70,7 +70,7 @@ import {
   ViewDdlDialog,
   SchemaExportDialog,
   DefinitionsBrowserPanel,
-} from "./lazyComponents";
+} from "./-lazyComponents";
 
 const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
   "1": "overview",

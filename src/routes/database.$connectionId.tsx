@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useConnectionTabsStore } from "@/lib/stores/connection-tabs";
 
-export { DatabasePageContent } from "./database/DatabasePageContent";
+export { DatabasePageContent } from "./database/-DatabasePageContent";
 
 export const Route = createFileRoute("/database/$connectionId")({
   component: DatabasePage,
