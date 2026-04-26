@@ -108,74 +108,76 @@ function makeTools() {
 // validateSqlSafety — classification without DB connection
 // ---------------------------------------------------------------------------
 
+type SafetyResult = { classification: string; reasons: string[] };
+
 describe("validateSqlSafety", () => {
   test("classifies simple SELECT as safe", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "SELECT * FROM users" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "SELECT * FROM users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("safe");
     expect(result.reasons[0]).toContain("read-only");
   });
 
   test("classifies WITH as safe", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "WITH cte AS (SELECT 1) SELECT * FROM cte" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "WITH cte AS (SELECT 1) SELECT * FROM cte" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("safe");
   });
 
   test("classifies EXPLAIN as safe", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "EXPLAIN SELECT * FROM users" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "EXPLAIN SELECT * FROM users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("safe");
   });
 
   test("classifies UPDATE as risky", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "UPDATE users SET name = 'X'" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "UPDATE users SET name = 'X'" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("risky");
     expect(result.reasons[0]).toContain("UPDATE");
   });
 
   test("classifies DELETE as risky", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "DELETE FROM users WHERE id = 1" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "DELETE FROM users WHERE id = 1" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("risky");
     expect(result.reasons[0]).toContain("DELETE");
   });
 
   test("classifies DROP as blocked", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "DROP TABLE users" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "DROP TABLE users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("blocked");
     expect(result.reasons[0]).toContain("DROP");
   });
 
   test("classifies TRUNCATE as blocked", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "TRUNCATE users" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "TRUNCATE users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("blocked");
   });
 
   test("classifies ALTER as blocked", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "ALTER TABLE users ADD COLUMN age INT" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "ALTER TABLE users ADD COLUMN age INT" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("blocked");
   });
 
   test("classifies GRANT as blocked", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "GRANT SELECT ON users TO app" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "GRANT SELECT ON users TO app" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("blocked");
   });
 
   test("classifies multi-statement with DROP as blocked", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "SELECT 1; DROP TABLE users" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "SELECT 1; DROP TABLE users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("blocked");
   });
 
   test("classifies unknown query as blocked", async () => {
     const { validateSqlSafety } = makeTools();
-    const result = await validateSqlSafety.execute!({ sql: "VACUUM ANALYZE users" }, { toolCallId: "test", messages: [] });
+    const result = await validateSqlSafety.execute!({ sql: "VACUUM ANALYZE users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
     expect(result.classification).toBe("blocked");
   });
 });
@@ -249,12 +251,12 @@ describe("searchSchema", () => {
       ],
     });
 
-    const result = await searchSchema.execute!({ query: "user" }, { toolCallId: "test", messages: [] });
+    const result = await searchSchema.execute!({ query: "user" }, { toolCallId: "test", messages: [] }) as Array<{ schema: string; table: string; column?: string; matchType: string }>;
     expect(result.length).toBeGreaterThanOrEqual(2);
-    const tableMatches = result.filter((r) => r.matchType === "table_name");
-    const columnMatches = result.filter((r) => r.matchType === "column_name");
-    expect(tableMatches.some((r) => r.table === "users")).toBe(true);
-    expect(columnMatches.some((r) => r.column === "user_id")).toBe(true);
+    const tableMatches = result.filter((r: { matchType: string }) => r.matchType === "table_name");
+    const columnMatches = result.filter((r: { matchType: string }) => r.matchType === "column_name");
+    expect(tableMatches.some((r: { table: string }) => r.table === "users")).toBe(true);
+    expect(columnMatches.some((r: { column?: string }) => r.column === "user_id")).toBe(true);
   });
 
   test("respects schemaName filter", async () => {
@@ -274,7 +276,7 @@ describe("searchSchema", () => {
       ],
     });
 
-    const result = await searchSchema.execute!({ query: "secret", schemaName: "public" }, { toolCallId: "test", messages: [] });
+    const result = await searchSchema.execute!({ query: "secret", schemaName: "public" }, { toolCallId: "test", messages: [] }) as unknown[];
     expect(result).toEqual([]);
   });
 
@@ -293,7 +295,7 @@ describe("searchSchema", () => {
       })),
     });
 
-    const result = await searchSchema.execute!({ query: "match", limit: 3 }, { toolCallId: "test", messages: [] });
+    const result = await searchSchema.execute!({ query: "match", limit: 3 }, { toolCallId: "test", messages: [] }) as unknown[];
     expect(result.length).toBe(3);
   });
 });
@@ -335,7 +337,7 @@ describe("getRelationsGraph", () => {
       ],
     });
 
-    const result = await getRelationsGraph.execute!({ schemaName: "public" }, { toolCallId: "test", messages: [] });
+    const result = await getRelationsGraph.execute!({ schemaName: "public" }, { toolCallId: "test", messages: [] }) as Array<{ fromTable: string; fromSchema: string; fromColumn: string; toTable: string; toSchema: string; toColumn: string; constraintName: string | null }>;
     expect(result).toEqual([
       {
         fromTable: "orders",
@@ -379,7 +381,7 @@ describe("getRelationsGraph", () => {
       ],
     });
 
-    const result = await getRelationsGraph.execute!({ tables: ["orders"] }, { toolCallId: "test", messages: [] });
+    const result = await getRelationsGraph.execute!({ tables: ["orders"] }, { toolCallId: "test", messages: [] }) as Array<{ fromTable: string; fromSchema: string; fromColumn: string; toTable: string; toSchema: string; toColumn: string; constraintName: string | null }>;
     expect(result.length).toBe(1);
     expect(result[0].fromTable).toBe("orders");
   });
@@ -402,7 +404,7 @@ describe("runReadOnlySql", () => {
       row_count: 2,
     });
 
-    const result = await runReadOnlySql.execute!({ sql: "SELECT id, name FROM users" }, { toolCallId: "test", messages: [] });
+    const result = await runReadOnlySql.execute!({ sql: "SELECT id, name FROM users" }, { toolCallId: "test", messages: [] }) as { rowCount: number; columns: string[]; error?: string };
     expect(result).not.toHaveProperty("error");
     expect(result.rowCount).toBe(2);
     expect(result.columns).toEqual(["id", "name"]);
@@ -491,9 +493,9 @@ describe("dryRunMutation", () => {
     }, { toolCallId: "test", messages: [] });
 
     expect(result).not.toHaveProperty("error");
-    expect(result.estimatedAffectedRows).toBe(5);
-    expect(result.warnings).toEqual([]);
-    expect(result.samplePreview.rows.length).toBe(1);
+    expect((result as { estimatedAffectedRows: number }).estimatedAffectedRows).toBe(5);
+    expect((result as { warnings: string[] }).warnings).toEqual([]);
+    expect((result as { samplePreview: { rows: unknown[] } }).samplePreview.rows.length).toBe(1);
   });
 
   test("estimates UPDATE impact and warns about missing WHERE", async () => {
@@ -515,8 +517,8 @@ describe("dryRunMutation", () => {
     }, { toolCallId: "test", messages: [] });
 
     expect(result).not.toHaveProperty("error");
-    expect(result.estimatedAffectedRows).toBe(100);
-    expect(result.warnings.some((w: string) => w.includes("WHERE"))).toBe(true);
+    expect((result as { estimatedAffectedRows: number }).estimatedAffectedRows).toBe(100);
+    expect((result as { warnings: string[] }).warnings.some((w: string) => w.includes("WHERE"))).toBe(true);
   });
 
   test("warns about large affected rows", async () => {
