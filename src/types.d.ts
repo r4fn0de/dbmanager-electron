@@ -1,4 +1,10 @@
-declare module "*.css";
+declare module '*.css' {
+  const content: string;
+  export default content;
+}
+
+declare module '@fontsource-variable/*';
+declare module '@fontsource-variable/geist*';
 
 export {};
 
@@ -11,11 +17,12 @@ declare global {
   interface Window {
     electron?: {
       platform?: string;
-      setNativeThemeSource?: (themeSource: "system" | "light" | "dark") => void;
+      setNativeThemeSource?: (themeSource: 'system' | 'light' | 'dark') => void;
       aiChat?: {
         start: (input: {
           chatId: string;
           connectionId: string | null;
+          mentionedConnectionId?: string | null;
           dbType: string;
           schemaContext?: string;
           connectionInfo?: {
@@ -49,9 +56,9 @@ declare global {
   }
 
   type AiChatChunk =
-    | { chatId: string; type: "text"; text: string }
-    | { chatId: string; type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
-    | { chatId: string; type: "tool-result"; toolCallId: string; toolName: string; result: unknown };
+    | { chatId: string; type: 'text'; text: string }
+    | { chatId: string; type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
+    | { chatId: string; type: 'tool-result'; toolCallId: string; toolName: string; result: unknown };
 
-  type AiInlineChunk = { requestId: string; type: "text"; text: string };
+  type AiInlineChunk = { requestId: string; type: 'text'; text: string };
 }

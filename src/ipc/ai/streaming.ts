@@ -70,6 +70,8 @@ interface ChatStartInput {
   chatId: string;
   /** Connection ID for the active database (optional in global mode) */
   connectionId: string | null;
+  /** Connection ID mentioned via @mention (optional) */
+  mentionedConnectionId?: string | null;
   /** Database type (postgresql, mysql, etc.) */
   dbType: DatabaseType;
   /** Optional schema context to inject into system prompt */
@@ -710,7 +712,14 @@ async function handleChatStart(
   contents: WebContents,
   input: ChatStartInput,
 ): Promise<void> {
-  const { chatId, connectionId, dbType, schemaContext, messages } = input;
+  const {
+    chatId,
+    connectionId,
+    mentionedConnectionId,
+    dbType,
+    schemaContext,
+    messages,
+  } = input;
 
   abortStream(chatId);
 
@@ -721,17 +730,20 @@ async function handleChatStart(
   const userContent = extractMessageContent(lastUserMessage?.content ?? "");
   let assistantResponse = "";
 
+  // Use mentioned connection for tools/context if provided, otherwise fall back to active connection
+  const effectiveConnectionId = mentionedConnectionId ?? connectionId;
+
   try {
     const model = getCurrentModel();
     const memoryContext = await fetchMemoryContext(userContent, connectionId);
-    const tools = connectionId ? createAiTools(connectionId) : undefined;
+    const tools = effectiveConnectionId ? createAiTools(effectiveConnectionId) : undefined;
 
     const result = streamText({
       model,
       system: buildSystemPrompt(
         dbType,
         schemaContext,
-        Boolean(connectionId),
+        Boolean(effectiveConnectionId),
         memoryContext,
         input.connectionInfo,
       ),

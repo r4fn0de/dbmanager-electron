@@ -55,8 +55,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { parseMentions, findConnectionByMentionName } from "@/features/ai/lib/mention-utils";
 import { useAiChat, type AiChatMessage, type TextPart, type ToolInvocationPart } from "../hooks/useAiChat";
 import { useMessageFeedback } from "../hooks/useAiFeedback";
+import { useMentions } from "../hooks/useMentions";
+import { MentionDropdown } from "./MentionDropdown";
+import { MentionChip } from "./MentionChip";
+import { useConnectionsList } from "@/features/connection/hooks/useConnectionsList";
 import { FeedbackBar } from "@/components/ui/feedback-bar";
 import { ChatTool, type ChatToolPart } from "./ai-elements/tool";
 import { ChatTable } from "./ai-elements/chat-table";
@@ -215,7 +220,7 @@ function AssistantCodeBlock({
           code={code}
           language={language || "sql"}
           theme={codeTheme}
-          className="[&>pre]:!rounded-none [&>pre]:!m-0 [&>pre]:px-4 [&>pre]:py-3"
+          className="[&>pre]:rounded-none! [&>pre]:m-0! [&>pre]:px-4 [&>pre]:py-3"
         />
       </div>
     </div>
@@ -321,7 +326,7 @@ function shouldShowFeedback(messageId: string): boolean {
 
 /** Shared typography className for assistant prose content. */
 const ASSISTANT_PROSE_CLASS =
-  "!w-full !max-w-none !bg-transparent !p-0 text-[14.5px] leading-7 break-words text-zinc-800 dark:text-zinc-200 [&_a]:font-medium [&_a]:text-primary [&_a]:underline-offset-4 [&_a]:hover:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_hr]:border-muted-foreground/20 [&_hr]:my-4 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-7 [&_p+p]:mt-3 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
+  "w-full! max-w-none! bg-transparent! p-0 text-[14.5px] leading-7 wrap-break-word text-zinc-800 dark:text-zinc-200 [&_a]:font-medium [&_a]:text-primary [&_a]:underline-offset-4 [&_a]:hover:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_hr]:border-muted-foreground/20 [&_hr]:my-4 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-7 [&_p+p]:mt-3 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
 
 function AiMessageFeedback({
   message,
@@ -495,7 +500,7 @@ function ChatMessage({
               {message.contextSnapshot?.selectionPreview && (
                 <div
                   className="
-                    inline-flex w-[182px] max-w-full min-h-[52px] cursor-default
+                    inline-flex w-45.5 max-w-full min-h-13 cursor-default
                     items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5
                     motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1
                     motion-safe:duration-200
@@ -538,7 +543,7 @@ function ChatMessage({
           {message.content && (
             <p
               className="
-                text-[14px] leading-6 whitespace-pre-wrap break-words rounded-xl
+                text-[14px] leading-6 whitespace-pre-wrap wrap-break-word rounded-xl
                 border border-zinc-300/70 bg-zinc-200/85 px-2 py-2 text-zinc-900
                 shadow-[0_1px_0_rgba(255,255,255,0.45)_inset] backdrop-blur-sm
                 dark:border-zinc-700/70 dark:bg-zinc-800/85 dark:text-zinc-100
@@ -708,10 +713,10 @@ function ChatMessage({
 
           {/* Thinking indicator — ai-elements Reasoning, minimal style */}
           {message.isStreaming && !message.content && (
-            <Reasoning isStreaming className="!mb-0 px-3">
+            <Reasoning isStreaming className="mb-0! px-3">
               <ReasoningTrigger className="gap-1.5 py-1 text-xs">
                 <span className="relative flex size-1.5">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 [animation-duration:1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 animation-duration-[1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
                   <span className="inline-flex size-1.5 rounded-full bg-primary" />
                 </span>
                 <Shimmer
@@ -729,7 +734,6 @@ function ChatMessage({
           {!message.isStreaming && !message.content && (
             <p className="px-3 text-xs text-muted-foreground">No response</p>
           )}
-
         </div>
     </Message>
   );
@@ -886,6 +890,7 @@ export function AiChatPanel({
     error: boolean;
   }>({ selection: false, error: false });
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const mentionDropdownRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<StickToBottomContext | null>(null);
   const previousConversationIdRef = useRef<string | null>(null);
   const previousIsOpenRef = useRef(false);
@@ -893,6 +898,38 @@ export function AiChatPanel({
     selection?: ReturnType<typeof setTimeout>;
     error?: ReturnType<typeof setTimeout>;
   }>({});
+
+  // ── Mention support ──
+  const { connections } = useConnectionsList();
+  const {
+    mentionState,
+    handleTextChange,
+    handleKeyDown: handleMentionKeyDown,
+    selectMention,
+    closeMention,
+    selectedMentions,
+    removeMention,
+    clearMentions,
+  } = useMentions(connections);
+
+  const handleMentionSelect = useCallback(
+    (connectionIndex: number) => {
+      const connection = mentionState.filteredConnections[connectionIndex];
+      if (!connection) return;
+      const result = selectMention(connection);
+      if (result !== null) {
+        setInput(result.text);
+        // Focus and place cursor where the mention token was removed.
+        requestAnimationFrame(() => {
+          const textarea = inputRef.current;
+          if (!textarea) return;
+          textarea.focus();
+          textarea.setSelectionRange(result.cursorPos, result.cursorPos);
+        });
+      }
+    },
+    [mentionState.filteredConnections, selectMention],
+  );
 
   // Focus input when panel opens
   useEffect(() => {
@@ -953,10 +990,53 @@ export function AiChatPanel({
 
   const handleInputChange = useCallback((value: string) => {
     setInput(value);
-  }, []);
+    const textarea = inputRef.current;
+    const cursorPos = textarea?.selectionStart ?? value.length;
+    handleTextChange(value, cursorPos);
+  }, [handleTextChange]);
+
+  const handleTextareaKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === "Backspace") {
+        const textarea = inputRef.current;
+        const atBeginning = Boolean(
+          textarea &&
+          textarea.selectionStart === 0 &&
+          textarea.selectionEnd === 0,
+        );
+
+        if (atBeginning && selectedMentions.size > 0) {
+          const mentionIds = Array.from(selectedMentions.keys());
+          const lastMentionId = mentionIds[mentionIds.length - 1];
+          if (lastMentionId) {
+            event.preventDefault();
+            removeMention(lastMentionId);
+            return;
+          }
+        }
+      }
+
+      const handled = handleMentionKeyDown(event);
+      if (handled && event.key === "Enter") {
+        // Enter was consumed by mention dropdown for selection
+        handleMentionSelect(mentionState.activeIndex);
+      }
+    },
+    [
+      handleMentionKeyDown,
+      mentionState.activeIndex,
+      handleMentionSelect,
+      selectedMentions,
+      removeMention,
+    ],
+  );
 
   const handleSubmit = useCallback(() => {
     if (!input.trim() || isLoading) return;
+
+    // Close mention dropdown if open
+    closeMention();
+
     const contextSnapshot = {
       selectionPreview:
         showSelectionContextChip && contextPreview?.selectionPreview
@@ -987,21 +1067,34 @@ export function AiChatPanel({
       }, 170);
     }
 
+    // Resolve any @mentions in the input to connection IDs
+    const selectedMentionConnection = Array.from(selectedMentions.values())[0];
+    const mentionNames = parseMentions(input.trim());
+    const typedMentionConnection = mentionNames.length > 0
+      ? findConnectionByMentionName(connections, mentionNames[0])
+      : undefined;
+    const mentionedConnection = selectedMentionConnection ?? typedMentionConnection;
+
     sendMessage(input.trim(), {
       contextSnapshot:
         contextSnapshot.selectionPreview || contextSnapshot.errorPreview
           ? contextSnapshot
           : undefined,
+      mentionedConnectionId: mentionedConnection?.id ?? null,
     });
     setInput("");
+    clearMentions();
   }, [
     input,
     isLoading,
     sendMessage,
+    closeMention,
     showSelectionContextChip,
     showErrorContextChip,
     contextPreview?.selectionPreview,
     contextPreview?.errorPreview,
+    selectedMentions,
+    clearMentions,
   ]);
 
   const handleDismissContextChip = useCallback((kind: "selection" | "error") => {
@@ -1025,9 +1118,6 @@ export function AiChatPanel({
     <motion.div
       className={cn("relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent", className)}
       style={{ width: "100%" }}
-      initial={{ x: 24, opacity: 0, transition: { duration: 0.3, ease: [0.23, 1, 0.32, 1] } }}
-      animate={{ x: 0, opacity: 1, transition: { duration: 0.3, ease: [0.23, 1, 0.32, 1] } }}
-      exit={{ x: 24, opacity: 0, transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
     >
       {/* Header — minimal, near-transparent */}
       <div className="flex h-9 shrink-0 items-center justify-between gap-2 px-2">
@@ -1038,11 +1128,11 @@ export function AiChatPanel({
               return (
                 <span
                   className="
-                    inline-flex h-[18px] shrink-0 items-center gap-1.5 rounded-full
+                    inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full
                     bg-primary/[0.07] px-2 text-[10px] font-medium
                     text-foreground/70
-                    dark:bg-primary/[0.12] dark:text-foreground/60
-                    transition-[background,color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
+                    dark:bg-primary/12 dark:text-foreground/60
+                    transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]
                   "
                 >
                   <DbIcon className="size-3.5" />
@@ -1053,11 +1143,11 @@ export function AiChatPanel({
           ) : (
             <span
               className="
-                inline-flex h-[18px] shrink-0 items-center gap-1.5 rounded-full
+                inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full
                 bg-muted/40 px-2 text-[10px] font-medium
                 text-muted-foreground/70
                 dark:bg-muted/30 dark:text-muted-foreground/60
-                transition-[background,color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
+                transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]
               "
             >
               <UiIcon name="database" className="size-3" />
@@ -1070,18 +1160,19 @@ export function AiChatPanel({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 min-w-0 flex-1 justify-start px-2 text-xs font-semibold tracking-tight max-w-[140px] xs:max-w-[180px] sm:max-w-[210px]"
+                  className="h-7 min-w-0 flex-1 justify-between px-2 text-xs font-semibold tracking-tight max-w-35 xs:max-w-45 sm:max-w-52.5"
                 >
-                  <span
-                    className="truncate"
-                  >
+                  <span className="truncate shrink">
                     {activeConversation?.title ?? "AI Chat"}
                   </span>
-                  <UiIcon name="chevron-down" className="size-3 shrink-0 opacity-70" />
+                  <UiIcon
+                    name="chevron-down"
+                    className="size-3 shrink-0 opacity-70 ml-1"
+                  />
                 </Button>
               }
             />
-            <DropdownMenuContent align="start" side="bottom" className="w-[290px] p-1">
+            <DropdownMenuContent align="start" side="bottom" className="w-72.5 p-1">
               <div className="px-2 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 uppercase">
                 History
               </div>
@@ -1099,7 +1190,7 @@ export function AiChatPanel({
                   No conversations yet
                 </div>
               ) : (
-                <div className="max-h-[240px] overflow-y-auto overscroll-contain -mx-1 px-1">
+                <div className="max-h-60 overflow-y-auto overscroll-contain -mx-1 px-1">
                   {conversations.map((conversation, index) => {
                     const isActive = conversation.id === activeConversationId;
                     return (
@@ -1257,14 +1348,14 @@ export function AiChatPanel({
                       dark:bg-muted/25 dark:text-muted-foreground/70
                       dark:hover:bg-muted/50 dark:hover:text-foreground/80
                       transition-[background,color,transform,opacity]
-                      duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
+                      duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
                       active:scale-[0.96] active:opacity-70
                       motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1.5
                       motion-safe:duration-200 motion-safe:ease-out
                     "
                     style={{ animationDelay: `${index * 60}ms`, animationFillMode: "backwards" }}
                   >
-                    <span className="shrink-0 text-muted-foreground/60 transition-transform duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] group-active/suggest:scale-95">{suggestion.icon}</span>
+                    <span className="shrink-0 text-muted-foreground/60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-active/suggest:scale-95">{suggestion.icon}</span>
                     {suggestion.label}
                   </button>
                 ))}
@@ -1293,21 +1384,39 @@ export function AiChatPanel({
             {error}
           </div>
         )}
-        <PromptInput
-          value={input}
-          onValueChange={handleInputChange}
-          onSubmit={handleSubmit}
-          isLoading={isLoading}
-          className="
-            relative z-30 rounded-2xl border border-border/30
-            bg-background/60 p-2 shadow-none backdrop-blur-md
-            dark:bg-background/50
-            focus-within:border-border/50 focus-within:bg-background/70
-            dark:focus-within:bg-background/60
-            transition-[background,border-color] duration-200 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
-          "
-        >
-          <div className="mb-2 flex flex-wrap gap-1.5">
+        <div className="relative">
+          {/* Mention dropdown */}
+          {mentionState.isOpen && (
+            <MentionDropdown
+              ref={mentionDropdownRef}
+              connections={mentionState.filteredConnections}
+              activeIndex={mentionState.activeIndex}
+              onSelect={(connection) => {
+                const selectedIndex = mentionState.filteredConnections.findIndex(
+                  (item) => item.id === connection.id,
+                );
+                if (selectedIndex >= 0) {
+                  handleMentionSelect(selectedIndex);
+                }
+              }}
+              onClose={closeMention}
+            />
+          )}
+          <PromptInput
+            value={input}
+            onValueChange={handleInputChange}
+            onSubmit={handleSubmit}
+            isLoading={isLoading}
+            className="
+              relative z-30 rounded-2xl border border-border/30
+              bg-background/60 px-2 py-1 shadow-none backdrop-blur-md
+              dark:bg-background/50
+              focus-within:border-border/50 focus-within:bg-background/70
+              dark:focus-within:bg-background/60
+              transition-[background,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]
+            "
+          >
+          <div className="mb-1 flex flex-wrap gap-1.5">
             <AnimatePresence>
               {showSelectionContextChip && (
                 <motion.div
@@ -1321,7 +1430,7 @@ export function AiChatPanel({
                     damping: 28,
                     bounce: 0.1,
                   }}
-                  className="group/ctx relative inline-flex w-[182px] max-w-full min-h-[52px] cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5"
+                  className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5"
                 >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
                     AI
@@ -1377,20 +1486,29 @@ export function AiChatPanel({
               )}
             </AnimatePresence>
           </div>
-          <PromptInputTextarea
-            ref={inputRef}
-            placeholder={
-              hasActiveConnection
-                ? "Ask about your database…"
-                : "Ask anything about SQL, modeling, or debugging…"
-            }
-            className="
-              max-h-[250px] min-h-[72px] overflow-y-auto px-3 py-2 text-sm
-              placeholder:text-muted-foreground/50
-              dark:bg-transparent
-            "
-          />
-          <PromptInputActions className="justify-end gap-2 px-3 pb-2">
+          <div className="flex flex-wrap items-center gap-1 px-1.5 py-0">
+            {Array.from(selectedMentions.entries()).map(([id, connection]) => (
+              <MentionChip
+                key={id}
+                connection={connection}
+              />
+            ))}
+            <PromptInputTextarea
+              ref={inputRef}
+              onKeyDown={handleTextareaKeyDown}
+              placeholder={
+                hasActiveConnection
+                  ? "Ask about your database…"
+                  : "Ask anything about SQL, modeling, or debugging…"
+              }
+              className="
+                !w-auto max-h-62.5 min-h-6 min-w-32 flex-1 basis-32 overflow-y-auto px-0 py-0 text-sm leading-5
+                placeholder:text-muted-foreground/50
+                dark:bg-transparent
+              "
+            />
+          </div>
+          <PromptInputActions className="justify-end gap-1.5 px-1.5 pb-0.5">
             {isLoading ? (
               <Button
                 type="button"
@@ -1402,7 +1520,7 @@ export function AiChatPanel({
                   hover:bg-background/60 hover:text-foreground
                   dark:border-border/20 dark:bg-background/30
                   dark:hover:bg-background/50
-                  transition-[background,color,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
+                  transition-[background,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
                   active:scale-[0.96]
                 "
               >
@@ -1421,7 +1539,7 @@ export function AiChatPanel({
                   dark:bg-primary/70 dark:hover:bg-primary
                   dark:disabled:bg-muted/30 dark:disabled:text-muted-foreground/40
                   transition-[background,color,transform,opacity,box-shadow]
-                  duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)]
+                  duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
                   active:scale-[0.96]
                 "
               >
@@ -1430,6 +1548,7 @@ export function AiChatPanel({
             )}
           </PromptInputActions>
         </PromptInput>
+        </div>
       </div>
     </motion.div>
   );

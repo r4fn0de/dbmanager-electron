@@ -6,6 +6,7 @@ export type Unsubscribe = () => void;
 export interface ChatStartInput {
   chatId: string;
   connectionId: string | null;
+  mentionedConnectionId?: string | null;
   dbType: DatabaseType;
   schemaContext?: string;
   connectionInfo?: {

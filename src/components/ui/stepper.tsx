@@ -126,7 +126,7 @@ export function StepperTrigger({
 
       {/* Connector line between steps */}
       {!isLast && (
-        <div className="relative flex-1 min-w-[20px] h-px mx-1.5">
+        <div className="relative flex-1 min-w-5 h-px mx-1.5">
           {/* Background track */}
           <div className="absolute inset-0 bg-border rounded-full" />
           {/* Animated fill — fills up to the current step */}

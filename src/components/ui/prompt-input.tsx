@@ -155,11 +155,13 @@ function PromptInputTextarea({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Allow external handler to intercept first (for mention dropdown etc.)
+    onKeyDown?.(e)
+
+    if (e.key === "Enter" && !e.shiftKey && !e.defaultPrevented) {
       e.preventDefault()
       onSubmit?.()
     }
-    onKeyDown?.(e)
   }
 
   return (
@@ -169,7 +171,7 @@ function PromptInputTextarea({
       onChange={handleChange}
       onKeyDown={handleKeyDown}
       className={cn(
-        "text-foreground min-h-[44px] w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+        "text-foreground min-h-11 w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
         className
       )}
       rows={1}

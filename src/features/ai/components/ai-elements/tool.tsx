@@ -44,7 +44,7 @@ function StatusDot({ state }: { state: ChatToolPart["state"] }) {
           className={cn(
             "absolute inline-flex size-full animate-ping rounded-full opacity-40",
             dotColor,
-            "[animation-duration:1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]",
+            "animation-duration-[1.5s] ease-out",
           )}
         />
       )}
@@ -167,7 +167,7 @@ export function ChatTool({ toolPart, defaultOpen = true, className }: ChatToolPr
                     Output
                   </span>
                   <div className="mt-1 max-h-48 overflow-auto rounded bg-background/40 p-1.5 font-mono text-[11px] leading-relaxed">
-                    <pre className="whitespace-pre-wrap break-words text-foreground/80">
+                    <pre className="whitespace-pre-wrap wrap-break-word text-foreground/80">
                       {formatCompact(output)}
                     </pre>
                   </div>

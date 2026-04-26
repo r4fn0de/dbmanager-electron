@@ -95,6 +95,7 @@ interface UseAiChatReturn {
         selectionPreview?: string;
         errorPreview?: string;
       };
+      mentionedConnectionId?: string | null;
     },
   ) => void;
   abort: () => void;
@@ -662,6 +663,7 @@ export function useAiChat({
           selectionPreview?: string;
           errorPreview?: string;
         };
+        mentionedConnectionId?: string | null;
       },
     ) => {
       if (!content.trim()) return;
@@ -747,6 +749,7 @@ export function useAiChat({
       aiChat.start({
         chatId: chatIdRef.current,
         connectionId,
+        mentionedConnectionId: options?.mentionedConnectionId ?? null,
         dbType,
         schemaContext,
         connectionInfo,

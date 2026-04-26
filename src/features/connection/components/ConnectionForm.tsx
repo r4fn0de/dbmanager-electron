@@ -55,6 +55,11 @@ const DB_DEFAULTS: Record<DatabaseType, { port: number; database: string; userna
   mariadb: { port: 3306, database: "mysql", username: "root" },
   clickhouse: { port: 8123, database: "default", username: "default" },
   sqlite: { port: 0, database: "main", username: "" },
+  redis: {
+    port: 0,
+    database: "",
+    username: ""
+  }
 };
 
 const COLOR_OPTIONS = [
@@ -176,7 +181,7 @@ function UrlInput({
         ref={textareaRef}
         id="connection-url"
         rows={2}
-        className="min-h-[64px] w-full max-w-full resize-none break-all [overflow-wrap:anywhere] whitespace-pre-wrap rounded-lg border-border bg-muted/15 font-mono text-xs leading-relaxed transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
+        className="min-h-16 w-full max-w-full resize-none break-all wrap-anywhere whitespace-pre-wrap rounded-lg border-border bg-muted/15 font-mono text-xs leading-relaxed transition-colors focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
         placeholder={`${dbType}://user:password@host:${DB_DEFAULTS[dbType].port}/database`}
         value={urlValue}
         onChange={(e) => onUrlChange(e.target.value)}
@@ -559,13 +564,8 @@ export function ConnectionForm({
         local_auto_start: connection.local_auto_start,
       };
       setFormData(base);
-      if (connection.url) {
-        setInputMode("url");
-        setUrlValue(connection.url);
-      } else {
-        setInputMode("details");
-        setUrlValue("");
-      }
+      setInputMode("details");
+      setUrlValue("");
       setLastTestedHash(getConnectionHash(base, connection.url || undefined));
       setTestStatus({ success: true, message: "Connection already verified" });
     } else {
@@ -636,7 +636,7 @@ export function ConnectionForm({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[460px] max-h-[90vh] overflow-y-auto p-0 gap-0">
+      <DialogContent className="sm:max-w-115 max-h-[90vh] overflow-y-auto p-0 gap-0">
         <div className="p-5 pb-0">
           <DialogHeader className="gap-1">
             <DialogTitle>{connection ? "Edit Connection" : "New Connection"}</DialogTitle>
@@ -651,6 +651,7 @@ export function ConnectionForm({
                 <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                   Connection
                 </span>
+                {!connection && (
                 <div className="flex max-w-full gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
                   <button
                     type="button"
@@ -679,6 +680,7 @@ export function ConnectionForm({
                     Details
                   </button>
                 </div>
+                )}
               </div>
 
               {inputMode === "url" ? (
@@ -688,6 +690,15 @@ export function ConnectionForm({
                   onUrlChange={handleUrlChange}
                   autoFocus={!connection}
                 />
+              ) : connection ? (
+                <div className="flex flex-col gap-1">
+                  <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                    URL
+                  </Label>
+                  <p className="rounded-lg border border-border bg-muted/15 px-3 py-2 font-mono text-xs leading-relaxed break-all text-muted-foreground">
+                    {(connection.url || connection.connection_string || `${connection.host}:${connection.port}/${connection.database}`).replace(/:[^:]*@/, ":****@")}
+                  </p>
+                </div>
               ) : (
                 <DetailsFields formData={formData} onUpdateField={updateField} />
               )}

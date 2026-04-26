@@ -181,7 +181,7 @@ export function CloneToLocalDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isCloning && onClose()}>
-      <DialogContent className="sm:max-w-[520px] max-h-[90vh] p-0 gap-0 flex flex-col">
+      <DialogContent className="sm:max-w-130 max-h-[90vh] p-0 gap-0 flex flex-col">
         {/* Header — fixed */}
         <div className="p-5 pb-0 shrink-0">
           <DialogHeader className="gap-1">
@@ -405,11 +405,11 @@ export function CloneToLocalDialog({
                           </div>
 
                           {/* Table list */}
-                          <div className="overflow-auto max-h-[200px]">
+                          <div className="overflow-auto max-h-50">
                             <Table>
                               <TableHeader className="sticky top-0 bg-background">
                                 <TableRow>
-                                  <TableHead className="w-[32px]" />
+                                  <TableHead className="w-8" />
                                   <TableHead className="text-[11px]">Table</TableHead>
                                   <TableHead className="text-right text-[11px]">Rows</TableHead>
                                 </TableRow>

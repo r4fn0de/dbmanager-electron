@@ -134,7 +134,7 @@ export function ChatTable({ markdown, isStreaming, className }: ChatTableProps) 
           </span>
           {isStreaming && (
             <span className="relative flex size-1.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 [animation-duration:1.5s]" />
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 animation-duration-[1.5s]" />
               <span className="inline-flex size-1.5 rounded-full bg-primary" />
             </span>
           )}

@@ -201,9 +201,27 @@ function ConnectionCard({
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground truncate font-mono mt-0.5 pl-6">
-          {displayInfo}
-        </p>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <p
+                className={cn(
+                  "text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150",
+                  copied
+                    ? "text-emerald-600 dark:text-emerald-400 scale-[1.02]"
+                    : "text-muted-foreground hover:text-foreground active:scale-[0.97]",
+                )}
+                style={{ transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)" }}
+                onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+              />
+            }
+          >
+            {copied ? "Copied!" : displayInfo}
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            {copied ? "Copied!" : "Click to copy connection string"}
+          </TooltipContent>
+        </Tooltip>
       </button>
 
       {/* Action buttons — visible on hover */}
@@ -220,7 +238,9 @@ function ConnectionCard({
                 />
               }
             >
-              {isRunning ? (
+              {isTogglingState ? (
+                <Icon name="loader" className="size-3 animate-spin" />
+              ) : isRunning ? (
                 <Icon name="pause" className="size-3" />
               ) : (
                 <Icon name="play" className="size-3" />
@@ -249,26 +269,6 @@ function ConnectionCard({
             </TooltipContent>
           </Tooltip>
         )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={handleCopy}
-              />
-            }
-          >
-            {copied ? (
-              <Icon name="check" className="size-3 text-emerald-500" />
-            ) : (
-              <Icon name="copy" className="size-3" />
-            )}
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4}>
-            {copied ? "Copied!" : "Copy connection string"}
-          </TooltipContent>
-        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={
