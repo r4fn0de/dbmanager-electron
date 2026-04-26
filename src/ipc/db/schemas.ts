@@ -293,3 +293,48 @@ export const schemaDefinitionInputSchema = z.object({
   connectionId: z.string(),
   schema: z.string(),
 });
+
+// ---------------------------------------------------------------------------
+// Branch schemas — for local DB branching (Phase 1: PostgreSQL only)
+// ---------------------------------------------------------------------------
+
+export const createBranchSchema = z.object({
+  /** The local DB instance ID to create a branch on */
+  localDbId: z.string(),
+  /** The branch to branch from (defaults to active branch) */
+  parentBranchId: z.string().optional(),
+  /** User-chosen branch name */
+  name: z.string().min(1).max(63),
+  /** Optional description */
+  description: z.string().optional(),
+  /** Tables to include data for (schema-only for all others) */
+  dataTables: z.array(z.object({
+    schema: z.string(),
+    table: z.string(),
+  })).optional(),
+});
+
+export const deleteBranchSchema = z.object({
+  localDbId: z.string(),
+  branchId: z.string(),
+});
+
+export const switchBranchSchema = z.object({
+  localDbId: z.string(),
+  branchId: z.string(),
+});
+
+export const listBranchesSchema = z.object({
+  localDbId: z.string(),
+});
+
+export const renameBranchSchema = z.object({
+  localDbId: z.string(),
+  branchId: z.string(),
+  newName: z.string().min(1).max(63),
+});
+
+export const getBranchInfoSchema = z.object({
+  localDbId: z.string(),
+  branchId: z.string(),
+});

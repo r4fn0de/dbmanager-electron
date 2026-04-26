@@ -93,6 +93,9 @@ import {
   IconZoomIn,
   IconZoomOut,
   IconArrowBackUp,
+  IconGitBranch,
+  IconArrowRight,
+  IconAlertTriangle as IconTriangleAlert,
 } from "@tabler/icons-react";
 
 export type IconName =
@@ -193,6 +196,9 @@ export type IconName =
   | "x-circle"
   | "zoom-in"
   | "zoom-out"
+  | "git-branch"
+  | "arrow-right"
+  | "triangle-alert"
   | "zap";
 
 type IconComponent = React.ComponentType<
@@ -297,6 +303,9 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   "x-circle": IconCircleX,
   "zoom-in": IconZoomIn,
   "zoom-out": IconZoomOut,
+  "git-branch": IconGitBranch,
+  "arrow-right": IconArrowRight,
+  "triangle-alert": IconTriangleAlert,
   zap: IconBolt,
 };
 

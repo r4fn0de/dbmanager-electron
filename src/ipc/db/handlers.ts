@@ -1,5 +1,6 @@
 import { ORPCError, os } from "@orpc/server";
 import type {
+  BranchInfo,
   Connection,
   ConstraintInfo,
   IndexInfo,
@@ -46,6 +47,12 @@ import {
   importTableRowsSchema,
   waitForDatabaseSchema,
   schemaDefinitionInputSchema,
+  createBranchSchema,
+  deleteBranchSchema,
+  switchBranchSchema,
+  listBranchesSchema,
+  renameBranchSchema,
+  getBranchInfoSchema,
 } from "./schemas";
 import {
   loadConnections,
@@ -487,7 +494,7 @@ export const createLocalDatabase = os
       const engine = input.engine ?? "postgresql";
       const isSqlite = engine === "sqlite";
       const password = isSqlite ? "" : (input.password?.trim() || LOCAL_DB_DEFAULT_PASSWORD);
-      return await localDbManager.create({
+      const info = await localDbManager.create({
         name: input.name,
         databaseName: input.databaseName || (isSqlite ? "main" : "postgres"),
         username: isSqlite ? "" : (input.username || "postgres"),
@@ -497,6 +504,7 @@ export const createLocalDatabase = os
         autoStart: input.autoStart ?? true,
         engine,
       });
+      return info;
     } catch (err) {
       console.error("[db] createLocalDatabase failed:", err);
       throw new ORPCError("BAD_REQUEST", {
@@ -675,4 +683,86 @@ export const getSchemaIndexes = os
     return results
       .filter((r): r is PromiseFulfilledResult<IndexInfo[]> => r.status === "fulfilled")
       .flatMap((r) => r.value);
+  });
+
+// ---------------------------------------------------------------------------
+// Branch handlers — local DB branching (Phase 1: PostgreSQL only)
+// ---------------------------------------------------------------------------
+
+export const listBranches = os
+  .input(listBranchesSchema)
+  .handler(async ({ input }): Promise<BranchInfo[]> => {
+    try {
+      return await localDbManager.listBranches(input.localDbId);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to list branches"),
+      });
+    }
+  });
+
+export const createBranch = os
+  .input(createBranchSchema)
+  .handler(async ({ input }): Promise<BranchInfo> => {
+    try {
+      return await localDbManager.createBranch({
+        localDbId: input.localDbId,
+        parentBranchId: input.parentBranchId,
+        name: input.name,
+        description: input.description,
+        dataTables: input.dataTables,
+      });
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to create branch"),
+      });
+    }
+  });
+
+export const deleteBranch = os
+  .input(deleteBranchSchema)
+  .handler(async ({ input }): Promise<void> => {
+    try {
+      await localDbManager.deleteBranch(input.localDbId, input.branchId);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to delete branch"),
+      });
+    }
+  });
+
+export const switchBranch = os
+  .input(switchBranchSchema)
+  .handler(async ({ input }): Promise<BranchInfo> => {
+    try {
+      return await localDbManager.switchBranch(input.localDbId, input.branchId);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to switch branch"),
+      });
+    }
+  });
+
+export const getBranchInfo = os
+  .input(getBranchInfoSchema)
+  .handler(async ({ input }): Promise<BranchInfo> => {
+    try {
+      return await localDbManager.getBranchInfo(input.localDbId, input.branchId);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to get branch info"),
+      });
+    }
+  });
+
+export const renameBranch = os
+  .input(renameBranchSchema)
+  .handler(async ({ input }): Promise<BranchInfo> => {
+    try {
+      return await localDbManager.renameBranch(input.localDbId, input.branchId, input.newName);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to rename branch"),
+      });
+    }
   });

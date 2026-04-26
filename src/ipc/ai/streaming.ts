@@ -84,6 +84,7 @@ interface ChatStartInput {
     port: number;
     database: string;
     isLocal?: boolean;
+    branch?: string | null;
   };
   /** Chat messages in ModelMessage format */
   messages: ModelMessage[];
@@ -437,7 +438,12 @@ function buildSystemPrompt(
 - Port: ${connectionInfo.port}
 - Database: ${connectionInfo.database}
 - Environment: ${connectionInfo.isLocal ? "local development" : "remote server"}
-- Safety posture: ${connectionInfo.isLocal ? "Safe to experiment more freely" : "Prefer read-only or cautious guidance unless the user explicitly requests writes"}`;
+- Safety posture: ${connectionInfo.isLocal ? "Safe to experiment more freely" : "Prefer read-only or cautious guidance unless the user explicitly requests writes"}${connectionInfo.branch && connectionInfo.branch !== "main" ? `\n- Active branch: ${connectionInfo.branch} — operating on a non-main branch of this local database` : ""}`;
+
+    if (connectionInfo.isLocal && connectionInfo.branch === "main") {
+      prompt += `
+- ⚠️ You are on the main branch of a local database. Mutations will affect the primary branch. Consider suggesting the user create a branch for risky changes.`;
+    }
   }
 
   if (memoryContext && (memoryContext.recentMessages.length > 0 || memoryContext.similarQueries.length > 0)) {

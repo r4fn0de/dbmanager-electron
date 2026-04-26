@@ -319,8 +319,9 @@ function createWindow() {
   mainWindow.webContents.on("did-stop-loading", () => {
     console.log("[window] stopped loading");
   });
-  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
-    console.log(`[renderer:console:${level}] ${sourceId}:${line} ${message}`);
+  mainWindow.webContents.on("console-message", (details) => {
+    const { level, sourceId, lineNumber, message } = details;
+    console.log(`[renderer:console:${level}] ${sourceId}:${lineNumber} ${message}`);
   });
   mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
     console.error(`[window] preload error at ${preloadPath}:`, error);

@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import BetterSqlite3 from "better-sqlite3";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import { buildSqliteConnectionString, closeDb as closeSqliteDb, closeAllSqliteDbs } from "./sqlite-driver";
-import type { LocalDbInfo, LocalDbEngine } from "./types";
+import type { BranchInfo, BranchMeta, LocalDbInfo, LocalDbEngine } from "./types";
 
 /** ESM-compatible require for resolving module paths */
 const runtimeRequire = createRequire(
@@ -32,6 +32,8 @@ interface LocalDbMeta {
   engine: LocalDbEngine;
   /** SQLite-specific: absolute path to the .db file on disk. */
   file_path?: string;
+  /** ID of the currently active branch (defaults to the main branch ID). */
+  active_branch_id?: string;
 }
 
 /** Running instance tracking — PostgreSQL only (SQLite has no process) */
@@ -47,6 +49,7 @@ interface SqliteHandle {
 }
 
 const STORAGE_FILE = "local-databases.json";
+const BRANCHES_FILE = "branches.json";
 const DATA_SUBDIR = "local-dbs";
 const SQLITE_SUBDIR = "local-dbs/sqlite";
 
@@ -90,6 +93,8 @@ export class LocalDbManager {
   private runningInstances: Map<string, RunningInstance> = new Map();
   private sqliteHandles: Map<string, SqliteHandle> = new Map();
   private metaCache: LocalDbMeta[] | null = null;
+  /** Branch metadata cache, keyed by local DB instance ID. */
+  private branchCache: Map<string, BranchMeta[]> = new Map();
 
   // ── Persistence ─────────────────────────────────────────────
 
@@ -151,6 +156,70 @@ export class LocalDbManager {
   }
 
   // ── Helpers ─────────────────────────────────────────────────
+
+  // ── Branch persistence ─────────────────────────────────────
+
+  private getBranchesPath(localDbId: string): string {
+    return join(getInstanceDataDir(localDbId), BRANCHES_FILE);
+  }
+
+  private async loadBranchList(localDbId: string): Promise<BranchMeta[]> {
+    const cached = this.branchCache.get(localDbId);
+    if (cached) return cached;
+    try {
+      const data = await readFile(this.getBranchesPath(localDbId), "utf-8");
+      const parsed = JSON.parse(data) as BranchMeta[];
+      this.branchCache.set(localDbId, parsed);
+      return parsed;
+    } catch {
+      this.branchCache.set(localDbId, []);
+      return [];
+    }
+  }
+
+  private async saveBranchList(localDbId: string, list: BranchMeta[]): Promise<void> {
+    this.branchCache.set(localDbId, list);
+    const dir = getInstanceDataDir(localDbId);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    await writeFile(this.getBranchesPath(localDbId), JSON.stringify(list, null, 2), "utf-8");
+  }
+
+  /** Sanitize a branch name into a valid PostgreSQL identifier fragment.
+   *  Replaces non-alphanumeric chars with underscores, collapses runs,
+   *  and prefixes with "br_" to avoid colliding with user DB names. */
+  private sanitizeBranchName(name: string): string {
+    const sanitized = name
+      .replace(/[^a-zA-Z0-9_]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
+    return `br_${sanitized}`.slice(0, 63);
+  }
+
+  /** Build a PostgreSQL connection string for a branch database. */
+  private buildBranchConnectionString(meta: LocalDbMeta, branchDbName: string): string {
+    return `postgresql://${encodeURIComponent(meta.username)}:${encodeURIComponent(meta.password)}@localhost:${meta.port}/${branchDbName}`;
+  }
+
+  private branchMetaToInfo(
+    branch: BranchMeta,
+    meta: LocalDbMeta,
+    isActive: boolean,
+  ): BranchInfo {
+    return {
+      id: branch.id,
+      name: branch.name,
+      parentId: branch.parentId,
+      isMain: branch.isMain,
+      isActive,
+      createdAt: branch.createdAt,
+      lastMergedAt: branch.lastMergedAt,
+      description: branch.description,
+      databaseName: branch.dbName,
+      connectionString: this.buildBranchConnectionString(meta, branch.dbName),
+    };
+  }
 
   private metaToInfo(meta: LocalDbMeta, running: boolean): LocalDbInfo {
     const isSqlite = meta.engine === "sqlite";
@@ -457,6 +526,15 @@ export class LocalDbManager {
     list.push(meta);
     await this.saveMetaList(list);
 
+    // Ensure the main branch exists for new PostgreSQL local DBs.
+    // Must run AFTER saveMetaList so ensureMainBranch can find the new DB.
+    // Idempotent — no-op if already present.
+    try {
+      await this.ensureMainBranch(id);
+    } catch (err) {
+      console.warn(`[local-db] ⚠️ Branch system may not work correctly for DB ${id} — failed to ensure main branch:`, err);
+    }
+
     return this.metaToInfo(meta, true);
   }
 
@@ -579,6 +657,16 @@ export class LocalDbManager {
     }
 
     this.runningInstances.set(id, { pg, meta });
+
+    // Ensure the main branch exists (idempotent — no-op if already present).
+    // Moved here from individual branch methods so it runs once per start
+    // instead of on every branch operation.
+    // Wrapped in try/catch so a branch metadata issue doesn't prevent the DB from starting.
+    try {
+      await this.ensureMainBranch(id);
+    } catch (err) {
+      console.warn(`[local-db] ⚠️ Branch system may not work correctly for DB ${id} — failed to ensure main branch:`, err);
+    }
   }
 
   private startSqlite(meta: LocalDbMeta): void {
@@ -632,28 +720,58 @@ export class LocalDbManager {
   }
 
   async delete(id: string): Promise<void> {
+    const meta = (await this.loadMetaList()).find((m) => m.id === id);
+
+    // For PostgreSQL: drop branch databases BEFORE stopping the instance,
+    // since stop() removes the running instance from memory.
+    if (meta && (meta.engine ?? "postgresql") === "postgresql") {
+      const instance = this.runningInstances.get(id);
+      if (instance) {
+        const branches = await this.loadBranchList(id);
+        for (const branch of branches) {
+          if (branch.isMain) continue;
+          try {
+            const client = instance.pg.getPgClient("postgres");
+            await client.connect();
+            try {
+              await client.query(
+                `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+                [branch.dbName],
+              );
+              await client.query(
+                `DROP DATABASE IF EXISTS "${branch.dbName.replace(/"/g, '""')}"`,
+              );
+            } finally {
+              await client.end();
+            }
+          } catch (err) {
+            console.warn(`[local-db] Failed to drop branch database "${branch.dbName}" during delete:`, err);
+          }
+        }
+      }
+      // Clear branch cache
+      this.branchCache.delete(id);
+    }
+
     // Stop if running
     await this.stop(id);
 
-    // Also close the cached driver handle if present
-    const meta = (await this.loadMetaList()).find((m) => m.id === id);
     if (meta) {
       const engine = meta.engine ?? "postgresql";
+
       if (engine === "sqlite") {
         const filePath = meta.file_path ?? join(getBaseDataDir(), "sqlite", `${id}.db`);
         const connStr = buildSqliteConnectionString(filePath);
         closeSqliteDb(connStr);
-        // Remove the SQLite file
         try {
           rmSync(filePath, { force: true });
-          // Also remove WAL/SHM files
           try { rmSync(`${filePath}-wal`, { force: true }); } catch { /* ignore */ }
           try { rmSync(`${filePath}-shm`, { force: true }); } catch { /* ignore */ }
         } catch (err) {
           console.error(`[local-db:${id}] Error removing SQLite file:`, err);
         }
       } else {
-        // Remove PostgreSQL data directory
+        // Remove PostgreSQL data directory (includes branches.json)
         const dataDir = getInstanceDataDir(id);
         try {
           rmSync(dataDir, { recursive: true, force: true });
@@ -704,6 +822,322 @@ export class LocalDbManager {
     }
 
     return [...running.values()];
+  }
+
+  // ── Branch CRUD ──────────────────────────────────────────────
+
+  /**
+   * Ensure a "main" branch exists for a local DB.
+   * Called automatically when a PostgreSQL local DB is created or started.
+   */
+  private async ensureMainBranch(localDbId: string): Promise<void> {
+    const branches = await this.loadBranchList(localDbId);
+    if (branches.some((b) => b.isMain)) return;
+
+    const meta = (await this.loadMetaList()).find((m) => m.id === localDbId);
+    if (!meta) throw new Error(`Local database ${localDbId} not found`);
+
+    const mainBranch: BranchMeta = {
+      id: localDbId, // main branch ID = local DB ID (1:1)
+      name: "main",
+      dbName: meta.database_name, // the original database name
+      parentId: localDbId, // self-referential for main
+      createdAt: new Date().toISOString(),
+      isMain: true,
+    };
+
+    branches.push(mainBranch);
+    await this.saveBranchList(localDbId, branches);
+
+    // Set the main branch as active if no active branch is set
+    if (!meta.active_branch_id) {
+      meta.active_branch_id = localDbId;
+      const list = await this.loadMetaList();
+      const idx = list.findIndex((m) => m.id === localDbId);
+      if (idx >= 0) {
+        list[idx] = meta;
+        await this.saveMetaList(list);
+      }
+    }
+  }
+
+  /**
+   * Create a new branch from an existing branch.
+   * Uses PostgreSQL CREATE DATABASE ... TEMPLATE to fork the database.
+   */
+  async createBranch(input: {
+    localDbId: string;
+    parentBranchId?: string;
+    name: string;
+    description?: string;
+    dataTables?: Array<{ schema: string; table: string }>;
+  }): Promise<BranchInfo> {
+    const { localDbId, name, description, dataTables } = input;
+    const meta = (await this.loadMetaList()).find((m) => m.id === localDbId);
+    if (!meta) throw new Error(`Local database ${localDbId} not found`);
+    if (meta.engine !== "postgresql") {
+      throw new Error("Branching is only supported for PostgreSQL local databases.");
+    }
+
+    // Resolve parent branch
+    const branches = await this.loadBranchList(localDbId);
+    const parentBranchId = input.parentBranchId ?? meta.active_branch_id ?? localDbId;
+    const parentBranch = branches.find((b) => b.id === parentBranchId);
+    if (!parentBranch) {
+      throw new Error(`Parent branch ${parentBranchId} not found`);
+    }
+
+    // Check for name collision
+    if (branches.some((b) => b.name === name)) {
+      throw new Error(`Branch "${name}" already exists.`);
+    }
+
+    // The PG instance must be running to create a branch database
+    const instance = this.runningInstances.get(localDbId);
+    if (!instance) {
+      throw new Error("Local database must be running to create a branch.");
+    }
+
+    const branchId = randomUUID();
+    const dbName = this.sanitizeBranchName(`${name}_${branchId.slice(0, 8)}`);
+
+    // Create the branch database using TEMPLATE (fast, file-level copy)
+    try {
+      const client = instance.pg.getPgClient("postgres");
+      await client.connect();
+      try {
+        // Must terminate connections to the source DB before templating
+        await client.query(
+          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+          [parentBranch.dbName],
+        );
+
+        // If dataTables is empty or not provided, copy everything (schema + data)
+        // Otherwise, create an empty DB and copy schema + selected data
+        if (!dataTables || dataTables.length === 0) {
+          // Full copy via TEMPLATE — fastest path
+          await client.query(
+            `CREATE DATABASE "${dbName}" TEMPLATE "${parentBranch.dbName.replace(/"/g, '""')}"`,
+          );
+        } else {
+          // Schema-only copy via TEMPLATE, then selectively copy data for chosen tables
+          await client.query(
+            `CREATE DATABASE "${dbName}" TEMPLATE "${parentBranch.dbName.replace(/"/g, '""')}"`,
+          );
+
+          // For tables NOT in dataTables, truncate them in the branch
+          const dataTablesSet = new Set(dataTables.map((t) => `${t.schema}.${t.table}`));
+          const branchClient = instance.pg.getPgClient(dbName);
+          await branchClient.connect();
+          try {
+            // Get all user tables in the new branch
+            const { rows } = await branchClient.query(
+              `SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`,
+            );
+            for (const row of rows) {
+              const key = `${row.schemaname}.${row.tablename}`;
+              if (!dataTablesSet.has(key)) {
+                await branchClient.query(
+                  `TRUNCATE TABLE "${row.schemaname.replace(/"/g, '""')}"."${row.tablename.replace(/"/g, '""')}" CASCADE`,
+                );
+              }
+            }
+          } finally {
+            await branchClient.end();
+          }
+        }
+      } finally {
+        await client.end();
+      }
+    } catch (err) {
+      throw new Error(
+        `Failed to create branch: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    const newBranch: BranchMeta = {
+      id: branchId,
+      name,
+      dbName,
+      parentId: parentBranchId,
+      createdAt: new Date().toISOString(),
+      isMain: false,
+      description,
+    };
+
+    branches.push(newBranch);
+    await this.saveBranchList(localDbId, branches);
+
+    const isActive = meta.active_branch_id === branchId;
+    return this.branchMetaToInfo(newBranch, meta, isActive);
+  }
+
+  /**
+   * Delete a branch. Cannot delete the main branch or the currently active branch.
+   */
+  async deleteBranch(localDbId: string, branchId: string): Promise<void> {
+    const meta = (await this.loadMetaList()).find((m) => m.id === localDbId);
+    if (!meta) throw new Error(`Local database ${localDbId} not found`);
+
+    const branches = await this.loadBranchList(localDbId);
+    const branch = branches.find((b) => b.id === branchId);
+    if (!branch) throw new Error(`Branch ${branchId} not found`);
+    if (branch.isMain) throw new Error("Cannot delete the main branch.");
+    if (meta.active_branch_id === branchId) {
+      throw new Error("Cannot delete the active branch. Switch to another branch first.");
+    }
+
+    // Drop the branch database from PostgreSQL
+    const instance = this.runningInstances.get(localDbId);
+    if (instance) {
+      try {
+        const client = instance.pg.getPgClient("postgres");
+        await client.connect();
+        try {
+          // Terminate connections to the branch DB
+          await client.query(
+            `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+            [branch.dbName],
+          );
+          await client.query(
+            `DROP DATABASE IF EXISTS "${branch.dbName.replace(/"/g, '""')}"`,
+          );
+        } finally {
+          await client.end();
+        }
+      } catch (err) {
+        console.warn(`[local-db] Failed to drop branch database "${branch.dbName}":`, err);
+        // Continue with metadata removal even if DB drop fails
+        // (e.g., DB might have been dropped manually already)
+      }
+    }
+
+    // Also delete any child branches (cascading delete)
+    const childIds = new Set<string>();
+    const collectChildren = (parentId: string) => {
+      for (const b of branches) {
+        if (b.parentId === parentId && !b.isMain) {
+          childIds.add(b.id);
+          collectChildren(b.id);
+        }
+      }
+    };
+    collectChildren(branchId);
+
+    // Drop child branch databases
+    if (instance && childIds.size > 0) {
+      for (const childId of childIds) {
+        const childBranch = branches.find((b) => b.id === childId);
+        if (!childBranch) continue;
+        if (meta.active_branch_id === childId) {
+          throw new Error(
+            `Cannot delete branch "${branch.name}" because child branch "${childBranch.name}" is active. Switch first.`,
+          );
+        }
+        try {
+          const client = instance.pg.getPgClient("postgres");
+          await client.connect();
+          try {
+            await client.query(
+              `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+              [childBranch.dbName],
+            );
+            await client.query(
+              `DROP DATABASE IF EXISTS "${childBranch.dbName.replace(/"/g, '""')}"`,
+            );
+          } finally {
+            await client.end();
+          }
+        } catch (err) {
+          console.warn(`[local-db] Failed to drop child branch database "${childBranch.dbName}":`, err);
+        }
+      }
+    }
+
+    // Remove from metadata (branch + children)
+    const idsToRemove = new Set([branchId, ...childIds]);
+    const updated = branches.filter((b) => !idsToRemove.has(b.id));
+    await this.saveBranchList(localDbId, updated);
+  }
+
+  /**
+   * Switch the active branch for a local DB.
+   * Returns the BranchInfo for the newly active branch.
+   */
+  async switchBranch(localDbId: string, branchId: string): Promise<BranchInfo> {
+    const meta = (await this.loadMetaList()).find((m) => m.id === localDbId);
+    if (!meta) throw new Error(`Local database ${localDbId} not found`);
+
+    const branches = await this.loadBranchList(localDbId);
+    const branch = branches.find((b) => b.id === branchId);
+    if (!branch) throw new Error(`Branch ${branchId} not found`);
+
+    if (meta.active_branch_id === branchId) {
+      // Already on this branch — return current info
+      return this.branchMetaToInfo(branch, meta, true);
+    }
+
+    // Update the active branch in the local DB metadata
+    const list = await this.loadMetaList();
+    const idx = list.findIndex((m) => m.id === localDbId);
+    if (idx < 0) throw new Error(`Local database ${localDbId} not found in metadata.`);
+    list[idx] = { ...list[idx], active_branch_id: branchId };
+    await this.saveMetaList(list);
+
+    // Return info for the newly active branch
+    return this.branchMetaToInfo(branch, list[idx], true);
+  }
+
+  /**
+   * List all branches for a local DB.
+   */
+  async listBranches(localDbId: string): Promise<BranchInfo[]> {
+    const meta = (await this.loadMetaList()).find((m) => m.id === localDbId);
+    if (!meta) throw new Error(`Local database ${localDbId} not found`);
+
+    const branches = await this.loadBranchList(localDbId);
+    const activeBranchId = meta.active_branch_id ?? localDbId;
+
+    return branches.map((b) =>
+      this.branchMetaToInfo(b, meta, b.id === activeBranchId),
+    );
+  }
+
+  /**
+   * Get info for a single branch.
+   */
+  async getBranchInfo(localDbId: string, branchId: string): Promise<BranchInfo> {
+    const meta = (await this.loadMetaList()).find((m) => m.id === localDbId);
+    if (!meta) throw new Error(`Local database ${localDbId} not found`);
+
+    const branches = await this.loadBranchList(localDbId);
+    const branch = branches.find((b) => b.id === branchId);
+    if (!branch) throw new Error(`Branch ${branchId} not found`);
+
+    const activeBranchId = meta.active_branch_id ?? localDbId;
+    return this.branchMetaToInfo(branch, meta, branch.id === activeBranchId);
+  }
+
+  /**
+   * Rename a branch. Cannot rename the main branch.
+   */
+  async renameBranch(localDbId: string, branchId: string, newName: string): Promise<BranchInfo> {
+    const meta = (await this.loadMetaList()).find((m) => m.id === localDbId);
+    if (!meta) throw new Error(`Local database ${localDbId} not found`);
+
+    const branches = await this.loadBranchList(localDbId);
+    const branch = branches.find((b) => b.id === branchId);
+    if (!branch) throw new Error(`Branch ${branchId} not found`);
+    if (branch.isMain) throw new Error("Cannot rename the main branch.");
+    if (branches.some((b) => b.name === newName && b.id !== branchId)) {
+      throw new Error(`Branch "${newName}" already exists.`);
+    }
+
+    branch.name = newName;
+    await this.saveBranchList(localDbId, branches);
+
+    const activeBranchId = meta.active_branch_id ?? localDbId;
+    return this.branchMetaToInfo(branch, meta, branch.id === activeBranchId);
   }
 
   // ── Hydration (reconnect auto-start instances on app launch) ─

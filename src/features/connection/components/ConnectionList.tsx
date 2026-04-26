@@ -1,4 +1,14 @@
-import { useState, type ComponentType } from "react";
+import { useState, useCallback, type ComponentType } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
@@ -8,6 +18,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { CreateBranchDialog } from "@/features/localDb/components/CreateBranchDialog";
 import { Neon } from "@/components/icons/Neon";
 import { Supabase } from "@/components/icons/Supabase";
 import { MySql } from "@/components/icons/MySql";
@@ -16,12 +32,13 @@ import { Redis } from "@/components/icons/Redis";
 import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Sqlite } from "@/components/icons/Sqlite";
 import { cn } from "@/lib/utils";
-import type { Connection, LocalDbInfo } from "@/ipc/db/types";
+import type { BranchInfo, Connection, LocalDbInfo } from "@/ipc/db/types";
 import { getClickhouseEffectivePort } from "@/ipc/db/types";
 
 interface ConnectionListProps {
   connections: Connection[];
   localDbById?: Record<string, LocalDbInfo>;
+  branchesByDbId?: Record<string, BranchInfo[]>;
   isLoading: boolean;
   onAdd: () => void;
   onEdit: (connection: Connection) => void;
@@ -30,6 +47,9 @@ interface ConnectionListProps {
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
   onCloneToLocal?: (connection: Connection) => void;
+  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string }) => Promise<BranchInfo>;
+  onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
+  onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }
 
 type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "redis" | "url" | "direct";
@@ -100,21 +120,29 @@ function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
 function ConnectionCard({
   connection,
   localDbInfo,
+  branches,
   onEdit,
   onDelete,
   onSelect,
   onStartLocal,
   onPauseLocal,
   onCloneToLocal,
+  onCreateBranch,
+  onSwitchBranch,
+  onDeleteBranch,
 }: {
   connection: Connection;
   localDbInfo?: LocalDbInfo;
+  branches?: BranchInfo[];
   onEdit: (c: Connection) => void;
   onDelete: (connection: Connection) => void;
   onSelect: (connection: Connection) => void;
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
   onCloneToLocal?: (connection: Connection) => void;
+  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string }) => Promise<BranchInfo>;
+  onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
+  onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }) {
   const isUrl = !!connection.url;
   const isLocal = connection.is_local === true;
@@ -124,10 +152,18 @@ function ConnectionCard({
     : `${connection.username}@${connection.host}:${connection.port}/${connection.database}`;
   const [copied, setCopied] = useState(false);
   const [isTogglingState, setIsTogglingState] = useState(false);
+  const [branchesOpen, setBranchesOpen] = useState(false);
+  const [switchingBranchId, setSwitchingBranchId] = useState<string | null>(null);
+  const [pendingBranchDelete, setPendingBranchDelete] = useState<{ dbId: string; branchId: string; branchName: string } | null>(null);
+
+  // Branches are only relevant for running PostgreSQL local DBs
   const isStatusKnown = Boolean(localDbInfo);
   const isRunning = localDbInfo?.running ?? false;
   const localEngine =
     localDbInfo?.engine ?? (connection.db_type === "sqlite" ? "sqlite" : "postgresql");
+  const isLocalPg = isLocal && localEngine === "postgresql";
+  const hasBranches = isLocalPg && isRunning && branches && branches.length > 0;
+  const activeBranch = branches?.find((b) => b.isActive);
   const LocalDbTypeIcon = localEngine === "sqlite" ? Sqlite : PostgreSql;
 
   const handleCopy = async () => {
@@ -154,156 +190,282 @@ function ConnectionCard({
     }
   };
 
+  const handleSwitchBranch = useCallback(async (branchId: string) => {
+    if (!onSwitchBranch || !connection.id) return;
+    setSwitchingBranchId(branchId);
+    try {
+      await onSwitchBranch(connection.id, branchId);
+    } finally {
+      setSwitchingBranchId(null);
+    }
+  }, [onSwitchBranch, connection.id]);
+
   return (
-    <div className="group relative flex items-stretch gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-muted/60">
-      {/* Click area — name, provider, info */}
-      <button
-        type="button"
-        className="flex-1 min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm"
-        onClick={() => onSelect(connection)}
-      >
-        <div className="flex items-center gap-2">
-          {isLocal ? (
-            <LocalDbTypeIcon className="size-4 shrink-0" />
-          ) : (
-            <ProviderIcon provider={provider} />
-          )}
-          <span className="font-medium text-sm truncate">
-            {connection.name}
-          </span>
-          {connection.color && /^#[0-9a-fA-F]{6}$/.test(connection.color) && (
-            <span
-              className="inline-block size-2 rounded-full shrink-0 ring-2 ring-muted-foreground/10"
-              style={{ backgroundColor: connection.color }}
-            />
-          )}
-          {connection.tag && (
-            <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono">
-              {connection.tag}
-            </Badge>
-          )}
-          {isLocal && (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-[10px] font-medium",
-                isRunning
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-muted-foreground"
-              )}
-            >
+    <>
+    <Collapsible open={branchesOpen} onOpenChange={setBranchesOpen}>
+      <div className="group relative flex items-stretch gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-muted/60">
+        {/* Click area — name, provider, info */}
+        <button
+          type="button"
+          className="flex-1 min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm"
+          onClick={() => onSelect(connection)}
+        >
+          <div className="flex items-center gap-2">
+            {isLocal ? (
+              <LocalDbTypeIcon className="size-4 shrink-0" />
+            ) : (
+              <ProviderIcon provider={provider} />
+            )}
+            <span className="font-medium text-sm truncate">
+              {connection.name}
+            </span>
+            {connection.color && /^#[0-9a-fA-F]{6}$/.test(connection.color) && (
+              <span
+                className="inline-block size-2 rounded-full shrink-0 ring-2 ring-muted-foreground/10"
+                style={{ backgroundColor: connection.color }}
+              />
+            )}
+            {connection.tag && (
+              <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono">
+                {connection.tag}
+              </Badge>
+            )}
+            {/* Branch badge */}
+            {hasBranches && activeBranch && !activeBranch.isMain && (
+              <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-0.5 font-mono border-primary/30 bg-primary/5 text-primary">
+                <Icon name="git-branch" className="size-2.5" />
+                {activeBranch.name}
+              </Badge>
+            )}
+            {isLocal && (
               <span
                 className={cn(
-                  "inline-block size-1.5 rounded-full",
-                  isRunning ? "bg-emerald-500" : "bg-muted-foreground/40"
+                  "inline-flex items-center gap-1 text-[10px] font-medium",
+                  isRunning
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-muted-foreground"
                 )}
-              />
-              {isRunning ? "Running" : "Stopped"}
-            </span>
-          )}
-        </div>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <p
-                className={cn(
-                  "text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150",
-                  copied
-                    ? "text-emerald-600 dark:text-emerald-400 scale-[1.02]"
-                    : "text-muted-foreground hover:text-foreground active:scale-[0.97]",
-                )}
-                style={{ transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)" }}
-                onClick={(e) => { e.stopPropagation(); handleCopy(); }}
-              />
-            }
-          >
-            {copied ? "Copied!" : displayInfo}
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4}>
-            {copied ? "Copied!" : "Click to copy connection string"}
-          </TooltipContent>
-        </Tooltip>
-      </button>
+              >
+                <span
+                  className={cn(
+                    "inline-block size-1.5 rounded-full",
+                    isRunning ? "bg-emerald-500" : "bg-muted-foreground/40"
+                  )}
+                />
+                {isRunning ? "Running" : "Stopped"}
+              </span>
+            )}
+          </div>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <p
+                  className={cn(
+                    "text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150",
+                    copied
+                      ? "text-emerald-600 dark:text-emerald-400 scale-[1.02]"
+                      : "text-muted-foreground hover:text-foreground active:scale-[0.97]",
+                  )}
+                  style={{ transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)" }}
+                  onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+                />
+              }
+            >
+              {copied ? "Copied!" : displayInfo}
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={4}>
+              {copied ? "Copied!" : "Click to copy connection string"}
+            </TooltipContent>
+          </Tooltip>
+        </button>
 
-      {/* Action buttons — visible on hover */}
-      <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 self-center">
-        {isLocal && (onStartLocal || onPauseLocal) && (
+        {/* Action buttons — visible on hover */}
+        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 self-center">
+          {/* Branch toggle (only for local PG with branches) */}
+          {hasBranches && (
+            <CollapsibleTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className={cn(branchesOpen && "text-primary")}
+                />
+              }
+            >
+              <Icon name="git-branch" className="size-3" />
+            </CollapsibleTrigger>
+          )}
+          {/* Create branch button (only for running local PG) */}
+          {isLocalPg && isRunning && onCreateBranch && connection.id && (
+            <CreateBranchDialog
+              localDbName={connection.name}
+              branches={branches ?? []}
+              activeBranch={activeBranch ?? null}
+              onCreate={(input) => onCreateBranch(connection.id!, input)}
+              tooltipLabel="Create branch"
+            />
+          )}
+          {isLocal && (onStartLocal || onPauseLocal) && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={handleToggleLocalState}
+                    disabled={isTogglingState || !isStatusKnown}
+                  />
+                }
+              >
+                {isTogglingState ? (
+                  <Icon name="loader" className="size-3 animate-spin" />
+                ) : isRunning ? (
+                  <Icon name="pause" className="size-3" />
+                ) : (
+                  <Icon name="play" className="size-3" />
+                )}
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                {isRunning ? "Pause database" : "Start database"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {!isLocal && onCloneToLocal && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onCloneToLocal(connection)}
+                  />
+                }
+              >
+                <Icon name="download" className="size-3" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                Clone to local
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  onClick={handleToggleLocalState}
-                  disabled={isTogglingState || !isStatusKnown}
+                  onClick={() => onEdit(connection)}
                 />
               }
             >
-              {isTogglingState ? (
-                <Icon name="loader" className="size-3 animate-spin" />
-              ) : isRunning ? (
-                <Icon name="pause" className="size-3" />
-              ) : (
-                <Icon name="play" className="size-3" />
-              )}
+              <Icon name="pencil" className="size-3" />
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4}>
-              {isRunning ? "Pause database" : "Start database"}
+              Edit connection
             </TooltipContent>
           </Tooltip>
-        )}
-        {!isLocal && onCloneToLocal && (
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  onClick={() => onCloneToLocal(connection)}
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => onDelete(connection)}
                 />
               }
             >
-              <Icon name="download" className="size-3" />
+              <Icon name="trash" className="size-3" />
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={4}>
-              Clone to local
+              Delete connection
             </TooltipContent>
           </Tooltip>
-        )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onEdit(connection)}
-              />
-            }
-          >
-            <Icon name="pencil" className="size-3" />
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4}>
-            Edit connection
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-muted-foreground hover:text-destructive"
-                onClick={() => onDelete(connection)}
-              />
-            }
-          >
-            <Icon name="trash" className="size-3" />
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={4}>
-            Delete connection
-          </TooltipContent>
-        </Tooltip>
+        </div>
       </div>
-    </div>
+
+      {/* Branch list (expandable) */}
+      {hasBranches && (
+        <CollapsibleContent>
+          <div className="ml-9 mr-3 mb-1 space-y-0.5 border-l-2 border-border/40 pl-3">
+            {branches!.map((branch) => (
+              <div
+                key={branch.id}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors",
+                  branch.isActive
+                    ? "bg-primary/10 text-primary"
+                    : "hover:bg-muted/50 text-muted-foreground",
+                )}
+              >
+                <Icon name="git-branch" className="size-3 shrink-0" />
+                <span className="font-medium truncate flex-1">{branch.name}</span>
+                {branch.isActive && (
+                  <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
+                )}
+                {!branch.isActive && onSwitchBranch && (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="opacity-0 group-hover:opacity-100"
+                    disabled={switchingBranchId === branch.id}
+                    onClick={() => handleSwitchBranch(branch.id)}
+                  >
+                    {switchingBranchId === branch.id ? (
+                      <Icon name="loader" className="size-3 animate-spin" />
+                    ) : (
+                      <Icon name="arrow-right" className="size-3" />
+                    )}
+                  </Button>
+                )}
+                {!branch.isMain && onDeleteBranch && connection.id && (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      setPendingBranchDelete({ dbId: connection.id!, branchId: branch.id, branchName: branch.name });
+                    }}
+                  >
+                    <Icon name="trash" className="size-3" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+
+      {/* Branch delete confirmation */}
+      <AlertDialog
+        open={!!pendingBranchDelete}
+        onOpenChange={(open) => { if (!open) setPendingBranchDelete(null); }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete branch?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the <strong>{pendingBranchDelete?.branchName}</strong> branch and any child branches. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (pendingBranchDelete) {
+                  void onDeleteBranch?.(pendingBranchDelete.dbId, pendingBranchDelete.branchId);
+                  setPendingBranchDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -324,23 +486,31 @@ function ConnectionGroup({
   icon: Icon,
   connections,
   localDbById,
+  branchesByDbId,
   onEdit,
   onDelete,
   onSelect,
   onStartLocal,
   onPauseLocal,
   onCloneToLocal,
+  onCreateBranch,
+  onSwitchBranch,
+  onDeleteBranch,
 }: {
   label: string;
   icon: ComponentType<{ className?: string }>;
   connections: Connection[];
   localDbById?: Record<string, LocalDbInfo>;
+  branchesByDbId?: Record<string, BranchInfo[]>;
   onEdit: (c: Connection) => void;
   onDelete: (connection: Connection) => void;
   onSelect: (c: Connection) => void;
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
   onCloneToLocal?: (c: Connection) => void;
+  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string }) => Promise<BranchInfo>;
+  onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
+  onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }) {
   if (connections.length === 0) return null;
   return (
@@ -359,12 +529,16 @@ function ConnectionGroup({
           key={conn.id}
           connection={conn}
           localDbInfo={conn.is_local ? localDbById?.[conn.id] : undefined}
+          branches={conn.is_local ? branchesByDbId?.[conn.id] : undefined}
           onEdit={onEdit}
           onDelete={onDelete}
           onSelect={onSelect}
           onStartLocal={onStartLocal}
           onPauseLocal={onPauseLocal}
           onCloneToLocal={onCloneToLocal}
+          onCreateBranch={onCreateBranch}
+          onSwitchBranch={onSwitchBranch}
+          onDeleteBranch={onDeleteBranch}
         />
       ))}
     </div>
@@ -374,6 +548,7 @@ function ConnectionGroup({
 export function ConnectionList({
   connections,
   localDbById,
+  branchesByDbId,
   isLoading,
   onAdd,
   onEdit,
@@ -382,6 +557,9 @@ export function ConnectionList({
   onStartLocal,
   onPauseLocal,
   onCloneToLocal,
+  onCreateBranch,
+  onSwitchBranch,
+  onDeleteBranch,
 }: ConnectionListProps) {
   if (isLoading) {
     return (
@@ -417,12 +595,16 @@ export function ConnectionList({
 
   const sharedProps = {
     localDbById,
+    branchesByDbId,
     onEdit,
     onDelete,
     onSelect,
     onStartLocal,
     onPauseLocal,
     onCloneToLocal,
+    onCreateBranch,
+    onSwitchBranch,
+    onDeleteBranch,
   };
 
   return (

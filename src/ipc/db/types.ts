@@ -1,5 +1,45 @@
 // Types migrated from dblocal - Database connection and schema types
 
+// ---------------------------------------------------------------------------
+// Branch types — for local DB branching (Phase 1: PostgreSQL only)
+// ---------------------------------------------------------------------------
+
+/** Metadata for a branch within a local database. */
+export interface BranchMeta {
+  /** Unique ID for this branch (UUID) */
+  id: string;
+  /** User-chosen branch name (e.g., "feature/add-uuid") */
+  name: string;
+  /** Sanitized branch name used in the PostgreSQL database name */
+  dbName: string;
+  /** The parent branch ID — "main" for branches off the main branch */
+  parentId: string;
+  /** ISO timestamp of branch creation */
+  createdAt: string;
+  /** ISO timestamp of last merge into this branch (if any) */
+  lastMergedAt?: string;
+  /** Whether this branch is the main/default branch */
+  isMain: boolean;
+  /** Description/notes for this branch (optional, user-editable) */
+  description?: string;
+}
+
+/** Branch info returned to the renderer — includes runtime state. */
+export interface BranchInfo {
+  id: string;
+  name: string;
+  parentId: string;
+  isMain: boolean;
+  isActive: boolean;
+  createdAt: string;
+  lastMergedAt?: string;
+  description?: string;
+  /** The PostgreSQL database name for this branch */
+  databaseName: string;
+  /** Full connection string for this branch */
+  connectionString: string;
+}
+
 export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite" | "redis";
 
 export type SslMode =

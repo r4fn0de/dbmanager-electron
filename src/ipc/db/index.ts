@@ -41,6 +41,12 @@ import {
   getSchemaConstraints,
   getSchemaIndexes,
   getTriggers,
+  listBranches,
+  createBranch,
+  deleteBranch,
+  switchBranch,
+  getBranchInfo,
+  renameBranch,
 } from "./handlers";
 
 export { driverRegistry, registerDrivers } from "./registry";
@@ -98,4 +104,11 @@ export const db = {
   getSchemaConstraints,
   getSchemaIndexes,
   getTriggers,
+  // Branches (local DB branching — PostgreSQL only)
+  listBranches,
+  createBranch,
+  deleteBranch,
+  switchBranch,
+  getBranchInfo,
+  renameBranch,
 };

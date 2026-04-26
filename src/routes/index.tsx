@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -26,14 +26,15 @@ import { ConnectionForm, ConnectionList, useConnectionsList } from "@/features/c
 import {
   CreateLocalDbDialog,
   type CreateLocalDbInput,
+  CloneToLocalDialog,
+  useLocalDatabases,
+  useCloneToLocal,
 } from "@/features/localDb";
-import { CloneToLocalDialog } from "@/features/localDb";
 import { testConnection } from "@/features/database/hooks/db-actions";
-import { useLocalDatabases } from "@/features/localDb";
-import { useCloneToLocal } from "@/features/localDb";
-import type { TableRowCount } from "@/ipc/db/types";
+import type { BranchInfo, TableRowCount } from "@/ipc/db/types";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
+import { ipc } from "@/ipc/manager";
 import {
   buildConnectionTab,
   useConnectionTabsStore,
@@ -46,7 +47,7 @@ function Home() {
     saveConnection,
     deleteConnection,
   } = useConnectionsList();
-  const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, remove: removeLocalDb, databases: localDbs } = useLocalDatabases();
+  const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, remove: removeLocalDb, databases: localDbs, invalidateCache: invalidateLocalDbCache } = useLocalDatabases();
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLocalDbDialogOpen, setIsLocalDbDialogOpen] = useState(false);
@@ -79,6 +80,22 @@ function Home() {
     }
     return map;
   }, [localDbs]);
+
+  // ── Branch management ──────────────────────────────────────────
+  // Branch data is fetched on demand via IPC when users interact with local PG DBs.
+  // We store results in a simple state map rather than using a hook per-DB
+  // to avoid race conditions with hook query-key changes.
+  const [branchesByDbId, setBranchesByDbId] = useState<Record<string, BranchInfo[]>>({});
+
+  // Load branches for a specific local DB on demand
+  const loadBranchesForDb = useCallback(async (localDbId: string) => {
+    try {
+      const branches = await ipc.client.db.listBranches({ localDbId });
+      setBranchesByDbId((prev) => ({ ...prev, [localDbId]: branches }));
+    } catch {
+      // ignore — branches will simply not appear
+    }
+  }, []);
 
   const filteredConnections = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -238,6 +255,10 @@ function Home() {
         toast.error(`Local database "${connection.name}" is not running. Start it before opening.`);
         return;
       }
+      // Load branches for this DB when the user clicks it
+      if (localDb.engine === "postgresql") {
+        loadBranchesForDb(connection.id);
+      }
     }
 
     // Add tab synchronously BEFORE navigating so it appears instantly
@@ -391,14 +412,34 @@ function Home() {
             <ConnectionList
               connections={filteredConnections}
               localDbById={localDbById}
+              branchesByDbId={branchesByDbId}
               isLoading={isLoadingConnections}
               onAdd={handleAdd}
               onEdit={handleEdit}
               onDelete={handleDeleteRequest}
               onSelect={handleSelectConnection}
-              onStartLocal={startLocalDb}
+              onStartLocal={async (id) => {
+                await startLocalDb(id);
+                // Load branches after starting
+                loadBranchesForDb(id);
+              }}
               onPauseLocal={pauseLocalDb}
               onCloneToLocal={handleCloneToLocal}
+              onCreateBranch={async (localDbId, input) => {
+                const result = await ipc.client.db.createBranch({ localDbId, ...input });
+                await loadBranchesForDb(localDbId);
+                return result;
+              }}
+              onSwitchBranch={async (localDbId, branchId) => {
+                const result = await ipc.client.db.switchBranch({ localDbId, branchId });
+                await loadBranchesForDb(localDbId);
+                invalidateLocalDbCache();
+                return result;
+              }}
+              onDeleteBranch={async (localDbId, branchId) => {
+                await ipc.client.db.deleteBranch({ localDbId, branchId });
+                await loadBranchesForDb(localDbId);
+              }}
             />
           </div>
         </div>
