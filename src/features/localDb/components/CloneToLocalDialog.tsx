@@ -181,7 +181,7 @@ export function CloneToLocalDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isCloning && onClose()}>
-      <DialogContent className="sm:max-w-130 max-h-[90vh] p-0 gap-0 flex flex-col">
+      <DialogContent className="t-resize sm:max-w-130 max-h-[90vh] p-0 gap-0 flex flex-col">
         {/* Header — fixed */}
         <div className="p-5 pb-0 shrink-0">
           <DialogHeader className="gap-1">

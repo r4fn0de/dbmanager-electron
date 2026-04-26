@@ -171,7 +171,7 @@ export function CreateLocalDbDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[460px] p-0 gap-0 flex flex-col max-h-[90vh]">
+      <DialogContent className="t-resize sm:max-w-[460px] p-0 gap-0 flex flex-col max-h-[90vh]">
         {/* Header — fixed */}
         <div className="p-5 pb-0 shrink-0">
           <DialogHeader className="gap-1">

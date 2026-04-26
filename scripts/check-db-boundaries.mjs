@@ -7,6 +7,7 @@ const dbDir = join(root, 'src', 'ipc', 'db');
 
 const ALLOWED_RAW_FILES = new Set([
   'pg-runtime.ts',
+  'pg-driver-adapter.ts',
   'mysql-client.ts',
   'clickhouse-client.ts',
   'kysely-factory.ts',

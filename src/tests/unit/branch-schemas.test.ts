@@ -143,6 +143,30 @@ describe("createBranchSchema", () => {
     });
   });
 
+  test("accepts empty dataTables array (schema-only branch)", () => {
+    const result = expectValid(createBranchSchema, {
+      localDbId: "db-001",
+      name: "schema-only-branch",
+      dataTables: [],
+    });
+    expect(result.dataTables).toEqual([]);
+  });
+
+  test("distinguishes empty array from undefined dataTables", () => {
+    const withUndefined = createBranchSchema.parse({
+      localDbId: "db-001",
+      name: "full-copy-branch",
+    });
+    const withEmpty = createBranchSchema.parse({
+      localDbId: "db-001",
+      name: "schema-only-branch",
+      dataTables: [],
+    });
+    // undefined = copy all data (backend default), [] = schema-only (truncate all)
+    expect(withUndefined.dataTables).toBeUndefined();
+    expect(withEmpty.dataTables).toEqual([]);
+  });
+
   test("rejects non-array dataTables", () => {
     expectInvalid(createBranchSchema, {
       localDbId: "db-001",

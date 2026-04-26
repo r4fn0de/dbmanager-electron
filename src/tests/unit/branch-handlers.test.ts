@@ -238,6 +238,52 @@ describe("Branch oRPC handlers", () => {
       });
     });
 
+    test("passes empty dataTables array for schema-only branch", async () => {
+      const branch = mockBranchInfo({
+        id: "branch-002",
+        name: "schema-only",
+        isMain: false,
+        isActive: false,
+      });
+      mockLocalDbManager.createBranch.mockResolvedValue(branch);
+
+      const input = {
+        localDbId: "db-001",
+        name: "schema-only",
+        dataTables: [],
+      };
+
+      await handler({ input, context: {} });
+
+      expect(mockLocalDbManager.createBranch).toHaveBeenCalledWith({
+        localDbId: "db-001",
+        parentBranchId: undefined,
+        name: "schema-only",
+        description: undefined,
+        dataTables: [],
+      });
+    });
+
+    test("distinguishes empty array from undefined dataTables in handler input", async () => {
+      const branch = mockBranchInfo({
+        id: "branch-003",
+        name: "test-branch",
+        isMain: false,
+        isActive: false,
+      });
+      mockLocalDbManager.createBranch.mockResolvedValue(branch);
+
+      // Call with dataTables: [] — should pass [] through, not undefined
+      await handler({
+        input: { localDbId: "db-001", name: "test-branch", dataTables: [] },
+        context: {},
+      });
+
+      const callArgs = mockLocalDbManager.createBranch.mock.calls[0][0];
+      expect(callArgs.dataTables).toEqual([]);
+      expect(callArgs.dataTables).not.toBeUndefined();
+    });
+
     test("wraps errors in ORPCError with sanitized message", async () => {
       mockLocalDbManager.createBranch.mockRejectedValue(
         new Error('Branch "main" already exists'),

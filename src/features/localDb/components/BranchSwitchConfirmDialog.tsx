@@ -47,7 +47,7 @@ export function BranchSwitchConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[400px]"
+        className="t-resize sm:max-w-[400px]"
         overlayClassName="bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
       >
         <DialogHeader>

@@ -47,7 +47,7 @@ interface ConnectionListProps {
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
   onCloneToLocal?: (connection: Connection) => void;
-  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string }) => Promise<BranchInfo>;
+  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string; dataTables?: Array<{ schema: string; table: string }> }) => Promise<BranchInfo>;
   onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
   onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }
@@ -140,7 +140,7 @@ function ConnectionCard({
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
   onCloneToLocal?: (connection: Connection) => void;
-  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string }) => Promise<BranchInfo>;
+  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string; dataTables?: Array<{ schema: string; table: string }> }) => Promise<BranchInfo>;
   onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
   onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }) {
@@ -261,7 +261,7 @@ function ConnectionCard({
               render={
                 <p
                   className={cn(
-                    "text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150",
+                    "inline-block w-fit max-w-full text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150",
                     copied
                       ? "text-emerald-600 dark:text-emerald-400 scale-[1.02]"
                       : "text-muted-foreground hover:text-foreground active:scale-[0.97]",
@@ -299,6 +299,7 @@ function ConnectionCard({
           {isLocalPg && isRunning && onCreateBranch && connection.id && (
             <CreateBranchDialog
               localDbName={connection.name}
+              connectionId={connection.id}
               branches={branches ?? []}
               activeBranch={activeBranch ?? null}
               onCreate={(input) => onCreateBranch(connection.id!, input)}
@@ -442,7 +443,7 @@ function ConnectionCard({
         open={!!pendingBranchDelete}
         onOpenChange={(open) => { if (!open) setPendingBranchDelete(null); }}
       >
-        <AlertDialogContent size="sm">
+        <AlertDialogContent className="t-resize" size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete branch?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -508,7 +509,7 @@ function ConnectionGroup({
   onStartLocal?: (id: string) => Promise<void>;
   onPauseLocal?: (id: string) => Promise<void>;
   onCloneToLocal?: (c: Connection) => void;
-  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string }) => Promise<BranchInfo>;
+  onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string; dataTables?: Array<{ schema: string; table: string }> }) => Promise<BranchInfo>;
   onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
   onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }) {

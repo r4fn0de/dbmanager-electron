@@ -171,7 +171,7 @@ export function SettingsDialog() {
         </span>
       </DialogTrigger>
       <DialogContent
-        className="p-0 overflow-hidden flex flex-col !max-w-none gap-0"
+        className="t-resize p-0 overflow-hidden flex flex-col !max-w-none gap-0"
         style={{ width: 880, height: 640, maxWidth: 880 }}
       >
         {/* Header minimalista */}

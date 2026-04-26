@@ -912,9 +912,10 @@ export class LocalDbManager {
           [parentBranch.dbName],
         );
 
-        // If dataTables is empty or not provided, copy everything (schema + data)
-        // Otherwise, create an empty DB and copy schema + selected data
-        if (!dataTables || dataTables.length === 0) {
+        // If dataTables is not provided (undefined), copy everything (schema + data).
+        // If dataTables is an empty array, create a schema-only branch (truncate all user tables).
+        // If dataTables has entries, copy schema + data only for selected tables.
+        if (dataTables === undefined || dataTables === null) {
           // Full copy via TEMPLATE — fastest path
           await client.query(
             `CREATE DATABASE "${dbName}" TEMPLATE "${parentBranch.dbName.replace(/"/g, '""')}"`,

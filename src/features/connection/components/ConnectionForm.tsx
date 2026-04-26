@@ -636,7 +636,7 @@ export function ConnectionForm({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-115 max-h-[90vh] overflow-y-auto p-0 gap-0">
+      <DialogContent className="t-resize sm:max-w-115 max-h-[90vh] overflow-y-auto p-0 gap-0">
         <div className="p-5 pb-0">
           <DialogHeader className="gap-1">
             <DialogTitle>{connection ? "Edit Connection" : "New Connection"}</DialogTitle>

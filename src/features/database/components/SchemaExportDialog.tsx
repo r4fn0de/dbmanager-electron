@@ -130,7 +130,7 @@ export function SchemaExportDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[720px] max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="t-resize sm:max-w-[720px] max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon name="file-code" className="size-4 text-muted-foreground" />

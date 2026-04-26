@@ -206,7 +206,7 @@ export function CreateTableDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="t-resize sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Create table</DialogTitle>
           <DialogDescription>
@@ -405,7 +405,7 @@ export function DropTableDialog({
       open={isOpen}
       onOpenChange={(open) => !isSubmitting && !open && onClose()}
     >
-      <AlertDialogContent>
+      <AlertDialogContent className="t-resize">
         <AlertDialogHeader>
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
             <Icon name="alert-triangle" />
@@ -516,7 +516,7 @@ export function RenameTableDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[400px]">
+      <DialogContent className="t-resize sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>Rename table</DialogTitle>
           <DialogDescription>
@@ -623,7 +623,7 @@ export function AddColumnDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="t-resize sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>Add column</DialogTitle>
           <DialogDescription>
@@ -769,7 +769,7 @@ export function DropColumnDialog({
       open={isOpen}
       onOpenChange={(open) => !isSubmitting && !open && onClose()}
     >
-      <AlertDialogContent>
+      <AlertDialogContent className="t-resize">
         <AlertDialogHeader>
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
             <Icon name="alert-triangle" />
@@ -872,7 +872,7 @@ export function CreateSchemaDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[420px]">
+      <DialogContent className="t-resize sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Create schema</DialogTitle>
           <DialogDescription>
@@ -979,7 +979,7 @@ export function CreateIndexDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="t-resize sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Create index</DialogTitle>
           <DialogDescription>
@@ -1195,7 +1195,7 @@ export function ImportCsvDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="t-resize sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle>Import CSV</DialogTitle>
           <DialogDescription>
@@ -1317,7 +1317,7 @@ export function RenameColumnDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[420px]">
+      <DialogContent className="t-resize sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Rename column</DialogTitle>
           <DialogDescription>
@@ -1419,7 +1419,7 @@ export function AlterColumnTypeDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[460px]">
+      <DialogContent className="t-resize sm:max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Alter column type</DialogTitle>
           <DialogDescription>
@@ -1533,7 +1533,7 @@ export function SetColumnDefaultDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="t-resize sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Set column default</DialogTitle>
           <DialogDescription>
@@ -1649,7 +1649,7 @@ export function SetColumnNullableDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="t-resize sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>Set nullable</DialogTitle>
           <DialogDescription>
@@ -1827,7 +1827,7 @@ export function ViewDdlDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="t-resize sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon name="script" className="size-4 text-muted-foreground" />

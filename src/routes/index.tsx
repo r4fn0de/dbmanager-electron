@@ -447,7 +447,7 @@ function Home() {
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="t-resize">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete connection?</AlertDialogTitle>
             <AlertDialogDescription>

@@ -402,7 +402,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
           open={!!openConfigProvider}
           onOpenChange={(open) => !open && setOpenConfigProvider(null)}
         >
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="t-resize sm:max-w-md">
             <DialogHeader className="text-center">
               <div className="mx-auto mb-3">
                 {openConfigProvider && (() => {

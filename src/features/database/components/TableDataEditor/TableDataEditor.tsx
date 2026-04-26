@@ -2042,7 +2042,7 @@ export function TableDataEditor({
         open={pendingBatchDelete}
         onOpenChange={setPendingBatchDelete}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="t-resize">
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm batch delete</AlertDialogTitle>
             <AlertDialogDescription>
@@ -2075,7 +2075,7 @@ export function TableDataEditor({
       </AlertDialog>
 
       <AlertDialog open={pendingTruncate} onOpenChange={setPendingTruncate}>
-        <AlertDialogContent>
+        <AlertDialogContent className="t-resize">
           <AlertDialogHeader>
             <AlertDialogTitle>Truncate table</AlertDialogTitle>
             <AlertDialogDescription>
