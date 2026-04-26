@@ -4,13 +4,7 @@
  * Lets users pick a provider (OpenAI, Anthropic, Google), enter an API key,
  * and select a model. Uses the ai-actions module for IPC calls.
  */
-import {
-  AnthropicIcon,
-  GoogleAiIcon,
-  OpenAiIcon,
-  OpenAICompatibleIcon,
-  PROVIDER_ICONS,
-} from "@/components/ProviderIcons";
+import { PROVIDER_ICONS } from "@/components/ProviderIcons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
@@ -41,6 +35,8 @@ import {
   type AiProvidersInfo,
 } from "../hooks/ai-actions";
 import { cn } from "@/lib/utils";
+import openAiDarkSvg from "../../../../icons/OpenAI_dark.svg";
+import openAiLightSvg from "../../../../icons/OpenAI_light.svg";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
@@ -54,6 +50,15 @@ type ProviderName = "openai" | "anthropic" | "google" | "openai-compatible";
 
 interface AiSettingsPanelProps {
   compact?: boolean;
+}
+
+function OpenAiThemeIcon({ className }: { className?: string }) {
+  return (
+    <>
+      <img src={openAiLightSvg} alt="OpenAI" className={cn(className, "dark:hidden")} />
+      <img src={openAiDarkSvg} alt="OpenAI" className={cn("hidden", className, "dark:block")} />
+    </>
+  );
 }
 
 export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
@@ -345,7 +350,11 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    {Icon && <Icon className="size-5 shrink-0" />}
+                    {provider.name === "openai" ? (
+                      <OpenAiThemeIcon className="size-5 shrink-0" />
+                    ) : (
+                      Icon && <Icon className="size-5 shrink-0" />
+                    )}
                     <span>{provider.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -398,7 +407,11 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
               <div className="mx-auto mb-3">
                 {openConfigProvider && (() => {
                   const Icon = PROVIDER_ICONS[openConfigProvider];
-                  return Icon ? (
+                  return openConfigProvider === "openai" ? (
+                    <div className="flex size-16 items-center justify-center rounded-2xl bg-muted ring-1 ring-border">
+                      <OpenAiThemeIcon className="size-8" />
+                    </div>
+                  ) : Icon ? (
                     <div className="flex size-16 items-center justify-center rounded-2xl bg-muted ring-1 ring-border">
                       <Icon className="size-8" />
                     </div>
