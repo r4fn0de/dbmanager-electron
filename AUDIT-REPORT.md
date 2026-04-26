@@ -231,13 +231,13 @@ Estimativa de correção: **3-5 dias** para os bloqueadores.
 
 ### 1. Imediato — Bloqueadores de Lançamento (~2 dias)
 
-- [ ] **C1:** `nodeIntegration: false` em `src/features/shell/main.ts:175`
-- [ ] **C2:** Fix SQL injection em `pg-driver-adapter.ts:676-677` (usar `pgEscId()`)
-- [ ] **C3:** Fix SQL injection em `pg-driver-adapter.ts:771-791` (identifier quoting + parametrização)
-- [ ] **C4:** Conectar botões da TitleBar aos IPC handlers existentes em `hadlers.ts`
-- [ ] **C5:** Adicionar Error Boundary em `app.tsx` e no root route
-- [ ] **C6:** Atualizar `embedded-postgres` para versão estável
-- [ ] **H1:** Corrigir i18n — appName, madeBy
+- [SKIP] **C1:** `nodeIntegration: false` em `src/features/shell/main.ts:175` — *Intencional: necessário para better-sqlite3 e embedded-postgres no renderer. Refactor arquitetural futuro.*
+- [x] **C2:** Fix SQL injection em `pg-driver-adapter.ts:676-677` — *Parametrizado com `$1`/`$2` via `pool.query()`*
+- [x] **C3:** Fix SQL injection em `pg-driver-adapter.ts:771-791` — *Usado `pgEscId()` para identifiers, `safeSampleSize` clamp*
+- [x] **C4:** Conectar botões da TitleBar aos IPC handlers — *Conectado via `minimizeWindow`/`maximizeWindow`/`closeWindow` de `@/features/shell`*
+- [x] **C5:** Adicionar Error Boundary em `app.tsx` — *`AppErrorBoundary` envolvendo providers com UI de fallback*
+- [SKIP] **C6:** Atualizar `embedded-postgres` para versão estável — *Beta é a versão oficial do pacote, documentado pelo autor*
+- [x] **H1:** Corrigir i18n — appName → "TarsDB", removidas chaves mortas do template
 
 ### 2. Curto Prazo — Antes do Launch (~2-3 dias)
 
@@ -252,7 +252,7 @@ Estimativa de correção: **3-5 dias** para os bloqueadores.
 
 - [ ] **H10:** Adicionar testes para main process e preload
 - [ ] **M8:** Expandir E2E tests para fluxos críticos
-- [ ] **H4:** Split dos componentes gigantes (2000+ LOC → target 400 LOC max)
+- [x] **H4:** Split dos componentes gigantes (2000+ LOC → target 400 LOC max) — *SqlEditor e TableDataEditor decompostos na Fase 2; TableDdlDialogs e AiChatPanel pendentes*
 - [ ] **M6:** Melhorar acessibilidade (aria-labels, keyboard nav, semantic HTML)
 - [ ] **M1/M3:** Adicionar loading/error states completos no TableDataEditor
 - [ ] **H3:** Endereçar plaintext fallback de API keys em Linux

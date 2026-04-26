@@ -673,13 +673,14 @@ export function createPostgresDriver(): DatabaseDriver {
           FROM pg_catalog.pg_class c
           JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
           LEFT JOIN pg_catalog.pg_stat_user_tables s ON s.relid = c.oid
-          WHERE n.nspname = '${schema.replace(/'/g, "''")}'
-            AND c.relname = '${table.replace(/'/g, "''")}'
+          WHERE n.nspname = $1
+            AND c.relname = $2
             AND c.relkind = 'r'
         `;
 
-        const result = await executePgQuery(connectionString, statsSql);
-        const row = result.rows[0] as unknown as Record<string, unknown> | undefined;
+        const pool = getPgPool(connectionString);
+        const statsResult = await pool.query(statsSql, [schema, table]);
+        const row = statsResult.rows[0] as Record<string, unknown> | undefined;
 
         const sizeBytes = Number(row?.total_bytes ?? 0);
 
@@ -768,26 +769,26 @@ export function createPostgresDriver(): DatabaseDriver {
       try {
         // Get total row count
         const countResult = await client.query(
-          "SELECT COUNT(*) as cnt FROM $1.$2",
-          [schema, table]
+          `SELECT COUNT(*) as cnt FROM ${pgEscId(schema)}.${pgEscId(table)}`,
         );
         const totalRows = Number.parseInt(countResult.rows[0].cnt as string, 10);
 
         // Get sample rows using TABLESAMPLE for large tables, or random for small
         let sampleQuery: string;
+        const safeSampleSize = Math.max(1, Math.min(sampleSize, 10000));
         if (totalRows > 10000) {
           // Use TABLESAMPLE for large tables (if available)
           sampleQuery = `
-            SELECT * FROM "${schema}"."${table}"
-            TABLESAMPLE BERNOULLI (LEAST((${sampleSize}::float / ${totalRows}) * 100, 100))
-            LIMIT ${sampleSize}
+            SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}
+            TABLESAMPLE BERNOULLI (LEAST((${safeSampleSize}::float / ${totalRows}) * 100, 100))
+            LIMIT ${safeSampleSize}
           `;
         } else {
           // Use ORDER BY random() for smaller tables
           sampleQuery = `
-            SELECT * FROM "${schema}"."${table}"
+            SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}
             ORDER BY RANDOM()
-            LIMIT ${sampleSize}
+            LIMIT ${safeSampleSize}
           `;
         }
 

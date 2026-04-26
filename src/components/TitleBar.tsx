@@ -7,6 +7,7 @@ import {
   useConnectionTabSync,
 } from "@/features/connection";
 import { ThemeToggle, SettingsDialog } from "@/features/settings";
+import { minimizeWindow, maximizeWindow, closeWindow } from "@/features/shell";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { MySql } from "@/components/icons/MySql";
 import { Neon } from "@/components/icons/Neon";
@@ -143,19 +144,16 @@ export function TitleBar() {
   );
 
   const handleMinimize = () => {
-    // Electron minimize - to be implemented with IPC
-    console.log("Minimize window");
+    minimizeWindow();
   };
 
-  const handleMaximize = () => {
-    // Electron maximize - to be implemented with IPC
-    console.log("Toggle maximize");
+  const handleMaximize = async () => {
+    await maximizeWindow();
     setIsMaximized((prev) => !prev);
   };
 
   const handleClose = () => {
-    // Electron close - to be implemented with IPC
-    console.log("Close window");
+    closeWindow();
   };
 
   const handleOpenConnections = () => {
