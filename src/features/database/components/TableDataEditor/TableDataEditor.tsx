@@ -1474,15 +1474,28 @@ export function TableDataEditor({
       )}
 
       {error && (
-        <div className="px-3 py-2 text-xs text-destructive border-b">
-          {error}
+        <div className="px-3 py-2 text-xs text-destructive border-b flex items-center justify-between gap-2">
+          <span className="truncate">{error}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 h-6 text-[10px]"
+            onClick={() => {
+              setError(null);
+              queryClient.invalidateQueries({ queryKey: ["table-rows", connectionId, table.schema, table.name] });
+            }}
+          >
+            <UiIcon name="refresh" className="h-3 w-3" />
+            Retry
+          </Button>
         </div>
       )}
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {isBlockingTableLoading ? (
-          <div className="h-full flex items-center justify-center">
-            <UiIcon name="loader" className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
+            <UiIcon name="loader" className="h-5 w-5 animate-spin" />
+            <span className="text-xs">Loading table data...</span>
           </div>
         ) : (
           <div ref={scrollRef} className="h-full overflow-auto">

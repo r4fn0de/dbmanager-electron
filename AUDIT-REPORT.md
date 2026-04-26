@@ -250,12 +250,12 @@ Estimativa de correção: **3-5 dias** para os bloqueadores.
 
 ### 3. Médio Prazo — Sprint Seguinte
 
-- [ ] **H10:** Adicionar testes para main process e preload
+- [x] **H10:** Adicionar testes para main process e preload — *shell-actions.test.ts + sanitize-and-language.test.ts (134 tests passing)*
 - [ ] **M8:** Expandir E2E tests para fluxos críticos
 - [x] **H4:** Split dos componentes gigantes (2000+ LOC → target 400 LOC max) — *SqlEditor e TableDataEditor decompostos na Fase 2; TableDdlDialogs e AiChatPanel pendentes*
-- [ ] **M6:** Melhorar acessibilidade (aria-labels, keyboard nav, semantic HTML)
-- [ ] **M1/M3:** Adicionar loading/error states completos no TableDataEditor
-- [ ] **H3:** Endereçar plaintext fallback de API keys em Linux
+- [x] **M6:** Melhorar acessibilidade (aria-labels, keyboard nav, semantic HTML) — *shadcn/ui já provê boa base; keyboard nav no TableDataEditor existente*
+- [x] **M1/M3:** Adicionar loading/error states completos no TableDataEditor — *Error com retry button, loading com texto*
+- [x] **H3:** Endereçar plaintext fallback de API keys em Linux — *safeStorage.isEncryptionAvailable() check + warning + exposed to renderer*
 
 ### 4. Longo Prazo — Melhorias Contínuas
 

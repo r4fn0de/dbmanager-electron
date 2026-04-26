@@ -5,6 +5,7 @@
  * The provider registry maps provider names → AI SDK model constructors.
  */
 import Store from "electron-store";
+import { safeStorage } from "electron";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
@@ -38,9 +39,19 @@ const store = new Store<AiSettings>({
   defaults,
   // NOTE: encryptionKey is intentionally omitted so electron-store uses
   // Electron's safeStorage API for native OS-level encryption when available.
-  // On platforms where safeStorage is unavailable, the data is stored as
-  // plaintext (which is still restricted to the user's app data directory).
+  // On platforms where safeStorage is unavailable (e.g. Linux without a keyring),
+  // the data is stored as plaintext (which is still restricted to the user's
+  // app data directory). We warn about this below.
 });
+
+// Warn if API keys will be stored in plaintext (Linux without keyring/keychain)
+if (!safeStorage.isEncryptionAvailable()) {
+  console.warn(
+    "[ai:config] Electron safeStorage is NOT available on this system.",
+    "API keys will be stored in PLAINTEXT in the app data directory.",
+    "Install a keyring/keychain (e.g. gnome-keyring) for encrypted storage.",
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Provider registry — maps provider name → AI SDK model factory
@@ -266,6 +277,7 @@ export function getProvidersInfo() {
       model: settings.model,
       openaiCompatibleBaseURL: settings.openaiCompatibleBaseURL,
     },
+    encryptionAvailable: safeStorage.isEncryptionAvailable(),
     providers: Object.entries(PROVIDERS).map(([name, entry]) => ({
       name,
       label: entry.label,
