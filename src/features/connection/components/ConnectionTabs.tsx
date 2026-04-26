@@ -308,9 +308,9 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             value={tab.id}
             layout="position"
             dragMomentum={false}
-            dragElastic={0}
+            dragElastic={0.1}
             dragConstraints={containerRef}
-            whileDrag={{ zIndex: 40 }}
+            whileDrag={{ zIndex: 40, scale: 1.03 }}
             initial={isNewTab ? { opacity: 0, scale: 0.9 } : false}
             animate={
               isClosing
@@ -319,9 +319,9 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             }
             transition={{
               type: "spring",
-              stiffness: 400,
-              damping: 20,
-              bounce: 0.15,
+              stiffness: 550,
+              damping: 28,
+              bounce: 0.1,
             }}
             ref={(el: HTMLLIElement | null) => {
               tabRefs.current[tab.id] = el;
