@@ -127,7 +127,6 @@ function Root() {
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const aiPanelRef = useRef<PanelImperativeHandle>(null);
   const aiResizeDraggingRef = useRef(false);
-  const [isAiHandleDragging, setIsAiHandleDragging] = useState(false);
   const [isAiPanelAnimating, setIsAiPanelAnimating] = useState(false);
   const aiPanelAnimTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -188,7 +187,6 @@ function Root() {
   useEffect(() => {
     return () => {
       aiResizeDraggingRef.current = false;
-      setIsAiHandleDragging(false);
       clearAiPanelAnimTimeout();
     };
   }, [clearAiPanelAnimTimeout]);
@@ -196,7 +194,6 @@ function Root() {
   useEffect(() => {
     const finishResizeDrag = () => {
       aiResizeDraggingRef.current = false;
-      setIsAiHandleDragging(false);
     };
 
     window.addEventListener("pointerup", finishResizeDrag, true);
@@ -358,21 +355,17 @@ function Root() {
                 <ResizableHandle
                   onPointerDownCapture={() => {
                     aiResizeDraggingRef.current = true;
-                    setIsAiHandleDragging(true);
                     if (isAiPanelAnimating) {
                       stopAiPanelAnimation();
                     }
                   }}
                   className={cn(
                     [
-                      "!bg-transparent hover:!bg-transparent justify-center",
-                      // Single center guide shown only during drag.
+                      // Keep the native separator visually neutral; draw exactly one custom guide line.
+                      "!w-0 !bg-transparent hover:!bg-transparent !border-0 focus-visible:!ring-0 justify-center",
                       "after:absolute after:inset-y-0 after:left-1/2 after:-translate-x-1/2 after:w-[3px] after:rounded-full after:transition-colors after:duration-150",
-                      isAiHandleDragging
-                        ? "after:bg-primary/55"
-                        : "after:bg-transparent",
+                      "after:bg-transparent data-[separator=active]:after:bg-primary/55",
                     ].join(" "),
-                    !isAiHandleDragging && "opacity-0",
                     !(isAiChatOpen || isAiPanelAnimating) && "pointer-events-none opacity-0",
                   )}
                 />
@@ -421,7 +414,7 @@ function Root() {
                         connectionInfo={effectiveContext.connectionInfo}
                         contextPreview={effectiveContext.contextPreview}
                         isOpen={isAiChatOpen}
-                        className="-mt-[6px] h-[calc(100%+6px)] pl-2 pr-0"
+                        className="-mt-[6px] h-[calc(100%+6px)] pl-0 pr-0"
                         onClose={handleAiChatClose}
                       />
                     )}
