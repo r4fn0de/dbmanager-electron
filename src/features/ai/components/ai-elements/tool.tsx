@@ -6,8 +6,9 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Icon } from "@/components/ui/Icon";
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ChatToolPart = {
   type: string;
@@ -15,17 +16,28 @@ export type ChatToolPart = {
     | "input-streaming"
     | "input-available"
     | "output-available"
-    | "output-error";
+    | "output-error"
+    | "pending-approval";
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   toolCallId?: string;
   errorText?: string;
+  /** Approval request metadata — present when state is "pending-approval" */
+  approvalRequest?: {
+    description: string;
+    preview?: string;
+    warnings?: string[];
+  };
 };
 
 export type ChatToolProps = {
   toolPart: ChatToolPart;
   defaultOpen?: boolean;
   className?: string;
+  /** Callback when user approves a pending tool call */
+  onApprove?: (toolCallId: string) => void;
+  /** Callback when user rejects a pending tool call */
+  onReject?: (toolCallId: string) => void;
 };
 
 /** Tiny status dot — pulses when running, colored by state otherwise. */
@@ -35,6 +47,7 @@ function StatusDot({ state }: { state: ChatToolPart["state"] }) {
     "input-available": "bg-orange-400",
     "output-available": "bg-emerald-500 dark:bg-emerald-400",
     "output-error": "bg-red-500 dark:bg-red-400",
+    "pending-approval": "bg-amber-500 dark:bg-amber-400",
   }[state] ?? "bg-muted-foreground";
 
   return (
@@ -60,10 +73,16 @@ function StateLabel({ state }: { state: ChatToolPart["state"] }) {
     "input-streaming": "Running",
     "input-available": "Ready",
     "output-error": "Error",
+    "pending-approval": "Awaiting approval",
   }[state];
   if (!label) return null;
   return (
-    <span className="text-[10px] text-muted-foreground/70">{label}</span>
+    <span className={cn(
+      "text-[10px]",
+      state === "pending-approval" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/70",
+    )}>
+      {label}
+    </span>
   );
 }
 
@@ -88,13 +107,14 @@ function formatCompact(value: unknown): string {
  *   output all contribute to a feeling of precision without shouting
  * - Beauty is leverage — this component makes the AI chat feel professional
  */
-export function ChatTool({ toolPart, defaultOpen = true, className }: ChatToolProps) {
+export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, onReject }: ChatToolProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  const { state, input, output, errorText } = toolPart;
+  const { state, input, output, errorText, approvalRequest, toolCallId } = toolPart;
 
   const hasInput = input && Object.keys(input).length > 0;
   const hasOutput = output !== undefined && output !== null;
-  const hasExpandableContent = hasInput || hasOutput || (state === "output-error" && errorText);
+  const isPendingApproval = state === "pending-approval";
+  const hasExpandableContent = hasInput || hasOutput || (state === "output-error" && errorText) || isPendingApproval;
 
   // Auto-open collapsible when expandable content first appears (tool result arrives)
   const hadExpandableRef = useRef(hasExpandableContent);
@@ -104,6 +124,42 @@ export function ChatTool({ toolPart, defaultOpen = true, className }: ChatToolPr
     }
     hadExpandableRef.current = hasExpandableContent;
   }, [hasExpandableContent]);
+
+  // Keyboard shortcuts for approval — Enter to approve, Escape to reject.
+  // Only active when this tool is in pending-approval state.
+  // Enter is guarded: ignored when focus is in an input/textarea/contenteditable
+  // so the user can still type in the chat prompt.
+  const handleApprove = useCallback(() => {
+    if (toolCallId && onApprove) onApprove(toolCallId);
+  }, [toolCallId, onApprove]);
+
+  const handleReject = useCallback(() => {
+    if (toolCallId && onReject) onReject(toolCallId);
+  }, [toolCallId, onReject]);
+
+  useEffect(() => {
+    if (!isPendingApproval || !toolCallId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if focus is inside an input, textarea, or contenteditable element
+      const active = document.activeElement;
+      const isTyping =
+        active instanceof HTMLInputElement
+        || active instanceof HTMLTextAreaElement
+        || (active instanceof HTMLElement && active.isContentEditable);
+
+      if (e.key === "Enter" && !isTyping) {
+        e.preventDefault();
+        handleApprove();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        handleReject();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPendingApproval, toolCallId, handleApprove, handleReject]);
 
   return (
     <div
@@ -181,6 +237,79 @@ export function ChatTool({ toolPart, defaultOpen = true, className }: ChatToolPr
                   </span>
                   <div className="mt-1 rounded border border-red-200/40 bg-red-500/5 p-1.5 text-[11px] text-red-600 dark:border-red-900/30 dark:text-red-400">
                     {errorText}
+                  </div>
+                </div>
+              )}
+
+              {/* Approval request UI — inline approve/reject */}
+              {isPendingApproval && (
+                <div className="space-y-2.5">
+                  {/* Description */}
+                  {approvalRequest?.description && (
+                    <p className="text-xs text-foreground/80">
+                      {approvalRequest.description}
+                    </p>
+                  )}
+
+                  {/* SQL preview */}
+                  {approvalRequest?.preview && (
+                    <div>
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                        SQL
+                      </span>
+                      <pre className="mt-1 max-h-32 overflow-auto rounded bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+                        {approvalRequest.preview}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Warnings */}
+                  {approvalRequest?.warnings && approvalRequest.warnings.length > 0 && (
+                    <div className="space-y-1">
+                      {approvalRequest.warnings.map((warning, index) => (
+                        <div
+                          key={index}
+                          className="flex items-start gap-1.5 rounded border border-amber-200/40 bg-amber-500/5 px-2 py-1 text-[11px] text-amber-700 dark:border-amber-800/30 dark:text-amber-400"
+                        >
+                          <Icon name="alert-triangle" className="mt-px size-3 shrink-0" />
+                          <span>{warning}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Approve / Reject buttons */}
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => toolCallId && onApprove?.(toolCallId)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium",
+                        "bg-emerald-600/90 text-white shadow-sm",
+                        "hover:bg-emerald-600 active:bg-emerald-700",
+                        "dark:bg-emerald-500/80 dark:hover:bg-emerald-500 dark:active:bg-emerald-600",
+                        "transition-[background,transform] duration-100 ease-out active:scale-[0.97]",
+                      )}
+                    >
+                      <Icon name="check" className="size-3" />
+                      Approve
+                      <Kbd className="ml-1 h-4 min-w-4 bg-white/15 text-white/70 dark:bg-white/10 dark:text-white/60">↵</Kbd>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toolCallId && onReject?.(toolCallId)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium",
+                        "border border-border/50 bg-background text-muted-foreground",
+                        "hover:bg-muted/60 hover:text-foreground",
+                        "dark:hover:bg-muted/40",
+                        "transition-[background,color,transform] duration-100 ease-out active:scale-[0.97]",
+                      )}
+                    >
+                      <Icon name="x" className="size-3" />
+                      Reject
+                      <Kbd className="ml-1 h-4 min-w-4 bg-muted/60 text-muted-foreground/60">⎋</Kbd>
+                    </button>
                   </div>
                 </div>
               )}

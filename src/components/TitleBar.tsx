@@ -6,7 +6,10 @@ import {
   ConnectionTabs,
   useConnectionTabSync,
 } from "@/features/connection";
-import { ThemeToggle, SettingsDialog } from "@/features/settings";
+import {
+  ThemeToggle,
+  SettingsDialog,
+} from "@/features/settings";
 import { minimizeWindow, maximizeWindow, closeWindow } from "@/features/shell";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { MySql } from "@/components/icons/MySql";

@@ -287,7 +287,8 @@ function toChatToolPart(invocation: ToolCallLike): ChatToolPart {
 
   // Map invocation state → ChatToolPart state
   const state: ChatToolPart["state"] =
-    invocation.state === "call" ? "input-streaming"
+    invocation.state === "pending-approval" ? "pending-approval"
+    : invocation.state === "call" ? "input-streaming"
     : invocation.state === "partial-call" ? "input-available"
     : status === "error" ? "output-error"
     : "output-available";
@@ -302,6 +303,12 @@ function toChatToolPart(invocation: ToolCallLike): ChatToolPart {
       : { result: invocation.result }
     : undefined;
 
+  // Extract approval request metadata if present
+  const approvalRequest =
+    invocation.state === "pending-approval" && invocation.approvalRequest
+      ? invocation.approvalRequest
+      : undefined;
+
   return {
     type: invocation.toolName,
     state,
@@ -309,6 +316,7 @@ function toChatToolPart(invocation: ToolCallLike): ChatToolPart {
     output,
     toolCallId: invocation.toolCallId,
     errorText,
+    approvalRequest,
   };
 }
 
@@ -454,12 +462,16 @@ function ChatMessage({
   onInsertSql,
   connectionId,
   conversationId,
+  onApproveToolCall,
+  onRejectToolCall,
 }: {
   message: AiChatMessage;
   codeTheme: string;
   onInsertSql?: (sql: string) => void;
   connectionId: string | null;
   conversationId: string;
+  onApproveToolCall?: (toolCallId: string) => void;
+  onRejectToolCall?: (toolCallId: string) => void;
 }) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -627,6 +639,8 @@ function ChatMessage({
                             toolPart={chatToolPart}
                             defaultOpen
                             className="mt-1"
+                            onApprove={onApproveToolCall}
+                            onReject={onRejectToolCall}
                           />
                           {sqlFromTool && onInsertSql && tip.toolInvocation.state === "result" && (
                             <MessageAction
@@ -872,6 +886,8 @@ export function AiChatPanel({
     selectConversation,
     deleteConversation,
     clearAllConversations,
+    approveToolCall,
+    rejectToolCall,
   } = useAiChat({
     connectionId,
     dbType,
@@ -1370,6 +1386,8 @@ export function AiChatPanel({
                 onInsertSql={onInsertSql}
                 connectionId={connectionId}
                 conversationId={activeConversationId!}
+                onApproveToolCall={approveToolCall}
+                onRejectToolCall={rejectToolCall}
               />
             ))
           )}

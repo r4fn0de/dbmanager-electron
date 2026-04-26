@@ -20,6 +20,10 @@ export const AI_IPC_CHANNELS = {
   INLINE_DONE: "ai:inline:done",
   INLINE_ERROR: "ai:inline:error",
   INLINE_ABORT: "ai:inline:abort",
+
+  // Tool approval flow — renderer ↔ main IPC
+  TOOL_APPROVAL_REQUEST: "ai:tool:approval-request",
+  TOOL_APPROVAL_RESPONSE: "ai:tool:approval-response",
 } as const;
 
 export const ENVIRONMENT_VARIABLES = {

@@ -14,10 +14,75 @@ import { configurePrivateUpdates } from "@/updater/private-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
 const SHUTDOWN_TIMEOUT_MS = 5000;
+const DEV_SERVER_MAX_RETRIES = 1;
 
-let splashWindow: BrowserWindow | null = null;
 let isShutdownInProgress = false;
 let hasRunSyncShutdown = false;
+
+function buildDevServerCandidateUrls(rawUrl: string): string[] {
+  try {
+    const parsed = new URL(rawUrl);
+    const candidates: string[] = [];
+
+    if (parsed.hostname === "localhost") {
+      const ipv4 = new URL(rawUrl);
+      ipv4.hostname = "127.0.0.1";
+      candidates.push(ipv4.toString(), rawUrl);
+
+      const ipv6 = new URL(rawUrl);
+      ipv6.hostname = "::1";
+      candidates.push(ipv6.toString());
+    } else if (parsed.hostname === "127.0.0.1") {
+      candidates.push(rawUrl);
+      const localhost = new URL(rawUrl);
+      localhost.hostname = "localhost";
+      candidates.push(localhost.toString());
+
+      const ipv6 = new URL(rawUrl);
+      ipv6.hostname = "::1";
+      candidates.push(ipv6.toString());
+    } else if (parsed.hostname === "::1") {
+      const localhost = new URL(rawUrl);
+      localhost.hostname = "localhost";
+      candidates.push(localhost.toString());
+
+      const ipv4 = new URL(rawUrl);
+      ipv4.hostname = "127.0.0.1";
+      candidates.push(ipv4.toString());
+    } else {
+      candidates.push(rawUrl);
+    }
+
+    return [...new Set(candidates)];
+  } catch {
+    return [rawUrl];
+  }
+}
+
+async function loadDevServerURL(mainWindow: BrowserWindow, rawUrl: string): Promise<void> {
+  let lastError: unknown;
+  const candidateUrls = buildDevServerCandidateUrls(rawUrl);
+
+  for (let attempt = 1; attempt <= DEV_SERVER_MAX_RETRIES + 1; attempt += 1) {
+    for (const url of candidateUrls) {
+      try {
+        console.log(`[window] loading dev server URL (attempt ${attempt}/${DEV_SERVER_MAX_RETRIES + 1}): ${url}`);
+        await mainWindow.loadURL(url);
+        return;
+      } catch (error) {
+        lastError = error;
+        console.error(`[window] failed to load dev server URL on attempt ${attempt}:`, error);
+
+        if (!mainWindow.isDestroyed() && mainWindow.webContents.isLoading()) {
+          mainWindow.webContents.stop();
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+  }
+
+  throw lastError;
+}
 
 async function runAsyncShutdown(reason: string): Promise<void> {
   console.log(`[shutdown] Starting async shutdown (${reason})...`);
@@ -59,79 +124,6 @@ function runSyncShutdown(reason: string): void {
   });
 }
 
-function createSplashWindow(): BrowserWindow | null {
-  try {
-    const splash = new BrowserWindow({
-      width: 320,
-      height: 200,
-      frame: false,
-      alwaysOnTop: true,
-      center: true,
-      resizable: false,
-      skipTaskbar: true,
-      show: false,
-      transparent: true,
-      backgroundColor: "#00000000",
-      webPreferences: {
-        devTools: false,
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
-
-    // Minimalist splash - clean and simple
-    const splashHtml = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{width:320px;height:200px;background:#0a0a0a;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
-.container{text-align:center}
-.icon{font-size:32px;margin-bottom:12px;opacity:.9}
-.text{color:#e5e5e5;font-size:14px;font-weight:400;letter-spacing:.5px}
-</style></head>
-<body><div class="container"><div class="icon">◐</div><div class="text">DBManager</div></div></body></html>`;
-
-    splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml)}`);
-
-    splash.once("ready-to-show", () => {
-      splash.show();
-    });
-
-    // Auto-close after 10s max to prevent blocking
-    setTimeout(() => {
-      if (!splash.isDestroyed()) splash.close();
-    }, 10000);
-
-    return splash;
-  } catch (err) {
-    console.log("[startup] Failed to create splash:", err);
-    return null;
-  }
-}
-
-function updateSplashStatus(message: string) {
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send("splash-status", message);
-  }
-}
-
-function closeSplashWindow() {
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    // Fade out effect
-    splashWindow.setOpacity(0.9);
-    const fadeInterval = setInterval(() => {
-      const current = splashWindow?.getOpacity() ?? 0;
-      if (current <= 0.1) {
-        clearInterval(fadeInterval);
-        splashWindow?.close();
-        splashWindow = null;
-      } else {
-        splashWindow?.setOpacity(current - 0.1);
-      }
-    }, 30);
-  }
-}
-
 function createWindow() {
   const basePath = getBasePath();
   const preload = path.join(basePath, "preload.js");
@@ -168,6 +160,7 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    show: false,
     icon: path.join(basePath, "../icons/app-icon.png"),
     webPreferences: {
       devTools: inDevelopment,
@@ -210,21 +203,12 @@ function createWindow() {
     app.focus({ steal: true });
 
     console.log("[window] window focused");
-    closeSplashWindow();
-    console.log("[window] splash closed");
   };
 
   mainWindow.once("ready-to-show", () => {
     console.log("[window] ready-to-show event fired");
     showMainWindow("ready-to-show");
   });
-
-  // Fallback for cases where renderer never emits ready-to-show in dev.
-  // macOS sometimes needs this due to vibrancy/transparency settings
-  setTimeout(() => {
-    console.log("[window] fallback timeout triggered");
-    showMainWindow("fallback-timeout");
-  }, 1500);
 
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
@@ -311,7 +295,9 @@ function createWindow() {
     mainWindow.setTitle(APP_DISPLAY_NAME);
   });
   mainWindow.webContents.on("did-finish-load", () => {
+    console.log("[window] did-finish-load");
     mainWindow.setTitle(APP_DISPLAY_NAME);
+    showMainWindow("did-finish-load");
   });
   mainWindow.webContents.on(
     "did-fail-load",
@@ -332,16 +318,30 @@ function createWindow() {
 
   mainWindow.webContents.on("did-stop-loading", () => {
     console.log("[window] stopped loading");
-    showMainWindow("did-stop-loading");
+  });
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    console.log(`[renderer:console:${level}] ${sourceId}:${line} ${message}`);
+  });
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    console.error(`[window] preload error at ${preloadPath}:`, error);
   });
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     console.error("[window] renderer process gone", details);
   });
+  mainWindow.on("unresponsive", () => {
+    console.error("[window] BrowserWindow became unresponsive");
+  });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    console.log(`[window] loading dev server URL: ${MAIN_WINDOW_VITE_DEV_SERVER_URL}`);
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL).catch((err) => {
-      console.error("[window] failed to load dev server URL:", err);
+    void loadDevServerURL(mainWindow, MAIN_WINDOW_VITE_DEV_SERVER_URL).catch((error) => {
+      console.error("[window] failed to load renderer after retries:", error);
+      if (!mainWindow.isDestroyed()) {
+        showMainWindow("dev-server-load-failed");
+      }
+      dialog.showErrorBox(
+        "Renderer Startup Error",
+        `The renderer failed to load from ${MAIN_WINDOW_VITE_DEV_SERVER_URL}.\n\nPlease restart the dev server and try again.`,
+      );
     });
   } else {
     const filePath = path.join(basePath, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
@@ -426,11 +426,6 @@ async function runPostWindowInitialization() {
       name: "registerAiHandlers",
       fn: () => registerAiStreamingHandlers(),
       timeout: 5000,
-    },
-    {
-      name: "hydrateLocalDbs",
-      fn: () => localDbManager.hydrate(),
-      timeout: 30000,
     },
   ];
 
@@ -561,6 +556,7 @@ async function setupORPC() {
       nativeTheme.themeSource = themeSource;
     }
   );
+
 }
 
 function configureAppIdentity(): void {
@@ -574,10 +570,6 @@ function configureAppIdentity(): void {
 app.whenReady().then(async () => {
   const startTime = Date.now();
   console.log("[startup] App ready, starting initialization...");
-
-  // Create splash screen immediately for visual feedback
-  console.log("[startup] Creating splash screen...");
-  splashWindow = createSplashWindow();
 
   try {
     configureAppIdentity();
@@ -614,14 +606,8 @@ app.whenReady().then(async () => {
 
     console.log(`[startup] Core initialization complete in ${Date.now() - startTime}ms`);
 
-    // Close splash when main window is ready
-    setTimeout(() => {
-      closeSplashWindow();
-    }, 500); // Small delay for smooth transition
-
   } catch (error) {
     console.error("[startup] Fatal error during app initialization:", error);
-    closeSplashWindow();
 
     // Show error dialog to user
     dialog.showErrorBox(

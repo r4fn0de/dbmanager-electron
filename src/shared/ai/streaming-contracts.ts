@@ -100,6 +100,25 @@ type StreamChunkCommon =
 export type AiChatChunkPayload = { chatId: string } & StreamChunkCommon;
 export type AiInlineChunkPayload = { requestId: string } & StreamChunkCommon;
 
+export interface ToolApprovalRequestPayload {
+  chatId: string;
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+  /** Human-readable description of what the tool will do */
+  description: string;
+  /** The SQL or command that will be executed (if applicable) */
+  preview?: string;
+  /** Warnings about the proposed action */
+  warnings?: string[];
+}
+
+export interface ToolApprovalResponsePayload {
+  chatId: string;
+  toolCallId: string;
+  approved: boolean;
+}
+
 export interface AiRendererApi {
   chat: {
     start: (input: ChatStartInput) => void;
@@ -114,5 +133,11 @@ export interface AiRendererApi {
     onChunk: (listener: (payload: AiInlineChunkPayload) => void) => Unsubscribe;
     onDone: (listener: (payload: AiInlineDonePayload) => void) => Unsubscribe;
     onError: (listener: (payload: AiInlineErrorPayload) => void) => Unsubscribe;
+  };
+  toolApproval: {
+    /** Respond to an approval request — approve or reject the tool call */
+    respond: (payload: ToolApprovalResponsePayload) => void;
+    /** Listen for approval requests from the main process */
+    onRequest: (listener: (payload: ToolApprovalRequestPayload) => void) => Unsubscribe;
   };
 }

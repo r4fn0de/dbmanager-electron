@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateTitle } from "./ai-actions";
 import type { DatabaseType } from "@/ipc/db/types";
+import type { AiRendererApi } from "@/shared/ai/streaming-contracts";
 
 export interface AiChatContextTag {
   connectionId: string | null;
@@ -29,7 +30,13 @@ export interface ToolInvocationPart {
     toolName: string;
     args: unknown;
     result?: unknown;
-    state: "call" | "partial-call" | "result";
+    state: "call" | "partial-call" | "result" | "pending-approval";
+    /** Approval request metadata — present when state is "pending-approval" */
+    approvalRequest?: {
+      description: string;
+      preview?: string;
+      warnings?: string[];
+    };
   };
 }
 
@@ -105,6 +112,10 @@ interface UseAiChatReturn {
   deleteConversation: (conversationId: string) => void;
   clearAllConversations: () => void;
   clearCurrentConversation: () => void;
+  /** Approve a pending tool invocation */
+  approveToolCall: (toolCallId: string) => void;
+  /** Reject a pending tool invocation */
+  rejectToolCall: (toolCallId: string) => void;
 }
 
 const AI_CHAT_STORAGE_KEY_V1 = "ai-chat-history:v1";
@@ -426,6 +437,9 @@ export function useAiChat({
   const activeConversationIdRef = useRef<string | null>(null);
   const conversationsRef = useRef<AiChatConversation[]>([]);
   const migratedFromV1Ref = useRef(false);
+  const pendingApprovalRef = useRef<
+    Map<string, { chatId: string; toolCallId: string; description: string; preview?: string; warnings?: string[] }>
+  >(new Map());
 
   const messages = useMemo(() => {
     if (!activeConversationId) return [];
@@ -469,6 +483,66 @@ export function useAiChat({
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
+
+  // ── Tool approval IPC listener ──
+  useEffect(() => {
+    const ai = (window as any).ai as AiRendererApi | undefined;
+    const aiToolApproval = ai?.toolApproval;
+    if (!aiToolApproval) return;
+
+    const unsub = aiToolApproval.onRequest((payload) => {
+      const { chatId, toolCallId, description, preview, warnings } = payload;
+
+      // Only handle if this is for our current chat session
+      if (chatId !== chatIdRef.current) return;
+
+      const streamConversationId = streamConversationIdRef.current;
+      if (!streamConversationId) return;
+
+      // Store the approval request for reference
+      pendingApprovalRef.current.set(toolCallId, {
+        chatId,
+        toolCallId,
+        description,
+        preview,
+        warnings,
+      });
+
+      // Update the matching tool invocation state to "pending-approval"
+      updateConversationById(streamConversationId, (conversation) => {
+        const id = assistantIdRef.current;
+        if (!id) return conversation;
+        return {
+          ...conversation,
+          updatedAt: toIsoNow(),
+          messages: conversation.messages.map((msg) => {
+            if (msg.id !== id) return msg;
+            const parts = (msg.parts ?? []).map((part) => {
+              if (
+                part.type === "tool-invocation"
+                && part.toolInvocation.toolCallId === toolCallId
+              ) {
+                return {
+                  ...part,
+                  toolInvocation: {
+                    ...part.toolInvocation,
+                    state: "pending-approval" as const,
+                    approvalRequest: { description, preview, warnings },
+                  },
+                };
+              }
+              return part;
+            });
+            return { ...msg, parts };
+          }),
+        };
+      });
+    });
+
+    return () => {
+      unsub?.();
+    };
+  }, [updateConversationById]);
 
   useEffect(() => {
     const storage = readStorageV2(connectionId);
@@ -782,11 +856,117 @@ export function useAiChat({
     [connectionId, connectionLabel, dbType, ensureConversation, schemaContext, updateConversationById],
   );
 
+  /** Approve a pending tool invocation. */
+  const approveToolCall = useCallback((toolCallId: string) => {
+    const ai = (window as any).ai as AiRendererApi | undefined;
+    const aiToolApproval = ai?.toolApproval;
+    if (!aiToolApproval) return;
+
+    const entry = pendingApprovalRef.current.get(toolCallId);
+    if (!entry) return;
+
+    // Send approval response to main process
+    aiToolApproval.respond({
+      chatId: entry.chatId,
+      toolCallId,
+      approved: true,
+    });
+
+    // Update the tool invocation state back to "call" (running)
+    const streamConversationId = streamConversationIdRef.current;
+    if (streamConversationId) {
+      updateConversationById(streamConversationId, (conversation) => {
+        const id = assistantIdRef.current;
+        if (!id) return conversation;
+        return {
+          ...conversation,
+          updatedAt: toIsoNow(),
+          messages: conversation.messages.map((msg) => {
+            if (msg.id !== id) return msg;
+            const parts = (msg.parts ?? []).map((part) => {
+              if (
+                part.type === "tool-invocation"
+                && part.toolInvocation.toolCallId === toolCallId
+              ) {
+                return {
+                  ...part,
+                  toolInvocation: {
+                    ...part.toolInvocation,
+                    state: "call" as const,
+                    approvalRequest: undefined,
+                  },
+                };
+              }
+              return part;
+            });
+            return { ...msg, parts };
+          }),
+        };
+      });
+    }
+
+    pendingApprovalRef.current.delete(toolCallId);
+  }, [updateConversationById]);
+
+  /** Reject a pending tool invocation. */
+  const rejectToolCall = useCallback((toolCallId: string) => {
+    const ai = (window as any).ai as AiRendererApi | undefined;
+    const aiToolApproval = ai?.toolApproval;
+    if (!aiToolApproval) return;
+
+    const entry = pendingApprovalRef.current.get(toolCallId);
+    if (!entry) return;
+
+    // Send rejection response to main process
+    aiToolApproval.respond({
+      chatId: entry.chatId,
+      toolCallId,
+      approved: false,
+    });
+
+    // Update the tool invocation state back to "call" (will receive error result)
+    const streamConversationId = streamConversationIdRef.current;
+    if (streamConversationId) {
+      updateConversationById(streamConversationId, (conversation) => {
+        const id = assistantIdRef.current;
+        if (!id) return conversation;
+        return {
+          ...conversation,
+          updatedAt: toIsoNow(),
+          messages: conversation.messages.map((msg) => {
+            if (msg.id !== id) return msg;
+            const parts = (msg.parts ?? []).map((part) => {
+              if (
+                part.type === "tool-invocation"
+                && part.toolInvocation.toolCallId === toolCallId
+              ) {
+                return {
+                  ...part,
+                  toolInvocation: {
+                    ...part.toolInvocation,
+                    state: "call" as const,
+                    approvalRequest: undefined,
+                  },
+                };
+              }
+              return part;
+            });
+            return { ...msg, parts };
+          }),
+        };
+      });
+    }
+
+    pendingApprovalRef.current.delete(toolCallId);
+  }, [updateConversationById]);
+
   const abort = useCallback(() => {
     const aiChat = window.electron?.aiChat;
     if (!aiChat) return;
     aiChat.abort(chatIdRef.current);
     setIsLoading(false);
+    // Clean up stale pending approvals for the aborted stream
+    pendingApprovalRef.current.clear();
     const streamConversationId = streamConversationIdRef.current;
     if (streamConversationId) {
       updateConversationById(streamConversationId, (conversation) => {
@@ -845,6 +1025,7 @@ export function useAiChat({
     setActiveConversationId(fresh.id);
     setIsLoading(false);
     setError(null);
+    pendingApprovalRef.current.clear();
     assistantIdRef.current = null;
     streamConversationIdRef.current = null;
   }, [connectionId, connectionLabel, dbType]);
@@ -855,6 +1036,8 @@ export function useAiChat({
     chatIdRef.current = `chat-${Date.now()}`;
     setIsLoading(false);
     setError(null);
+    // Clean up stale pending approvals
+    pendingApprovalRef.current.clear();
     assistantIdRef.current = null;
     streamConversationIdRef.current = null;
     updateConversationById(conversationId, (conversation) => ({
@@ -891,5 +1074,7 @@ export function useAiChat({
     deleteConversation,
     clearAllConversations,
     clearCurrentConversation,
+    approveToolCall,
+    rejectToolCall,
   };
 }

@@ -10,6 +10,8 @@ import type {
   AiRendererApi,
   ChatStartInput,
   InlineGenerateStartInput,
+  ToolApprovalRequestPayload,
+  ToolApprovalResponsePayload,
   Unsubscribe,
 } from "@/shared/ai/streaming-contracts";
 
@@ -86,6 +88,19 @@ const aiApi: AiRendererApi = {
     onError(listener: (payload: AiInlineErrorPayload) => void) {
       return subscribe<AiInlineErrorPayload>(
         AI_IPC_CHANNELS.INLINE_ERROR,
+        listener,
+      );
+    },
+  },
+
+  toolApproval: {
+    respond(payload: ToolApprovalResponsePayload) {
+      ipcRenderer.send(AI_IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, payload);
+    },
+
+    onRequest(listener: (payload: ToolApprovalRequestPayload) => void) {
+      return subscribe<ToolApprovalRequestPayload>(
+        AI_IPC_CHANNELS.TOOL_APPROVAL_REQUEST,
         listener,
       );
     },

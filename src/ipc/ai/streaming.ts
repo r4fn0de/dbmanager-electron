@@ -24,9 +24,10 @@ import {
 } from "ai";
 
 import { getCurrentModel } from "./config";
-import { createAiTools } from "./tools";
+import { createAiTools, type ToolApprovalFn } from "./tools";
 import { AI_IPC_CHANNELS } from "@/constants";
 import type { DatabaseType } from "@/ipc/db/types";
+import type { ToolApprovalRequestPayload, ToolApprovalResponsePayload } from "@/shared/ai/streaming-contracts";
 import {
   saveMemory,
   searchSimilarMemories,
@@ -113,6 +114,12 @@ interface MemoryContextData {
 const activeAbortControllers = new Map<string, AbortController>();
 const activeInlineAbortControllers = new Map<string, AbortController>();
 
+/** Pending tool approvals — keyed by `${chatId}:${toolCallId}` */
+const pendingApprovals = new Map<string, {
+  resolve: (approved: boolean) => void;
+  reject: (reason?: unknown) => void;
+}>();
+
 let handlersRegistered = false;
 
 // ---------------------------------------------------------------------------
@@ -158,6 +165,14 @@ function abortStream(chatId: string): void {
 
   controller.abort();
   activeAbortControllers.delete(chatId);
+
+  // Resolve pending approvals for this chat as rejected so the stream doesn't hang
+  for (const [key, entry] of pendingApprovals) {
+    if (key.startsWith(`${chatId}:`)) {
+      pendingApprovals.delete(key);
+      entry.resolve(false);
+    }
+  }
 }
 
 function abortInlineStream(requestId: string): void {
@@ -166,6 +181,76 @@ function abortInlineStream(requestId: string): void {
 
   controller.abort();
   activeInlineAbortControllers.delete(requestId);
+}
+
+/** Build the composite key for pending approvals map. */
+function approvalKey(chatId: string, toolCallId: string): string {
+  return `${chatId}:${toolCallId}`;
+}
+
+/**
+ * Create a ToolApprovalFn that bridges to the renderer via IPC.
+ * Sends a TOOL_APPROVAL_REQUEST to the renderer and waits for a
+ * TOOL_APPROVAL_RESPONSE before resolving.
+ *
+ * @param contents — The WebContents to send the request to.
+ * @param chatId — The chat session ID for correlation.
+ */
+function createIpcApprovalFn(
+  contents: WebContents,
+  chatId: string,
+): ToolApprovalFn {
+  return async (request) => {
+    const key = approvalKey(chatId, request.toolCallId);
+
+    // Create a promise that will be resolved when the renderer responds
+    const approvalPromise = new Promise<boolean>((resolve, reject) => {
+      pendingApprovals.set(key, { resolve, reject });
+    });
+
+    // Send approval request to renderer
+    const payload: ToolApprovalRequestPayload = {
+      chatId,
+      toolCallId: request.toolCallId,
+      toolName: request.toolName,
+      args: request.args,
+      description: request.description,
+      preview: request.preview,
+      warnings: request.warnings,
+    };
+
+    safeSend(contents, AI_IPC_CHANNELS.TOOL_APPROVAL_REQUEST, payload);
+
+    // Set a timeout — if the user doesn't respond within 5 minutes, auto-reject
+    const timeoutMs = 300_000;
+    const timeout = setTimeout(() => {
+      const entry = pendingApprovals.get(key);
+      if (entry) {
+        pendingApprovals.delete(key);
+        entry.resolve(false);
+      }
+    }, timeoutMs);
+
+    try {
+      const approved = await approvalPromise;
+      return approved;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+}
+
+/** Handle a tool approval response from the renderer. */
+function onToolApprovalResponse(
+  _event: IpcMainEvent,
+  payload: ToolApprovalResponsePayload,
+): void {
+  const key = approvalKey(payload.chatId, payload.toolCallId);
+  const entry = pendingApprovals.get(key);
+  if (!entry) return;
+
+  pendingApprovals.delete(key);
+  entry.resolve(payload.approved);
 }
 
 function isAbortError(err: unknown): boolean {
@@ -408,6 +493,26 @@ ${getDatabaseSpecificGuidance(dbType)}
 - For auth/security tables, avoid broad projection unless the user explicitly asks for it
 - When the user asks for generated code, put the code first and keep the explanation concise
 - When tools are available, use them only when needed and avoid repeating the same metadata lookup`;
+
+  if (hasConnection) {
+    prompt += `
+
+## Tool Workflow & Approval
+You have access to database tools. Follow this workflow when the user wants to modify data:
+
+1. **Validate first** — Use validateSqlSafety to classify the query as safe, risky, or blocked.
+2. **Preview impact** — For UPDATE/DELETE, use dryRunMutation to show how many rows would be affected before executing.
+3. **Execute with approval** — Use executeMutation to run INSERT, UPDATE, DELETE, or MERGE statements.
+   - This tool requires **explicit user approval** before execution.
+   - The user will see the SQL statement and any warnings, then choose to approve or reject.
+   - Briefly explain what the mutation will do before calling executeMutation so the user can make an informed decision.
+4. **If rejected** — When the user rejects a mutation, do NOT retry the same tool call. Instead:
+   - Acknowledge the rejection.
+   - Offer alternatives (e.g., a safer WHERE clause, a dry-run first, or a SELECT to verify which rows match).
+   - Only retry if the user explicitly asks you to.
+5. **For read-only queries** — Use runReadOnlySql directly. It does not require approval.
+6. **Never bypass** — Do not try to circumvent the approval flow by embedding DML inside read-only queries or using other tools to execute mutations. Only executeMutation can run data changes.`;
+  }
 
   if (!hasConnection) {
     prompt += `
@@ -736,7 +841,13 @@ async function handleChatStart(
   try {
     const model = getCurrentModel();
     const memoryContext = await fetchMemoryContext(userContent, connectionId);
-    const tools = effectiveConnectionId ? createAiTools(effectiveConnectionId) : undefined;
+    // When WebContents is unavailable, deny all approvals rather than auto-approving.
+    // This prevents mutations from executing without user consent if the IPC bridge is broken.
+    const denyApproval: ToolApprovalFn = async () => false;
+    const approvalFn = contents ? createIpcApprovalFn(contents, chatId) : denyApproval;
+    const tools = effectiveConnectionId
+      ? createAiTools(effectiveConnectionId, approvalFn)
+      : undefined;
 
     const result = streamText({
       model,
@@ -998,6 +1109,7 @@ export function registerAiStreamingHandlers(): void {
   ipcMain.on(AI_IPC_CHANNELS.CHAT_ABORT, onChatAbort);
   ipcMain.on(AI_IPC_CHANNELS.INLINE_START, onInlineStart);
   ipcMain.on(AI_IPC_CHANNELS.INLINE_ABORT, onInlineAbort);
+  ipcMain.on(AI_IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, onToolApprovalResponse);
 
   handlersRegistered = true;
   console.log("[ai] Streaming chat handlers registered");
@@ -1012,6 +1124,7 @@ export function unregisterAiStreamingHandlers(): void {
   ipcMain.removeListener(AI_IPC_CHANNELS.CHAT_ABORT, onChatAbort);
   ipcMain.removeListener(AI_IPC_CHANNELS.INLINE_START, onInlineStart);
   ipcMain.removeListener(AI_IPC_CHANNELS.INLINE_ABORT, onInlineAbort);
+  ipcMain.removeListener(AI_IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, onToolApprovalResponse);
 
   handlersRegistered = false;
   console.log("[ai] Streaming chat handlers unregistered");
@@ -1027,6 +1140,12 @@ export function abortAllAiStreams(): void {
     controller.abort();
   }
   activeInlineAbortControllers.clear();
+
+  // Reject all pending tool approvals
+  for (const entry of pendingApprovals.values()) {
+    entry.resolve(false);
+  }
+  pendingApprovals.clear();
 }
 
 // Optional utility if you still need the sender BrowserWindow somewhere else.

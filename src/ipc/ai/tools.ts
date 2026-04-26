@@ -66,6 +66,35 @@ function isValidIdentifier(id: string): boolean {
   return /^[a-zA-Z_][a-zA-Z0-9_$]*$/.test(id);
 }
 
+/**
+ * Generate a human-readable description of what a mutation SQL will do.
+ */
+function describeMutation(sql: string): { description: string; warnings: string[] } {
+  const normalized = sql.trim().toLowerCase().replace(/\s+/g, " ");
+  const warnings: string[] = [];
+  let description = "Execute a database mutation";
+
+  if (/^update\b/i.test(normalized)) {
+    description = "Update rows in a table";
+  } else if (/^delete\b/i.test(normalized)) {
+    description = "Delete rows from a table";
+  } else if (/^insert\b/i.test(normalized)) {
+    description = "Insert new rows into a table";
+  } else if (/^merge\b/i.test(normalized)) {
+    description = "Merge (upsert) rows into a table";
+  }
+
+  // Check for dangerous patterns
+  if (!/\bwhere\b/i.test(normalized) && !/^insert\b/i.test(normalized)) {
+    warnings.push("No WHERE clause — this will affect ALL rows in the table.");
+  }
+  if (/\bdrop\b|\btruncate\b|\balter\b/i.test(normalized)) {
+    warnings.push("Contains DDL keywords — this modifies database structure, not just data.");
+  }
+
+  return { description, warnings };
+}
+
 /** Get the identifier quote character for the given database type. */
 function getIdentifierQuote(dbType: DatabaseType): string {
   switch (dbType) {
@@ -184,12 +213,39 @@ const safetyOutputSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
+ * Approval callback type — injected by the streaming handler.
+ * Returns true if the user approved, false if rejected.
+ */
+export type ToolApprovalFn = (request: {
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+  description: string;
+  preview?: string;
+  warnings?: string[];
+}) => Promise<boolean>;
+
+/**
+ * No-op approval function — used when no approval callback is provided.
+ * Auto-approves everything (backward compatible).
+ */
+const autoApprove: ToolApprovalFn = async () => true;
+
+/**
  * Create the AI tool set for a specific connection.
  *
  * MUST be called with the connectionId before passing to streamText/generateText.
  * The connectionId is captured in each tool's execute closure.
+ *
+ * @param connectionId — The database connection to bind tools to.
+ * @param requestApproval — Optional callback for tool approval gating.
+ *   When provided, tools that require approval (e.g. executeMutation)
+ *   will call this before executing. If not provided, all tools auto-approve.
  */
-export function createAiTools(connectionId: string) {
+export function createAiTools(
+  connectionId: string,
+  requestApproval: ToolApprovalFn = autoApprove,
+) {
   /**
    * List columns in a specific table — gives the AI column names, types,
    * nullability, and defaults so it can write accurate SQL.
@@ -969,6 +1025,91 @@ export function createAiTools(connectionId: string) {
     },
   });
 
+  /**
+   * Execute a mutation SQL statement (INSERT, UPDATE, DELETE, MERGE).
+   *
+   * **Requires user approval** — the streaming handler will send an
+   * approval request to the renderer before actually executing the SQL.
+   * If the user rejects, the tool returns an error message.
+   *
+   * The `requestApproval` callback is injected by the streaming handler
+   * when creating the tool set, so this tool is naturally gated.
+   */
+  const executeMutation = tool({
+    description:
+      "Execute a data mutation SQL statement (INSERT, UPDATE, DELETE, MERGE) on the connected database. IMPORTANT: This tool requires user approval before execution — the user will see the SQL and must explicitly approve it. Always use validateSqlSafety first to check the query classification. Only use this for data changes; for schema changes (CREATE, ALTER, DROP), inform the user that those operations are not supported through this tool.",
+    inputSchema: z.object({
+      sql: z.string().min(1).describe("The mutation SQL statement to execute (INSERT, UPDATE, DELETE, or MERGE)"),
+    }),
+    strict: true,
+    execute: async ({ sql }, { abortSignal, toolCallId }) => {
+      const trimmed = sql.trim().toLowerCase().replace(/\s+/g, " ");
+
+      // Only allow DML mutations
+      if (!/^\b(insert|update|delete|merge)\b/i.test(trimmed)) {
+        return toolError("Only INSERT, UPDATE, DELETE, and MERGE statements can be executed. For DDL (CREATE, ALTER, DROP), inform the user this is not supported.");
+      }
+
+      // Block dangerous sub-patterns
+      const strippedForCheck = stripStringLiterals(trimmed);
+      if (/\b(drop|truncate|alter|create|grant|revoke)\b/i.test(strippedForCheck)) {
+        return toolError("Query contains DDL keywords (DROP, TRUNCATE, ALTER, CREATE). Only data mutations (INSERT/UPDATE/DELETE/MERGE) are supported.");
+      }
+
+      // Block multi-statement injection
+      if (/;/.test(strippedForCheck)) {
+        return toolError("Semicolons are not allowed (prevents multi-statement injection).");
+      }
+
+      // Block comment injection
+      if (/--|\/\*|\*\//.test(strippedForCheck)) {
+        return toolError("SQL comments are not allowed in mutation queries.");
+      }
+
+      // For UPDATE/DELETE, validate WHERE clause injection
+      const whereMatch = trimmed.match(/\bwhere\b(.+?)(?:;|$)/i);
+      if (whereMatch) {
+        const injectionError = containsSqlInjection(whereMatch[1].trim());
+        if (injectionError) {
+          return toolError(`WHERE clause validation failed: ${injectionError}`);
+        }
+      }
+
+      // ── Request user approval before executing ──
+      const { description, warnings } = describeMutation(sql);
+      const approved = await requestApproval({
+        toolCallId,
+        toolName: "executeMutation",
+        args: { sql },
+        description,
+        preview: sql.trim(),
+        warnings: warnings.length > 0 ? warnings : undefined,
+      });
+
+      if (!approved) {
+        return toolError("User rejected the mutation. Do not retry without asking the user first.");
+      }
+
+      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+
+      try {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+
+        const result = await driver.executeQuery(connStr, sql);
+        return {
+          success: true,
+          command: sql.trim(),
+          rowsAffected: result.row_count,
+          columns: result.columns.map((c) => c.name),
+          rows: result.rows,
+        };
+      } catch (err) {
+        return toolError(`Error executing mutation: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+  });
+
   return {
     columns,
     enums,
@@ -985,5 +1126,6 @@ export function createAiTools(connectionId: string) {
     validateSqlSafety,
     runReadOnlySql,
     dryRunMutation,
+    executeMutation,
   };
 }
