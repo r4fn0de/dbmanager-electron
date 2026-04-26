@@ -78,6 +78,19 @@ function resolveDbType(connection: Partial<Connection>): DatabaseType {
   return (connection as Connection).db_type || "postgresql";
 }
 
+/** Strip credentials (passwords, connection strings) from error messages before sending to renderer. */
+function sanitizeErrorMessage(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  let msg = err.message;
+  // Remove postgresql://user:password@... patterns
+  msg = msg.replace(/(?:postgresql|postgres|mysql|mariadb|clickhouse|redis):\/\/[^@\s]+@[\w.-]+:\d+/gi, "[CONNECTION_STRING]");
+  // Remove password=... patterns
+  msg = msg.replace(/password\s*=\s*\S+/gi, "password=[REDACTED]");
+  // Remove :password@ patterns that survived the first pass
+  msg = msg.replace(/:\w+@/g, ":[REDACTED]@");
+  return msg || fallback;
+}
+
 /** Derive a DriverConnectionConfig from a Connection. */
 function toDriverConfig(connection: Partial<Connection>): DriverConnectionConfig {
   const dbType = resolveDbType(connection);
@@ -170,10 +183,7 @@ export const saveConnection = os
     } catch (err) {
       console.error("[db] saveConnection failed:", err);
       throw new ORPCError("BAD_REQUEST", {
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to save connection",
+        message: sanitizeErrorMessage(err, "Failed to save connection"),
       });
     }
   });
@@ -490,10 +500,7 @@ export const createLocalDatabase = os
     } catch (err) {
       console.error("[db] createLocalDatabase failed:", err);
       throw new ORPCError("BAD_REQUEST", {
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to create local database",
+        message: sanitizeErrorMessage(err, "Failed to create local database"),
       });
     }
   });
@@ -505,10 +512,7 @@ export const startLocalDatabase = os
       await localDbManager.start(input.id);
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to start local database",
+        message: sanitizeErrorMessage(err, "Failed to start local database"),
       });
     }
   });
@@ -520,10 +524,7 @@ export const stopLocalDatabase = os
       await localDbManager.stop(input.id);
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to stop local database",
+        message: sanitizeErrorMessage(err, "Failed to stop local database"),
       });
     }
   });
@@ -535,10 +536,7 @@ export const deleteLocalDatabase = os
       await localDbManager.delete(input.id);
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to delete local database",
+        message: sanitizeErrorMessage(err, "Failed to delete local database"),
       });
     }
   });

@@ -808,6 +808,7 @@ export function createPostgresDriver(): DatabaseDriver {
         const columnResult = await client.query(columnStatsQuery, [schema, table]);
 
         // Build column statistics
+        const STATS_TIMEOUT_MS = 15_000;
         const columnStats = await Promise.all(
           columnResult.rows.map(async (col) => {
             const colName = col.column_name as string;
@@ -819,6 +820,10 @@ export function createPostgresDriver(): DatabaseDriver {
               dataType: dataType,
             };
 
+            const statsTimeout = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Column stats query timed out")), STATS_TIMEOUT_MS),
+            );
+
             // Try to get min/max/avg for numeric types
             if (
               dataType.includes("int") ||
@@ -829,15 +834,18 @@ export function createPostgresDriver(): DatabaseDriver {
               dataType.includes("real")
             ) {
               try {
-                const statsResult = await client.query(
-                  `SELECT
-                    MIN("${colName}") as min_val,
-                    MAX("${colName}") as max_val,
-                    AVG("${colName}"::float) as avg_val,
-                    COUNT(DISTINCT "${colName}") as unique_count,
-                    COUNT(*) FILTER (WHERE "${colName}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
-                  FROM "${schema}"."${table}"`
-                );
+                const statsResult = await Promise.race([
+                  client.query(
+                    `SELECT
+                    MIN(${pgEscId(colName)}) as min_val,
+                    MAX(${pgEscId(colName)}) as max_val,
+                    AVG(${pgEscId(colName)}::float) as avg_val,
+                    COUNT(DISTINCT ${pgEscId(colName)}) as unique_count,
+                    COUNT(*) FILTER (WHERE ${pgEscId(colName)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
+                  FROM ${pgEscId(schema)}.${pgEscId(table)}`
+                  ),
+                  statsTimeout,
+                ]);
                 const row = statsResult.rows[0];
                 stat.min = row.min_val;
                 stat.max = row.max_val;
@@ -845,39 +853,42 @@ export function createPostgresDriver(): DatabaseDriver {
                 stat.uniqueCount = Number.parseInt(row.unique_count as string, 10);
                 stat.nullPercentage = row.null_pct ? Number.parseFloat(row.null_pct as string) : isNullable ? 0 : 0;
               } catch {
-                // Ignore stats errors
+                // Ignore stats errors (including timeout)
               }
             } else {
               // For string/categorical columns, get top values
               try {
-                const topValuesResult = await client.query(
-                  `SELECT
-                    "${colName}" as value,
+                const [topValuesResult, uniqueResult] = await Promise.race([
+                  Promise.all([
+                    client.query(
+                      `SELECT
+                    ${pgEscId(colName)} as value,
                     COUNT(*) as count
-                  FROM "${schema}"."${table}"
-                  WHERE "${colName}" IS NOT NULL
-                  GROUP BY "${colName}"
+                  FROM ${pgEscId(schema)}.${pgEscId(table)}
+                  WHERE ${pgEscId(colName)} IS NOT NULL
+                  GROUP BY ${pgEscId(colName)}
                   ORDER BY count DESC
                   LIMIT 5`
-                );
+                    ),
+                    client.query(
+                      `SELECT
+                    COUNT(DISTINCT ${pgEscId(colName)}) as unique_count,
+                    COUNT(*) FILTER (WHERE ${pgEscId(colName)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
+                  FROM ${pgEscId(schema)}.${pgEscId(table)}`
+                    ),
+                  ]),
+                  statsTimeout,
+                ]);
                 stat.topValues = topValuesResult.rows.map((r) => ({
                   value: String(r.value),
                   count: Number.parseInt(r.count as string, 10),
                 }));
-
-                // Get null percentage and unique count
-                const uniqueResult = await client.query(
-                  `SELECT
-                    COUNT(DISTINCT "${colName}") as unique_count,
-                    COUNT(*) FILTER (WHERE "${colName}" IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
-                  FROM "${schema}"."${table}"`
-                );
                 stat.uniqueCount = Number.parseInt(uniqueResult.rows[0].unique_count as string, 10);
                 stat.nullPercentage = uniqueResult.rows[0].null_pct
                   ? Number.parseFloat(uniqueResult.rows[0].null_pct as string)
                   : 0;
               } catch {
-                // Ignore stats errors
+                // Ignore stats errors (including timeout)
               }
             }
 

@@ -36,9 +36,15 @@ export const connectionInputSchema = z.object({
   username: z.string(),
   password: z.string(),
   ssl_mode: sslModeSchema,
-  url: z.string().optional(),
+  url: z.string().regex(
+    /^(?:postgresql|postgres|mysql|mariadb|clickhouse|clickhouses|redis|rediss|sqlite):\/\/.+/,
+    "URL must use a supported database protocol",
+  ).optional(),
   is_local: z.boolean().optional(),
-  connection_string: z.string().optional(),
+  connection_string: z.string().regex(
+    /^(?:postgresql|postgres|mysql|mariadb|clickhouse|clickhouses|redis|rediss|sqlite):\/\/.+/,
+    "Connection string must use a supported database protocol",
+  ).optional(),
   engine_version: z.string().optional(),
   postgres_version: z.string().optional(),
   tag: z.string().optional(),

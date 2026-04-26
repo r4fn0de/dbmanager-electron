@@ -178,6 +178,10 @@ function bindUpdaterEventsOnce() {
 export async function configurePrivateUpdates() {
   const endpoint = resolveAuthEndpoint();
   if (!endpoint) {
+    console.warn(
+      "[updater] Auto-updates disabled: TARSDB_UPDATE_AUTH_ENDPOINT is not set.",
+      "Users will not receive automatic updates.",
+    );
     logUpdateEvent("disabled", {
       reason: "missing_auth_endpoint",
       envVar: "TARSDB_UPDATE_AUTH_ENDPOINT",

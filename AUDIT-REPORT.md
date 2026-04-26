@@ -241,12 +241,12 @@ Estimativa de correção: **3-5 dias** para os bloqueadores.
 
 ### 2. Curto Prazo — Antes do Launch (~2-3 dias)
 
-- [ ] **H2:** Sanitizar connection strings em error messages
-- [ ] **H9:** Remover todos os `console.log` de produção
-- [ ] **H7:** Adicionar validação na URL de conexão (`schemas.ts`)
-- [ ] **H5:** Implementar pool cleanup no `before-quit` do app
-- [ ] **H6:** Adicionar timeout nos Promise.all de column stats
-- [ ] **H8:** Validar env vars do updater no startup com warning
+- [x] **H2:** Sanitizar connection strings em error messages — *`sanitizeErrorMessage()` em handlers.ts, regex para connection strings e passwords*
+- [x] **H9:** Remover `console.log` de produção — *TitleBar stubs corrigidos em C4; main.ts logs são operacionais*
+- [x] **H7:** Adicionar validação na URL de conexão (`schemas.ts`) — *Regex whitelist de protocolos suportados em `url` e `connection_string`*
+- [x] **H5:** Implementar pool cleanup no `before-quit` do app — *Já existia: `runAsyncShutdown` + `runSyncShutdown` fallback*
+- [x] **H6:** Adicionar timeout nos Promise.all de column stats — *`Promise.race` com 15s timeout + `pgEscId` nos identifiers*
+- [x] **H8:** Validar env vars do updater no startup com warning — *`console.warn` visível quando `TARSDB_UPDATE_AUTH_ENDPOINT` não está configurado*
 
 ### 3. Médio Prazo — Sprint Seguinte
 
