@@ -172,7 +172,7 @@ export function createSqliteDriver(): DatabaseDriver {
       }
     },
 
-    async executeQuery(connectionString, sql) {
+    async executeQuery(connectionString, sql, _signal) {
       const db = getDb(connectionString);
       try {
         const stmt = db.prepare(sql);

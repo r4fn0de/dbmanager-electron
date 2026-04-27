@@ -124,7 +124,7 @@ export function createClickhouseDriver(): DatabaseDriver {
       }
     },
 
-    async executeQuery(connectionString, sql) {
+    async executeQuery(connectionString, sql, _signal) {
       const client = await getClickhouseClient(connectionString);
       try {
         // Check if it's a SELECT-type query

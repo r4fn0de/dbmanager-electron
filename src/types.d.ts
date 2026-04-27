@@ -57,6 +57,9 @@ declare global {
         onDone: (callback: (result: { requestId: string; finishReason: string; usage?: unknown }) => void) => () => void;
         onError: (callback: (error: { requestId: string; message: string }) => void) => () => void;
       };
+      dbCancel?: {
+        cancelQuery: (requestId: string) => void;
+      };
     };
   }
 

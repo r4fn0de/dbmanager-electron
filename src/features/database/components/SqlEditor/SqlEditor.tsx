@@ -49,6 +49,7 @@ import {
   nowIso,
   toHistoryResultPreview,
 } from "./utils/sqlUtils";
+import { cancelQuery } from "@/features/database/hooks/db-actions";
 
 
 const DEFAULT_SQL = `/*
@@ -130,6 +131,7 @@ export function SqlEditor({
   const inlineAiInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<MonacoEditor | null>(null);
   const executionAbort = useRef<AbortController | null>(null);
+  const activeRequestIdRef = useRef<string | null>(null);
   const monacoResizeObserverRef = useRef<ResizeObserver | null>(null);
   const monacoSelectionListenerRef = useRef<monaco.IDisposable | null>(null);
   const monacoContentListenerRef = useRef<monaco.IDisposable | null>(null);
@@ -728,6 +730,10 @@ export function SqlEditor({
     const controller = new AbortController();
     executionAbort.current = controller;
 
+    // Generate a requestId for server-side cancellation support
+    const currentRequestId = `sql-run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    activeRequestIdRef.current = currentRequestId;
+
     setIsExecuting(true);
     setLastError(null);
     setRunResults([]);
@@ -747,7 +753,7 @@ export function SqlEditor({
         const runStart = performance.now();
 
         try {
-          const result = await executeQuery(selectedConnection, statement);
+          const result = await executeQuery(selectedConnection, statement, currentRequestId);
           if (controller.signal.aborted) return;
           const durationMs = performance.now() - runStart;
           const runResult: SqlRunResult = {
@@ -824,6 +830,7 @@ export function SqlEditor({
       if (executionAbort.current === controller) {
         executionAbort.current = null;
       }
+      activeRequestIdRef.current = null;
       setIsExecuting(false);
     }
   }, [appendHistory, doc.sql, executeQuery, selectedConnection]);
@@ -1267,9 +1274,13 @@ export function SqlEditor({
                     variant="ghost"
                     onClick={() => {
                       executionAbort.current?.abort();
+                      // Also cancel on the server side
+                      if (activeRequestIdRef.current) {
+                        cancelQuery(activeRequestIdRef.current);
+                      }
                     }}
                   >
-                    Stop
+                    Cancel
                   </Button>
                 </div>
               )}

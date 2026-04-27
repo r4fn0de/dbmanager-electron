@@ -3,13 +3,14 @@ import { app, BrowserWindow, dialog, Menu, nativeTheme, session } from "electron
 import { ipcMain } from "electron/main";
 import { downloadChromeExtension } from "electron-devtools-installer/dist/downloadChromeExtension";
 import { ipcContext } from "@/ipc/context";
-import { IPC_CHANNELS, inDevelopment } from "@/constants";
+import { IPC_CHANNELS, DB_IPC_CHANNELS, inDevelopment } from "@/constants";
 import { getBasePath } from "@/lib/path";
 import { localDbManager } from "@/ipc/db/local-db-manager";
 import { registerDrivers } from "@/ipc/db/registry";
 import { closeAllPools } from "@/ipc/db/kysely-factory";
 import { registerAiStreamingHandlers } from "@/ipc/ai";
 import { APP_DISPLAY_NAME } from "@/appBranding";
+import { cancelQuery as cancelActiveQuery } from "@/ipc/db/active-queries";
 import { configurePrivateUpdates } from "@/updater/private-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
@@ -555,6 +556,19 @@ async function setupORPC() {
     IPC_CHANNELS.SET_NATIVE_THEME_SOURCE,
     (_event, themeSource: "system" | "light" | "dark") => {
       nativeTheme.themeSource = themeSource;
+    }
+  );
+
+  // Database query cancellation — abort running queries by requestId
+  ipcMain.on(
+    DB_IPC_CHANNELS.QUERY_CANCEL,
+    (_event, { requestId }: { requestId: string }) => {
+      const cancelled = cancelActiveQuery(requestId);
+      if (cancelled) {
+        console.log(`[db:cancel] Query ${requestId} cancelled`);
+      } else {
+        console.warn(`[db:cancel] Query ${requestId} not found (may have already completed)`);
+      }
     }
   );
 

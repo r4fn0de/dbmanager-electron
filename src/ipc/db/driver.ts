@@ -70,7 +70,7 @@ export interface DatabaseDriver {
   testConnection(config: DriverConnectionConfig): Promise<boolean>;
 
   /** Execute a raw SQL query and return results. */
-  executeQuery(connectionString: string, sql: string): Promise<QueryResult>;
+  executeQuery(connectionString: string, sql: string, signal?: AbortSignal): Promise<QueryResult>;
 
   /** Fetch database metadata (version, encoding, size, etc.). */
   getDatabaseInfo(connectionString: string): Promise<DatabaseInfo>;

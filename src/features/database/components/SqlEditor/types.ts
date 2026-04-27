@@ -22,7 +22,7 @@ export interface SqlEditorProps {
   connections: Connection[];
   selectedConnection: string | null;
   onSelectConnection: (id: string) => void;
-  executeQuery: (connectionId: string, sql: string) => Promise<QueryResult>;
+  executeQuery: (connectionId: string, sql: string, requestId?: string) => Promise<QueryResult>;
   showWorkspaceSidebar?: boolean;
   onWorkspaceSidebarResize?: (widthPx: number) => void;
   loadRequest?: {

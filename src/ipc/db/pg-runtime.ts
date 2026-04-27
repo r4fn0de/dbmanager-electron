@@ -59,28 +59,36 @@ export async function testPgConnection(connectionString: string): Promise<boolea
   }
 }
 
-export async function executePgQuery(connectionString: string, sqlQuery: string): Promise<QueryResult> {
+export async function executePgQuery(connectionString: string, sqlQuery: string, signal?: AbortSignal): Promise<QueryResult> {
   const pool = getPgPool(connectionString);
-  const result = await pool.query(sqlQuery);
+  const client = await pool.connect();
+  try {
+    // pg client.query supports AbortSignal natively — when aborted, the
+    // underlying socket is destroyed and the query rejects with an error.
+    // The @types/pg doesn't include `signal` in QueryConfig yet, so we cast.
+    const result = await client.query({ text: sqlQuery, signal } as unknown as string);
 
-  if (!Array.isArray(result.rows) || (result.rows.length === 0 && result.command !== "SELECT")) {
+    if (!Array.isArray(result.rows) || (result.rows.length === 0 && result.command !== "SELECT")) {
+      return {
+        columns: [],
+        rows: [],
+        row_count: result.rowCount ?? 0,
+      };
+    }
+
+    const columns: ColumnMeta[] = result.fields.map((f) => ({
+      name: f.name,
+      type_name: mapPgType(f.dataTypeID),
+    }));
+
     return {
-      columns: [],
-      rows: [],
+      columns,
+      rows: result.rows.map((row) => Object.values(row)),
       row_count: result.rowCount ?? 0,
     };
+  } finally {
+    client.release();
   }
-
-  const columns: ColumnMeta[] = result.fields.map((f) => ({
-    name: f.name,
-    type_name: mapPgType(f.dataTypeID),
-  }));
-
-  return {
-    columns,
-    rows: result.rows.map((row) => Object.values(row)),
-    row_count: result.rowCount ?? 0,
-  };
 }
 
 export async function getPgDatabaseInfo(connectionString: string): Promise<DatabaseInfo> {

@@ -64,8 +64,8 @@ export function createPostgresDriver(): DatabaseDriver {
       return testPgConnection(connStr);
     },
 
-    async executeQuery(connectionString, sqlQuery) {
-      return executePgQuery(connectionString, sqlQuery);
+    async executeQuery(connectionString, sqlQuery, signal) {
+      return executePgQuery(connectionString, sqlQuery, signal);
     },
 
     async getDatabaseInfo(connectionString) {

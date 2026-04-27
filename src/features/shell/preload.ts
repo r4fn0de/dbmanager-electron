@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IPC_CHANNELS, AI_IPC_CHANNELS } from "@/constants";
+import { IPC_CHANNELS, AI_IPC_CHANNELS, DB_IPC_CHANNELS } from "@/constants";
 
 // Import new AI streaming preload (exposes window.ai)
 import "@/preload/ai";
@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.on(AI_IPC_CHANNELS.INLINE_ERROR, handler);
       return () => ipcRenderer.removeListener(AI_IPC_CHANNELS.INLINE_ERROR, handler);
     },
+  },
+
+  // Database query cancellation — renderer sends requestId to abort a running query
+  dbCancel: {
+    cancelQuery: (requestId: string) => ipcRenderer.send(DB_IPC_CHANNELS.QUERY_CANCEL, { requestId }),
   },
 });
 

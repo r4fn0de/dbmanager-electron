@@ -237,7 +237,7 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
       }
     },
 
-    async executeQuery(connectionString, sql) {
+    async executeQuery(connectionString, sql, _signal) {
       return withConnection(connectionString, async (conn) => {
         const [rows, meta] = await conn.query({ sql, rowsAsArray: true });
 

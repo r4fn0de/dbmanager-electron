@@ -26,6 +26,11 @@ export const AI_IPC_CHANNELS = {
   TOOL_APPROVAL_RESPONSE: "ai:tool:approval-response",
 } as const;
 
+/** Database query cancellation IPC channel names. */
+export const DB_IPC_CHANNELS = {
+  QUERY_CANCEL: "db:query:cancel",
+} as const;
+
 export const ENVIRONMENT_VARIABLES = {
   NODE_ENV: process.env.NODE_ENV,
 };

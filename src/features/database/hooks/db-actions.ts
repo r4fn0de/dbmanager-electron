@@ -75,14 +75,24 @@ export async function getConnection(
 export async function executeQuery(
   connectionId: string,
   sql: string,
+  requestId?: string,
 ): Promise<QueryResult> {
   try {
-    return await ipc.client.db.executeQuery({ connectionId, sql });
+    return await ipc.client.db.executeQuery({ connectionId, sql, requestId });
   } catch (err) {
     throw new Error(
       err instanceof Error ? err.message : "Query execution failed",
     );
   }
+}
+
+/**
+ * Cancel a running query by requestId.
+ * Sends an IPC message to the main process which aborts the AbortController
+ * associated with the query, causing the driver to cancel the operation.
+ */
+export function cancelQuery(requestId: string): void {
+  window.electron?.dbCancel?.cancelQuery(requestId);
 }
 
 // ── Schema operations ─────────────────────────────────────────────────

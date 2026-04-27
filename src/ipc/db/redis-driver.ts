@@ -457,7 +457,7 @@ export function createRedisDriver(): DatabaseDriver {
       }
     },
 
-    async executeQuery(connectionString, command) {
+    async executeQuery(connectionString, command, _signal) {
       const client = await getRedisClient(connectionString);
 
       try {

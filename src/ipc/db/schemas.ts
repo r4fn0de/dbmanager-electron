@@ -63,6 +63,7 @@ export const idSchema = z.object({
 export const executeQuerySchema = z.object({
   connectionId: z.string(),
   sql: z.string(),
+  requestId: z.string().optional(),
 });
 
 export const tableRefSchema = z.object({

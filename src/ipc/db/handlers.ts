@@ -20,6 +20,7 @@ import type {
   ExportSchemaResult,
   ExportTableDataResult,
 } from "./types";
+import { registerQuery, unregisterQuery } from "./active-queries";
 import {
   connectionInputSchema,
   executeQuerySchema,
@@ -232,20 +233,34 @@ export const executeQuery = os
   .handler(async ({ input }): Promise<QueryResult> => {
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
-    const result = await driver.executeQuery(connStr, input.sql);
 
-    // Truncate large result sets to prevent renderer OOM
-    if (result.rows.length > MAX_QUERY_ROWS) {
-      const totalRowCount = result.rows.length;
-      return {
-        ...result,
-        rows: result.rows.slice(0, MAX_QUERY_ROWS),
-        row_count: MAX_QUERY_ROWS,
-        truncated: true,
-        totalRowCount,
-      };
+    // If requestId is provided, register the query for cancellation support
+    let signal: AbortSignal | undefined;
+    if (input.requestId) {
+      const ac = registerQuery(input.requestId);
+      signal = ac.signal;
     }
-    return result;
+
+    try {
+      const result = await driver.executeQuery(connStr, input.sql, signal);
+
+      // Truncate large result sets to prevent renderer OOM
+      if (result.rows.length > MAX_QUERY_ROWS) {
+        const totalRowCount = result.rows.length;
+        return {
+          ...result,
+          rows: result.rows.slice(0, MAX_QUERY_ROWS),
+          row_count: MAX_QUERY_ROWS,
+          truncated: true,
+          totalRowCount,
+        };
+      }
+      return result;
+    } finally {
+      if (input.requestId) {
+        unregisterQuery(input.requestId);
+      }
+    }
   });
 
 export const getSchema = os
