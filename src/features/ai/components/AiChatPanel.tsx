@@ -73,7 +73,6 @@ import type { DatabaseType } from "@/ipc/db/types";
 // ---------------------------------------------------------------------------
 
 function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
-  // Cloud providers take precedence
   if (provider) {
     switch (provider) {
       case "neon":
@@ -91,7 +90,6 @@ function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
     }
   }
 
-  // Fallback to dbType
   switch (dbType) {
     case "postgresql":
       return PostgreSql;
@@ -107,6 +105,42 @@ function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
       return Redis;
     default:
       return PostgreSql;
+  }
+}
+
+function getDatabaseBrandColor(dbType: DatabaseType, provider?: ConnectionProvider): string {
+  if (provider) {
+    switch (provider) {
+      case "neon":
+        return "#00E0D9";
+      case "supabase":
+        return "#3ECF8E";
+      case "mysql":
+        return "#00546B";
+      case "mariadb":
+        return "#C49A6C";
+      case "clickhouse":
+        return "#FFCC00";
+      case "redis":
+        return "#DC382D";
+    }
+  }
+
+  switch (dbType) {
+    case "postgresql":
+      return "#336791";
+    case "mysql":
+      return "#00546B";
+    case "mariadb":
+      return "#C49A6C";
+    case "sqlite":
+      return "#0F80CC";
+    case "clickhouse":
+      return "#FFCC00";
+    case "redis":
+      return "#DC382D";
+    default:
+      return "#336791";
   }
 }
 
@@ -1141,15 +1175,14 @@ export function AiChatPanel({
           {hasActiveConnection ? (
             (() => {
               const DbIcon = getDatabaseIcon(dbType, provider);
+              const brandColor = getDatabaseBrandColor(dbType, provider);
               return (
                 <span
-                  className="
-                    inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full
-                    bg-primary/[0.07] px-2 text-[10px] font-medium
-                    text-foreground/70
-                    dark:bg-primary/12 dark:text-foreground/60
-                    transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]
-                  "
+                  className="inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full px-2 text-[10px] font-medium transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
+                  style={{
+                    backgroundColor: `${brandColor}12`,
+                    color: brandColor,
+                  }}
                 >
                   <DbIcon className="size-3.5" />
                   <span className="truncate">{currentConnectionLabel}</span>

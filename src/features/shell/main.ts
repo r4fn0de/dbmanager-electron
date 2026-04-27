@@ -11,7 +11,7 @@ import { closeAllPools } from "@/ipc/db/kysely-factory";
 import { registerAiStreamingHandlers } from "@/ipc/ai";
 import { APP_DISPLAY_NAME } from "@/appBranding";
 import { cancelQuery as cancelActiveQuery } from "@/ipc/db/active-queries";
-import { configurePrivateUpdates } from "@/updater/private-update";
+import { configureGitHubUpdates } from "@/updater/github-release-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -400,7 +400,7 @@ async function installExtensions() {
 }
 
 async function checkForUpdates() {
-  await configurePrivateUpdates();
+  await configureGitHubUpdates();
 }
 
 async function runPostWindowInitialization() {

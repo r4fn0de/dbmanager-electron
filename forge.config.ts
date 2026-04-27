@@ -5,6 +5,7 @@ import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { VitePlugin } from "@electron-forge/plugin-vite";
+import { PublisherGithub } from "@electron-forge/publisher-github";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 
 const updateBaseUrl = process.env.UPDATE_BASE_URL?.trim().replace(/\/+$/, "");
@@ -39,7 +40,17 @@ const config: ForgeConfig = {
     new MakerRpm({}),
     new MakerDeb({}),
   ],
-  publishers: [],
+  publishers: [
+    new PublisherGithub({
+      repository: {
+        owner: process.env.GH_OWNER || "your-username",
+        name: process.env.GH_REPO || "your-repo-name",
+      },
+      draft: true,
+      prerelease: false,
+      generateReleaseNotes: true,
+    }),
+  ],
   plugins: [
     new VitePlugin({
       build: [
