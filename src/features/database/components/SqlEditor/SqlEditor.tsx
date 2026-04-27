@@ -1294,43 +1294,62 @@ export function SqlEditor({
         <ResizablePanel id="sql-editor" className="min-h-0 min-w-0">
           <div className="h-full min-w-0 flex flex-col">
           {/* ── Tab bar ────────────────────────────────────────── */}
-          <div className="flex items-center h-9 border-b border-border/50 bg-muted/20 shrink-0">
-            <div className="flex items-center overflow-x-auto flex-1 min-w-0">
+          <div className="flex items-end h-[34px] border-b border-border/60 bg-background shrink-0 pl-1">
+            <div className="flex items-end overflow-x-auto flex-1 min-w-0 scrollbar-none">
               {tabs.map((tab) => {
                 const isActive = tab.id === activeTabId;
                 const isDirty = tab.doc.sql !== tab.lastSavedSql;
                 return (
-                  <div
+                  <button
                     key={tab.id}
+                    type="button"
                     className={cn(
-                      "group/tab flex items-center gap-1.5 px-3 h-full cursor-pointer border-r border-border/40 text-xs whitespace-nowrap select-none transition-colors",
+                      "group/tab relative flex items-center gap-1.5 px-3 h-[30px] rounded-t-[6px] text-[12px] leading-none whitespace-nowrap select-none",
+                      "transition-colors duration-150",
                       isActive
-                        ? "bg-background text-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+                        ? "bg-muted/50 text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/30",
+                      "[@media(hover:hover)and(pointer:fine)]:active:scale-[0.98] [@media(hover:hover)and(pointer:fine)]:active:transition-transform [@media(hover:hover)and(pointer:fine)]:active:duration-100",
                     )}
                     onClick={() => setActiveTabId(tab.id)}
                   >
-                    <UiIcon name="file-code-2" className="size-3 shrink-0 opacity-60" />
-                    <span className="truncate max-w-[120px]">{tab.doc.title}</span>
-                    {isDirty && (
-                      <span className="size-1.5 rounded-full bg-foreground/50 shrink-0" />
+                    {isActive && (
+                      <span className="absolute inset-x-0 -bottom-[1px] h-[2px] bg-foreground rounded-full" />
                     )}
-                    <button
-                      type="button"
+                    <UiIcon
+                      name="file-code-2"
                       className={cn(
-                        "shrink-0 rounded-sm p-0.5 transition-opacity",
-                        tabs.length <= 1
-                          ? "opacity-0 pointer-events-none"
-                          : "opacity-0 group-hover/tab:opacity-100 hover:text-destructive",
+                        "size-[13px] shrink-0",
+                        isActive ? "text-foreground/70" : "text-muted-foreground/60",
                       )}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeTab(tab.id);
-                      }}
-                    >
-                      <UiIcon name="x" className="size-3" />
-                    </button>
-                  </div>
+                    />
+                    <span className="truncate max-w-[140px]">{tab.doc.title}</span>
+                    {isDirty && (
+                      <span
+                        className={cn(
+                          "size-[5px] rounded-full shrink-0",
+                          isActive ? "bg-foreground/60" : "bg-muted-foreground/50",
+                        )}
+                      />
+                    )}
+                    {tabs.length > 1 && (
+                      <span
+                        role="button"
+                        tabIndex={-1}
+                        className={cn(
+                          "shrink-0 rounded-[3px] p-[2px] ml-0.5",
+                          "opacity-0 group-hover/tab:opacity-100 transition-opacity duration-100",
+                          "hover:bg-muted-foreground/15 hover:text-destructive",
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeTab(tab.id);
+                        }}
+                      >
+                        <UiIcon name="x" className="size-[11px]" />
+                      </span>
+                    )}
+                  </button>
                 );
               })}
             </div>
@@ -1340,7 +1359,7 @@ export function SqlEditor({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="mx-1.5 shrink-0 text-muted-foreground hover:text-foreground"
+                    className="mx-1 mb-[5px] shrink-0 text-muted-foreground/60 hover:text-foreground"
                     onClick={() => addTab()}
                   >
                     <UiIcon name="plus" className="size-3.5" />
