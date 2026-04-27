@@ -296,14 +296,18 @@ export function TablesExplorerSidebar({
                           )}
                           {table.has_rls ? (
                             <Tooltip>
-                              <TooltipTrigger className="inline-flex shrink-0">
+                              <TooltipTrigger
+                                render={<span className="inline-flex shrink-0" />}
+                              >
                                 <Icon name="lock" className="size-3 text-cyan-500 shrink-0" />
                               </TooltipTrigger>
                               <TooltipContent side="bottom" sideOffset={4}>RLS enabled</TooltipContent>
                             </Tooltip>
                           ) : (
                             <Tooltip>
-                              <TooltipTrigger className="inline-flex shrink-0">
+                              <TooltipTrigger
+                                render={<span className="inline-flex shrink-0" />}
+                              >
                                 <Icon name="lock-open" className="size-3 text-muted-foreground/40 shrink-0" />
                               </TooltipTrigger>
                               <TooltipContent side="bottom" sideOffset={4}>RLS disabled</TooltipContent>
