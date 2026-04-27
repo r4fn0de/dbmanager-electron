@@ -95,20 +95,85 @@ export async function getPgDatabaseInfo(connectionString: string): Promise<Datab
   const pool = getPgPool(connectionString);
   const client = await pool.connect();
   try {
-    const versionResult = await client.query("SELECT version()");
-    const encodingResult = await client.query(
-      "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()",
-    );
-    const timezoneResult = await client.query("SHOW timezone");
-    const sizeResult = await client.query(
-      "SELECT pg_size_pretty(pg_database_size(current_database()))",
-    );
+    // Core info — these should always work on any PostgreSQL connection
+    const [versionResult, encodingResult, timezoneResult, sizeResult] =
+      await Promise.all([
+        client.query("SELECT version()"),
+        client.query(
+          "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()",
+        ),
+        client.query("SHOW timezone"),
+        client.query(
+          "SELECT pg_size_pretty(pg_database_size(current_database()))",
+        ),
+      ]);
+
+    // Extended stats — may fail on restricted/managed environments (Neon, Supabase, etc.)
+    // Wrapped in try/catch so basic info always returns even if stats are inaccessible.
+    let uptime: string | undefined;
+    let activeConnections: number | undefined;
+    let maxConnections: number | undefined;
+    let cacheHitRatio: number | undefined;
+    let xactCommit: number | undefined;
+    let xactRollback: number | undefined;
+    let deadTuples: number | undefined;
+    let databaseName: string | undefined;
+
+    try {
+      const [statsResult, uptimeResult, deadTuplesResult] = await Promise.all([
+        client.query(`
+          SELECT
+            (SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()) AS active_connections,
+            (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') AS max_connections,
+            CASE WHEN sum(blks_hit) + sum(blks_read) > 0
+              THEN round(sum(blks_hit)::numeric / (sum(blks_hit) + sum(blks_read)) * 100, 1)
+              ELSE NULL
+            END AS cache_hit_ratio,
+            sum(xact_commit) AS xact_commit,
+            sum(xact_rollback) AS xact_rollback,
+            current_database() AS database_name
+          FROM pg_stat_database
+          WHERE datname = current_database()
+        `),
+        client.query("SELECT now() - pg_postmaster_start_time() AS uptime"),
+        client.query(
+          "SELECT sum(n_dead_tup)::bigint AS dead_tuples FROM pg_stat_user_tables"
+        ),
+      ]);
+
+      const stats = statsResult.rows[0] as Record<string, unknown> | undefined;
+      activeConnections = stats?.active_connections != null ? Number(stats.active_connections) : undefined;
+      maxConnections = stats?.max_connections != null ? Number(stats.max_connections) : undefined;
+      cacheHitRatio = stats?.cache_hit_ratio != null ? Number(stats.cache_hit_ratio) : undefined;
+      xactCommit = stats?.xact_commit != null ? Number(stats.xact_commit) : undefined;
+      xactRollback = stats?.xact_rollback != null ? Number(stats.xact_rollback) : undefined;
+      databaseName = stats?.database_name != null ? String(stats.database_name) : undefined;
+
+      // Trim microseconds for cleaner display: "3 days, 2:14:30.123456" → "3 days, 2:14:30"
+      const rawUptime = uptimeResult.rows[0]?.uptime?.toString();
+      uptime = rawUptime?.replace(/\.\d+$/, "") ?? undefined;
+
+      const rawDeadTuples = deadTuplesResult.rows[0]?.dead_tuples;
+      deadTuples = rawDeadTuples != null ? Number(rawDeadTuples) : undefined;
+    } catch {
+      // pg_stat_activity, pg_settings, pg_postmaster_start_time, or pg_stat_user_tables
+      // may not be accessible in restricted environments (e.g. managed Postgres).
+      // Silently degrade — basic info is still useful.
+    }
 
     return {
       version: versionResult.rows[0]?.version || "",
       encoding: encodingResult.rows[0]?.pg_encoding_to_char || "",
       timezone: timezoneResult.rows[0]?.TimeZone || "",
       size: sizeResult.rows[0]?.pg_size_pretty || "",
+      uptime,
+      activeConnections,
+      maxConnections,
+      cacheHitRatio,
+      xactCommit,
+      xactRollback,
+      deadTuples,
+      databaseName,
     };
   } finally {
     client.release();

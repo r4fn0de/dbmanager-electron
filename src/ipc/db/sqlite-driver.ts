@@ -6,6 +6,7 @@
  * Connection strings use the format: sqlite:///absolute/path/to/file.db
  */
 import BetterSqlite3 from "better-sqlite3";
+import path from "node:path";
 import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import {
@@ -216,11 +217,26 @@ export function createSqliteDriver(): DatabaseDriver {
       const version = (db.prepare("SELECT sqlite_version()").get() as Record<string, string>)?.["sqlite_version()"] ?? "unknown";
       const filePath = parseConnectionString(connectionString);
 
+      // Compute database file size
+      let size: string | undefined;
+      try {
+        const fs = await import("node:fs/promises");
+        const stat = await fs.stat(filePath);
+        const bytes = stat.size;
+        if (bytes < 1024) size = `${bytes} B`;
+        else if (bytes < 1024 * 1024) size = `${(bytes / 1024).toFixed(2)} KB`;
+        else if (bytes < 1024 * 1024 * 1024) size = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        else size = `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+      } catch {
+        // File may not be stat-able (e.g. in-memory or WAL mode)
+      }
+
       return {
         version: `SQLite ${version}`,
         encoding: "UTF-8",
         timezone: "UTC",
-        size: undefined, // Could compute file size, but not essential
+        size,
+        databaseName: path.basename(filePath),
       };
     },
 

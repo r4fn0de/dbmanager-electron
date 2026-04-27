@@ -11,6 +11,7 @@ import mysql from "mysql2/promise";
 import type { DatabaseType, SslMode, ConstraintInfo, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getMysqlPool, getMysqlKysely } from "./kysely-factory";
+import { formatUptime } from "@/constants";
 import {
   buildAddColumnSql,
   buildAlterColumnTypeSql,
@@ -269,6 +270,7 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
 
     async getDatabaseInfo(connectionString) {
       return withConnection(connectionString, async (conn) => {
+        // Core info — these should always work
         const [versionRows] = await conn.query("SELECT VERSION() AS version");
         const version = (versionRows as Array<{ version: string }>)[0]?.version ?? "";
         const [encodingRows] = await conn.query(
@@ -277,6 +279,7 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
         const encoding = (encodingRows as Array<{ encoding: string }>)[0]?.encoding ?? "";
         const [tzRows] = await conn.query("SELECT @@global.time_zone AS timezone");
         const timezone = (tzRows as Array<{ timezone: string }>)[0]?.timezone ?? "SYSTEM";
+
         let size = "";
         try {
           const [sizeRows] = await conn.query(
@@ -287,7 +290,118 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
         } catch {
           // Not all users have PROCESS privilege
         }
-        return { version, encoding, timezone, size };
+
+        // Extended stats — may fail on restricted environments (managed MySQL,
+        // AWS RDS with limited privileges). Wrapped in try/catch so basic
+        // info still returns even if stats are inaccessible.
+        let uptime: string | undefined;
+        let activeConnections: number | undefined;
+        let maxConnections: number | undefined;
+        let cacheHitRatio: number | undefined;
+        let xactCommit: number | undefined;
+        let xactRollback: number | undefined;
+        let databaseName: string | undefined;
+
+        try {
+          // Single combined query for all lightweight stats
+          const [statsRows] = await conn.query(`
+            SELECT
+              (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Uptime') AS uptime_seconds,
+              (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Threads_connected') AS active_connections,
+              (SELECT VARIABLE_VALUE FROM performance_schema.global_variables WHERE VARIABLE_NAME = 'max_connections') AS max_connections,
+              (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Com_commit') AS xact_commit,
+              (SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Com_rollback') AS xact_rollback,
+              DATABASE() AS database_name
+          `);
+          const stats = (statsRows as Array<Record<string, string | null>>)[0];
+
+          if (stats?.uptime_seconds != null) {
+            const secs = Number(stats.uptime_seconds);
+            if (!Number.isNaN(secs) && secs > 0) {
+              uptime = formatUptime(secs);
+            }
+          }
+          activeConnections = stats?.active_connections != null ? Number(stats.active_connections) : undefined;
+          maxConnections = stats?.max_connections != null ? Number(stats.max_connections) : undefined;
+          xactCommit = stats?.xact_commit != null ? Number(stats.xact_commit) : undefined;
+          xactRollback = stats?.xact_rollback != null ? Number(stats.xact_rollback) : undefined;
+          databaseName = stats?.database_name != null ? String(stats.database_name) : undefined;
+        } catch {
+          // performance_schema may be disabled or inaccessible on some
+          // managed MySQL instances (e.g. AWS RDS, PlanetScale).
+          // Fallback: try SHOW STATUS / SHOW VARIABLES (works on more setups)
+          try {
+            const [uptimeRows] = await conn.query("SHOW STATUS LIKE 'Uptime'");
+            const uptimeVal = (uptimeRows as Array<{ Value: string }>)[0]?.Value;
+            if (uptimeVal != null) {
+              const secs = Number(uptimeVal);
+              if (!Number.isNaN(secs) && secs > 0) {
+                uptime = formatUptime(secs);
+              }
+            }
+
+            const [connRows] = await conn.query("SHOW STATUS LIKE 'Threads_connected'");
+            activeConnections = (connRows as Array<{ Value: string }>)[0]?.Value != null
+              ? Number((connRows as Array<{ Value: string }>)[0].Value)
+              : undefined;
+
+            const [maxConnRows] = await conn.query("SHOW VARIABLES LIKE 'max_connections'");
+            maxConnections = (maxConnRows as Array<{ Value: string }>)[0]?.Value != null
+              ? Number((maxConnRows as Array<{ Value: string }>)[0].Value)
+              : undefined;
+
+            const [commitRows] = await conn.query("SHOW STATUS LIKE 'Com_commit'");
+            xactCommit = (commitRows as Array<{ Value: string }>)[0]?.Value != null
+              ? Number((commitRows as Array<{ Value: string }>)[0].Value)
+              : undefined;
+
+            const [rollbackRows] = await conn.query("SHOW STATUS LIKE 'Com_rollback'");
+            xactRollback = (rollbackRows as Array<{ Value: string }>)[0]?.Value != null
+              ? Number((rollbackRows as Array<{ Value: string }>)[0].Value)
+              : undefined;
+
+            const [dbRows] = await conn.query("SELECT DATABASE() AS db");
+            databaseName = (dbRows as Array<{ db: string }>)[0]?.db ?? undefined;
+          } catch {
+            // Even SHOW STATUS may be restricted — silently degrade
+          }
+        }
+
+        // InnoDB buffer pool hit ratio — works via SHOW STATUS regardless of
+        // performance_schema availability. Only fails if InnoDB is not used.
+        if (cacheHitRatio == null) {
+          try {
+            const [innodbRows] = await conn.query(
+              "SHOW STATUS LIKE 'Innodb_buffer_pool_read%'",
+            );
+            const innodbStats = innodbRows as Array<{ Variable_name: string; Value: string }>;
+            const reads = innodbStats.find((r) => r.Variable_name === "Innodb_buffer_pool_reads")?.Value;
+            const requests = innodbStats.find((r) => r.Variable_name === "Innodb_buffer_pool_read_requests")?.Value;
+            if (requests != null && reads != null) {
+              const reqNum = Number(requests);
+              const readNum = Number(reads);
+              if (reqNum > 0 && !Number.isNaN(reqNum) && !Number.isNaN(readNum)) {
+                cacheHitRatio = Math.round(((reqNum - readNum) / reqNum) * 1000) / 10;
+              }
+            }
+          } catch {
+            // InnoDB stats may not be available (MyISAM-only, or no privilege)
+          }
+        }
+
+        return {
+          version,
+          encoding,
+          timezone,
+          size,
+          uptime,
+          activeConnections,
+          maxConnections,
+          cacheHitRatio,
+          xactCommit,
+          xactRollback,
+          databaseName,
+        };
       });
     },
 
@@ -460,7 +574,7 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
 
       const tableRows = await db
         .selectFrom("tables")
-        .select(["TABLE_SCHEMA", "TABLE_NAME", "TABLE_ROWS"])
+        .select(["TABLE_SCHEMA", "TABLE_NAME", "TABLE_ROWS", "TABLE_TYPE"])
         .where("TABLE_SCHEMA", "not in", excludedSchemas)
         .orderBy("TABLE_SCHEMA")
         .orderBy("TABLE_NAME")
@@ -468,12 +582,17 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
 
       return {
         schemas: schemaRows.map((r) => r.SCHEMA_NAME),
-        tables: tableRows.map((t) => ({
-          name: t.TABLE_NAME,
-          schema: t.TABLE_SCHEMA,
-          has_rls: false,
-          estimated_row_count: Number(t.TABLE_ROWS ?? 0),
-        })),
+        tables: tableRows
+          .filter((t) => t.TABLE_TYPE === "BASE TABLE")
+          .map((t) => ({
+            name: t.TABLE_NAME,
+            schema: t.TABLE_SCHEMA,
+            has_rls: false,
+            // TABLE_ROWS can be NULL for InnoDB tables not yet analyzed.
+            // Use nullish coalescing — 0 is a valid value (empty table),
+            // only NULL should fall back to 0.
+            estimated_row_count: t.TABLE_ROWS != null ? Number(t.TABLE_ROWS) : 0,
+          })),
       };
     },
 

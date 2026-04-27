@@ -233,7 +233,11 @@ export function createPostgresDriver(): DatabaseDriver {
         .execute();
 
       // Raw query joining information_schema.tables with pg_class for row counts & RLS.
-      // LEFT JOIN ensures partitioned parents, foreign tables, etc. are not dropped.
+      // LEFT JOIN on both relname AND namespace OID ensures correct matching even
+      // when tables with the same name exist in different schemas.
+      // We include ALL relkinds that map to BASE TABLE (r = plain, p = partitioned)
+      // and fall back to pg_stat_user_tables.n_live_tup when reltuples is stale/0.
+      //
       // IMPORTANT: Use pool.query() directly — NOT executePgQuery() — because
       // executePgQuery() converts rows to value arrays (Object.values), which
       // breaks property-name access. Pool.query() returns rows as objects.
@@ -243,12 +247,20 @@ export function createPostgresDriver(): DatabaseDriver {
           t.table_schema,
           t.table_name,
           COALESCE(c.relrowsecurity, false) AS has_rls,
-          COALESCE(c.reltuples::bigint, 0) AS estimated_row_count
+          CASE
+            WHEN c.reltuples IS NOT NULL AND c.reltuples >= 0
+              THEN c.reltuples::bigint
+            ELSE 0
+          END AS estimated_row_count,
+          COALESCE(s.n_live_tup, 0) AS live_tuple_count
         FROM information_schema.tables t
         LEFT JOIN pg_catalog.pg_class c
-          ON c.relname = t.table_name AND c.relkind = 'r'
+          ON c.relname = t.table_name
+          AND c.relkind IN ('r', 'p')
         LEFT JOIN pg_catalog.pg_namespace n
           ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+        LEFT JOIN pg_catalog.pg_stat_user_tables s
+          ON s.relid = c.oid
         WHERE t.table_schema NOT LIKE 'pg_%'
           AND t.table_schema != 'information_schema'
           AND t.table_type = 'BASE TABLE'
@@ -257,12 +269,19 @@ export function createPostgresDriver(): DatabaseDriver {
 
       return {
         schemas: schemas.map((r) => r.schema_name),
-        tables: tablesResult.rows.map((row: Record<string, unknown>) => ({
-          name: String(row.table_name),
-          schema: String(row.table_schema),
-          has_rls: Boolean(row.has_rls),
-          estimated_row_count: Math.max(0, Math.round(Number(row.estimated_row_count ?? 0))),
-        })),
+        tables: tablesResult.rows.map((row: Record<string, unknown>) => {
+          const reltuples = Math.max(0, Math.round(Number(row.estimated_row_count ?? 0)));
+          const liveTuples = Math.max(0, Math.round(Number(row.live_tuple_count ?? 0)));
+          // Prefer reltuples when available; fall back to n_live_tup when
+          // reltuples is 0 (stale stats after CREATE TABLE without ANALYZE).
+          const estimatedRowCount = reltuples > 0 ? reltuples : liveTuples;
+          return {
+            name: String(row.table_name),
+            schema: String(row.table_schema),
+            has_rls: Boolean(row.has_rls),
+            estimated_row_count: estimatedRowCount,
+          };
+        }),
       };
     },
 

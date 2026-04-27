@@ -291,6 +291,22 @@ export interface DatabaseInfo {
   encoding: string;
   timezone: string;
   size?: string;
+  /** Server uptime as a human-readable string (e.g. "3 days, 2:14:30") */
+  uptime?: string;
+  /** Number of currently active connections to this database */
+  activeConnections?: number;
+  /** Maximum allowed connections (if available) */
+  maxConnections?: number;
+  /** Cache hit ratio as a percentage (0–100), for buffer/cache efficiency */
+  cacheHitRatio?: number;
+  /** Number of committed transactions (for health monitoring) */
+  xactCommit?: number;
+  /** Number of rolled-back transactions */
+  xactRollback?: number;
+  /** Number of dead tuples across all user tables (indicates need for vacuum) */
+  deadTuples?: number;
+  /** Database name (useful when connection uses a default) */
+  databaseName?: string;
 }
 
 // DDL Types

@@ -13,6 +13,7 @@ import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger }
 import { getClickhouseEffectivePort } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getClickhouseClient } from "./kysely-factory";
+import { formatUptime } from "@/constants";
 
 // ---------------------------------------------------------------------------
 // Identifier escaping — prevent SQL injection for ClickHouse
@@ -165,6 +166,7 @@ export function createClickhouseDriver(): DatabaseDriver {
     async getDatabaseInfo(connectionString) {
       const client = await getClickhouseClient(connectionString);
       try {
+        // Core info — these should always work
         const versionResult = await client.query({
           query: "SELECT version() AS version",
           format: "JSONEachRow",
@@ -191,7 +193,99 @@ export function createClickhouseDriver(): DatabaseDriver {
           // Not all users have access to system.parts
         }
 
-        return { version, encoding: "UTF-8", timezone, size };
+        // Extended stats — may fail on restricted environments.
+        // Wrapped in try/catch so basic info still returns.
+        let uptime: string | undefined;
+        let activeConnections: number | undefined;
+        let maxConnections: number | undefined;
+        let cacheHitRatio: number | undefined;
+        let databaseName: string | undefined;
+
+        try {
+          // ClickHouse uptime from system.server_settings or uptime() function
+          const uptimeResult = await client.query({
+            query: "SELECT uptime() AS uptime_seconds",
+            format: "JSONEachRow",
+          });
+          const uptimeRows = await uptimeResult.json() as Array<{ uptime_seconds: number }>;
+          const secs = uptimeRows[0]?.uptime_seconds;
+          if (secs != null && secs > 0 && !Number.isNaN(secs)) {
+            uptime = formatUptime(secs);
+          }
+        } catch {
+          // uptime() may not be available in older ClickHouse versions
+        }
+
+        try {
+          // Active connections from system.metrics
+          const connResult = await client.query({
+            query: "SELECT value FROM system.metrics WHERE metric = 'Connection'",
+            format: "JSONEachRow",
+          });
+          const connRows = await connResult.json() as Array<{ value: string }>;
+          activeConnections = connRows[0]?.value != null ? Number(connRows[0].value) : undefined;
+        } catch {
+          // system.metrics may not be accessible
+        }
+
+        try {
+          // Max connections from system.settings
+          const maxConnResult = await client.query({
+            query: "SELECT value FROM system.settings WHERE name = 'max_connections'",
+            format: "JSONEachRow",
+          });
+          const maxConnRows = await maxConnResult.json() as Array<{ value: string }>;
+          maxConnections = maxConnRows[0]?.value != null ? Number(maxConnRows[0].value) : undefined;
+        } catch {
+          // system.settings may not be accessible
+        }
+
+        try {
+          const dbResult = await client.query({
+            query: "SELECT currentDatabase() AS database_name",
+            format: "JSONEachRow",
+          });
+          const dbRows = await dbResult.json() as Array<{ database_name: string }>;
+          databaseName = dbRows[0]?.database_name ?? undefined;
+        } catch {
+          // Should always work, but be safe
+        }
+
+        // Mark cache hit ratio — ClickHouse's closest analog to a buffer cache hit ratio.
+        // Uses system.events: MarkCacheHits / (MarkCacheHits + MarkCacheMissesOrTooEarly).
+        try {
+          const cacheResult = await client.query({
+            query: `
+              SELECT
+                (SELECT value FROM system.events WHERE event = 'MarkCacheHits') AS hits,
+                (SELECT value FROM system.events WHERE event = 'MarkCacheMissesOrTooEarly') AS misses
+            `,
+            format: "JSONEachRow",
+          });
+          const cacheRows = await cacheResult.json() as Array<{ hits: string; misses: string }>;
+          const hits = cacheRows[0]?.hits != null ? Number(cacheRows[0].hits) : undefined;
+          const misses = cacheRows[0]?.misses != null ? Number(cacheRows[0].misses) : undefined;
+          if (hits != null && misses != null) {
+            const total = hits + misses;
+            if (total > 0) {
+              cacheHitRatio = Math.round((hits / total) * 1000) / 10;
+            }
+          }
+        } catch {
+          // system.events may not be accessible in restricted environments
+        }
+
+        return {
+          version,
+          encoding: "UTF-8",
+          timezone,
+          size,
+          uptime,
+          activeConnections,
+          maxConnections,
+          cacheHitRatio,
+          databaseName,
+        };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(`ClickHouse info error: ${msg}`);
@@ -287,7 +381,7 @@ export function createClickhouseDriver(): DatabaseDriver {
           query: `SELECT database, name, total_rows FROM system.tables WHERE database NOT IN (${CH_SYSTEM_DATABASES.map((d) => `'${d}'`).join(", ")}) AND engine NOT IN ('View', 'MaterializedView', 'Dictionary') ORDER BY database, name`,
           format: "JSONEachRow",
         });
-        const tableRows = await tablesResult.json() as Array<{ database: string; name: string; total_rows: string }>;
+        const tableRows = await tablesResult.json() as Array<{ database: string; name: string; total_rows: string | null }>;
 
         return {
           schemas: schemaRows.map((r) => r.schema_name),
@@ -295,7 +389,8 @@ export function createClickhouseDriver(): DatabaseDriver {
             name: t.name,
             schema: t.database,
             has_rls: false,
-            estimated_row_count: Number(t.total_rows ?? 0),
+            // total_rows from system.tables may be NULL for empty/new tables
+            estimated_row_count: t.total_rows != null ? Number(t.total_rows) : 0,
           })),
         };
       } catch (err) {
