@@ -40,7 +40,7 @@ import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import * as monaco from "monaco-editor";
 import "@/lib/monaco-loader";
 import type { QueryResult } from "@/ipc/db/types";
-import type { SqlEditorProps, SqlDocument, SqlRunResult } from "./types";
+import type { SqlEditorProps, SqlDocument, SqlRunResult, SqlTab } from "./types";
 import {
   previewSql,
   hasDangerousSqlKeywords,
@@ -70,6 +70,8 @@ const MONACO_OPTIONS = {
   tabSize: 2,
 } as const;
 
+const INITIAL_TAB_ID = "initial-tab";
+
 
 export function SqlEditor({
   connections,
@@ -93,12 +95,61 @@ export function SqlEditor({
     appendHistory,
   } = useSqlWorkspace(selectedConnection);
 
-  const [doc, setDoc] = useState<SqlDocument>({
-    id: null,
-    title: "Untitled",
-    sql: DEFAULT_SQL,
-    updatedAt: nowIso(),
-  });
+  const [tabs, setTabs] = useState<SqlTab[]>([
+    {
+      id: INITIAL_TAB_ID,
+      doc: { id: null, title: "Untitled", sql: DEFAULT_SQL, updatedAt: nowIso() },
+      lastSavedSql: DEFAULT_SQL,
+    },
+  ]);
+  const [activeTabId, setActiveTabId] = useState(INITIAL_TAB_ID);
+
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const tabCounterRef = useRef(1);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  const doc = activeTab?.doc ?? { id: null, title: "Untitled", sql: "", updatedAt: nowIso() };
+
+  const updateTab = useCallback(
+    (tabId: string, updater: (tab: SqlTab) => SqlTab) => {
+      setTabs((prev) => prev.map((t) => (t.id === tabId ? updater(t) : t)));
+    },
+    [],
+  );
+
+  const addTab = useCallback((docOverrides?: Partial<SqlDocument>) => {
+    const id = crypto.randomUUID();
+    tabCounterRef.current += 1;
+    const title = docOverrides?.title ?? `Untitled ${tabCounterRef.current}`;
+    const sql = docOverrides?.sql ?? DEFAULT_SQL;
+    const newTab: SqlTab = {
+      id,
+      doc: {
+        id: docOverrides?.id ?? null,
+        title,
+        sql,
+        updatedAt: docOverrides?.updatedAt ?? nowIso(),
+      },
+      lastSavedSql: sql,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(id);
+  }, []);
+
+  const closeTab = useCallback((tabId: string) => {
+    const current = tabsRef.current;
+    if (current.length <= 1) return;
+    const idx = current.findIndex((t) => t.id === tabId);
+    const next = current.filter((t) => t.id !== tabId);
+    setTabs(next);
+    if (tabId === activeTabIdRef.current) {
+      const newIdx = Math.min(idx, next.length - 1);
+      setActiveTabId(next[newIdx].id);
+    }
+  }, []);
 
   const [activeSidebarTab, setActiveSidebarTab] = useState<"saved" | "history">(
     "saved",
@@ -252,12 +303,17 @@ export function SqlEditor({
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run only when the load request key changes.
   useEffect(() => {
     if (!loadRequest) return;
-    setDoc({
-      id: null,
-      title: loadRequest.title || "Untitled",
-      sql: loadRequest.sql,
-      updatedAt: nowIso(),
-    });
+    const sql = loadRequest.sql;
+    updateTab(activeTabIdRef.current, () => ({
+      id: activeTabIdRef.current,
+      doc: {
+        id: null,
+        title: loadRequest.title || "Untitled",
+        sql,
+        updatedAt: nowIso(),
+      },
+      lastSavedSql: sql,
+    }));
     if (
       loadRequest.connectionId &&
       loadRequest.connectionId !== selectedConnection
@@ -332,9 +388,15 @@ export function SqlEditor({
     [doc.sql],
   );
 
-  const setSql = useCallback((sql: string) => {
-    setDoc((current) => ({ ...current, sql, updatedAt: nowIso() }));
-  }, []);
+  const setSql = useCallback(
+    (sql: string) => {
+      updateTab(activeTabIdRef.current, (tab) => {
+        if (tab.doc.sql === sql) return tab;
+        return { ...tab, doc: { ...tab.doc, sql, updatedAt: nowIso() } };
+      });
+    },
+    [updateTab],
+  );
 
   const clearInlineStreamTimeout = useCallback(() => {
     if (inlineStreamTimeoutRef.current) {
@@ -605,33 +667,48 @@ export function SqlEditor({
     }
   }, [selectedConnection, doc.sql, lastError, dbType, setSql]);
 
-  const setTitle = useCallback((title: string) => {
-    setDoc((current) => ({ ...current, title, updatedAt: nowIso() }));
-  }, []);
+  const setTitle = useCallback(
+    (title: string) => {
+      updateTab(activeTabIdRef.current, (tab) => ({
+        ...tab,
+        doc: { ...tab.doc, title, updatedAt: nowIso() },
+      }));
+    },
+    [updateTab],
+  );
 
   const hydrateFromSaved = useCallback(
     (query: SqlSavedQuery) => {
-      setDoc({
-        id: query.id,
-        title: query.title,
-        sql: query.sql,
-        updatedAt: query.updatedAt,
-      });
+      const tabId = activeTabIdRef.current;
+      updateTab(tabId, () => ({
+        id: tabId,
+        doc: {
+          id: query.id,
+          title: query.title,
+          sql: query.sql,
+          updatedAt: query.updatedAt,
+        },
+        lastSavedSql: query.sql,
+      }));
       if (query.connectionId !== selectedConnection) {
         onSelectConnection(query.connectionId);
       }
     },
-    [onSelectConnection, selectedConnection],
+    [onSelectConnection, selectedConnection, updateTab],
   );
 
   const hydrateFromHistory = useCallback(
     (entry: SqlHistoryEntry) => {
-      setDoc((current) => ({
-        ...current,
-        id: null,
-        title: "Untitled",
-        sql: entry.executedSql,
-        updatedAt: nowIso(),
+      const tabId = activeTabIdRef.current;
+      updateTab(tabId, () => ({
+        id: tabId,
+        doc: {
+          id: null,
+          title: "Untitled",
+          sql: entry.executedSql,
+          updatedAt: nowIso(),
+        },
+        lastSavedSql: entry.executedSql,
       }));
 
       setLastDurationMs(entry.durationMs);
@@ -680,23 +757,29 @@ export function SqlEditor({
 
   const saveCurrentQuery = useCallback(async () => {
     if (!selectedConnection) return;
+    const currentDoc = (tabsRef.current.find((t) => t.id === activeTabIdRef.current) ?? tabsRef.current[0])?.doc;
+    if (!currentDoc) return;
 
     const persisted = await saveQuery({
-      id: doc.id ?? undefined,
-      title: doc.title.trim() || "Untitled",
-      sql: doc.sql,
+      id: currentDoc.id ?? undefined,
+      title: currentDoc.title.trim() || "Untitled",
+      sql: currentDoc.sql,
       connectionId: selectedConnection,
     });
 
     if (persisted) {
-      setDoc((current) => ({
-        ...current,
-        id: persisted.id,
-        title: persisted.title,
-        updatedAt: persisted.updatedAt,
+      updateTab(activeTabIdRef.current, (tab) => ({
+        ...tab,
+        doc: {
+          ...tab.doc,
+          id: persisted.id,
+          title: persisted.title,
+          updatedAt: persisted.updatedAt,
+        },
+        lastSavedSql: tab.doc.sql,
       }));
     }
-  }, [doc.id, doc.sql, doc.title, saveQuery, selectedConnection]);
+  }, [saveQuery, selectedConnection, updateTab]);
 
   const runSql = useCallback(async () => {
     if (!selectedConnection || !doc.sql.trim()) return;
@@ -860,6 +943,8 @@ export function SqlEditor({
     // automaticLayout uses a 100ms MutationObserver that triggers relayout on every
     // DOM mutation during resize — very expensive. ResizeObserver only fires when the
     // container actually changes size, and RAF coalesces layout calls into one per frame.
+    monacoResizeObserverRef.current?.disconnect();
+    monacoResizeObserverRef.current = null;
     const container = mounted.getDomNode()?.parentElement;
     if (container) {
       let rafId: number | null = null;
@@ -942,8 +1027,26 @@ export function SqlEditor({
         searchInputRef.current?.focus();
       }
 
+      if (event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        addTab();
+      }
+
+      if (event.key.toLowerCase() === "w") {
+        event.preventDefault();
+        closeTab(activeTabIdRef.current);
+      }
+
+      const digit = parseInt(event.key, 10);
+      if (digit >= 1 && digit <= 9) {
+        const target = tabsRef.current[digit - 1];
+        if (target) {
+          event.preventDefault();
+          setActiveTabId(target.id);
+        }
+      }
     },
-    [runSql, saveCurrentQuery],
+    [runSql, saveCurrentQuery, addTab, closeTab],
   );
 
   return (
@@ -1190,6 +1293,70 @@ export function SqlEditor({
         {showWorkspaceSidebar && <ResizableHandle withHandle />}
         <ResizablePanel id="sql-editor" className="min-h-0 min-w-0">
           <div className="h-full min-w-0 flex flex-col">
+          {/* ── Tab bar ────────────────────────────────────────── */}
+          <div className="flex items-center h-9 border-b border-border/50 bg-muted/20 shrink-0">
+            <div className="flex items-center overflow-x-auto flex-1 min-w-0">
+              {tabs.map((tab) => {
+                const isActive = tab.id === activeTabId;
+                const isDirty = tab.doc.sql !== tab.lastSavedSql;
+                return (
+                  <div
+                    key={tab.id}
+                    className={cn(
+                      "group/tab flex items-center gap-1.5 px-3 h-full cursor-pointer border-r border-border/40 text-xs whitespace-nowrap select-none transition-colors",
+                      isActive
+                        ? "bg-background text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+                    )}
+                    onClick={() => setActiveTabId(tab.id)}
+                  >
+                    <UiIcon name="file-code-2" className="size-3 shrink-0 opacity-60" />
+                    <span className="truncate max-w-[120px]">{tab.doc.title}</span>
+                    {isDirty && (
+                      <span className="size-1.5 rounded-full bg-foreground/50 shrink-0" />
+                    )}
+                    <button
+                      type="button"
+                      className={cn(
+                        "shrink-0 rounded-sm p-0.5 transition-opacity",
+                        tabs.length <= 1
+                          ? "opacity-0 pointer-events-none"
+                          : "opacity-0 group-hover/tab:opacity-100 hover:text-destructive",
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                    >
+                      <UiIcon name="x" className="size-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="mx-1.5 shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => addTab()}
+                  >
+                    <UiIcon name="plus" className="size-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent>
+                New tab
+                <KbdGroup className="ml-1.5">
+                  <Kbd>⌘</Kbd>
+                  <Kbd>T</Kbd>
+                </KbdGroup>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
           {/* ── Editor toolbar (single row) ──────────────────── */}
           <div className="flex items-center gap-2 border-b border-border/50 px-3 h-9">
             {/* Query title */}
@@ -1351,6 +1518,7 @@ export function SqlEditor({
                 }}
               >
               <LazyMonacoEditor
+                key={activeTabId}
                 height="100%"
                 defaultLanguage="sql"
                 value={doc.sql}

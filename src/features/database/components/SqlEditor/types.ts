@@ -18,6 +18,12 @@ export interface SqlRunResult {
   rowCount: number;
 }
 
+export interface SqlTab {
+  id: string;
+  doc: SqlDocument;
+  lastSavedSql: string;
+}
+
 export interface SqlEditorProps {
   connections: Connection[];
   selectedConnection: string | null;
