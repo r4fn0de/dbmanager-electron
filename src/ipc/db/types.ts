@@ -113,6 +113,10 @@ export interface QueryResult {
   columns: ColumnMeta[];
   rows: unknown[][];
   row_count: number;
+  /** Whether the result set was truncated because it exceeded the safety limit */
+  truncated?: boolean;
+  /** Total row count before truncation (only present when truncated is true) */
+  totalRowCount?: number;
 }
 
 export interface SchemaColumn {

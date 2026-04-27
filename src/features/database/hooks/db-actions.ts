@@ -9,6 +9,8 @@
  * use `useConnectionsList()` instead.
  */
 import { ipc } from "@/ipc/manager";
+import { queryClient } from "@/lib/query-client";
+import { dbQueryKeys } from "@/lib/query-options";
 import type {
   AddColumnInput,
   AlterColumnTypeInput,
@@ -389,5 +391,39 @@ export async function getSchemaIndexes(
     throw new Error(
       err instanceof Error ? err.message : "Failed to fetch schema indexes",
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cache invalidation — callable from non-React code (e.g. DDL success callbacks)
+// Uses the singleton queryClient so any component will refetch on next render.
+// ---------------------------------------------------------------------------
+
+/**
+ * Invalidate all cached data for a connection after a DDL operation.
+ * This ensures schema summary, table details, and row caches are refreshed.
+ */
+export function invalidateDdlCache(connectionId: string, schema?: string, table?: string): void {
+  // Schema summary (table list)
+  queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaSummary(connectionId) });
+  // Table details
+  if (schema && table) {
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableDetails(connectionId, schema, table) });
+  } else {
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableDetailsAll(connectionId) });
+  }
+  // Schema details batch (visualizer/AI)
+  queryClient.invalidateQueries({ queryKey: dbQueryKeys.selectedSchemaDetailsPrefix(connectionId) });
+  // Table rows
+  if (schema && table) {
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableRowsPrefix(connectionId, schema, table) });
+  }
+  // Definitions browser
+  if (schema) {
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaConstraints(connectionId, schema) });
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaEnums(connectionId, schema) });
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaFunctions(connectionId, schema) });
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaIndexes(connectionId, schema) });
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaTriggers(connectionId, schema) });
   }
 }

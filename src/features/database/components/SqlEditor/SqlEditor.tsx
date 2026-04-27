@@ -1,6 +1,7 @@
 import { useTheme } from "next-themes";
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { QueryResults } from "../QueryResults";
 import { Icon as UiIcon } from "@/components/ui/Icon";
@@ -148,6 +149,7 @@ export function SqlEditor({
   const [selectedSqlForAi, setSelectedSqlForAi] = useState("");
   // EXPLAIN state (driven by keyboard shortcuts only, no toolbar button)
   const [isExplaining, setIsExplaining] = useState(false);
+  const explainQueryClient = useQueryClient();
 
   const setSqlContext = useAiChatGlobalStore((state) => state.setSqlContext);
   const clearSqlContext = useAiChatGlobalStore((state) => state.clearSqlContext);
@@ -519,7 +521,9 @@ export function SqlEditor({
     }
   }, [dbType]);
 
-  // ── EXPLAIN Query ────────────────────────────────────────────────
+  // ── EXPLAIN Query (cached via queryClient.fetchQuery) ────────────
+  // Repeated Ctrl+E on the same query returns cached result within 5min staleTime,
+  // avoiding redundant round-trips to the database.
   const handleExplainSql = useCallback(async (analyze: boolean = false) => {
     if (!selectedConnection || !doc.sql.trim()) return;
     if (isExecuting) return;
@@ -543,7 +547,12 @@ export function SqlEditor({
     const explainSql = buildExplainSql(sqlToExplain, dbType, analyze);
     setIsExplaining(true);
     try {
-      const result = await executeQuery(selectedConnection, explainSql);
+      // Use fetchQuery to leverage cache — same EXPLAIN SQL within 5min = instant
+      const result = await explainQueryClient.fetchQuery({
+        queryKey: ["explain", selectedConnection, explainSql],
+        queryFn: () => executeQuery(selectedConnection, explainSql),
+        staleTime: 5 * 60_000,
+      });
       const resultId = `explain-${nowIso()}`;
       setRunResults([{
         id: resultId,
@@ -575,7 +584,7 @@ export function SqlEditor({
     } finally {
       setIsExplaining(false);
     }
-  }, [selectedConnection, doc.sql, dbType, isExecuting, executeQuery]);
+  }, [selectedConnection, doc.sql, dbType, isExecuting, executeQuery, explainQueryClient]);
 
   // AI: Fix SQL — send current SQL + last error to AI for correction
   const handleFixSql = useCallback(async () => {

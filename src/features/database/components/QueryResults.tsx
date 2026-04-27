@@ -242,6 +242,16 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
 
   return (
     <div className="h-full min-h-0 flex flex-col">
+      {/* ── Truncation warning ──────────────────────────────────── */}
+      {result.truncated && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/5">
+          <Icon name="triangle-alert" className="size-3.5 text-amber-500 shrink-0" />
+          <span className="text-xs text-amber-600 dark:text-amber-400">
+            Results truncated to {result.row_count.toLocaleString()} rows (total: {result.totalRowCount?.toLocaleString()}). Add a LIMIT clause to reduce the result set.
+          </span>
+        </div>
+      )}
+
       {/* ── Toolbar header ──────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50">
         <div className="flex items-center gap-1.5">

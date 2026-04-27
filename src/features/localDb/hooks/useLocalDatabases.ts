@@ -33,7 +33,7 @@ interface UseLocalDatabasesReturn {
   invalidateCache: () => void;
 }
 
-const LOCAL_DBS_QUERY_KEY = ["local-databases"] as const;
+import { dbQueryKeys } from "@/lib/query-options";
 
 export function useLocalDatabases(): UseLocalDatabasesReturn {
   const queryClient = useQueryClient();
@@ -48,7 +48,7 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     error: queryError,
     refetch: queryRefetch,
   } = useQuery({
-    queryKey: LOCAL_DBS_QUERY_KEY,
+    queryKey: dbQueryKeys.localDatabases(),
     queryFn: async () => {
       const [dbs, est] = await Promise.all([
         ipc.client.db.listLocalDatabases(),
@@ -91,7 +91,7 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
         engine: input.engine,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.localDatabases() });
     },
   });
 
@@ -108,14 +108,14 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     },
     // Optimistic update: remove from cache immediately, rollback on error
     onMutate: async ({ id }) => {
-      await queryClient.cancelQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+      await queryClient.cancelQueries({ queryKey: dbQueryKeys.localDatabases() });
       const previous = queryClient.getQueryData<{
         databases: LocalDbInfo[];
         storage: LocalDbStorageInfo;
-      }>(LOCAL_DBS_QUERY_KEY);
+      }>(dbQueryKeys.localDatabases());
 
       if (previous) {
-        queryClient.setQueryData(LOCAL_DBS_QUERY_KEY, {
+        queryClient.setQueryData(dbQueryKeys.localDatabases(), {
           ...previous,
           databases: previous.databases.filter((db) => db.id !== id),
         });
@@ -125,12 +125,12 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(LOCAL_DBS_QUERY_KEY, context.previous);
+        queryClient.setQueryData(dbQueryKeys.localDatabases(), context.previous);
       }
     },
     onSuccess: (shouldRefresh) => {
       if (shouldRefresh) {
-        queryClient.invalidateQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+        queryClient.invalidateQueries({ queryKey: dbQueryKeys.localDatabases() });
       }
     },
   });
@@ -139,14 +139,14 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     mutationFn: (id: string) => ipc.client.db.startLocalDatabase({ id }),
     // Optimistic update: mark as running immediately
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+      await queryClient.cancelQueries({ queryKey: dbQueryKeys.localDatabases() });
       const previous = queryClient.getQueryData<{
         databases: LocalDbInfo[];
         storage: LocalDbStorageInfo;
-      }>(LOCAL_DBS_QUERY_KEY);
+      }>(dbQueryKeys.localDatabases());
 
       if (previous) {
-        queryClient.setQueryData(LOCAL_DBS_QUERY_KEY, {
+        queryClient.setQueryData(dbQueryKeys.localDatabases(), {
           ...previous,
           databases: previous.databases.map((db) =>
             db.id === id
@@ -160,11 +160,11 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(LOCAL_DBS_QUERY_KEY, context.previous);
+        queryClient.setQueryData(dbQueryKeys.localDatabases(), context.previous);
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.localDatabases() });
     },
   });
 
@@ -172,14 +172,14 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     mutationFn: (id: string) => ipc.client.db.stopLocalDatabase({ id }),
     // Optimistic update: mark as stopped immediately
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+      await queryClient.cancelQueries({ queryKey: dbQueryKeys.localDatabases() });
       const previous = queryClient.getQueryData<{
         databases: LocalDbInfo[];
         storage: LocalDbStorageInfo;
-      }>(LOCAL_DBS_QUERY_KEY);
+      }>(dbQueryKeys.localDatabases());
 
       if (previous) {
-        queryClient.setQueryData(LOCAL_DBS_QUERY_KEY, {
+        queryClient.setQueryData(dbQueryKeys.localDatabases(), {
           ...previous,
           databases: previous.databases.map((db) =>
             db.id === id
@@ -193,11 +193,11 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(LOCAL_DBS_QUERY_KEY, context.previous);
+        queryClient.setQueryData(dbQueryKeys.localDatabases(), context.previous);
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.localDatabases() });
     },
   });
 
@@ -235,7 +235,7 @@ export function useLocalDatabases(): UseLocalDatabasesReturn {
   // invalidateCache marks the local databases query as stale so all
   // consumers (including background tabs) get fresh data on next render.
   const invalidateCache = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: LOCAL_DBS_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: dbQueryKeys.localDatabases() });
   }, [queryClient]);
 
   return {

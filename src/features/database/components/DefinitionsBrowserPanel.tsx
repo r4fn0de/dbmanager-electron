@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { dbQueryOptions } from "@/lib/query-options";
 import { useReducedMotion } from "@/features/settings";
 import {
   getEnums,
@@ -480,45 +481,15 @@ export function DefinitionsBrowserPanel({
   const reducedMotion = useReducedMotion();
 
   // Fetch all definition data via React Query
-  const constraintsQuery = useQuery({
-    queryKey: ["schema-constraints", connectionId, selectedSchema],
-    queryFn: () => getSchemaConstraints(connectionId, selectedSchema),
-    enabled: activeTab === "constraints",
-    placeholderData: keepPreviousData,
-    staleTime: 60_000,
-  });
+  const constraintsQuery = useQuery(dbQueryOptions.schemaConstraints(connectionId, selectedSchema, activeTab === "constraints"));
 
-  const enumsQuery = useQuery({
-    queryKey: ["schema-enums", connectionId, selectedSchema],
-    queryFn: () => getEnums(connectionId, selectedSchema),
-    enabled: activeTab === "enums",
-    placeholderData: keepPreviousData,
-    staleTime: 60_000,
-  });
+  const enumsQuery = useQuery(dbQueryOptions.schemaEnums(connectionId, selectedSchema, activeTab === "enums"));
 
-  const functionsQuery = useQuery({
-    queryKey: ["schema-functions", connectionId, selectedSchema],
-    queryFn: () => getFunctions(connectionId, selectedSchema),
-    enabled: activeTab === "functions",
-    placeholderData: keepPreviousData,
-    staleTime: 60_000,
-  });
+  const functionsQuery = useQuery(dbQueryOptions.schemaFunctions(connectionId, selectedSchema, activeTab === "functions"));
 
-  const indexesQuery = useQuery({
-    queryKey: ["schema-indexes", connectionId, selectedSchema],
-    queryFn: () => getSchemaIndexes(connectionId, selectedSchema),
-    enabled: activeTab === "indexes",
-    placeholderData: keepPreviousData,
-    staleTime: 60_000,
-  });
+  const indexesQuery = useQuery(dbQueryOptions.schemaIndexes(connectionId, selectedSchema, activeTab === "indexes"));
 
-  const triggersQuery = useQuery({
-    queryKey: ["schema-triggers", connectionId, selectedSchema],
-    queryFn: () => getTriggers(connectionId, selectedSchema),
-    enabled: activeTab === "triggers",
-    placeholderData: keepPreviousData,
-    staleTime: 60_000,
-  });
+  const triggersQuery = useQuery(dbQueryOptions.schemaTriggers(connectionId, selectedSchema, activeTab === "triggers"));
 
   const constraints = constraintsQuery.data ?? [];
   const enums = enumsQuery.data ?? [];

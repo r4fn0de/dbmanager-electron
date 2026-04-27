@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/manager";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
 
-export const CONNECTIONS_QUERY_KEY = ["connections"] as const;
+import { dbQueryKeys } from "@/lib/query-options";
 
 interface UseConnectionsListReturn {
   connections: Connection[];
@@ -36,7 +36,7 @@ export function useConnectionsList(): UseConnectionsListReturn {
     error: queryError,
     refetch: queryRefetch,
   } = useQuery({
-    queryKey: CONNECTIONS_QUERY_KEY,
+    queryKey: dbQueryKeys.connections(),
     queryFn: () => ipc.client.db.listConnections(),
     staleTime: 30_000,
     gcTime: 5 * 60_000,
@@ -53,7 +53,7 @@ export function useConnectionsList(): UseConnectionsListReturn {
     mutationFn: (connection: ConnectionInput) =>
       ipc.client.db.saveConnection({ ...connection }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: CONNECTIONS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.connections() });
     },
   });
 
@@ -70,7 +70,7 @@ export function useConnectionsList(): UseConnectionsListReturn {
     },
     onSuccess: (refresh) => {
       if (refresh) {
-        queryClient.invalidateQueries({ queryKey: CONNECTIONS_QUERY_KEY });
+        queryClient.invalidateQueries({ queryKey: dbQueryKeys.connections() });
       }
     },
   });

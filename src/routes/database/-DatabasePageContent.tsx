@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
 import { Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dbQueryKeys, dbQueryOptions } from "@/lib/query-options";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
@@ -110,26 +111,12 @@ export function DatabasePageContent({
     storedTab?.lastTable ?? null
   );
 
-  // Schema data via React Query — enables caching, stale-while-revalidate,
-  // and sharing with route loader prefetch (same pattern as conar).
-  // Previously used useState+useEffect which ran AFTER mount (visible loading)
-  // and couldn't be prefetched or shared.
-  const schemaSummaryQueryKey = useMemo(
-    () => ["schema-summary", connectionId] as const,
-    [connectionId],
-  );
-
+  // Schema data via React Query — centralized queryOptions factory.
   const {
     data: schemaSummaryData,
     isLoading: isLoadingSchema,
     refetch: refetchSchema,
-  } = useQuery({
-    queryKey: schemaSummaryQueryKey,
-    queryFn: () => getSchemaSummary(connectionId),
-    enabled: isActive,
-    staleTime: 60_000, // Schema structure rarely changes — 1 min staleTime
-    gcTime: 5 * 60_000,
-  });
+  } = useQuery(dbQueryOptions.schemaSummary(connectionId, isActive));
 
   const schemas = schemaSummaryData?.schemas ?? [];
   const tables = schemaSummaryData?.tables ?? [];
@@ -367,7 +354,7 @@ export function DatabasePageContent({
   // the start. React Query caches this for 5 minutes so switching to
   // the visualizer is instant.
   const selectedSchemaDetailsQueryKey = useMemo(
-    () => ["selected-schema-details", connectionId, selectedSchema, tables.length] as const,
+    () => dbQueryKeys.selectedSchemaDetails(connectionId, selectedSchema, tables.length),
     [connectionId, selectedSchema, tables.length],
   );
 
@@ -386,8 +373,6 @@ export function DatabasePageContent({
       return details;
     },
     // Only load schema details when visualizer or SQL editor needs them — not on mount.
-    // This eliminates the 50-parallel getTableDetails calls that fired on
-    // every page load even when the user was just browsing tables.
     enabled: isActive && tables.length > 0 && selectedSchema.length > 0 &&
       (activeSection === "visualizer" || activeSection === "sql-editor"),
     staleTime: 5 * 60 * 1000,
@@ -491,7 +476,7 @@ export function DatabasePageContent({
       // refetch (connections list) and refetchSchema are independent — run in parallel
       await Promise.all([refetch(), refetchSchema()]);
       // Invalidate schema details cache so visualizer/AI gets fresh data
-      queryClient.invalidateQueries({ queryKey: ["selected-schema-details", connectionId] });
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.selectedSchemaDetailsPrefix(connectionId) });
       if (activeSection === "overview") {
         loadDatabaseInfo();
       }
@@ -754,31 +739,16 @@ export function DatabasePageContent({
   // React Query for table details — gives us cache, keepPreviousData for smooth
   // transitions, and automatic revalidation. Trocar para uma tabela já visitada
   // é instantâneo (cache hit); primeira visita mostra skeleton.
-  const tableDetailsQueryKey = useMemo(
-    () => [
-      "table-details",
-      connectionId,
-      selectedTableRef?.schema ?? null,
-      selectedTableRef?.name ?? null,
-    ] as const,
-    [connectionId, selectedTableRef],
-  );
-
   const {
     data: selectedTableDetails = null,
     isFetching: isFetchingTableDetails,
   } = useQuery({
-    queryKey: tableDetailsQueryKey,
-    queryFn: () => {
-      if (!selectedTableRef) return null;
-      return getTableDetails(connectionId, selectedTableRef.schema, selectedTableRef.name);
-    },
-    enabled: isActive && !!selectedTableRef,
-    // Keep the previous table's details rendered while the new one loads —
-    // header/chrome stays mounted; TableDataEditor gets isSwitchingTable=true.
-    placeholderData: keepPreviousData,
-    staleTime: 2 * 60_000,
-    gcTime: 15 * 60_000,
+    ...dbQueryOptions.tableDetails(
+      connectionId,
+      selectedTableRef?.schema ?? "",
+      selectedTableRef?.name ?? "",
+      isActive && !!selectedTableRef,
+    ),
   });
 
   const isLoadingTableDetails = isFetchingTableDetails;
@@ -787,19 +757,11 @@ export function DatabasePageContent({
   const invalidateTableDetails = useCallback(
     (schema?: string, name?: string) => {
       if (schema && name) {
-        queryClient.invalidateQueries({
-          queryKey: ["table-details", connectionId, schema, name],
-        });
+        queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableDetails(connectionId, schema, name) });
       } else {
-        queryClient.invalidateQueries({
-          queryKey: ["table-details", connectionId],
-        });
+        queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableDetailsAll(connectionId) });
       }
-      // Also invalidate the consolidated schema-details query used by
-      // the AI context builder and visualizer, so they refresh after DDL.
-      queryClient.invalidateQueries({
-        queryKey: ["selected-schema-details", connectionId],
-      });
+      queryClient.invalidateQueries({ queryKey: dbQueryKeys.selectedSchemaDetailsPrefix(connectionId) });
     },
     [connectionId, queryClient],
   );
@@ -816,22 +778,9 @@ export function DatabasePageContent({
   // Inspired by conar's route loader prefetch pattern.
   const prefetchTableDetails = useCallback(
     (schema: string, name: string) => {
+      queryClient.prefetchQuery(dbQueryOptions.tableDetails(connectionId, schema, name));
       queryClient.prefetchQuery({
-        queryKey: ["table-details", connectionId, schema, name],
-        queryFn: () => getTableDetails(connectionId, schema, name),
-        staleTime: 2 * 60_000,
-      });
-      queryClient.prefetchQuery({
-        queryKey: [
-          "table-rows",
-          connectionId,
-          schema,
-          name,
-          0, // page
-          50, // default pageSize (matches TableDataEditor)
-          [], // sort
-          [], // filters
-        ],
+        queryKey: dbQueryKeys.tableRows(connectionId, schema, name, 0, 50, [], []),
         queryFn: () =>
           tableListRows({
             tableRef: { connectionId, schema, table: name },

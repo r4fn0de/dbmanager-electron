@@ -3,6 +3,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { dbQueryKeys, dbQueryOptions } from "@/lib/query-options";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
@@ -327,29 +328,9 @@ export function TableDataEditor({
     data: rowsResponse = null,
     isFetching: isLoading,
     error: rowsError,
-  } = useQuery({
-    queryKey: [
-      "table-rows",
-      connectionId,
-      table.schema,
-      table.name,
-      page,
-      pageSize,
-      sort,
-      serverFilters,
-    ],
-    queryFn: () =>
-      tableListRows({
-        tableRef,
-        page: page + 1,
-        pageSize,
-        sort,
-        filters: serverFilters,
-      }),
-    placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-  });
+  } = useQuery(dbQueryOptions.tableRows(
+    connectionId, table.schema, table.name, page, pageSize, sort, serverFilters,
+  ));
 
   useEffect(() => {
     if (!rowsError) {
@@ -828,7 +809,7 @@ export function TableDataEditor({
       await tableSaveChanges({ tableRef, inserts, updates, deletes });
       discardDrafts();
       await queryClient.invalidateQueries({
-        queryKey: ["table-rows", connectionId, table.schema, table.name],
+        queryKey: dbQueryKeys.tableRowsPrefix(connectionId, table.schema, table.name),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save changes");
@@ -846,7 +827,7 @@ export function TableDataEditor({
       await tableTruncate(tableRef);
       discardDrafts();
       await queryClient.invalidateQueries({
-        queryKey: ["table-rows", connectionId, table.schema, table.name],
+        queryKey: dbQueryKeys.tableRowsPrefix(connectionId, table.schema, table.name),
       });
       setPendingTruncate(false);
       setConfirmText("");
@@ -1482,7 +1463,7 @@ export function TableDataEditor({
             className="shrink-0 h-6 text-[10px]"
             onClick={() => {
               setError(null);
-              queryClient.invalidateQueries({ queryKey: ["table-rows", connectionId, table.schema, table.name] });
+              queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableRowsPrefix(connectionId, table.schema, table.name) });
             }}
           >
             <UiIcon name="refresh" className="h-3 w-3" />

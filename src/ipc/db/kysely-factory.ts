@@ -40,7 +40,22 @@ export function getPgPool(connectionString: string): PgPool {
   const existing = pgPools.get(connectionString);
   if (existing) return existing;
 
-  const pool = new PgPool({ connectionString, max: 2 });
+  const pool = new PgPool({
+    connectionString,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+  });
+
+  // Health check logging
+  pool.on("error", (err) => {
+    console.error("[pg:pool] error:", err.message);
+  });
+  pool.on("connect", () => {
+    console.log("[pg:pool] new connection established");
+  });
   pgPools.set(connectionString, pool);
   return pool;
 }
@@ -71,7 +86,8 @@ export async function getMysqlPool(
   const mysql = await import("mysql2/promise");
   const pool = mysql.createPool({
     uri: connectionString,
-    connectionLimit: 2,
+    connectionLimit: 10,
+    queueLimit: 0,
     dateStrings: true,
   });
   mysqlPools.set(connectionString, pool);

@@ -224,12 +224,28 @@ export const getConnection = os
 // Query / Schema handlers (use registry)
 // ---------------------------------------------------------------------------
 
+const MAX_QUERY_ROWS = 50_000;
+const MAX_PAGE_SIZE = 1_000;
+
 export const executeQuery = os
   .input(executeQuerySchema)
   .handler(async ({ input }): Promise<QueryResult> => {
     const { connStr, connection } = await resolveConnectionString(input.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
-    return await driver.executeQuery(connStr, input.sql);
+    const result = await driver.executeQuery(connStr, input.sql);
+
+    // Truncate large result sets to prevent renderer OOM
+    if (result.rows.length > MAX_QUERY_ROWS) {
+      const totalRowCount = result.rows.length;
+      return {
+        ...result,
+        rows: result.rows.slice(0, MAX_QUERY_ROWS),
+        row_count: MAX_QUERY_ROWS,
+        truncated: true,
+        totalRowCount,
+      };
+    }
+    return result;
   });
 
 export const getSchema = os
@@ -261,12 +277,14 @@ export const tableListRows = os
   .handler(async ({ input }): Promise<TableRowsResponse> => {
     const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
     const driver = driverRegistry.get(resolveDbType(connection));
+    // Clamp pageSize to prevent fetching too many rows at once
+    const safePageSize = Math.min(input.pageSize, MAX_PAGE_SIZE);
     return await driver.listRows(
       connStr,
       input.tableRef.schema,
       input.tableRef.table,
       input.page,
-      input.pageSize,
+      safePageSize,
       input.sort,
       input.filters,
     );

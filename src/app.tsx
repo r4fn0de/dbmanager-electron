@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import React, { Component, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
+import React, { Component, type ErrorInfo, type ReactNode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { useTranslation } from "react-i18next";
 import { updateAppLanguage } from "@/features/shell/actions/language";
+import { queryClient } from "@/lib/query-client";
 import { router } from "@/lib/routes";
 import "./localization/i18n";
 
@@ -58,20 +59,6 @@ class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState>
 
 export default function App() {
   const { i18n } = useTranslation();
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 60_000,
-            gcTime: 5 * 60_000,
-            refetchOnWindowFocus: false,
-            retry: 1,
-          },
-        },
-      }),
-  );
-
   useEffect(() => {
     updateAppLanguage(i18n);
   }, [i18n]);
