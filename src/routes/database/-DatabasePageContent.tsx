@@ -1188,6 +1188,12 @@ export function DatabasePageContent({
           onClose={() => setIsCreateTableOpen(false)}
           connectionId={connection.id}
           schema={selectedSchema}
+          dbType={connection.db_type || "postgresql"}
+          existingTables={selectedSchemaDetails.map((t) => ({
+            name: t.name,
+            schema: t.schema,
+            columns: t.columns.map((c) => ({ name: c.name, type: c.data_type })),
+          }))}
           createTable={createTable}
           onSuccess={() => {
             void handleDdlSuccess();
@@ -1230,6 +1236,7 @@ export function DatabasePageContent({
           connectionId={connection.id}
           schema={ddlAddColumnTarget.schema}
           tableName={ddlAddColumnTarget.name}
+          dbType={connection.db_type || "postgresql"}
           addColumn={addColumn}
           onSuccess={() => {
             void handleDdlSuccess();

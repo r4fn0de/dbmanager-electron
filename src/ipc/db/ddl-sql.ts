@@ -36,7 +36,9 @@ export function buildCreateTableSql(
     name: string;
     dataType: string;
     isNullable: boolean;
+    isUnique?: boolean;
     defaultExpr?: string;
+    references?: string;
   }>,
   primaryKeyColumns: string[],
   ifNotExists: boolean,
@@ -46,6 +48,7 @@ export function buildCreateTableSql(
     let def = `${qi(dbType, col.name)} ${col.dataType}`;
     if (!col.isNullable) def += " NOT NULL";
     if (col.defaultExpr) def += ` DEFAULT ${col.defaultExpr}`;
+    if (col.references) def += ` REFERENCES ${col.references}`;
     columnDefs.push(def);
   }
   if (primaryKeyColumns.length > 0) {
@@ -53,8 +56,15 @@ export function buildCreateTableSql(
       `PRIMARY KEY (${primaryKeyColumns.map((c) => qi(dbType, c)).join(", ")})`,
     );
   }
+  // Add UNIQUE constraints for columns marked isUnique (not already in PK)
+  const pkSet = new Set(primaryKeyColumns);
+  for (const col of columns) {
+    if (col.isUnique && !pkSet.has(col.name)) {
+      columnDefs.push(`UNIQUE (${qi(dbType, col.name)})`);
+    }
+  }
   const ifNotExistsClause = ifNotExists ? "IF NOT EXISTS " : "";
-  return `CREATE TABLE ${ifNotExistsClause}${qt(dbType, schema, tableName)} (${columnDefs.join(", ")})`;
+  return `CREATE TABLE ${ifNotExistsClause}${qt(dbType, schema, tableName)} (${columnDefs.join(",\n  ")})`;
 }
 
 export function buildDropTableSql(

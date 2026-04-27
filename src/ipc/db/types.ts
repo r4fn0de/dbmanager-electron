@@ -301,6 +301,8 @@ export interface ColumnDefinition {
   isPrimaryKey?: boolean;
   isUnique?: boolean;
   defaultExpr?: string;
+  /** Foreign key reference: schema.table(column) */
+  references?: string;
 }
 
 export interface CreateTableInput {

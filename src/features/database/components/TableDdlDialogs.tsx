@@ -35,7 +35,7 @@ import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-b
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Icon } from "@/components/ui/Icon";
 import { getTableDetails } from "../hooks/db-actions";
-import { qi, qt } from "@/ipc/db/ddl-sql";
+import { qi, qt, buildCreateTableSql } from "@/ipc/db/ddl-sql";
 import type { DatabaseType } from "@/ipc/db/types";
 import type {
   AddColumnInput,
@@ -57,36 +57,76 @@ import type {
 } from "@/ipc/db/types";
 
 // ============================================================
-// Common types used by quick "add column" row
+// Data types per database engine
 // ============================================================
 
-const COMMON_PG_TYPES = [
-  "text",
-  "integer",
-  "bigint",
-  "serial",
-  "bigserial",
-  "boolean",
-  "uuid",
-  "timestamp",
-  "timestamptz",
-  "date",
-  "jsonb",
-  "varchar(255)",
-  "numeric(10,2)",
-  "real",
-  "bytea",
-];
+const TYPES_BY_ENGINE: Record<string, string[]> = {
+  postgresql: [
+    "text", "varchar(255)", "char(1)", "integer", "bigint", "smallint",
+    "serial", "bigserial", "boolean", "uuid", "timestamp", "timestamptz",
+    "date", "time", "jsonb", "json", "numeric(10,2)", "real",
+    "double precision", "bytea", "inet", "cidr", "macaddr", "point",
+  ],
+  mysql: [
+    "varchar(255)", "char(1)", "text", "mediumtext", "longtext",
+    "int", "bigint", "smallint", "tinyint",
+    "boolean", "datetime", "timestamp", "date", "time",
+    "json", "decimal(10,2)", "float", "double",
+    "blob", "binary(16)", "enum('a','b')",
+  ],
+  mariadb: [
+    "varchar(255)", "char(1)", "text", "mediumtext", "longtext",
+    "int", "bigint", "smallint", "tinyint",
+    "boolean", "datetime", "timestamp", "date", "time",
+    "json", "decimal(10,2)", "float", "double",
+    "blob", "binary(16)", "enum('a','b')",
+  ],
+  clickhouse: [
+    "String", "FixedString(16)", "UInt8", "UInt16", "UInt32", "UInt64",
+    "Int8", "Int16", "Int32", "Int64", "Float32", "Float64",
+    "Boolean", "Date", "DateTime", "DateTime64(3)", "UUID",
+    "Nullable(String)", "Array(String)", "Map(String, UInt64)",
+  ],
+  sqlite: [
+    "TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC",
+    "BOOLEAN", "VARCHAR(255)", "DATETIME", "DATE",
+  ],
+};
+
+function getTypesForEngine(dbType: string): string[] {
+  return TYPES_BY_ENGINE[dbType] ?? TYPES_BY_ENGINE.postgresql;
+}
+
+function getDefaultIdColumn(dbType: string): ColumnRow {
+  if (dbType === "mysql" || dbType === "mariadb") {
+    return { id: "init-0", name: "id", dataType: "int", isNullable: false, isUnique: false, defaultExpr: "AUTO_INCREMENT", references: "" };
+  }
+  if (dbType === "clickhouse") {
+    return { id: "init-0", name: "id", dataType: "UUID", isNullable: false, isUnique: false, defaultExpr: "generateUUIDv4()", references: "" };
+  }
+  if (dbType === "sqlite") {
+    return { id: "init-0", name: "id", dataType: "INTEGER", isNullable: false, isUnique: false, defaultExpr: "", references: "" };
+  }
+  return { id: "init-0", name: "id", dataType: "uuid", isNullable: false, isUnique: false, defaultExpr: "gen_random_uuid()", references: "" };
+}
 
 // ============================================================
 // Create Table Dialog
 // ============================================================
+
+interface SchemaTableSummary {
+  name: string;
+  schema: string;
+  columns: Array<{ name: string; type: string }>;
+}
 
 interface CreateTableDialogProps {
   isOpen: boolean;
   onClose: () => void;
   connectionId: string;
   schema: string;
+  dbType: DatabaseType;
+  existingTables: SchemaTableSummary[];
   createTable: (input: CreateTableInput) => Promise<DdlResult>;
   onSuccess: () => void;
 }
@@ -96,20 +136,21 @@ interface ColumnRow {
   name: string;
   dataType: string;
   isNullable: boolean;
-  isPrimaryKey: boolean;
   isUnique: boolean;
   defaultExpr: string;
+  references: string;
 }
 
-function emptyColumn(id: string): ColumnRow {
+function emptyColumn(id: string, dbType: string): ColumnRow {
+  const defaultType = getTypesForEngine(dbType)[0] ?? "text";
   return {
     id,
     name: "",
-    dataType: "text",
+    dataType: defaultType,
     isNullable: true,
-    isPrimaryKey: false,
     isUnique: false,
     defaultExpr: "",
+    references: "",
   };
 }
 
@@ -118,32 +159,69 @@ export function CreateTableDialog({
   onClose,
   connectionId,
   schema,
+  dbType,
+  existingTables,
   createTable,
   onSuccess,
 }: CreateTableDialogProps) {
   const baseId = useId();
   const [tableName, setTableName] = useState("");
+  const [ifNotExists, setIfNotExists] = useState(false);
+  const [primaryKeyColumns, setPrimaryKeyColumns] = useState<string[]>(["id"]);
   const [columns, setColumns] = useState<ColumnRow[]>(() => [
-    {
-      id: `${baseId}-0`,
-      name: "id",
-      dataType: "uuid",
-      isNullable: false,
-      isPrimaryKey: true,
-      isUnique: false,
-      defaultExpr: "gen_random_uuid()",
-    },
+    getDefaultIdColumn(dbType),
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const engineTypes = useMemo(() => getTypesForEngine(dbType), [dbType]);
+
+  // Build FK reference options from existing tables
+  const fkOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = [];
+    for (const table of existingTables) {
+      for (const col of table.columns) {
+        const ref = `${qi(dbType, table.schema)}.${qi(dbType, table.name)}(${qi(dbType, col.name)})`;
+        options.push({ value: ref, label: `${table.schema}.${table.name}(${col.name})` });
+      }
+    }
+    return options;
+  }, [existingTables, dbType]);
 
   const isValid = useMemo(() => {
     if (!tableName.trim()) return false;
     if (columns.length === 0) return false;
-    return columns.every((c) => c.name.trim() && c.dataType.trim());
-  }, [tableName, columns]);
+    if (primaryKeyColumns.length === 0) return false;
+    const names = columns.map((c) => c.name.trim());
+    const hasEmpty = names.some((n) => !n);
+    const hasDupes = new Set(names).size !== names.length;
+    if (hasEmpty || hasDupes) return false;
+    return columns.every((c) => c.dataType.trim());
+  }, [tableName, columns, primaryKeyColumns]);
+
+  // SQL Preview
+  const sqlPreview = useMemo(() => {
+    if (!tableName.trim() || columns.length === 0) return "";
+    const validCols = columns.filter((c) => c.name.trim() && c.dataType.trim());
+    if (validCols.length === 0) return "";
+    return buildCreateTableSql(
+      dbType,
+      schema,
+      tableName.trim(),
+      validCols.map((c) => ({
+        name: c.name.trim(),
+        dataType: c.dataType.trim(),
+        isNullable: c.isNullable,
+        isUnique: c.isUnique,
+        defaultExpr: c.defaultExpr.trim() || undefined,
+        references: c.references.trim() || undefined,
+      })),
+      primaryKeyColumns,
+      ifNotExists,
+    );
+  }, [dbType, schema, tableName, columns, primaryKeyColumns, ifNotExists]);
 
   const addColumn = () => {
-    setColumns((prev) => [...prev, emptyColumn(`${baseId}-${prev.length}`)]);
+    setColumns((prev) => [...prev, emptyColumn(`${baseId}-${prev.length}`, dbType)]);
   };
 
   const updateColumn = (id: string, patch: Partial<ColumnRow>) => {
@@ -153,7 +231,24 @@ export function CreateTableDialog({
   };
 
   const removeColumn = (id: string) => {
-    setColumns((prev) => prev.filter((col) => col.id !== id));
+    setColumns((prev) => {
+      const removed = prev.find((c) => c.id === id);
+      const next = prev.filter((col) => col.id !== id);
+      // Also remove from PK if present
+      if (removed) {
+        setPrimaryKeyColumns((pk) => pk.filter((c) => c !== removed.name.trim()));
+      }
+      return next;
+    });
+  };
+
+  const togglePk = (colName: string) => {
+    setPrimaryKeyColumns((prev) => {
+      if (prev.includes(colName)) {
+        return prev.filter((c) => c !== colName);
+      }
+      return [...prev, colName];
+    });
   };
 
   const handleSubmit = async () => {
@@ -165,15 +260,18 @@ export function CreateTableDialog({
         name: c.name.trim(),
         dataType: c.dataType.trim(),
         isNullable: c.isNullable,
-        isPrimaryKey: c.isPrimaryKey,
+        isPrimaryKey: primaryKeyColumns.includes(c.name.trim()),
         isUnique: c.isUnique,
         defaultExpr: c.defaultExpr.trim() || undefined,
+        references: c.references.trim() || undefined,
       }));
       const result = await createTable({
         connectionId,
         schema,
         name: tableName.trim(),
         columns: columnDefs,
+        primaryKeyColumns,
+        ifNotExists,
       });
       toast.success("Table created", {
         id: toastId,
@@ -183,17 +281,9 @@ export function CreateTableDialog({
       onClose();
       // Reset
       setTableName("");
-      setColumns([
-        {
-          id: `${baseId}-0`,
-          name: "id",
-          dataType: "uuid",
-          isNullable: false,
-          isPrimaryKey: true,
-          isUnique: false,
-          defaultExpr: "gen_random_uuid()",
-        },
-      ]);
+      setIfNotExists(false);
+      setPrimaryKeyColumns(["id"]);
+      setColumns([getDefaultIdColumn(dbType)]);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to create table",
@@ -204,9 +294,19 @@ export function CreateTableDialog({
     }
   };
 
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setTableName("");
+      setIfNotExists(false);
+      setPrimaryKeyColumns(["id"]);
+      setColumns([getDefaultIdColumn(dbType)]);
+    }
+  }, [isOpen, dbType]);
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="t-resize sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="t-resize sm:max-w-[820px] max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Create table</DialogTitle>
           <DialogDescription>
@@ -218,12 +318,23 @@ export function CreateTableDialog({
         <div className="space-y-4 flex-1 overflow-auto px-0.5">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Table name</Label>
-            <Input
-              value={tableName}
-              onChange={(e) => setTableName(e.target.value)}
-              placeholder="users"
-              autoFocus
-            />
+            <div className="flex items-center gap-3">
+              <Input
+                value={tableName}
+                onChange={(e) => setTableName(e.target.value)}
+                placeholder="users"
+                autoFocus
+                className="flex-1"
+              />
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer shrink-0">
+                <Switch
+                  checked={ifNotExists}
+                  onCheckedChange={setIfNotExists}
+                  size="sm"
+                />
+                IF NOT EXISTS
+              </label>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -241,98 +352,134 @@ export function CreateTableDialog({
             </div>
 
             {/* Column header */}
-            <div className="grid grid-cols-[1fr_1fr_60px_50px_50px_auto_32px] gap-1.5 items-center text-[10px] text-muted-foreground px-0.5">
+            <div className="grid grid-cols-[1fr_1fr_50px_50px_1fr_1fr_32px] gap-1.5 items-center text-[10px] text-muted-foreground px-0.5">
               <span>Name</span>
               <span>Type</span>
               <span className="text-center">Null</span>
               <span className="text-center">PK</span>
-              <span className="text-center">UQ</span>
               <span>Default</span>
+              <span>References</span>
               <span />
             </div>
 
-            {columns.map((col) => (
-              <div
-                key={col.id}
-                className="grid grid-cols-[1fr_1fr_60px_50px_50px_auto_32px] gap-1.5 items-center"
-              >
-                <Input
-                  value={col.name}
-                  onChange={(e) =>
-                    updateColumn(col.id, { name: e.target.value })
-                  }
-                  placeholder="column_name"
-                  className="text-xs h-8"
-                />
-                <Select
-                  value={col.dataType}
-                  onValueChange={(v) =>
-                    updateColumn(col.id, { dataType: v ?? col.dataType })
-                  }
+            {columns.map((col) => {
+              const isPk = primaryKeyColumns.includes(col.name.trim());
+              return (
+                <div
+                  key={col.id}
+                  className="grid grid-cols-[1fr_1fr_50px_50px_1fr_1fr_32px] gap-1.5 items-center"
                 >
-                  <SelectTrigger className="text-xs h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMMON_PG_TYPES.map((t) => (
-                      <SelectItem key={t} value={t} className="text-xs">
-                        {t}
+                  <Input
+                    value={col.name}
+                    onChange={(e) =>
+                      updateColumn(col.id, { name: e.target.value })
+                    }
+                    placeholder="column_name"
+                    className="text-xs h-8"
+                  />
+                  <Select
+                    value={col.dataType}
+                    onValueChange={(v) =>
+                      updateColumn(col.id, { dataType: v ?? col.dataType })
+                    }
+                  >
+                    <SelectTrigger className="text-xs h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {engineTypes.map((t) => (
+                        <SelectItem key={t} value={t} className="text-xs">
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex justify-center">
+                    <Switch
+                      checked={col.isNullable}
+                      onCheckedChange={(v) =>
+                        updateColumn(col.id, { isNullable: v })
+                      }
+                      size="sm"
+                    />
+                  </div>
+                  <div className="flex justify-center">
+                    <Switch
+                      checked={isPk}
+                      onCheckedChange={() => {
+                        const name = col.name.trim();
+                        if (!name) return;
+                        togglePk(name);
+                        // PK implies NOT NULL
+                        if (!isPk) {
+                          updateColumn(col.id, { isNullable: false });
+                        }
+                      }}
+                      size="sm"
+                    />
+                  </div>
+                  <Input
+                    value={col.defaultExpr}
+                    onChange={(e) =>
+                      updateColumn(col.id, { defaultExpr: e.target.value })
+                    }
+                    placeholder="DEFAULT"
+                    className="text-xs h-8 font-mono"
+                  />
+                  <Select
+                    value={col.references || "__none__"}
+                    onValueChange={(v) =>
+                      updateColumn(col.id, { references: v === "__none__" ? "" : (v ?? "") })
+                    }
+                  >
+                    <SelectTrigger className="text-xs h-8">
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__" className="text-xs text-muted-foreground">
+                        — none —
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex justify-center">
-                  <Switch
-                    checked={col.isNullable}
-                    onCheckedChange={(v) =>
-                      updateColumn(col.id, { isNullable: v })
-                    }
-                    size="sm"
-                  />
+                      {fkOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => removeColumn(col.id)}
+                    disabled={columns.length <= 1}
+                  >
+                    <Icon name="trash" className="h-3 w-3 text-muted-foreground" />
+                  </Button>
                 </div>
-                <div className="flex justify-center">
-                  <Switch
-                    checked={col.isPrimaryKey}
-                    onCheckedChange={(v) =>
-                      updateColumn(col.id, {
-                        isPrimaryKey: v,
-                        // PK implies NOT NULL.
-                        ...(v ? { isNullable: false } : {}),
-                      })
-                    }
-                    size="sm"
-                  />
-                </div>
-                <div className="flex justify-center">
-                  <Switch
-                    checked={col.isUnique}
-                    onCheckedChange={(v) =>
-                      updateColumn(col.id, { isUnique: v })
-                    }
-                    size="sm"
-                  />
-                </div>
-                <Input
-                  value={col.defaultExpr}
-                  onChange={(e) =>
-                    updateColumn(col.id, { defaultExpr: e.target.value })
-                  }
-                  placeholder="DEFAULT"
-                  className="text-xs h-8 font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => removeColumn(col.id)}
-                  disabled={columns.length <= 1}
-                >
-                  <Icon name="trash" className="h-3 w-3 text-muted-foreground" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
+
+          {/* Composite PK indicator */}
+          {primaryKeyColumns.length > 1 && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+              <Icon name="key" className="h-3 w-3" />
+              Composite PK: {primaryKeyColumns.map((c) => (
+                <Badge key={c} variant="secondary" className="text-[10px] px-1 py-0">{c}</Badge>
+              ))}
+            </div>
+          )}
+
+          {/* SQL Preview */}
+          {sqlPreview && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">SQL Preview</Label>
+              <CodeBlock className="max-h-40 overflow-auto">
+                <CodeBlockCode code={sqlPreview} />
+              </CodeBlock>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-2 pt-2">
@@ -561,6 +708,7 @@ interface AddColumnDialogProps {
   connectionId: string;
   schema: string;
   tableName: string;
+  dbType: DatabaseType;
   addColumn: (input: AddColumnInput) => Promise<DdlResult>;
   onSuccess: () => void;
 }
@@ -571,6 +719,7 @@ export function AddColumnDialog({
   connectionId,
   schema,
   tableName,
+  dbType,
   addColumn,
   onSuccess,
 }: AddColumnDialogProps) {
@@ -652,7 +801,7 @@ export function AddColumnDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {COMMON_PG_TYPES.map((t) => (
+                {getTypesForEngine(dbType).map((t: string) => (
                   <SelectItem key={t} value={t} className="text-xs">
                     {t}
                   </SelectItem>

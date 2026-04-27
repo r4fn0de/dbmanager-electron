@@ -110,6 +110,7 @@ export const columnDefinitionSchema = z.object({
   isPrimaryKey: z.boolean().optional(),
   isUnique: z.boolean().optional(),
   defaultExpr: z.string().optional(),
+  references: z.string().optional(),
 }) as z.ZodType<ColumnDefinition>;
 
 // DDL Schemas
