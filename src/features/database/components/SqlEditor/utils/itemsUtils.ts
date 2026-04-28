@@ -1,4 +1,5 @@
 import type { SchemaCompletionData } from "@/lib/monaco-sql-setup";
+import { Parser } from "node-sql-parser";
 
 export interface SqlSidebarItemColumn {
   name: string;
@@ -29,6 +30,14 @@ interface JoinEdge {
   toTableKey: string;
   toColumn: string;
 }
+
+export interface SqlStatementRange {
+  start: number;
+  end: number;
+  text: string;
+}
+
+const sqlAstParser = new Parser();
 
 export function buildItemsTree(data?: SchemaCompletionData): SqlSidebarItemSchema[] {
   if (!data || data.tables.length === 0) return [];
@@ -268,4 +277,193 @@ export function buildSmartSqlFromColumnRefs(
     return buildPerTableSql(grouped, orderedTables);
   }
   return buildJoinSql(grouped, orderedTables, edges);
+}
+
+export function getStatementRangeAtOffset(sql: string, offset: number): SqlStatementRange | null {
+  const clamped = Math.max(0, Math.min(offset, sql.length));
+  let start = 0;
+  let end = sql.length;
+
+  for (let i = clamped - 1; i >= 0; i--) {
+    if (sql[i] === ";") {
+      start = i + 1;
+      break;
+    }
+  }
+  for (let i = clamped; i < sql.length; i++) {
+    if (sql[i] === ";") {
+      end = i;
+      break;
+    }
+  }
+
+  const text = sql.slice(start, end).trim();
+  if (!text) return null;
+  return { start, end, text };
+}
+
+function inferJoinClause(
+  baseTableKey: string,
+  targetTableKey: string,
+  baseAlias: string | null,
+  nextAlias: string,
+  schemaData?: SchemaCompletionData,
+): string | null {
+  const edge = buildJoinEdges(schemaData, [baseTableKey, targetTableKey])?.[0];
+  if (!edge) return null;
+  const leftAlias = edge.fromTableKey === targetTableKey ? nextAlias : (baseAlias ?? baseTableKey);
+  const rightAlias = edge.toTableKey === baseTableKey ? (baseAlias ?? baseTableKey) : nextAlias;
+  const joinTable = targetTableKey;
+  return `JOIN ${joinTable} ${nextAlias} ON ${leftAlias}.${edge.fromColumn} = ${rightAlias}.${edge.toColumn}`;
+}
+
+function toTableKey(item: { db?: string | null; table?: string | null }): string | null {
+  if (!item.table) return null;
+  if (item.db) return `${item.db}.${item.table}`;
+  return item.table.includes(".") ? item.table : null;
+}
+
+function readColumnName(expr: unknown): string | null {
+  if (!expr || typeof expr !== "object") return null;
+  const col = (expr as { column?: unknown }).column;
+  if (typeof col === "string") return col;
+  if (col && typeof col === "object") {
+    const value = (col as { expr?: { value?: string } }).expr?.value;
+    return typeof value === "string" ? value : null;
+  }
+  return null;
+}
+
+export function mergeDroppedColumnsIntoStatement(
+  statement: string,
+  droppedRefs: string[],
+  schemaData?: SchemaCompletionData,
+): { sql: string; merged: boolean } {
+  const normalized = normalizeColumnRefs(droppedRefs);
+  if (normalized.length === 0) return { sql: statement, merged: false };
+
+  let astRaw: unknown;
+  try {
+    astRaw = sqlAstParser.astify(statement, { database: "Postgresql" });
+  } catch {
+    return { sql: statement, merged: false };
+  }
+  const ast = Array.isArray(astRaw) ? astRaw[0] : astRaw;
+  if (!ast || typeof ast !== "object") return { sql: statement, merged: false };
+  const selectAst = ast as {
+    type?: string;
+    columns?: Array<{ expr?: unknown; as?: string | null }>;
+    from?: Array<{ db?: string | null; table?: string | null; as?: string | null; join?: string; on?: unknown }>;
+  };
+  if (selectAst.type !== "select" || !Array.isArray(selectAst.from) || selectAst.from.length === 0) {
+    return { sql: statement, merged: false };
+  }
+
+  const baseFrom = selectAst.from[0];
+  const baseTableKey = toTableKey(baseFrom);
+  if (!baseTableKey) return { sql: statement, merged: false };
+  const tableAliases = new Map<string, string | null>();
+  for (const item of selectAst.from) {
+    const key = toTableKey(item);
+    if (!key) continue;
+    tableAliases.set(key, item.as ?? null);
+  }
+
+  const existingProjection = new Set<string>();
+  for (const col of selectAst.columns ?? []) {
+    const expr = col.expr as { type?: string; table?: string | null } | undefined;
+    if (!expr || expr.type !== "column_ref") continue;
+    const colName = readColumnName(expr);
+    if (!colName) continue;
+    const alias = typeof expr.table === "string" ? expr.table : null;
+    existingProjection.add(`${alias ?? ""}.${colName}`);
+  }
+
+  let aliasCounter = Math.max(2, tableAliases.size + 1);
+  const fallbackRefs: string[] = [];
+  let changed = false;
+
+  for (const ref of normalized) {
+    const tableKey = `${ref.schema}.${ref.table}`;
+    if (!tableAliases.has(tableKey)) {
+      const alias = `t${aliasCounter++}`;
+      const joinEdge = buildJoinEdges(schemaData, [baseTableKey, tableKey])?.[0];
+      const joinClause = inferJoinClause(
+        baseTableKey,
+        tableKey,
+        baseFrom.as ?? null,
+        alias,
+        schemaData,
+      );
+      if (!joinClause || !joinEdge) {
+        fallbackRefs.push(ref.qualified);
+        continue;
+      }
+      tableAliases.set(tableKey, alias);
+      const leftAlias = joinEdge.fromTableKey === tableKey
+        ? alias
+        : (baseFrom.as ?? baseTableKey);
+      const rightAlias = joinEdge.toTableKey === baseTableKey
+        ? (baseFrom.as ?? baseTableKey)
+        : alias;
+      selectAst.from.push({
+        db: ref.schema,
+        table: ref.table,
+        as: alias,
+        join: "INNER JOIN",
+        on: {
+          type: "binary_expr",
+          operator: "=",
+          left: {
+            type: "column_ref",
+            table: leftAlias,
+            column: joinEdge.fromColumn,
+          },
+          right: {
+            type: "column_ref",
+            table: rightAlias,
+            column: joinEdge.toColumn,
+          },
+        },
+      });
+      changed = true;
+    }
+
+    const alias = tableAliases.get(tableKey);
+    const key = `${alias ?? ""}.${ref.column}`;
+    if (!existingProjection.has(key)) {
+      existingProjection.add(key);
+      (selectAst.columns ??= []).push({
+        type: "expr",
+        expr: {
+          type: "column_ref",
+          table: alias ?? tableKey,
+          column: ref.column,
+          collate: null,
+        },
+        as: null,
+      });
+      changed = true;
+    }
+  }
+  let mergedSql = statement;
+  if (changed) {
+    try {
+      mergedSql = sqlAstParser.sqlify(selectAst as object, { database: "Postgresql" });
+    } catch {
+      mergedSql = statement;
+      changed = false;
+    }
+  }
+
+  if (fallbackRefs.length > 0) {
+    const fallbackSql = buildSmartSqlFromColumnRefs(fallbackRefs, schemaData);
+    if (fallbackSql) {
+      mergedSql = `${mergedSql.trimEnd()}\n\n${fallbackSql}`;
+      changed = true;
+    }
+  }
+
+  if (!changed) return { sql: statement, merged: false };
+  return { sql: mergedSql, merged: true };
 }

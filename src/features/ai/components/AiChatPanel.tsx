@@ -1589,7 +1589,7 @@ export function AiChatPanel({
                   : "Ask anything about SQL, modeling, or debugging…"
               }
               className="
-                !w-auto max-h-62.5 min-h-6 min-w-32 flex-1 basis-32 overflow-y-auto px-0 py-0 text-sm leading-5
+                w-auto! max-h-62.5 min-h-6 min-w-32 flex-1 basis-32 overflow-y-auto px-0 py-0 text-sm leading-5
                 placeholder:text-muted-foreground/50
                 dark:bg-transparent
               "

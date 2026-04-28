@@ -3,8 +3,10 @@ import {
   buildItemsTree,
   buildSmartSqlFromColumnRefs,
   filterItemsTree,
+  getStatementRangeAtOffset,
   makeQualifiedColumnRef,
   makeTableSelectSql,
+  mergeDroppedColumnsIntoStatement,
   normalizeColumnRefs,
   parseColumnRef,
 } from "@/features/database/components/SqlEditor/utils/itemsUtils";
@@ -122,5 +124,75 @@ describe("sql editor items utils", () => {
     expect(sql).toBe(
       "SELECT email\nFROM public.users\nLIMIT 100;\n\nSELECT payload\nFROM audit.events\nLIMIT 100;",
     );
+  });
+
+  it("finds statement range by cursor offset in multi-query sql", () => {
+    const sql = "SELECT id FROM public.users;\n\nSELECT email FROM public.users;";
+    const offsetInSecond = sql.lastIndexOf("email");
+    const range = getStatementRangeAtOffset(sql, offsetInSecond);
+    expect(range?.text).toBe("SELECT email FROM public.users");
+  });
+
+  it("merges dropped columns into existing select without overwriting statement", () => {
+    const statement = "SELECT t1.id\nFROM public.users t1\nLIMIT 100;";
+    const merged = mergeDroppedColumnsIntoStatement(
+      statement,
+      ["public.users.email"],
+      schemaCompletionData,
+    );
+    expect(merged.merged).toBe(true);
+    expect(merged.sql).toContain("\"t1\".id");
+    expect(merged.sql).toContain("\"t1\".\"email\"");
+    expect(merged.sql).toContain("\"public\".\"users\"");
+  });
+
+  it("adds join automatically when dropped columns reference related table", () => {
+    const statement = "SELECT t1.id\nFROM public.users t1\nLIMIT 100;";
+    const merged = mergeDroppedColumnsIntoStatement(
+      statement,
+      ["public.orders.user_id"],
+      schemaCompletionData,
+    );
+    expect(merged.merged).toBe(true);
+    expect(merged.sql).toContain("JOIN \"public\".\"orders\"");
+    expect(merged.sql).toContain("ON");
+    expect(merged.sql).toContain("\"t2\".\"user_id\"");
+  });
+
+  it("keeps existing join without duplicating when table already joined", () => {
+    const statement = "SELECT u.id FROM public.users u INNER JOIN public.orders o ON o.user_id = u.id LIMIT 100;";
+    const merged = mergeDroppedColumnsIntoStatement(
+      statement,
+      ["public.orders.id"],
+      schemaCompletionData,
+    );
+    expect(merged.merged).toBe(true);
+    expect(merged.sql.match(/JOIN "public"\."orders"/gi)?.length).toBe(1);
+    expect(merged.sql).toContain("\"o\".\"id\"");
+  });
+
+  it("merges inside CTE outer select", () => {
+    const statement = "WITH x AS (SELECT id FROM public.users) SELECT u.id FROM public.users u LIMIT 10;";
+    const merged = mergeDroppedColumnsIntoStatement(
+      statement,
+      ["public.users.email"],
+      schemaCompletionData,
+    );
+    expect(merged.merged).toBe(true);
+    expect(merged.sql).toContain("WITH");
+    expect(merged.sql).toContain("\"u\".\"email\"");
+  });
+
+  it("appends fallback block when relation is not inferable", () => {
+    const statement = "SELECT id\nFROM public.users\nLIMIT 100;";
+    const merged = mergeDroppedColumnsIntoStatement(
+      statement,
+      ["audit.events.payload"],
+      schemaCompletionData,
+    );
+    expect(merged.merged).toBe(true);
+    expect(merged.sql).toContain("SELECT id");
+    expect(merged.sql).toContain("SELECT payload");
+    expect(merged.sql).toContain("FROM audit.events");
   });
 });

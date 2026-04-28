@@ -159,7 +159,7 @@ function EnumCard({
           <TooltipContent>Copy values</TooltipContent>
         </Tooltip>
       </div>
-      <div className="flex flex-wrap gap-1 pl-[22px]">
+      <div className="flex flex-wrap gap-1 pl-5.5">
         {values.length === 0 ? (
           <span className="text-[11px] text-muted-foreground italic">No values</span>
         ) : (
@@ -373,7 +373,7 @@ function TriggerCard({
         )}
       </div>
       {trigger.definition && (
-        <pre className="mt-1.5 ml-[22px] text-[10px] font-mono text-muted-foreground/80 bg-muted/30 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all max-h-24">
+        <pre className="mt-1.5 ml-5.5 text-[10px] font-mono text-muted-foreground/80 bg-muted/30 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all max-h-24">
           {trigger.definition}
         </pre>
       )}
@@ -586,7 +586,7 @@ export function DefinitionsBrowserPanel({
                 value={selectedSchema}
                 onValueChange={(v) => { if (v) onSchemaChange(v); }}
               >
-                <SelectTrigger className="h-7 w-auto min-w-[100px] text-xs font-mono">
+                <SelectTrigger className="h-7 w-auto min-w-25 text-xs font-mono">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -635,7 +635,7 @@ export function DefinitionsBrowserPanel({
               {constraints.length > 0 && (
                 <Badge
                   variant="secondary"
-                  className="font-mono text-[9px] h-4 min-w-[18px] px-1"
+                  className="font-mono text-[9px] h-4 min-w-4.5 px-1"
                 >
                   {constraints.length}
                 </Badge>
@@ -647,7 +647,7 @@ export function DefinitionsBrowserPanel({
               {enums.length > 0 && (
                 <Badge
                   variant="secondary"
-                  className="font-mono text-[9px] h-4 min-w-[18px] px-1"
+                  className="font-mono text-[9px] h-4 min-w-4.5 px-1"
                 >
                   {enums.length}
                 </Badge>
@@ -659,7 +659,7 @@ export function DefinitionsBrowserPanel({
               {functions.length > 0 && (
                 <Badge
                   variant="secondary"
-                  className="font-mono text-[9px] h-4 min-w-[18px] px-1"
+                  className="font-mono text-[9px] h-4 min-w-4.5 px-1"
                 >
                   {functions.length}
                 </Badge>
@@ -671,7 +671,7 @@ export function DefinitionsBrowserPanel({
               {indexes.length > 0 && (
                 <Badge
                   variant="secondary"
-                  className="font-mono text-[9px] h-4 min-w-[18px] px-1"
+                  className="font-mono text-[9px] h-4 min-w-4.5 px-1"
                 >
                   {indexes.length}
                 </Badge>
@@ -683,7 +683,7 @@ export function DefinitionsBrowserPanel({
               {triggers.length > 0 && (
                 <Badge
                   variant="secondary"
-                  className="font-mono text-[9px] h-4 min-w-[18px] px-1"
+                  className="font-mono text-[9px] h-4 min-w-4.5 px-1"
                 >
                   {triggers.length}
                 </Badge>

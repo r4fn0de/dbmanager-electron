@@ -1,5 +1,5 @@
 import { useTheme } from "next-themes";
-import type { KeyboardEvent } from "react";
+import type { DragEvent, KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -53,8 +53,10 @@ import {
   buildItemsTree,
   buildSmartSqlFromColumnRefs,
   filterItemsTree,
+  getStatementRangeAtOffset,
   makeQualifiedColumnRef,
   makeTableSelectSql,
+  mergeDroppedColumnsIntoStatement,
   normalizeColumnRefs,
 } from "./utils/itemsUtils";
 import { cancelQuery } from "@/features/database/hooks/db-actions";
@@ -455,6 +457,60 @@ export function SqlEditor({
     [setSql],
   );
 
+  const replaceStatementAtCursor = useCallback((nextStatementSql: string): boolean => {
+    const editorInstance = editorRef.current;
+    const model = editorInstance?.getModel();
+    const position = editorInstance?.getPosition();
+    if (!editorInstance || !model || !position) return false;
+
+    const offset = model.getOffsetAt(position);
+    const statement = getStatementRangeAtOffset(model.getValue(), offset);
+    if (!statement) return false;
+
+    const startPos = model.getPositionAt(statement.start);
+    const endPos = model.getPositionAt(statement.end);
+    editorInstance.executeEdits("sidebar-items-merge-statement", [{
+      range: new monaco.Range(
+        startPos.lineNumber,
+        startPos.column,
+        endPos.lineNumber,
+        endPos.column,
+      ),
+      text: nextStatementSql,
+      forceMoveMarkers: true,
+    }]);
+    editorInstance.focus();
+    return true;
+  }, []);
+
+  const insertSqlBelowStatementAtCursor = useCallback((nextSql: string): boolean => {
+    const editorInstance = editorRef.current;
+    const model = editorInstance?.getModel();
+    const position = editorInstance?.getPosition();
+    if (!editorInstance || !model || !position) return false;
+
+    const source = model.getValue();
+    const offset = model.getOffsetAt(position);
+    const statement = getStatementRangeAtOffset(source, offset);
+    if (!statement) return false;
+    let insertOffset = statement.end;
+    if (source[insertOffset] === ";") insertOffset += 1;
+    const insertPos = model.getPositionAt(insertOffset);
+    const text = `\n\n${nextSql}`;
+    editorInstance.executeEdits("sidebar-items-insert-below", [{
+      range: new monaco.Range(
+        insertPos.lineNumber,
+        insertPos.column,
+        insertPos.lineNumber,
+        insertPos.column,
+      ),
+      text,
+      forceMoveMarkers: true,
+    }]);
+    editorInstance.focus();
+    return true;
+  }, []);
+
   const toggleSchemaExpanded = useCallback((schema: string) => {
     setExpandedSchemas((prev) => ({ ...prev, [schema]: !prev[schema] }));
   }, []);
@@ -467,10 +523,6 @@ export function SqlEditor({
     insertIntoEditor(makeTableSelectSql(schema, table));
   }, [insertIntoEditor]);
 
-  const handleInsertColumnFromItems = useCallback((schema: string, table: string, column: string) => {
-    insertIntoEditor(makeQualifiedColumnRef(schema, table, column));
-  }, [insertIntoEditor]);
-
   const toggleColumnSelection = useCallback((qualifiedColumn: string) => {
     setSelectedColumns((prev) => {
       if (prev.includes(qualifiedColumn)) {
@@ -479,6 +531,38 @@ export function SqlEditor({
       return [...prev, qualifiedColumn];
     });
     setLastSelectedColumn(qualifiedColumn);
+  }, []);
+
+  const setMultiItemDragPreview = useCallback((
+    event: DragEvent<HTMLElement>,
+    items: string[],
+  ) => {
+    if (items.length <= 1) return;
+    const preview = document.createElement("div");
+    preview.style.position = "fixed";
+    preview.style.top = "-9999px";
+    preview.style.left = "-9999px";
+    preview.style.pointerEvents = "none";
+    preview.style.padding = "8px 10px";
+    preview.style.borderRadius = "8px";
+    preview.style.background = "rgba(24,24,27,0.92)";
+    preview.style.border = "1px solid rgba(255,255,255,0.12)";
+    preview.style.color = "#f4f4f5";
+    preview.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, monospace";
+    preview.style.fontSize = "12px";
+    preview.style.lineHeight = "1.2";
+    preview.style.maxWidth = "340px";
+    preview.style.boxShadow = "0 6px 24px rgba(0,0,0,0.35)";
+
+    const first = items[0] ?? "";
+    const restCount = items.length - 1;
+    preview.textContent = restCount > 0
+      ? `${first} + ${restCount} itens`
+      : first;
+
+    document.body.append(preview);
+    event.dataTransfer.setDragImage(preview, 12, 12);
+    requestAnimationFrame(() => preview.remove());
   }, []);
 
   const selectRangeInTable = useCallback((
@@ -1366,7 +1450,6 @@ export function SqlEditor({
                                                   }
                                                   setSelectedColumns([qualified]);
                                                   setLastSelectedColumn(qualified);
-                                                  handleInsertColumnFromItems(schema.name, table.name, column.name);
                                                 }}
                                                 draggable
                                                 onDragStart={(event) => {
@@ -1381,6 +1464,7 @@ export function SqlEditor({
                                                   event.dataTransfer.setData("text/sql-column-refs", JSON.stringify(dragColumns));
                                                   event.dataTransfer.setData("text/plain", dragColumns.join(", "));
                                                   event.dataTransfer.effectAllowed = "copy";
+                                                  setMultiItemDragPreview(event, dragColumns);
                                                 }}
                                               >
                                                 <UiIcon name="key" className="size-3 text-muted-foreground/70" />
@@ -1794,15 +1878,40 @@ export function SqlEditor({
                       const normalized = normalizeColumnRefs(columnRefs);
                       if (normalized.length > 0) {
                         e.preventDefault();
-                        const sql = buildSmartSqlFromColumnRefs(
-                          normalized.map((item) => item.qualified),
-                          schemaCompletionData,
+                        const editorInstance = editorRef.current;
+                        const selection = editorInstance?.getSelection();
+                        const hasExplicitSelection = Boolean(
+                          selection &&
+                          (selection.startLineNumber !== selection.endLineNumber ||
+                            selection.startColumn !== selection.endColumn),
                         );
+                        const refs = normalized.map((item) => item.qualified);
+
+                        if (!hasExplicitSelection && editorInstance?.getModel() && editorInstance.getPosition()) {
+                          const model = editorInstance.getModel();
+                          const offset = model.getOffsetAt(editorInstance.getPosition());
+                          const statement = getStatementRangeAtOffset(model.getValue(), offset);
+                          if (statement) {
+                            const merged = mergeDroppedColumnsIntoStatement(
+                              statement.text,
+                              refs,
+                              schemaCompletionData,
+                            );
+                            if (merged.merged && replaceStatementAtCursor(merged.sql)) {
+                              return;
+                            }
+                          }
+                        }
+
+                        const sql = buildSmartSqlFromColumnRefs(refs, schemaCompletionData);
                         if (sql) {
+                          if (!hasExplicitSelection && insertSqlBelowStatementAtCursor(sql)) {
+                            return;
+                          }
                           insertIntoEditor(sql);
                           return;
                         }
-                        insertIntoEditor(normalized.map((item) => item.qualified).join(", "));
+                        insertIntoEditor(refs.join(", "));
                         return;
                       }
                     } catch {
