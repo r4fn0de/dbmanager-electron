@@ -25,10 +25,6 @@ import { Sqlite } from "@/components/icons/Sqlite";
 import type { Connection, ConnectionInput, DatabaseType, SslMode } from "@/ipc/db/types";
 import { cn } from "@/lib/utils";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const DB_TYPE_OPTIONS: {
   value: DatabaseType;
   label: string;
@@ -80,10 +76,6 @@ const DEFAULT_CONNECTION = {
   password: "",
   ssl_mode: "prefer" as SslMode,
 } as ConnectionInput;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function generateRandomName(): string {
   const adjectives = ["swift", "silent", "bright", "cosmic", "gentle", "bold", "warm", "crisp"];
@@ -144,10 +136,6 @@ function getConnectionHash(data: ConnectionInput, url?: string): string {
     url,
   });
 }
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
 
 function UrlInput({
   dbType,
@@ -496,10 +484,6 @@ function OrganizationFields({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 type InputMode = "url" | "details";
 

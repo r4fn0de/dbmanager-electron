@@ -11,10 +11,6 @@ import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/manager";
 
-// ---------------------------------------------------------------------------
-// Query Keys
-// ---------------------------------------------------------------------------
-
 export const MEMORY_KEYS = {
   all: ["ai-memory"] as const,
   stats: () => [...MEMORY_KEYS.all, "stats"] as const,
@@ -25,10 +21,6 @@ export const MEMORY_KEYS = {
     [...MEMORY_KEYS.all, "context", query, connectionId ?? "all"] as const,
   embeddingStatus: () => [...MEMORY_KEYS.all, "embedding-status"] as const,
 };
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export interface MemoryEntry {
   id: string;
@@ -93,10 +85,6 @@ export interface MemoryContextInput {
   recentLimit?: number;
   similarLimit?: number;
 }
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
 
 export interface UseAiMemoryReturn {
   // Stats

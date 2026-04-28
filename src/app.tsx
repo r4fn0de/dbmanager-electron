@@ -8,9 +8,7 @@ import { queryClient } from "@/lib/query-client";
 import { router } from "@/lib/routes";
 import "./localization/i18n";
 
-// ---------------------------------------------------------------------------
 // Error Boundary — prevents white-screen-of-death on unhandled errors
-// ---------------------------------------------------------------------------
 interface ErrorBoundaryProps {
   children: ReactNode;
 }

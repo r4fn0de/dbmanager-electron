@@ -26,10 +26,6 @@ interface CellExpandPopoverProps {
   readOnly?: boolean;
 }
 
-// --------------------------------------------------------------------------------------
-// Classificação de tipos
-// --------------------------------------------------------------------------------------
-
 type ColumnKind =
   | "json"
   | "array"
@@ -102,10 +98,6 @@ function classifyColumnKind(column: SchemaColumn | undefined): ColumnKind {
 
   return "text";
 }
-
-// --------------------------------------------------------------------------------------
-// Helpers de valor <-> texto
-// --------------------------------------------------------------------------------------
 
 const NULL_SENTINEL = "NULL";
 
@@ -217,10 +209,6 @@ function initialNumeric(value: unknown): string {
   if (typeof value === "number") return String(value);
   return String(value).trim();
 }
-
-// --------------------------------------------------------------------------------------
-// Validação client-side
-// --------------------------------------------------------------------------------------
 
 type ValidationResult = { ok: true } | { ok: false; message: string };
 
@@ -543,10 +531,6 @@ function validateDraft(
       return { ok: true };
   }
 }
-
-// --------------------------------------------------------------------------------------
-// Componente
-// --------------------------------------------------------------------------------------
 
 export function CellExpandPopover({
   trigger,

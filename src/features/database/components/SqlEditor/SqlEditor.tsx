@@ -49,6 +49,14 @@ import {
   nowIso,
   toHistoryResultPreview,
 } from "./utils/sqlUtils";
+import {
+  buildItemsTree,
+  buildSmartSqlFromColumnRefs,
+  filterItemsTree,
+  makeQualifiedColumnRef,
+  makeTableSelectSql,
+  normalizeColumnRefs,
+} from "./utils/itemsUtils";
 import { cancelQuery } from "@/features/database/hooks/db-actions";
 
 
@@ -151,10 +159,14 @@ export function SqlEditor({
     }
   }, []);
 
-  const [activeSidebarTab, setActiveSidebarTab] = useState<"saved" | "history">(
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"saved" | "history" | "items">(
     "saved",
   );
   const [searchText, setSearchText] = useState("");
+  const [expandedSchemas, setExpandedSchemas] = useState<Record<string, boolean>>({});
+  const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const [lastSelectedColumn, setLastSelectedColumn] = useState<string | null>(null);
 
   // Layout persistence via useDefaultLayout (same pattern as conar)
   // onLayoutChanged fires AFTER drag ends — no debouncing needed
@@ -368,6 +380,30 @@ export function SqlEditor({
     );
   }, [history, searchText]);
 
+  const itemsTree = useMemo(
+    () => buildItemsTree(schemaCompletionData),
+    [schemaCompletionData],
+  );
+
+  const filteredItemsTree = useMemo(
+    () => filterItemsTree(itemsTree, searchText),
+    [itemsTree, searchText],
+  );
+
+  useEffect(() => {
+    if (!searchText.trim()) return;
+    const nextSchemas: Record<string, boolean> = {};
+    const nextTables: Record<string, boolean> = {};
+    for (const schema of filteredItemsTree) {
+      nextSchemas[schema.name] = true;
+      for (const table of schema.tables) {
+        nextTables[`${schema.name}.${table.name}`] = true;
+      }
+    }
+    setExpandedSchemas((prev) => ({ ...prev, ...nextSchemas }));
+    setExpandedTables((prev) => ({ ...prev, ...nextTables }));
+  }, [filteredItemsTree, searchText]);
+
   const activeRunResult = useMemo(() => {
     if (runResults.length === 0) return null;
     if (!activeRunResultId) return runResults[0];
@@ -397,6 +433,88 @@ export function SqlEditor({
     },
     [updateTab],
   );
+
+  const insertIntoEditor = useCallback(
+    (text: string) => {
+      const editorInstance = editorRef.current;
+      if (editorInstance) {
+        const selection = editorInstance.getSelection();
+        const range = selection ?? editorInstance.getModel()?.getFullModelRange();
+        if (range) {
+          editorInstance.executeEdits("sidebar-items-insert", [{
+            range,
+            text,
+            forceMoveMarkers: true,
+          }]);
+          editorInstance.focus();
+          return;
+        }
+      }
+      setSql(text);
+    },
+    [setSql],
+  );
+
+  const toggleSchemaExpanded = useCallback((schema: string) => {
+    setExpandedSchemas((prev) => ({ ...prev, [schema]: !prev[schema] }));
+  }, []);
+
+  const toggleTableExpanded = useCallback((tableKey: string) => {
+    setExpandedTables((prev) => ({ ...prev, [tableKey]: !prev[tableKey] }));
+  }, []);
+
+  const handleInsertTableFromItems = useCallback((schema: string, table: string) => {
+    insertIntoEditor(makeTableSelectSql(schema, table));
+  }, [insertIntoEditor]);
+
+  const handleInsertColumnFromItems = useCallback((schema: string, table: string, column: string) => {
+    insertIntoEditor(makeQualifiedColumnRef(schema, table, column));
+  }, [insertIntoEditor]);
+
+  const toggleColumnSelection = useCallback((qualifiedColumn: string) => {
+    setSelectedColumns((prev) => {
+      if (prev.includes(qualifiedColumn)) {
+        return prev.filter((col) => col !== qualifiedColumn);
+      }
+      return [...prev, qualifiedColumn];
+    });
+    setLastSelectedColumn(qualifiedColumn);
+  }, []);
+
+  const selectRangeInTable = useCallback((
+    schema: string,
+    table: string,
+    columns: { name: string; dataType: string }[],
+    anchorQualified: string,
+    targetQualified: string,
+  ) => {
+    const tableKey = `${schema}.${table}.`;
+    if (!anchorQualified.startsWith(tableKey) || !targetQualified.startsWith(tableKey)) {
+      setSelectedColumns([targetQualified]);
+      setLastSelectedColumn(targetQualified);
+      return;
+    }
+
+    const names = columns.map((column) => column.name);
+    const anchorName = anchorQualified.slice(tableKey.length);
+    const targetName = targetQualified.slice(tableKey.length);
+    const anchorIndex = names.indexOf(anchorName);
+    const targetIndex = names.indexOf(targetName);
+    if (anchorIndex < 0 || targetIndex < 0) {
+      setSelectedColumns([targetQualified]);
+      setLastSelectedColumn(targetQualified);
+      return;
+    }
+
+    const [start, end] = anchorIndex < targetIndex
+      ? [anchorIndex, targetIndex]
+      : [targetIndex, anchorIndex];
+    const rangeSelection = names
+      .slice(start, end + 1)
+      .map((name) => makeQualifiedColumnRef(schema, table, name));
+    setSelectedColumns(rangeSelection);
+    setLastSelectedColumn(targetQualified);
+  }, []);
 
   const clearInlineStreamTimeout = useCallback(() => {
     if (inlineStreamTimeoutRef.current) {
@@ -1105,7 +1223,7 @@ export function SqlEditor({
                   ref={searchInputRef}
                   value={searchText}
                   onChange={(event) => setSearchText(event.target.value)}
-                  placeholder="Filter queries..."
+                  placeholder={activeSidebarTab === "items" ? "Filter items..." : "Filter queries..."}
                   className="h-7 pl-7 pr-7 text-xs bg-muted/40 border-dashed focus:bg-background focus:border-solid"
                 />
                 {searchText && (
@@ -1124,11 +1242,15 @@ export function SqlEditor({
             <Tabs
               value={activeSidebarTab}
               onValueChange={(value) =>
-                setActiveSidebarTab(value as "saved" | "history")
+                setActiveSidebarTab(value as "saved" | "history" | "items")
               }
               className="flex-1 min-h-0 flex flex-col"
             >
               <TabsList variant="line" className="mx-3 shrink-0">
+                <TabsTrigger value="items" className="gap-1.5 text-xs">
+                  <UiIcon name="layout-grid" className="size-3" />
+                  Items
+                </TabsTrigger>
                 <TabsTrigger value="saved" className="gap-1.5 text-xs">
                   <UiIcon name="star" className="size-3" />
                   Saved
@@ -1138,6 +1260,153 @@ export function SqlEditor({
                   History
                 </TabsTrigger>
               </TabsList>
+
+              {/* Items */}
+              <TabsContent value="items" className="min-h-0 flex flex-col flex-1">
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="px-2 py-1.5">
+                    {filteredItemsTree.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                        <UiIcon name="layout-grid" className="size-4 text-muted-foreground/50 mb-2" />
+                        <p className="text-xs text-muted-foreground">
+                          {searchText ? "No matches found" : "No items available"}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {filteredItemsTree.map((schema) => {
+                          const isSchemaExpanded = expandedSchemas[schema.name] ?? true;
+                          return (
+                            <div key={schema.name} className="rounded-md">
+                              <button
+                                type="button"
+                                className="group w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-left hover:bg-muted/50 transition-colors"
+                                onClick={() => toggleSchemaExpanded(schema.name)}
+                              >
+                                <UiIcon
+                                  name="chevron-right"
+                                  className={cn(
+                                    "size-3 text-muted-foreground transition-transform",
+                                    isSchemaExpanded && "rotate-90",
+                                  )}
+                                />
+                                <UiIcon name="database" className="size-3.5 text-muted-foreground" />
+                                <span className="flex-1 truncate text-[13px] font-medium leading-tight">
+                                  {schema.name}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground tabular-nums">
+                                  {schema.tables.length}
+                                </span>
+                              </button>
+
+                              {isSchemaExpanded && (
+                                <div className="ml-4 mt-0.5 space-y-0.5">
+                                  {schema.tables.map((table) => {
+                                    const tableKey = `${schema.name}.${table.name}`;
+                                    const isTableExpanded = expandedTables[tableKey] ?? true;
+                                    return (
+                                      <div key={tableKey} className="rounded-md">
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            className="group w-full flex items-center gap-2 px-2.5 py-[6px] rounded-md text-left hover:bg-muted/40 transition-colors"
+                                            onClick={() => toggleTableExpanded(tableKey)}
+                                          >
+                                            <UiIcon
+                                              name="chevron-right"
+                                              className={cn(
+                                                "size-3 text-muted-foreground transition-transform",
+                                                isTableExpanded && "rotate-90",
+                                              )}
+                                            />
+                                            <UiIcon name="table" className="size-3.5 text-muted-foreground" />
+                                            <span className="flex-1 truncate text-[12px] font-medium">
+                                              {table.name}
+                                            </span>
+                                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                                              {table.columns.length}
+                                            </span>
+                                          </button>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className="mr-1 text-muted-foreground hover:text-foreground"
+                                            onClick={() => handleInsertTableFromItems(schema.name, table.name)}
+                                            draggable
+                                            onDragStart={(event) => {
+                                              event.dataTransfer.setData("text/sql-table-ref", `${schema.name}.${table.name}`);
+                                              event.dataTransfer.effectAllowed = "copy";
+                                            }}
+                                          >
+                                            <UiIcon name="plus" className="size-3" />
+                                          </Button>
+                                        </div>
+
+                                        {isTableExpanded && (
+                                          <div className="ml-6 space-y-0.5">
+                                            {table.columns.map((column) => (
+                                              <button
+                                                key={`${tableKey}.${column.name}`}
+                                                type="button"
+                                                className={cn(
+                                                  "group w-full flex items-center gap-2 px-2.5 py-[5px] rounded-md text-left transition-colors",
+                                                  selectedColumns.includes(makeQualifiedColumnRef(schema.name, table.name, column.name))
+                                                    ? "bg-accent text-accent-foreground"
+                                                    : "hover:bg-muted/30",
+                                                )}
+                                                onClick={(event) => {
+                                                  const qualified = makeQualifiedColumnRef(schema.name, table.name, column.name);
+                                                  if (event.shiftKey && lastSelectedColumn) {
+                                                    selectRangeInTable(schema.name, table.name, table.columns, lastSelectedColumn, qualified);
+                                                    return;
+                                                  }
+                                                  if (event.metaKey || event.ctrlKey) {
+                                                    toggleColumnSelection(qualified);
+                                                    return;
+                                                  }
+                                                  setSelectedColumns([qualified]);
+                                                  setLastSelectedColumn(qualified);
+                                                  handleInsertColumnFromItems(schema.name, table.name, column.name);
+                                                }}
+                                                draggable
+                                                onDragStart={(event) => {
+                                                  const qualified = makeQualifiedColumnRef(schema.name, table.name, column.name);
+                                                  const fromSameTable = selectedColumns.filter((selected) =>
+                                                    selected.startsWith(`${schema.name}.${table.name}.`),
+                                                  );
+                                                  const dragColumns = fromSameTable.includes(qualified)
+                                                    ? fromSameTable
+                                                    : [qualified];
+                                                  event.dataTransfer.setData("text/sql-column-ref", dragColumns[0] ?? qualified);
+                                                  event.dataTransfer.setData("text/sql-column-refs", JSON.stringify(dragColumns));
+                                                  event.dataTransfer.setData("text/plain", dragColumns.join(", "));
+                                                  event.dataTransfer.effectAllowed = "copy";
+                                                }}
+                                              >
+                                                <UiIcon name="key" className="size-3 text-muted-foreground/70" />
+                                                <span className="flex-1 truncate text-[11px] font-mono">
+                                                  {column.name}
+                                                </span>
+                                                <span className="truncate text-[10px] text-muted-foreground/70 max-w-24">
+                                                  {column.dataType}
+                                                </span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
 
               {/* Saved queries */}
               <TabsContent value="saved" className="min-h-0 flex flex-col flex-1">
@@ -1509,30 +1778,56 @@ export function SqlEditor({
               <div
                 className="h-full min-h-0 relative"
                 onDragOver={(e) => {
-                  if (e.dataTransfer?.types.includes("text/sql-table-ref")) {
+                  const supportsTable = e.dataTransfer?.types.includes("text/sql-table-ref");
+                  const supportsColumn = e.dataTransfer?.types.includes("text/sql-column-ref");
+                  const supportsColumns = e.dataTransfer?.types.includes("text/sql-column-refs");
+                  if (supportsTable || supportsColumn || supportsColumns) {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "copy";
                   }
                 }}
                 onDrop={(e) => {
+                  const columnRefsRaw = e.dataTransfer?.getData("text/sql-column-refs");
+                  if (columnRefsRaw) {
+                    try {
+                      const columnRefs = JSON.parse(columnRefsRaw) as string[];
+                      const normalized = normalizeColumnRefs(columnRefs);
+                      if (normalized.length > 0) {
+                        e.preventDefault();
+                        const sql = buildSmartSqlFromColumnRefs(
+                          normalized.map((item) => item.qualified),
+                          schemaCompletionData,
+                        );
+                        if (sql) {
+                          insertIntoEditor(sql);
+                          return;
+                        }
+                        insertIntoEditor(normalized.map((item) => item.qualified).join(", "));
+                        return;
+                      }
+                    } catch {
+                      // Ignore malformed payload and try legacy paths below.
+                    }
+                  }
+
+                  const columnRef = e.dataTransfer?.getData("text/sql-column-ref")?.trim();
+                  if (columnRef) {
+                    e.preventDefault();
+                    insertIntoEditor(columnRef);
+                    return;
+                  }
+
                   const tableRef = e.dataTransfer?.getData("text/sql-table-ref");
                   if (tableRef) {
                     e.preventDefault();
-                    const sql = `SELECT *\nFROM ${tableRef}\nLIMIT 100;`;
-                    const editorInstance = editorRef.current;
-                    if (editorInstance) {
-                      const selection = editorInstance.getSelection();
-                      const range = selection ?? editorInstance.getModel()?.getFullModelRange();
-                      if (range) {
-                        editorInstance.executeEdits("drag-drop-table", [{
-                          range,
-                          text: sql,
-                          forceMoveMarkers: true,
-                        }]);
-                        return;
-                      }
+                    const dot = tableRef.indexOf(".");
+                    if (dot > 0) {
+                      const schema = tableRef.slice(0, dot);
+                      const table = tableRef.slice(dot + 1);
+                      insertIntoEditor(makeTableSelectSql(schema, table));
+                      return;
                     }
-                    setSql(sql);
+                    insertIntoEditor(`SELECT *\nFROM ${tableRef}\nLIMIT 100;`);
                   }
                 }}
               >

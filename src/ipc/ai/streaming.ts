@@ -39,10 +39,6 @@ import {
   optimizeQueryForSearch,
 } from "./embedding-service";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const MAX_TOOL_STEPS = 5;
 
 const CHAT_TIMEOUT = {
@@ -61,10 +57,6 @@ const MAX_SCHEMA_CONTEXT_CHARS = 24_000;
 const MAX_MEMORY_MESSAGE_CHARS = 300;
 const MAX_MEMORY_QUERY_CHARS = 220;
 const MAX_MEMORY_RESPONSE_CHARS = 500;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 interface ChatStartInput {
   /** Unique ID for this chat session (used to correlate events) */
@@ -123,10 +115,6 @@ interface MemoryContextData {
   similarQueries: Array<{ query: string; response: string; similarity: number }>;
 }
 
-// ---------------------------------------------------------------------------
-// Active streams tracking
-// ---------------------------------------------------------------------------
-
 const activeAbortControllers = new Map<string, AbortController>();
 const activeInlineAbortControllers = new Map<string, AbortController>();
 
@@ -137,10 +125,6 @@ const pendingApprovals = new Map<string, {
 }>();
 
 let handlersRegistered = false;
-
-// ---------------------------------------------------------------------------
-// IPC helpers
-// ---------------------------------------------------------------------------
 
 function isUsableWebContents(
   contents: WebContents | null | undefined,
@@ -170,10 +154,6 @@ function getSenderWindow(event: IpcMainEvent): BrowserWindow | null {
   const contents = getSenderContents(event);
   return contents ? BrowserWindow.fromWebContents(contents) : null;
 }
-
-// ---------------------------------------------------------------------------
-// Abort helpers
-// ---------------------------------------------------------------------------
 
 function abortStream(chatId: string): void {
   const controller = activeAbortControllers.get(chatId);
@@ -280,10 +260,6 @@ function isAbortError(err: unknown): boolean {
   return /abort/i.test(message);
 }
 
-// ---------------------------------------------------------------------------
-// Validation helpers
-// ---------------------------------------------------------------------------
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -304,10 +280,6 @@ function isValidInlineInput(input: InlineGenerateStartInput): boolean {
     isNonEmptyString(input?.prompt)
   );
 }
-
-// ---------------------------------------------------------------------------
-// String helpers
-// ---------------------------------------------------------------------------
 
 function truncateText(value: string, max: number): string {
   if (value.length <= max) return value;
@@ -694,10 +666,6 @@ ${getDatabaseSpecificGuidance(dbType)}
 ${schemaContext?.trim() ? formatUntrustedSection("Schema Context", schemaContext, MAX_SCHEMA_CONTEXT_CHARS) : ""}`;
 }
 
-// ---------------------------------------------------------------------------
-// Message content helper
-// ---------------------------------------------------------------------------
-
 function extractMessageContent(content: string | { type: string; text?: string }[]): string {
   if (typeof content === "string") {
     return content;
@@ -710,10 +678,6 @@ function extractMessageContent(content: string | { type: string; text?: string }
   }
   return "";
 }
-
-// ---------------------------------------------------------------------------
-// Memory context builder
-// ---------------------------------------------------------------------------
 
 async function fetchMemoryContext(
   userMessage: string,
@@ -792,10 +756,6 @@ async function fetchMemoryContext(
   return context;
 }
 
-// ---------------------------------------------------------------------------
-// Stream helpers
-// ---------------------------------------------------------------------------
-
 function handleStreamChunk(
   contents: WebContents,
   channel: string,
@@ -873,10 +833,6 @@ function handleStreamChunk(
       return;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Main stream handlers
-// ---------------------------------------------------------------------------
 
 async function handleChatStart(
   contents: WebContents,
@@ -1094,10 +1050,6 @@ ${instruction}`
   }
 }
 
-// ---------------------------------------------------------------------------
-// IPC handlers
-// ---------------------------------------------------------------------------
-
 function onChatStart(event: IpcMainEvent, input: ChatStartInput): void {
   const contents = getSenderContents(event);
 
@@ -1161,10 +1113,6 @@ function onInlineAbort(_event: IpcMainEvent, requestId: string): void {
   if (!isNonEmptyString(requestId)) return;
   abortInlineStream(requestId);
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 export function registerAiStreamingHandlers(): void {
   if (handlersRegistered) {

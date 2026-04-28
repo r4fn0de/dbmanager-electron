@@ -49,10 +49,6 @@ import {
 } from "@/components/ui/empty";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 type DefinitionTab = "constraints" | "enums" | "functions" | "indexes" | "triggers";
 
 interface DefinitionsBrowserPanelProps {
@@ -63,17 +59,11 @@ interface DefinitionsBrowserPanelProps {
   onSchemaChange: (schema: string) => void;
 }
 
-// ---------------------------------------------------------------------------
 // Design tokens (Emil Kowalski principles)
-// ---------------------------------------------------------------------------
-
 const EASING_OUT = [0.23, 1, 0.32, 1] as [number, number, number, number];
 const ENTRY_DURATION = 0.18; // 180ms - crisp UI animations
 
-// ---------------------------------------------------------------------------
 // Animation variants (GPU-only, never scale(0), ≤300ms)
-// ---------------------------------------------------------------------------
-
 const containerVariants = {
   hidden: {},
   visible: (reducedMotion: boolean) => ({
@@ -89,10 +79,6 @@ const itemVariants = (reducedMotion: boolean) => ({
     transition: { duration: reducedMotion ? 0 : ENTRY_DURATION, ease: EASING_OUT },
   },
 });
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
 
 function ConstraintCard({
   constraint,
@@ -395,10 +381,6 @@ function TriggerCard({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Empty states
-// ---------------------------------------------------------------------------
-
 function DefinitionEmptyState({
   type,
   dbType,
@@ -463,10 +445,6 @@ function DefinitionEmptyState({
     </Empty>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export function DefinitionsBrowserPanel({
   connectionId,

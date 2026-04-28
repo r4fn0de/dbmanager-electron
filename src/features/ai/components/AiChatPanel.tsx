@@ -70,10 +70,6 @@ import { cn } from "@/lib/utils";
 import type { DatabaseType } from "@/ipc/db/types";
 import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 
-// ---------------------------------------------------------------------------
-// Database icon helper
-// ---------------------------------------------------------------------------
-
 function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
   if (provider) {
     switch (provider) {
@@ -151,10 +147,6 @@ function getDatabaseBrandColor(dbType: DatabaseType, provider?: ConnectionProvid
   }
 }
 
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
-
 interface AiChatPanelProps {
   /** Active connection ID (optional in global mode) */
   connectionId: string | null;
@@ -192,10 +184,6 @@ interface AiChatPanelProps {
   /** Callback when panel is closed */
   onClose?: () => void;
 }
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
 
 type ToolCallLike = ToolInvocationPart["toolInvocation"];
 
@@ -840,10 +828,6 @@ function ChatMessage({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Split a single text part into prose + fenced code segments
-// ---------------------------------------------------------------------------
-
 type TextSegment =
   | { type: "text"; content: string }
   | { type: "code"; code: string; language?: string }
@@ -939,10 +923,6 @@ function pushProseSegments(segments: TextSegment[], raw: string): void {
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export function AiChatPanel({
   connectionId,
@@ -1662,10 +1642,6 @@ export function AiChatPanel({
     </motion.div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Suggestion chips for empty state
-// ---------------------------------------------------------------------------
 
 function getContextualSuggestions(dbType: DatabaseType, hasConnection: boolean): Array<{ label: string; icon: ReactNode }> {
   if (!hasConnection) {

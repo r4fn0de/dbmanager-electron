@@ -387,7 +387,7 @@ export function CreateBranchDialog({
                     </div>
 
                     {/* Table list */}
-                    <ScrollArea className="max-h-48">
+                    <ScrollArea className="h-48">
                       <div className="divide-y divide-border/40">
                         {tableItems.map((t) => (
                           <label

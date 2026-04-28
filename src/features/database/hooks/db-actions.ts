@@ -404,11 +404,8 @@ export async function getSchemaIndexes(
   }
 }
 
-// ---------------------------------------------------------------------------
 // Cache invalidation — callable from non-React code (e.g. DDL success callbacks)
 // Uses the singleton queryClient so any component will refetch on next render.
-// ---------------------------------------------------------------------------
-
 /**
  * Invalidate all cached data for a connection after a DDL operation.
  * This ensures schema summary, table details, and row caches are refreshed.

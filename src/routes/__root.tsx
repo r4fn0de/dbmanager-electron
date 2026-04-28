@@ -123,11 +123,9 @@ function Root() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isDatabaseRoute = pathname.startsWith("/database/");
 
-  // Derive connectionId from route params during render (not from store)
   const params = useParams({ strict: false });
   const routeConnectionId = params.connectionId as string | undefined;
 
-  // Get connections list to find connection details
   const { connections } = useConnectionsList();
   const { databases: localDatabases } = useLocalDatabases();
   const localDbById = useMemo(
@@ -222,12 +220,6 @@ function Root() {
     };
   }, [isAiChatOpen, aiPanelSize]);
 
-  // ── AI Panel Animation ──────────────────────────────────────────────
-  // Uses CSS transitions (off main thread) for flex-grow + clip-path.
-  // Emil: "CSS animations run off the main thread. When the browser is busy
-  // loading a new page, Framer Motion animations drop frames. CSS animations
-  // remain smooth."
-
   const stopAiPanelAnimation = useCallback(() => {
     setIsAiPanelAnimating(false);
   }, []);
@@ -241,14 +233,12 @@ function Root() {
     if (isAiChatOpen) {
       handleAiChatClose();
     } else {
-      // Open: enable CSS transition on both panels, expand + render simultaneously.
       setIsAiPanelAnimating(true);
       setAiChatOpen(true);
       aiPanelRef.current?.expand();
     }
   }, [isAiChatOpen, handleAiChatClose, setAiChatOpen]);
 
-  // Clean up on unmount
   useEffect(() => {
     return () => {
       aiResizeDraggingRef.current = false;
@@ -287,14 +277,12 @@ function Root() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [handleAiChatToggle]);
 
-  // ── Tab navigation keyboard shortcuts ────────────────────────────
   const navigate = useNavigate();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const isCtrl = event.ctrlKey || event.metaKey;
 
-      // ── Ctrl+Tab / Ctrl+Shift+Tab: MRU tab switching ──
       if (event.key === "Tab" && isCtrl) {
         event.preventDefault();
         event.stopPropagation();
@@ -325,7 +313,6 @@ function Root() {
         return;
       }
 
-      // ── Cmd/Ctrl+W: Close current tab ──
       if (event.key.toLowerCase() === "w" && isCtrl && !event.shiftKey && !event.altKey) {
         // Don't intercept if focus is inside an input/textarea (so users can still type W)
         const tag = (event.target as HTMLElement)?.tagName;
@@ -356,8 +343,6 @@ function Root() {
         return;
       }
 
-      // ── Next/Previous tab (visual order) ──
-      // macOS: Cmd+Shift+] / [  ·  Windows/Linux: Ctrl+PageDown / PageUp
       const isNextTab =
         (isCtrl && event.shiftKey && !event.altKey && (event.code === "BracketRight" || event.key === "]")) ||
         (event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.code === "PageDown");
@@ -447,8 +432,7 @@ function Root() {
                       stopAiPanelAnimation();
                     }
 
-                    // Keep collapse explicit (button/shortcut). During drag,
-                    // force panel back to min width instead of collapsing.
+// Keep collapse explicit (button/shortcut). During drag, force panel back to min width instead of collapsing.
                     if (aiResizeDraggingRef.current && size.asPercentage === 0) {
                       aiPanelRef.current?.resize("15%");
                     }

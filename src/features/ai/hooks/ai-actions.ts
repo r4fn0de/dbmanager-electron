@@ -11,9 +11,8 @@
 import { ipc } from "@/ipc/manager";
 import type { DatabaseType } from "@/ipc/db/types";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+type AiProvider = "openai" | "anthropic" | "google" | "openai-compatible";
+type AiDbType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite";
 
 export interface AiProvidersInfo {
   current: {
@@ -21,17 +20,11 @@ export interface AiProvidersInfo {
     model: string;
     openaiCompatibleBaseURL: string;
   };
-  providers: Array<{
-    name: string;
-    label: string;
-    defaultModel: string;
-    models: Array<{ id: string; label: string }>;
-    hasApiKey: boolean;
-  }>;
+  providers: unknown[];
 }
 
 export interface AiApiKeyInfo {
-  provider: string;
+  provider: AiProvider;
   masked: string;
   hasKey: boolean;
 }
@@ -48,14 +41,26 @@ export interface AiGeneratedTitle {
   title: string;
 }
 
-export interface AiFilterResult {
-  filters: Array<{ column: string; operator: string; value?: string }>;
-  orderBy: Array<{ column: string; direction: "asc" | "desc" }>;
+export interface AiFilter {
+  column: string;
+  operator: string;
+  value?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Settings
-// ---------------------------------------------------------------------------
+export interface AiFilterOrderBy {
+  column: string;
+  direction: "asc" | "desc";
+}
+
+export interface AiFilterResult {
+  filters: AiFilter[];
+  orderBy: AiFilterOrderBy[];
+}
+
+function toAiDbType(dbType: DatabaseType): AiDbType {
+  if (dbType === "redis") return "postgresql";
+  return dbType;
+}
 
 export async function getAiSettings(): Promise<AiProvidersInfo> {
   try {
@@ -74,7 +79,7 @@ export async function getAiSettings(): Promise<AiProvidersInfo> {
 }
 
 export async function updateAiSettings(input: {
-  provider?: "openai" | "anthropic" | "google" | "openai-compatible";
+  provider?: AiProvider;
   model?: string;
   openaiCompatibleBaseURL?: string;
 }): Promise<void> {
@@ -88,7 +93,7 @@ export async function updateAiSettings(input: {
 }
 
 export async function setAiApiKey(
-  provider: "openai" | "anthropic" | "google" | "openai-compatible",
+  provider: AiProvider,
   key: string,
 ): Promise<{ success: boolean }> {
   try {
@@ -101,7 +106,7 @@ export async function setAiApiKey(
 }
 
 export async function getAiApiKey(
-  provider: "openai" | "anthropic" | "google" | "openai-compatible",
+  provider: AiProvider,
 ): Promise<AiApiKeyInfo> {
   try {
     return await ipc.client.ai.getApiKey({ provider });
@@ -120,17 +125,13 @@ export async function isAiConfigured(): Promise<boolean> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SQL assistance
-// ---------------------------------------------------------------------------
-
 export async function fixSql(
   sql: string,
   error: string,
   dbType: DatabaseType,
 ): Promise<AiSqlResult> {
   try {
-    return await ipc.client.ai.fixSql({ sql, error, dbType });
+    return await ipc.client.ai.fixSql({ sql, error, dbType: toAiDbType(dbType) });
   } catch (err) {
     throw new Error(
       err instanceof Error ? err.message : "Failed to fix SQL",
@@ -148,7 +149,7 @@ export async function updateSql(
     return await ipc.client.ai.updateSql({
       sql,
       prompt,
-      dbType,
+      dbType: toAiDbType(dbType),
       context,
     });
   } catch (err) {
@@ -181,10 +182,6 @@ export async function generateTitle(
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// AI Filters
-// ---------------------------------------------------------------------------
 
 export async function getAiFilters(
   prompt: string,
