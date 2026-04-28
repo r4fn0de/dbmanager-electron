@@ -176,8 +176,8 @@ export function DatabaseOverview({
 
   // Single-pass memoized derived values — avoids O(n×m) per render from
   // repeated .filter() calls inside .map() for each schema.
-  const { totalSchemas, totalTables, tablesWithRls, totalEstimatedRows, topTables, schemasWithCounts } = useMemo(() => {
-    if (!schemaSummary) return { totalSchemas: 0, totalTables: 0, tablesWithRls: 0, totalEstimatedRows: 0, topTables: [] as { name: string; schema: string; estimatedRowCount: number }[], schemasWithCounts: [] as { name: string; count: number; rlsCount: number }[] };
+  const { totalSchemas, totalTables, tablesWithRls, totalEstimatedRows, schemasWithCounts } = useMemo(() => {
+    if (!schemaSummary) return { totalSchemas: 0, totalTables: 0, tablesWithRls: 0, totalEstimatedRows: 0, schemasWithCounts: [] as { name: string; count: number; rlsCount: number }[] };
     let rlsCount = 0;
     let rowsSum = 0;
     const schemaMap = new Map<string, { count: number; rlsCount: number }>();
@@ -199,17 +199,11 @@ export function DatabaseOverview({
       name,
       ...(schemaMap.get(name) ?? { count: 0, rlsCount: 0 }),
     }));
-    // Top 5 tables by estimated row count
-    const sorted = [...schemaSummary.tables]
-      .sort((a, b) => b.estimated_row_count - a.estimated_row_count)
-      .slice(0, 5)
-      .map((t) => ({ name: t.name, schema: t.schema, estimatedRowCount: t.estimated_row_count }));
     return {
       totalSchemas: schemaSummary.schemas.length,
       totalTables: schemaSummary.tables.length,
       tablesWithRls: rlsCount,
       totalEstimatedRows: rowsSum,
-      topTables: sorted,
       schemasWithCounts: counts,
     };
   }, [schemaSummary]);
@@ -746,62 +740,7 @@ export function DatabaseOverview({
           </motion.div>
         )}
 
-        {/* ── Top tables ──────────────────────────────────────── */}
-        {topTables.length > 0 && (
-          <motion.div variants={itemVariants} className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Icon name="layout-grid" className="size-3.5 text-muted-foreground" />
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Largest Tables
-                </p>
-              </div>
-              <Badge
-                variant="secondary"
-                className="font-mono text-[10px] h-5 px-1.5"
-              >
-                Top {topTables.length}
-              </Badge>
-            </div>
-            <div className="rounded-lg border border-border/50 divide-y divide-border/50">
-              {topTables.map((table, i) => (
-                <motion.button
-                  key={`${table.schema}.${table.name}`}
-                  type="button"
-                  onClick={() => onViewTables()}
-                  className="group w-full flex items-center gap-3 py-2 px-3 text-left text-sm hover:bg-muted/30 transition-colors"
-                  initial={{ opacity: 0, x: -4 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{
-                    duration: 0.18,
-                    delay: i * 0.03,
-                    ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
-                  }}
-                  whileTap={{ scale: 0.995 }}
-                >
-                  <span className="text-[10px] tabular-nums text-muted-foreground/40 w-3 text-right">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium truncate block">
-                      {table.name}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/60 font-mono">
-                      {table.schema}
-                    </span>
-                  </div>
-                  <Badge
-                    variant="secondary"
-                    className="font-mono text-[10px] h-4 px-1.5 tabular-nums shrink-0"
-                  >
-                    ~{formatRowCount(table.estimatedRowCount)} rows
-                  </Badge>
-                  <Icon name="chevron-right" className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
-                </motion.button>
-              ))}
-            </div>
-          </motion.div>
-        )}
+
 
         {/* ── Schema list ─────────────────────────────────────── */}
         {schemasWithCounts.length > 0 && (
