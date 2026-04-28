@@ -6,7 +6,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateTitle } from "./ai-actions";
 import type { DatabaseType } from "@/ipc/db/types";
-import type { AiRendererApi } from "@/shared/ai/streaming-contracts";
+import type {
+  AiChatChunkPayload,
+  AiRendererApi,
+  UserConnectionsContext,
+} from "@/shared/ai/streaming-contracts";
 
 export interface AiChatContextTag {
   connectionId: string | null;
@@ -20,6 +24,18 @@ export interface AiChatContextTag {
 export interface TextPart {
   type: "text";
   text: string;
+}
+
+/** A reasoning segment streamed by the model. */
+export interface ReasoningPart {
+  type: "reasoning";
+  text: string;
+}
+
+/** A source emitted by the model/provider (URL or document reference). */
+export interface SourcePart {
+  type: "source";
+  source: unknown;
 }
 
 /** A tool invocation within an assistant message (call + optional result). */
@@ -41,7 +57,7 @@ export interface ToolInvocationPart {
 }
 
 /** Union of all part types that can appear in an assistant message. */
-export type AiChatMessagePart = TextPart | ToolInvocationPart;
+export type AiChatMessagePart = TextPart | ReasoningPart | SourcePart | ToolInvocationPart;
 
 export interface AiChatMessage {
   id: string;
@@ -87,6 +103,8 @@ interface UseAiChatOptions {
     database: string;
     isLocal?: boolean;
   };
+  /** Optional global snapshot of user connections for cross-connection questions */
+  userConnectionsContext?: UserConnectionsContext;
 }
 
 interface UseAiChatReturn {
@@ -123,6 +141,8 @@ const AI_CHAT_STORAGE_KEY_V2 = "ai-chat-history:v2";
 const MAX_CONVERSATIONS = 30;
 const MAX_MESSAGES_PER_CONVERSATION = 120;
 const DEFAULT_CONVERSATION_TITLE = "New Chat";
+const MAX_MODEL_MESSAGES = 32;
+const MAX_MODEL_CHARS = 24_000;
 
 interface AiChatStorageV1 {
   version: 1;
@@ -188,6 +208,55 @@ function toStorageMessage(message: AiChatMessage): AiChatMessage {
   const { isStreaming: _isStreaming, ...rest } = message as LegacyAiChatMessage;
   const { toolCalls: _toolCalls, ...clean } = rest;
   return clean as AiChatMessage;
+}
+
+function toModelContent(message: AiChatMessage): string {
+  let content = message.content;
+  if (message.contextSnapshot) {
+    const snapshot = message.contextSnapshot;
+    const contextParts: string[] = [];
+    if (snapshot.selectionPreview) {
+      contextParts.push(`[Selected text in editor]\n${snapshot.selectionPreview}`);
+    }
+    if (snapshot.errorPreview) {
+      contextParts.push(`[Last error in editor]\n${snapshot.errorPreview}`);
+    }
+    if (contextParts.length > 0) {
+      content = `${contextParts.join("\n\n")}\n\n${content}`;
+    }
+  }
+
+  return content.trim();
+}
+
+function buildModelMessages(messages: AiChatMessage[]) {
+  const base = messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      role: message.role,
+      content: toModelContent(message),
+    }))
+    .filter((message) => message.content.length > 0);
+
+  if (base.length <= MAX_MODEL_MESSAGES) {
+    const totalChars = base.reduce((sum, message) => sum + message.content.length, 0);
+    if (totalChars <= MAX_MODEL_CHARS) return base;
+  }
+
+  const selected: typeof base = [];
+  let charBudget = 0;
+
+  for (let i = base.length - 1; i >= 0; i -= 1) {
+    const message = base[i];
+    const nextSize = charBudget + message.content.length;
+    if (selected.length >= MAX_MODEL_MESSAGES || nextSize > MAX_MODEL_CHARS) {
+      continue;
+    }
+    selected.unshift(message);
+    charBudget = nextSize;
+  }
+
+  return selected.length > 0 ? selected : base.slice(-1);
 }
 
 /**
@@ -424,6 +493,7 @@ export function useAiChat({
   connectionLabel,
   schemaContext,
   connectionInfo,
+  userConnectionsContext,
 }: UseAiChatOptions): UseAiChatReturn {
   const [conversations, setConversations] = useState<AiChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -594,7 +664,7 @@ export function useAiChat({
     const aiChat = window.electron?.aiChat;
     if (!aiChat) return;
 
-    const unsubChunk = aiChat.onChunk((chunk: AiChatChunk) => {
+    const unsubChunk = aiChat.onChunk((chunk: AiChatChunkPayload) => {
       if (chunk.chatId !== chatIdRef.current) return;
       const streamConversationId = streamConversationIdRef.current;
       if (!streamConversationId) return;
@@ -620,6 +690,41 @@ export function useAiChat({
             }),
           };
         });
+      } else if (chunk.type === "reasoning") {
+        updateConversationById(streamConversationId, (conversation) => {
+          const id = assistantIdRef.current;
+          if (!id) return conversation;
+          return {
+            ...conversation,
+            updatedAt: toIsoNow(),
+            messages: conversation.messages.map((msg) => {
+              if (msg.id !== id) return msg;
+              const parts = [...(msg.parts ?? [])];
+              const lastPart = parts[parts.length - 1];
+              if (lastPart?.type === "reasoning") {
+                parts[parts.length - 1] = { ...lastPart, text: lastPart.text + chunk.text };
+              } else {
+                parts.push({ type: "reasoning", text: chunk.text });
+              }
+              return { ...msg, parts };
+            }),
+          };
+        });
+      } else if (chunk.type === "source") {
+        updateConversationById(streamConversationId, (conversation) => {
+          const id = assistantIdRef.current;
+          if (!id) return conversation;
+          return {
+            ...conversation,
+            updatedAt: toIsoNow(),
+            messages: conversation.messages.map((msg) => {
+              if (msg.id !== id) return msg;
+              const parts = [...(msg.parts ?? [])];
+              parts.push({ type: "source", source: chunk.source });
+              return { ...msg, parts };
+            }),
+          };
+        });
       } else if (chunk.type === "tool-call") {
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
@@ -633,12 +738,66 @@ export function useAiChat({
               parts.push({
                 type: "tool-invocation",
                 toolInvocation: {
-                  toolCallId: chunk.toolCallId,
-                  toolName: chunk.toolName,
+                  toolCallId: chunk.toolCallId ?? nextId(),
+                  toolName: chunk.toolName ?? "tool",
                   args: chunk.input,
                   state: "call",
                 },
               });
+              return { ...msg, parts };
+            }),
+          };
+        });
+      } else if (
+        chunk.type === "tool-call-streaming-start"
+        || chunk.type === "tool-call-delta"
+      ) {
+        updateConversationById(streamConversationId, (conversation) => {
+          const id = assistantIdRef.current;
+          if (!id) return conversation;
+          return {
+            ...conversation,
+            updatedAt: toIsoNow(),
+            messages: conversation.messages.map((msg) => {
+              if (msg.id !== id) return msg;
+
+              const parts = [...(msg.parts ?? [])];
+              const existingToolIndex = parts.findIndex(
+                (part) =>
+                  part.type === "tool-invocation"
+                  && part.toolInvocation.toolCallId === chunk.toolCallId,
+              );
+
+              if (existingToolIndex >= 0) {
+                const existing = parts[existingToolIndex];
+                if (existing?.type === "tool-invocation") {
+                  parts[existingToolIndex] = {
+                    ...existing,
+                    toolInvocation: {
+                      ...existing.toolInvocation,
+                      state: "partial-call",
+                      args:
+                        chunk.type === "tool-call-delta" && chunk.argsTextDelta
+                          ? `${String(existing.toolInvocation.args ?? "")}${chunk.argsTextDelta}`
+                          : existing.toolInvocation.args,
+                    },
+                  };
+                }
+              } else {
+                parts.push({
+                  type: "tool-invocation",
+                  toolInvocation: {
+                    toolCallId: chunk.toolCallId ?? nextId(),
+                    toolName: chunk.toolName ?? "tool",
+                    args:
+                      chunk.type === "tool-call-delta" && chunk.argsTextDelta
+                        ? chunk.argsTextDelta
+                        : chunk.input,
+                    state: "partial-call",
+                  },
+                });
+              }
+
               return { ...msg, parts };
             }),
           };
@@ -796,29 +955,9 @@ export function useAiChat({
       }));
       setIsLoading(true);
 
-      // Always compute model messages from latest in-memory conversation state.
-      // Include contextSnapshot (selection/error) in user message content
-      // so the AI model actually sees what the user selected/errored on.
-      const coreMessages = [...activeConversation.messages, userMsg]
-        .filter((message) => message.role !== "system")
-        .map((message) => {
-          let content = message.content;
-          // Inject context snapshot into the message content for the AI model
-          if (message.contextSnapshot) {
-            const snapshot = message.contextSnapshot;
-            const contextParts: string[] = [];
-            if (snapshot.selectionPreview) {
-              contextParts.push(`[Selected text in editor]\n${snapshot.selectionPreview}`);
-            }
-            if (snapshot.errorPreview) {
-              contextParts.push(`[Last error in editor]\n${snapshot.errorPreview}`);
-            }
-            if (contextParts.length > 0) {
-              content = `${contextParts.join("\n\n")}\n\n${content}`;
-            }
-          }
-          return { role: message.role, content };
-        });
+      // Compute model messages from latest in-memory state and keep
+      // only the most relevant tail to avoid context dilution.
+      const coreMessages = buildModelMessages([...activeConversation.messages, userMsg]);
 
       aiChat.start({
         chatId: chatIdRef.current,
@@ -827,6 +966,7 @@ export function useAiChat({
         dbType,
         schemaContext,
         connectionInfo,
+        userConnectionsContext,
         messages: coreMessages,
       });
 
@@ -853,7 +993,7 @@ export function useAiChat({
         })();
       }
     },
-    [connectionId, connectionLabel, dbType, ensureConversation, schemaContext, updateConversationById],
+    [connectionId, connectionLabel, connectionInfo, dbType, ensureConversation, schemaContext, updateConversationById, userConnectionsContext],
   );
 
   /** Approve a pending tool invocation. */

@@ -3,6 +3,23 @@ import type { DatabaseType } from "@/ipc/db/types";
 
 export type Unsubscribe = () => void;
 
+export interface UserConnectionSummaryItem {
+  id: string;
+  name: string;
+  dbType: DatabaseType;
+  provider: string;
+  scope: "local" | "remote";
+}
+
+export interface UserConnectionsContext {
+  total: number;
+  local: number;
+  remote: number;
+  byProvider: Array<{ provider: string; count: number }>;
+  byDbType: Array<{ dbType: DatabaseType; count: number }>;
+  connections: UserConnectionSummaryItem[];
+}
+
 export interface ChatStartInput {
   chatId: string;
   connectionId: string | null;
@@ -16,6 +33,7 @@ export interface ChatStartInput {
     database: string;
     isLocal?: boolean;
   };
+  userConnectionsContext?: UserConnectionsContext;
   messages: ModelMessage[];
 }
 

@@ -37,6 +37,20 @@ declare global {
             database: string;
             isLocal?: boolean;
           };
+          userConnectionsContext?: {
+            total: number;
+            local: number;
+            remote: number;
+            byProvider: Array<{ provider: string; count: number }>;
+            byDbType: Array<{ dbType: string; count: number }>;
+            connections: Array<{
+              id: string;
+              name: string;
+              dbType: string;
+              provider: string;
+              scope: 'local' | 'remote';
+            }>;
+          };
           messages: Array<{ role: string; content: string }>;
         }) => void;
         abort: (chatId: string) => void;
@@ -65,7 +79,11 @@ declare global {
 
   type AiChatChunk =
     | { chatId: string; type: 'text'; text: string }
+    | { chatId: string; type: 'reasoning'; text: string }
+    | { chatId: string; type: 'source'; source: unknown }
     | { chatId: string; type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
+    | { chatId: string; type: 'tool-call-streaming-start'; toolCallId?: string; toolName?: string; input?: unknown }
+    | { chatId: string; type: 'tool-call-delta'; toolCallId?: string; toolName?: string; input?: unknown; argsTextDelta?: string }
     | { chatId: string; type: 'tool-result'; toolCallId: string; toolName: string; result: unknown };
 
   type AiInlineChunk = { requestId: string; type: 'text'; text: string };

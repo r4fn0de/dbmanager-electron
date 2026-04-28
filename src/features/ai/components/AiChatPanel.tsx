@@ -22,6 +22,7 @@ import {
 } from "./ai-elements/conversation";
 import {
   Reasoning,
+  ReasoningContent,
   ReasoningTrigger,
 } from "./ai-elements/reasoning";
 import { Shimmer } from "./ai-elements/shimmer";
@@ -67,6 +68,7 @@ import { ChatTool, type ChatToolPart } from "./ai-elements/tool";
 import { ChatTable } from "./ai-elements/chat-table";
 import { cn } from "@/lib/utils";
 import type { DatabaseType } from "@/ipc/db/types";
+import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 
 // ---------------------------------------------------------------------------
 // Database icon helper
@@ -172,6 +174,8 @@ interface AiChatPanelProps {
     database: string;
     isLocal?: boolean;
   };
+  /** Optional global connection snapshot for cross-connection questions */
+  userConnectionsContext?: UserConnectionsContext;
   /** Compact preview of what editor context will be sent to AI */
   contextPreview?: {
     connectionLabel: string;
@@ -299,6 +303,28 @@ function extractSqlSnippet(value: unknown): string | null {
     }
   }
   return null;
+}
+
+function extractSourceMeta(source: unknown): { label: string; url?: string } {
+  if (!source || typeof source !== "object") {
+    return { label: "Reference" };
+  }
+
+  const sourceRecord = source as Record<string, unknown>;
+  const title = typeof sourceRecord.title === "string" ? sourceRecord.title.trim() : "";
+  const url = typeof sourceRecord.url === "string" ? sourceRecord.url.trim() : undefined;
+  const sourceType = typeof sourceRecord.sourceType === "string" ? sourceRecord.sourceType.trim() : "";
+
+  if (title) {
+    return { label: title, url };
+  }
+  if (sourceType) {
+    return { label: sourceType, url };
+  }
+  if (url) {
+    return { label: url, url };
+  }
+  return { label: "Reference" };
 }
 
 function getToolStatus(invocation: ToolCallLike): "running" | "success" | "error" {
@@ -454,21 +480,7 @@ function AiMessageFeedback({
   }
 
   if (activeRating) {
-    return (
-      <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-        {activeRating === "positive" ? (
-          <>
-            <UiIcon name="thumbs-up" className="h-3 w-3 text-green-600" />
-            <span>Thanks for the feedback!</span>
-          </>
-        ) : activeRating === "negative" ? (
-          <>
-            <UiIcon name="thumbs-down" className="h-3 w-3 text-red-600" />
-            <span>Thanks for the feedback!</span>
-          </>
-        ) : null}
-      </div>
-    );
+    return null;
   }
 
   if (isDismissed) {
@@ -601,16 +613,18 @@ function ChatMessage({
   // Group consecutive tool-invocation parts into a single collapsible section
   // while rendering text parts in their original interleaved order.
   const renderedParts: Array<{
-    kind: "text-segments" | "tool-group";
+    kind: "text-segments" | "tool-group" | "reasoning" | "source";
     segments?: TextSegment[];
     invocations?: ToolInvocationPart[];
+    reasoningText?: string;
+    source?: unknown;
   }> = [];
 
   let pendingTools: ToolInvocationPart[] = [];
   for (const part of parts) {
     if (part.type === "tool-invocation") {
       pendingTools.push(part);
-    } else {
+    } else if (part.type === "text") {
       // Flush any accumulated tool invocations before rendering text
       if (pendingTools.length > 0) {
         renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
@@ -620,6 +634,20 @@ function ChatMessage({
       if (segments.length > 0) {
         renderedParts.push({ kind: "text-segments", segments });
       }
+    } else if (part.type === "reasoning") {
+      if (pendingTools.length > 0) {
+        renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+        pendingTools = [];
+      }
+      if (part.text.trim()) {
+        renderedParts.push({ kind: "reasoning", reasoningText: part.text });
+      }
+    } else if (part.type === "source") {
+      if (pendingTools.length > 0) {
+        renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+        pendingTools = [];
+      }
+      renderedParts.push({ kind: "source", source: part.source });
     }
   }
   // Flush any remaining tool invocations at the end
@@ -673,6 +701,49 @@ function ChatMessage({
                     })}
                   </div>
                 ) : (
+                  block.kind === "reasoning" ? (
+                    <Reasoning
+                      key={`reasoning-${blockIndex}`}
+                      defaultOpen={false}
+                      isStreaming={message.isStreaming}
+                      className="mb-1 rounded-md border border-border/30 bg-muted/20 px-3 py-2"
+                    >
+                      <ReasoningTrigger className="text-xs text-muted-foreground/80">
+                        <span className="inline-flex items-center gap-1.5">
+                          <UiIcon name="brain" className="size-3.5" />
+                          Reasoning
+                        </span>
+                      </ReasoningTrigger>
+                      <ReasoningContent className="mt-2 text-xs leading-6">
+                        {block.reasoningText ?? ""}
+                      </ReasoningContent>
+                    </Reasoning>
+                  ) : block.kind === "source" ? (
+                    <div
+                      key={`source-${blockIndex}`}
+                      className="rounded-md border border-border/30 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
+                    >
+                      {(() => {
+                        const sourceMeta = extractSourceMeta(block.source);
+                        return sourceMeta.url ? (
+                          <a
+                            href={sourceMeta.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-primary underline-offset-4 hover:underline"
+                          >
+                            <UiIcon name="link" className="size-3.5" />
+                            {sourceMeta.label}
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5">
+                            <UiIcon name="link" className="size-3.5" />
+                            {sourceMeta.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  ) : (
                   <Fragment key={`text-${blockIndex}`}>
                     {block.segments!.map((seg, segIndex) =>
                       seg.type === "text" ? (
@@ -701,7 +772,7 @@ function ChatMessage({
                       ),
                     )}
                   </Fragment>
-                ),
+                )),
               )}
             </div>
           )}
@@ -761,7 +832,7 @@ function ChatMessage({
             </Reasoning>
           )}
           {/* No-content fallback for completed/aborted messages */}
-          {!message.isStreaming && !message.content && (
+          {!message.isStreaming && !hasContent && (
             <p className="px-3 text-xs text-muted-foreground">No response</p>
           )}
         </div>
@@ -880,6 +951,7 @@ export function AiChatPanel({
   provider,
   schemaContext,
   connectionInfo,
+  userConnectionsContext,
   contextPreview,
   isOpen,
   className,
@@ -910,6 +982,7 @@ export function AiChatPanel({
     connectionLabel,
     schemaContext,
     connectionInfo,
+    userConnectionsContext,
   });
 
   const [input, setInput] = useState("");

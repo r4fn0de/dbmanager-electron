@@ -27,7 +27,8 @@ import { useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/c
 import { useConnectionsList } from "@/features/connection";
 import { useLocalDatabases } from "@/features/localDb";
 import { cn } from "@/lib/utils";
-import type { DatabaseType } from "@/ipc/db/types";
+import type { Connection, DatabaseType } from "@/ipc/db/types";
+import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 
 import "../styles/global.css";
 
@@ -47,6 +48,75 @@ function isAiChatShortcut(event: KeyboardEvent): boolean {
 function isLocalHost(host: string): boolean {
   const h = host.toLowerCase();
   return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0";
+}
+
+function isLikelyCloudProvider(provider: string): boolean {
+  return provider === "neon" || provider === "supabase";
+}
+
+function resolveConnectionScope(connection: Connection, provider: string): "local" | "remote" {
+  if (isLocalHost(connection.host)) return "local";
+
+  if (connection.url) {
+    try {
+      const url = new URL(connection.url);
+      if (isLocalHost(url.hostname)) return "local";
+    } catch {
+      // Ignore invalid URL values and continue with other signals.
+    }
+  }
+
+  // Cloud providers should be treated as remote unless host/URL is explicitly local.
+  if (isLikelyCloudProvider(provider)) return "remote";
+
+  if (connection.is_local === true) return "local";
+  if (connection.is_local === false) return "remote";
+
+  // Safe default: unknown external hosts are remote.
+  return "remote";
+}
+
+function buildUserConnectionsContext(input: {
+  connections: Connection[];
+  localDbById: Map<string, { engine: "postgresql" | "sqlite" }>;
+}): UserConnectionsContext {
+  const byProvider = new Map<string, number>();
+  const byDbType = new Map<DatabaseType, number>();
+
+  const summaryConnections = input.connections.map((connection) => {
+    const provider = detectConnectionProvider(connection) ?? "manual";
+    const scope = resolveConnectionScope(connection, provider);
+    const isLocal = scope === "local";
+    const localEngine = isLocal ? input.localDbById.get(connection.id)?.engine : undefined;
+    const dbType = (localEngine ?? connection.db_type ?? "postgresql") as DatabaseType;
+
+    byProvider.set(provider, (byProvider.get(provider) ?? 0) + 1);
+    byDbType.set(dbType, (byDbType.get(dbType) ?? 0) + 1);
+
+    return {
+      id: connection.id,
+      name: connection.name?.trim() || connection.database?.trim() || connection.id,
+      dbType,
+      provider,
+      scope,
+    };
+  });
+
+  const local = summaryConnections.filter((connection) => connection.scope === "local").length;
+  const remote = summaryConnections.length - local;
+
+  return {
+    total: summaryConnections.length,
+    local,
+    remote,
+    byProvider: Array.from(byProvider.entries())
+      .map(([provider, count]) => ({ provider, count }))
+      .sort((a, b) => b.count - a.count || a.provider.localeCompare(b.provider)),
+    byDbType: Array.from(byDbType.entries())
+      .map(([dbType, count]) => ({ dbType, count }))
+      .sort((a, b) => b.count - a.count || a.dbType.localeCompare(b.dbType)),
+    connections: summaryConnections,
+  };
 }
 
 function Root() {
@@ -79,7 +149,9 @@ function Root() {
   const effectiveContext = useMemo(() => {
     if (activeConnection) {
       const provider = detectConnectionProvider(activeConnection);
-      const isLocal = activeConnection.is_local ?? isLocalHost(activeConnection.host);
+      const resolvedProvider = provider ?? "manual";
+      const scope = resolveConnectionScope(activeConnection, resolvedProvider);
+      const isLocal = scope === "local";
       const localEngine = isLocal ? localDbById.get(activeConnection.id)?.engine : undefined;
       const effectiveDbType = (localEngine ?? activeConnection.db_type ?? "postgresql") as DatabaseType;
       return {
@@ -125,6 +197,11 @@ function Root() {
       contextPreview: storeContext.contextPreview,
     };
   }, [activeConnection, localDbById, storeContext]);
+
+  const userConnectionsContext = useMemo(
+    () => buildUserConnectionsContext({ connections, localDbById }),
+    [connections, localDbById],
+  );
 
   const panelGroupRef = useRef<GroupImperativeHandle>(null);
   const aiPanelRef = useRef<PanelImperativeHandle>(null);
@@ -403,6 +480,7 @@ function Root() {
                           provider={effectiveContext.provider}
                           schemaContext={effectiveContext.schemaContext}
                           connectionInfo={effectiveContext.connectionInfo}
+                          userConnectionsContext={userConnectionsContext}
                           contextPreview={effectiveContext.contextPreview}
                           isOpen={isAiChatOpen}
                           className="-mt-1.5 h-[calc(100%+6px)] pl-0 pr-0"

@@ -86,6 +86,21 @@ interface ChatStartInput {
     isLocal?: boolean;
     branch?: string | null;
   };
+  /** Global snapshot of all user connections for cross-connection questions */
+  userConnectionsContext?: {
+    total: number;
+    local: number;
+    remote: number;
+    byProvider: Array<{ provider: string; count: number }>;
+    byDbType: Array<{ dbType: DatabaseType; count: number }>;
+    connections: Array<{
+      id: string;
+      name: string;
+      dbType: DatabaseType;
+      provider: string;
+      scope: "local" | "remote";
+    }>;
+  };
   /** Chat messages in ModelMessage format */
   messages: ModelMessage[];
 }
@@ -411,6 +426,7 @@ function buildSystemPrompt(
   hasConnection = true,
   memoryContext?: MemoryContextData,
   connectionInfo?: ChatStartInput["connectionInfo"],
+  userConnectionsContext?: ChatStartInput["userConnectionsContext"],
 ): string {
   const now = new Date().toISOString();
   const isRedis = dbType === "redis";
@@ -444,6 +460,40 @@ function buildSystemPrompt(
       prompt += `
 - ⚠️ You are on the main branch of a local database. Mutations will affect the primary branch. Consider suggesting the user create a branch for risky changes.`;
     }
+  }
+
+  if (userConnectionsContext) {
+    const topProviders = userConnectionsContext.byProvider
+      .slice(0, 6)
+      .map((entry) => `${entry.provider}: ${entry.count}`)
+      .join(", ");
+    const topDbTypes = userConnectionsContext.byDbType
+      .slice(0, 6)
+      .map((entry) => `${entry.dbType}: ${entry.count}`)
+      .join(", ");
+    const connectionList = userConnectionsContext.connections
+      .slice(0, 50)
+      .map(
+        (connection) =>
+          `- ${connection.name} (${connection.dbType}, provider: ${connection.provider}, ${connection.scope})`,
+      )
+      .join("\n");
+    const hasMore = userConnectionsContext.connections.length > 50;
+
+    prompt += `
+
+## User Connection Inventory
+- Total connections: ${userConnectionsContext.total}
+- Local connections: ${userConnectionsContext.local}
+- Remote connections: ${userConnectionsContext.remote}
+- By provider: ${topProviders || "n/a"}
+- By database type: ${topDbTypes || "n/a"}
+
+When the user asks about their connections (counts, providers, local vs remote, names, types),
+use this inventory as the source of truth and answer with exact numbers.
+
+### Connection list
+${connectionList}${hasMore ? "\n- ... (additional connections omitted for brevity)" : ""}`;
   }
 
   if (memoryContext && (memoryContext.recentMessages.length > 0 || memoryContext.similarQueries.length > 0)) {
@@ -498,7 +548,14 @@ ${getDatabaseSpecificGuidance(dbType)}
 - Never suggest unsafe mass DELETE/UPDATE/TRUNCATE/DROP casually
 - For auth/security tables, avoid broad projection unless the user explicitly asks for it
 - When the user asks for generated code, put the code first and keep the explanation concise
-- When tools are available, use them only when needed and avoid repeating the same metadata lookup`;
+- When tools are available, use them only when needed and avoid repeating the same metadata lookup
+- Keep answers action-oriented: give the best next SQL/command first, then concise reasoning
+- If multiple valid options exist, present the recommended one first and briefly list alternatives
+- End responses with one focused follow-up question only when it meaningfully reduces ambiguity
+- Disambiguate "connections":
+  - If the user asks about "my connections", "connections in the app", "quantas conexões eu tenho", "conexões cadastradas", or similar, answer using the User Connection Inventory from this app context.
+  - Only use database-session concepts (e.g. pg_stat_activity, active server sessions) when the user explicitly asks about database runtime sessions/processes.
+  - If ambiguity remains, give the app-inventory answer first, then briefly mention how to query DB runtime sessions`;
 
   if (hasConnection) {
     prompt += `
@@ -526,7 +583,8 @@ You have access to database tools. Follow this workflow when the user wants to m
 ## Disconnected Mode
 - Provide syntax-correct guidance for ${dbType}
 - Do not claim to have inspected live schema/data
-- Mark assumptions that should be verified later`;
+- Mark assumptions that should be verified later
+- If User Connection Inventory is available and the user asks about app connections, answer with those exact inventory numbers even when no DB is currently connected`;
   }
 
   if (schemaContext?.trim()) {
@@ -550,7 +608,8 @@ You have access to database tools. Follow this workflow when the user wants to m
 ## Output Guidance
 - Always wrap executable SQL in triple backticks with the sql language tag
 - If the user asks to generate or fix SQL, put the SQL block first
-- Follow with a short explanation focused on safety and performance`;
+- Follow with a short explanation focused on safety and performance
+- When useful, add a compact "Checks" list with what to validate before running in production`;
   }
 
   return prompt;
@@ -846,7 +905,7 @@ async function handleChatStart(
 
   try {
     const model = getCurrentModel();
-    const memoryContext = await fetchMemoryContext(userContent, connectionId);
+    const memoryContext = await fetchMemoryContext(userContent, effectiveConnectionId);
     // When WebContents is unavailable, deny all approvals rather than auto-approving.
     // This prevents mutations from executing without user consent if the IPC bridge is broken.
     const denyApproval: ToolApprovalFn = async () => false;
@@ -863,6 +922,7 @@ async function handleChatStart(
         Boolean(effectiveConnectionId),
         memoryContext,
         input.connectionInfo,
+        input.userConnectionsContext,
       ),
       messages,
       ...(tools ? { tools } : {}),
