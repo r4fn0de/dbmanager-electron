@@ -1658,6 +1658,7 @@ export function SqlEditor({
                     type="button"
                     className={cn(
                       "group/tab relative flex items-center gap-1.5 px-3 h-[30px] rounded-t-[6px] text-[12px] leading-none whitespace-nowrap select-none",
+                      tabs.length > 1 && "pr-7",
                       "transition-colors duration-150",
                       isActive
                         ? "bg-muted/50 text-foreground"
@@ -1690,7 +1691,7 @@ export function SqlEditor({
                         role="button"
                         tabIndex={-1}
                         className={cn(
-                          "shrink-0 rounded-[3px] p-[2px] ml-0.5",
+                          "absolute right-1 top-1/2 -translate-y-1/2 rounded-[3px] p-[2px]",
                           "opacity-0 group-hover/tab:opacity-100 transition-opacity duration-100",
                           "hover:bg-muted-foreground/15 hover:text-destructive",
                         )}

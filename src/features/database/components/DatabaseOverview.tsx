@@ -80,54 +80,6 @@ function StatCard({
   );
 }
 
-// ── TransactionStats ──────────────────────────────────────────────────
-
-function TransactionStats({
-  commit,
-  rollback,
-}: {
-  commit?: number | null;
-  rollback?: number | null;
-}) {
-  return (
-    <div className="flex items-center justify-between text-xs">
-      <div className="flex items-center gap-1.5">
-        <Icon name="circle-check" className="size-3 text-muted-foreground/50" />
-        <span className="text-muted-foreground/60">Transactions</span>
-      </div>
-      <span className="font-mono text-foreground">
-        {commit != null && (
-          <span className="text-emerald-500">{commit.toLocaleString()}</span>
-        )}
-        {commit != null && rollback != null && (
-          <span className="text-muted-foreground/40 mx-1">/</span>
-        )}
-        {rollback != null && (
-          <TooltipProvider delay={0}>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className={cn(
-                      "cursor-default",
-                      rollback > 0 ? "text-amber-500" : "text-muted-foreground/40",
-                    )}
-                  >
-                    {rollback.toLocaleString()}
-                  </span>
-                }
-              />
-              <TooltipContent side="top" sideOffset={4}>
-                Rollbacks
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </span>
-    </div>
-  );
-}
-
 /* ── Animation variants (Emil: GPU-only, never scale(0), ≤300ms) ── */
 const containerVariants = {
   hidden: {},
@@ -176,22 +128,17 @@ export function DatabaseOverview({
 
   // Single-pass memoized derived values — avoids O(n×m) per render from
   // repeated .filter() calls inside .map() for each schema.
-  const { totalSchemas, totalTables, tablesWithRls, totalEstimatedRows, schemasWithCounts } = useMemo(() => {
-    if (!schemaSummary) return { totalSchemas: 0, totalTables: 0, tablesWithRls: 0, totalEstimatedRows: 0, schemasWithCounts: [] as { name: string; count: number; rlsCount: number }[] };
-    let rlsCount = 0;
+  const { totalSchemas, totalTables, totalEstimatedRows, schemasWithCounts } = useMemo(() => {
+    if (!schemaSummary) return { totalSchemas: 0, totalTables: 0, totalEstimatedRows: 0, schemasWithCounts: [] as { name: string; count: number }[] };
     let rowsSum = 0;
-    const schemaMap = new Map<string, { count: number; rlsCount: number }>();
+    const schemaMap = new Map<string, { count: number }>();
     for (const schema of schemaSummary.schemas) {
-      schemaMap.set(schema, { count: 0, rlsCount: 0 });
+      schemaMap.set(schema, { count: 0 });
     }
     for (const table of schemaSummary.tables) {
       const entry = schemaMap.get(table.schema);
       if (entry) {
         entry.count++;
-        if (table.has_rls) {
-          entry.rlsCount++;
-          rlsCount++;
-        }
       }
       rowsSum += table.estimated_row_count;
     }
@@ -202,7 +149,6 @@ export function DatabaseOverview({
     return {
       totalSchemas: schemaSummary.schemas.length,
       totalTables: schemaSummary.tables.length,
-      tablesWithRls: rlsCount,
       totalEstimatedRows: rowsSum,
       schemasWithCounts: counts,
     };
@@ -274,9 +220,9 @@ export function DatabaseOverview({
       animate="visible"
       variants={containerVariants}
     >
-      <div className="mx-auto max-w-2xl px-6 py-8 space-y-6">
+      <div className="mx-auto max-w-2xl px-6 py-8 space-y-5">
         {/* ── Header ──────────────────────────────────────────── */}
-        <motion.div variants={itemVariants} className="space-y-3">
+        <motion.div variants={itemVariants} className="space-y-2.5">
           {/* Name row with status */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -290,10 +236,10 @@ export function DatabaseOverview({
                 />
               )}
               <div className="min-w-0">
-                <h1 className="font-heading text-xl font-semibold tracking-tight truncate">
+                <h1 className="font-heading text-lg font-semibold tracking-tight truncate">
                   {connection.name}
                 </h1>
-                <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="mt-0.5 flex items-center gap-1.5">
                   <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                     <span
                       className={cn(
@@ -358,7 +304,7 @@ export function DatabaseOverview({
                     onClick={() => void handleCopyDisplayInfo()}
                     onMouseEnter={() => setIsDisplayInfoHovered(true)}
                     onMouseLeave={() => setIsDisplayInfoHovered(false)}
-                    className="font-mono text-xs text-muted-foreground truncate text-left cursor-copy hover:text-foreground transition-colors max-w-full"
+                    className="max-w-full truncate rounded-sm px-1 py-0.5 text-left font-mono text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   />
                 }
               >
@@ -380,12 +326,12 @@ export function DatabaseOverview({
           </TooltipProvider>
 
           {/* Actions */}
-          <div className="flex items-center gap-1.5 pt-1">
+          <div className="flex items-center gap-1.5 pt-0.5">
             <motion.div whileTap={{ scale: 0.97 }}>
               <Button
                 size="sm"
                 onClick={onNewQuery}
-                className="gap-1.5 h-7 text-xs"
+                className="h-7 gap-1.5 text-xs transition-transform duration-150 active:scale-[0.98]"
               >
                 <Icon name="terminal" className="size-3.5" />
                 New query
@@ -396,7 +342,7 @@ export function DatabaseOverview({
                 size="sm"
                 variant="secondary"
                 onClick={onViewTables}
-                className="gap-1.5 h-7 text-xs"
+                className="h-7 gap-1.5 text-xs transition-transform duration-150 active:scale-[0.98]"
               >
                 <Icon name="table" className="size-3.5" />
                 Tables
@@ -407,7 +353,7 @@ export function DatabaseOverview({
                 size="sm"
                 variant="ghost"
                 onClick={onTestConnection}
-                className="h-7 w-7 p-0 text-muted-foreground"
+                className="h-7 w-7 p-0 text-muted-foreground transition-colors duration-200 hover:text-foreground"
                 title="Test connection"
               >
                 <Icon name="refresh" className="size-3.5" />
@@ -419,7 +365,7 @@ export function DatabaseOverview({
                   size="sm"
                   variant="ghost"
                   onClick={isRunning ? onPauseLocalDb : onStartLocalDb}
-                  className="gap-1.5 h-7 text-xs"
+                  className="h-7 gap-1.5 text-xs transition-transform duration-150 active:scale-[0.98]"
                   disabled={isLoadingLocalDbStatus || isTogglingLocalDbStatus}
                 >
                   {isTogglingLocalDbStatus ? (
@@ -445,10 +391,10 @@ export function DatabaseOverview({
         </motion.div>
 
         {/* ── Overview stats ─────────────────────────────────── */}
-        <motion.div variants={itemVariants} className="space-y-3">
+        <motion.div variants={itemVariants} className="space-y-2.5">
           <div className="flex items-center gap-2">
             <Icon name="database" className="size-3.5 text-muted-foreground" />
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
               Overview
             </p>
           </div>
@@ -456,9 +402,9 @@ export function DatabaseOverview({
             className={cn(
               "grid grid-cols-2 gap-2",
               totalEstimatedRows > 0 && databaseInfo?.activeConnections != null
-                ? "sm:grid-cols-5"
+                ? "sm:grid-cols-4"
                 : totalEstimatedRows > 0 || databaseInfo?.activeConnections != null
-                  ? "sm:grid-cols-4"
+                  ? "sm:grid-cols-3"
                   : "sm:grid-cols-3",
             )}
           >
@@ -479,9 +425,6 @@ export function DatabaseOverview({
                 sublabel={databaseInfo.maxConnections ? `of ${databaseInfo.maxConnections}` : undefined}
               />
             )}
-            {tablesWithRls > 0 && (
-              <StatCard label="RLS enabled" value={tablesWithRls} icon={(props) => <Icon name="lock" {...props} />} />
-            )}
             <StatCard
               label="Size"
               value={databaseInfo?.size ?? "—"}
@@ -493,8 +436,8 @@ export function DatabaseOverview({
 
         {/* ── Server info ─────────────────────────────────────── */}
         {(isLoadingDatabaseInfo || databaseInfo) && (
-          <motion.div variants={itemVariants} className="space-y-3">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <motion.div variants={itemVariants} className="space-y-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
               Server
             </p>
             {isLoadingDatabaseInfo ? (
@@ -504,7 +447,7 @@ export function DatabaseOverview({
                 <Skeleton className="h-3 w-28" />
               </div>
             ) : databaseInfo ? (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {/* Primary info row */}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
                   <div className="flex items-center gap-1.5">
@@ -536,21 +479,8 @@ export function DatabaseOverview({
                 </div>
 
                 {/* Performance & health stats */}
-                {(databaseInfo.uptime || databaseInfo.cacheHitRatio != null || databaseInfo.deadTuples != null) && (
-                  <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2.5">
-                    {/* Uptime */}
-                    {databaseInfo.uptime && (
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <Icon name="clock" className="size-3 text-muted-foreground/50" />
-                          <span className="text-muted-foreground/60">Uptime</span>
-                        </div>
-                        <span className="font-mono font-medium text-foreground">
-                          {databaseInfo.uptime}
-                        </span>
-                      </div>
-                    )}
-
+                {(databaseInfo.cacheHitRatio != null || connectionUsagePct != null) && (
+                  <div className="space-y-2.5 rounded-lg border border-border/50 bg-muted/10 p-2.5">
                     {/* Cache hit ratio */}
                     {databaseInfo.cacheHitRatio != null && (
                       <div className="space-y-1">
@@ -601,42 +531,6 @@ export function DatabaseOverview({
                       </div>
                     )}
 
-                    {/* Dead tuples */}
-                    {databaseInfo.deadTuples != null && databaseInfo.deadTuples > 0 && (
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <Icon name="trash" className="size-3 text-muted-foreground/50" />
-                          <span className="text-muted-foreground/60">Dead tuples</span>
-                        </div>
-                        <TooltipProvider delay={0}>
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <span className={cn(
-                                  "font-mono font-medium cursor-default",
-                                  databaseInfo.deadTuples > 100_000 ? "text-amber-500" : "text-foreground"
-                                )}>
-                                  {databaseInfo.deadTuples.toLocaleString()}
-                                </span>
-                              }
-                            />
-                            <TooltipContent side="top" sideOffset={4}>
-                              {databaseInfo.deadTuples > 100_000
-                                ? "Consider running VACUUM to reclaim space"
-                                : "Dead tuples from UPDATE/DELETE operations"}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    )}
-
-                    {/* Transaction stats */}
-                    {(databaseInfo.xactCommit != null || databaseInfo.xactRollback != null) && (
-                      <TransactionStats
-                        commit={databaseInfo.xactCommit}
-                        rollback={databaseInfo.xactRollback}
-                      />
-                    )}
                   </div>
                 )}
               </div>
@@ -646,14 +540,14 @@ export function DatabaseOverview({
 
         {/* ── Local DB details ────────────────────────────────── */}
         {isLocal && localDbStatus && (
-          <motion.div variants={itemVariants} className="space-y-3">
+          <motion.div variants={itemVariants} className="space-y-2.5">
             <div className="flex items-center gap-2">
               <Icon name="server" className="size-3.5 text-muted-foreground" />
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
                 Local Database
               </p>
             </div>
-            <div className="rounded-lg border border-border/50 bg-muted/10 p-3 space-y-2">
+            <div className="space-y-2 rounded-lg border border-border/50 bg-muted/10 p-2.5">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted-foreground/60">Engine</span>
@@ -682,60 +576,7 @@ export function DatabaseOverview({
                     </span>
                   </div>
                 )}
-                {localDbStatus.auto_start != null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground/60">Auto-start</span>
-                    <span className="font-medium text-foreground">
-                      {localDbStatus.auto_start ? "On" : "Off"}
-                    </span>
-                  </div>
-                )}
               </div>
-              {localDbStatus.externally_connectable && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs pt-1 border-t border-border/30">
-                  <div className="flex items-center gap-1.5">
-                    <Icon name="globe" className="size-3 text-muted-foreground/50" />
-                    <span className="text-muted-foreground/60">External</span>
-                    <span className="font-mono font-medium text-emerald-500">Connectable</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-muted-foreground/60">Host</span>
-                    <span className="font-mono font-medium text-foreground">
-                      {localDbStatus.external_host}
-                    </span>
-                  </div>
-                  {localDbStatus.external_port != null && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-muted-foreground/60">Port</span>
-                      <span className="font-mono font-medium text-foreground">
-                        {localDbStatus.external_port}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-              {localDbStatus.file_path && (
-                <div className="flex items-center gap-1.5 text-xs pt-1 border-t border-border/30">
-                  <Icon name="file-code" className="size-3 text-muted-foreground/50" />
-                  <span className="text-muted-foreground/60">Path</span>
-                  <TooltipProvider delay={0}>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span
-                            className="font-mono text-foreground/70 truncate max-w-[280px] cursor-default"
-                          >
-                            {localDbStatus.file_path}
-                          </span>
-                        }
-                      />
-                      <TooltipContent side="top" sideOffset={4}>
-                        {localDbStatus.file_path}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              )}
             </div>
           </motion.div>
         )}
@@ -744,9 +585,9 @@ export function DatabaseOverview({
 
         {/* ── Schema list ─────────────────────────────────────── */}
         {schemasWithCounts.length > 0 && (
-          <motion.div variants={itemVariants} className="space-y-3">
+          <motion.div variants={itemVariants} className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
                 Schemas
               </p>
               <Badge
@@ -762,7 +603,7 @@ export function DatabaseOverview({
                   key={schema.name}
                   type="button"
                   onClick={() => onViewTables()}
-                  className="group w-full flex items-center gap-2.5 py-2 px-3 text-left text-sm hover:bg-muted/30 transition-colors"
+                  className="group flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset"
                   initial={{ opacity: 0, x: -4 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{
@@ -778,9 +619,6 @@ export function DatabaseOverview({
                   <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
                     {schema.count}
                   </span>
-                  {schema.rlsCount > 0 && (
-                    <Icon name="lock" className="size-2.5 text-cyan-500/60" />
-                  )}
                   <Icon name="chevron-right" className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
                 </motion.button>
               ))}

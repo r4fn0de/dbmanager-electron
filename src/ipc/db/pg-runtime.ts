@@ -44,6 +44,30 @@ export function buildPgConnectionString(config: DriverConnectionConfig): string 
   return `postgresql://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${config.database}?sslmode=${sslMode}`;
 }
 
+function formatPgUptimeValue(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "string") return value.replace(/\.\d+$/, "");
+  if (typeof value === "number") return String(value);
+  if (typeof value !== "object") return String(value);
+
+  // Some pg parsers return interval as object parts instead of text.
+  const parts = value as Record<string, unknown>;
+  const days = Number(parts.days ?? 0);
+  const hours = Number(parts.hours ?? 0);
+  const minutes = Number(parts.minutes ?? 0);
+  const seconds = Number(parts.seconds ?? 0);
+
+  if ([days, hours, minutes, seconds].some((n) => Number.isFinite(n) && n !== 0)) {
+    const hh = String(Math.max(0, Math.trunc(hours))).padStart(2, "0");
+    const mm = String(Math.max(0, Math.trunc(minutes))).padStart(2, "0");
+    const ss = String(Math.max(0, Math.trunc(seconds))).padStart(2, "0");
+    return days > 0 ? `${days} day${days === 1 ? "" : "s"}, ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+  }
+
+  const raw = String(value);
+  return raw === "[object Object]" ? undefined : raw.replace(/\.\d+$/, "");
+}
+
 export async function testPgConnection(connectionString: string): Promise<boolean> {
   try {
     const pool = getPgPool(connectionString);
@@ -149,9 +173,8 @@ export async function getPgDatabaseInfo(connectionString: string): Promise<Datab
       xactRollback = stats?.xact_rollback != null ? Number(stats.xact_rollback) : undefined;
       databaseName = stats?.database_name != null ? String(stats.database_name) : undefined;
 
-      // Trim microseconds for cleaner display: "3 days, 2:14:30.123456" → "3 days, 2:14:30"
-      const rawUptime = uptimeResult.rows[0]?.uptime?.toString();
-      uptime = rawUptime?.replace(/\.\d+$/, "") ?? undefined;
+      // Trim microseconds and normalize object intervals to readable text.
+      uptime = formatPgUptimeValue(uptimeResult.rows[0]?.uptime);
 
       const rawDeadTuples = deadTuplesResult.rows[0]?.dead_tuples;
       deadTuples = rawDeadTuples != null ? Number(rawDeadTuples) : undefined;

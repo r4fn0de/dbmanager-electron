@@ -35,7 +35,7 @@ export const dbQueryOptions = {
   }),
   databaseInfo: (c: string) => queryOptions({
     queryKey: dbQueryKeys.databaseInfo(c), queryFn: () => getDatabaseInfo(c),
-    staleTime: 60_000, gcTime: 5 * 60_000,
+    staleTime: 5 * 60_000, gcTime: 30 * 60_000,
   }),
   tableDetails: (c: string, s: string, t: string, enabled = true) => queryOptions({
     queryKey: dbQueryKeys.tableDetails(c, s, t), queryFn: () => getTableDetails(c, s, t),

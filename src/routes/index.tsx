@@ -22,6 +22,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConnectionForm, ConnectionList, useConnectionsList } from "@/features/connection";
 import {
   CreateLocalDbDialog,
@@ -49,6 +56,8 @@ function Home() {
   } = useConnectionsList();
   const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, remove: removeLocalDb, databases: localDbs, invalidateCache: invalidateLocalDbCache } = useLocalDatabases();
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [activeTagFilter, setActiveTagFilter] = useState("all-tags");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLocalDbDialogOpen, setIsLocalDbDialogOpen] = useState(false);
   const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
@@ -97,17 +106,49 @@ function Home() {
     }
   }, []);
 
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>();
+    for (const connection of connections) {
+      const tag = connection.tag?.trim();
+      if (tag) tags.add(tag);
+    }
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }, [connections]);
+
   const filteredConnections = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return connections;
-    return connections.filter(
-      (c) =>
+    return connections.filter((c) => {
+      const matchesSearch =
+        !q ||
         c.name.toLowerCase().includes(q) ||
         c.host.toLowerCase().includes(q) ||
         c.database.toLowerCase().includes(q) ||
-        (c.url ?? "").toLowerCase().includes(q),
-    );
-  }, [connections, searchQuery]);
+        (c.url ?? "").toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+
+      if (activeFilter === "all") return true;
+      if (activeFilter === "local") return c.is_local;
+      if (activeFilter === "remote") return !c.is_local;
+
+      return false;
+    });
+  }, [connections, searchQuery, activeFilter]);
+
+  const fullyFilteredConnections = useMemo(() => {
+    if (activeTagFilter === "all-tags") return filteredConnections;
+    if (activeTagFilter === "tagged") {
+      return filteredConnections.filter((c) => Boolean(c.tag?.trim()));
+    }
+    if (activeTagFilter === "untagged") {
+      return filteredConnections.filter((c) => !c.tag?.trim());
+    }
+    if (activeTagFilter.startsWith("tag:")) {
+      const tagValue = activeTagFilter.slice(4);
+      return filteredConnections.filter((c) => c.tag?.trim() === tagValue);
+    }
+    return filteredConnections;
+  }, [filteredConnections, activeTagFilter]);
 
   const localCount = useMemo(
     () => connections.filter((c) => c.is_local).length,
@@ -387,20 +428,56 @@ function Home() {
           {/* Search + filter status */}
           {connections.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <div className="relative">
-                <Icon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                <Input
-                  placeholder="Search by name, host, or database…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 pl-8 text-xs"
-                />
+              <div className="flex flex-wrap items-center gap-1">
+                {[
+                  { label: "All", value: "all" },
+                  { label: "Local", value: "local" },
+                  { label: "Remote", value: "remote" },
+                ].map((chip) => (
+                  <Button
+                    key={chip.value}
+                    type="button"
+                    size="sm"
+                    variant={activeFilter === chip.value ? "secondary" : "ghost"}
+                    onClick={() => setActiveFilter(chip.value)}
+                    className="h-6 px-2 text-[11px]"
+                  >
+                    {chip.label}
+                  </Button>
+                ))}
               </div>
-              {searchQuery && connections.length !== filteredConnections.length && (
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Icon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Search by name, host, or database…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-7 pl-8 text-xs"
+                  />
+                </div>
+                <Select value={activeTagFilter} onValueChange={setActiveTagFilter}>
+                  <SelectTrigger className="h-7 w-[180px] text-xs">
+                    <SelectValue placeholder="Tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all-tags">All tags</SelectItem>
+                    <SelectItem value="tagged">With tag</SelectItem>
+                    <SelectItem value="untagged">Without tag</SelectItem>
+                    {availableTags.map((tag) => (
+                      <SelectItem key={tag} value={`tag:${tag}`}>
+                        {tag}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {(searchQuery || activeFilter !== "all" || activeTagFilter !== "all-tags") &&
+                connections.length !== fullyFilteredConnections.length && (
                 <p className="text-[11px] text-muted-foreground/70">
-                  Showing {filteredConnections.length} of {connections.length}
+                  Showing {fullyFilteredConnections.length} of {connections.length}
                 </p>
-              )}
+                )}
             </div>
           )}
 
@@ -410,7 +487,7 @@ function Home() {
           {/* Connection list */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
             <ConnectionList
-              connections={filteredConnections}
+              connections={fullyFilteredConnections}
               localDbById={localDbById}
               branchesByDbId={branchesByDbId}
               isLoading={isLoadingConnections}

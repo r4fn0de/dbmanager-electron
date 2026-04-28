@@ -22,7 +22,6 @@ import { useConnectionsList } from "@/features/connection";
 import {
   getSchemaSummary,
   executeQuery,
-  getDatabaseInfo,
   testConnection,
   getTableDetails,
   tableListRows,
@@ -51,7 +50,7 @@ import {
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 import { DatabaseNavSidebar, TablesExplorerSidebar, DatabaseOverview, TableDataEditor } from "@/features/database";
-import type { SchemaTableSummary, DatabaseInfo, LocalDbInfo, SchemaTableDetails, SchemaPolicy } from "@/ipc/db/types";
+import type { SchemaTableSummary, LocalDbInfo, SchemaTableDetails, SchemaPolicy } from "@/ipc/db/types";
 import {
   SqlEditor,
   SchemaVisualizer,
@@ -204,8 +203,6 @@ export function DatabasePageContent({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<null | "copied" | "failed">(null);
   const [isTogglingLocalDb, setIsTogglingLocalDb] = useState(false);
-  const [databaseInfo, setDatabaseInfo] = useState<DatabaseInfo | null>(null);
-  const [isLoadingDatabaseInfo, setIsLoadingDatabaseInfo] = useState(false);
   // connection must be defined BEFORE localDbStatus since it references connection?.is_local
   const connection = useMemo(
     () => connections.find((c) => c.id === connectionId),
@@ -267,6 +264,17 @@ export function DatabasePageContent({
   const isOverviewSection = activeSection === "overview";
   const isVisualizerSection = activeSection === "visualizer";
   const isDefinitionsSection = activeSection === "definitions";
+
+  const {
+    data: databaseInfo = null,
+    isFetching: isLoadingDatabaseInfo,
+    refetch: refetchDatabaseInfo,
+  } = useQuery({
+    ...dbQueryOptions.databaseInfo(connectionId),
+    enabled: isActive && isOverviewSection,
+    placeholderData: keepPreviousData,
+  });
+
   const tabChrome = useMemo<ConnectionTabChrome | undefined>(() => {
     if (isTablesSection && isSidebarVisible) return "tables-sidebar";
     if (isSqlEditorSection) return "sql-sidebar";
@@ -321,27 +329,6 @@ export function DatabasePageContent({
     };
   }, [connectionId, tabChromeWidthPx, updateTab]);
 
-  const loadDatabaseInfo = useCallback(async () => {
-    if (!connectionId) return;
-    setIsLoadingDatabaseInfo(true);
-    try {
-      const info = await getDatabaseInfo(connectionId);
-      setDatabaseInfo(info);
-    } catch (error) {
-      console.error("Failed to load database info", error);
-    } finally {
-      setIsLoadingDatabaseInfo(false);
-    }
-  }, [connectionId]);
-
-  // Load database info (including size) on mount when overview section is active
-  useEffect(() => {
-    if (!isActive) return;
-    if (activeSection === "overview") {
-      loadDatabaseInfo();
-    }
-  }, [isActive, activeSection, loadDatabaseInfo]);
-
   // Load local db status immediately on mount and when tab becomes active
   // The status is now derived from the shared cache (localDatabases) so it
   // stays in sync across all tabs automatically.
@@ -394,10 +381,7 @@ export function DatabasePageContent({
       schema: selectedSchema,
       table: selectedTableKey ?? undefined,
     });
-    if (section === "overview") {
-      loadDatabaseInfo();
-    }
-  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState, loadDatabaseInfo]);
+  }, [connectionId, selectedSchema, selectedTableKey, setTabNavState]);
 
   const changeSchema = useCallback((schema: string) => {
     setSelectedSchema(schema);
@@ -478,7 +462,7 @@ export function DatabasePageContent({
       // Invalidate schema details cache so visualizer/AI gets fresh data
       queryClient.invalidateQueries({ queryKey: dbQueryKeys.selectedSchemaDetailsPrefix(connectionId) });
       if (activeSection === "overview") {
-        loadDatabaseInfo();
+        void refetchDatabaseInfo();
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to refresh");
@@ -912,7 +896,7 @@ export function DatabasePageContent({
         >
           {/* Main Content Area */}
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
-          {isTablesSection && (
+          <div className={isTablesSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isTablesSection}>
             <ResizablePanelGroup
               className="flex-1 min-w-0"
               defaultLayout={isSidebarVisible ? tablesLayout.defaultLayout : undefined}
@@ -1086,8 +1070,8 @@ export function DatabasePageContent({
                 })()}
               </ResizablePanel>
             </ResizablePanelGroup>
-          )}
-          {isSqlEditorSection && (
+          </div>
+          <div className={isSqlEditorSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isSqlEditorSection}>
             <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /></div>}>
               <SqlEditor
                 key={connectionId}
@@ -1116,8 +1100,8 @@ export function DatabasePageContent({
                 } : null}
               />
             </Suspense>
-          )}
-          {isOverviewSection && (
+          </div>
+          <div className={isOverviewSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isOverviewSection}>
             <DatabaseOverview
               connection={connection}
               schemaSummary={{ schemas, tables }}
@@ -1135,8 +1119,8 @@ export function DatabasePageContent({
               copyConnectionStringFeedback={copyConnFeedback}
               onCopyConnectionString={handleCopyConnectionString}
             />
-          )}
-          {isVisualizerSection && (
+          </div>
+          <div className={isVisualizerSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isVisualizerSection}>
             <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading schema...</span></div>}>
               <div className="flex-1 min-w-0 min-h-0">
                 {isLoadingVisualizer ? (
@@ -1165,8 +1149,8 @@ export function DatabasePageContent({
                 )}
               </div>
             </Suspense>
-          )}
-          {isDefinitionsSection && (
+          </div>
+          <div className={isDefinitionsSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isDefinitionsSection}>
             <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading definitions...</span></div>}>
               <DefinitionsBrowserPanel
                 connectionId={connectionId}
@@ -1176,7 +1160,7 @@ export function DatabasePageContent({
                 onSchemaChange={changeSchema}
               />
             </Suspense>
-          )}
+          </div>
         </div>
         </div>
       </div>

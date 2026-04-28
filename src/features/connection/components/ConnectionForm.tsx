@@ -506,6 +506,7 @@ export function ConnectionForm({
   isSaving,
   isTesting,
 }: ConnectionFormProps) {
+  const isEditing = Boolean(connection);
   const [formData, setFormData] = useState<ConnectionInput>(DEFAULT_CONNECTION);
   const [inputMode, setInputMode] = useState<InputMode>("url");
   const [urlValue, setUrlValue] = useState("");
@@ -611,10 +612,12 @@ export function ConnectionForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const preservedUrl =
+      connection?.url || connection?.connection_string || undefined;
     const dataToSave: ConnectionInput =
       inputMode === "url" && urlValue
         ? { ...formData, url: urlValue }
-        : { ...formData, url: undefined };
+        : { ...formData, url: preservedUrl };
     await onSave(dataToSave);
   };
 
@@ -704,7 +707,9 @@ export function ConnectionForm({
           <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
             {/* Status */}
             <div className="text-xs">
-              {hasTestedCurrent ? (
+              {isEditing ? (
+                <span className="text-muted-foreground">Save changes directly</span>
+              ) : hasTestedCurrent ? (
                 <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400">
                   <UiIcon name="circle-check" className="size-3" />
                   Verified
@@ -731,7 +736,7 @@ export function ConnectionForm({
                 Cancel
               </Button>
 
-              {hasTestedCurrent ? (
+              {isEditing || hasTestedCurrent ? (
                 <Button
                   type="submit"
                   size="sm"
