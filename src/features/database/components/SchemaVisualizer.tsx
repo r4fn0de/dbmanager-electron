@@ -16,8 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useReactFlow, Panel, ControlButton } from "@xyflow/react";
-import { Button } from "@/components/ui/button";
+import { useReactFlow, Panel } from "@xyflow/react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -28,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Icon as UiIcon } from "@/components/ui/Icon";
-import type { SchemaTableDetails, SchemaForeignKey, SchemaIndex, SchemaColumn } from "@/ipc/db/types";
+import type { SchemaTableDetails, SchemaColumn } from "@/ipc/db/types";
 
 interface SchemaVisualizerProps {
   tables: SchemaTableDetails[];
@@ -75,51 +74,6 @@ type TableNodeType = Node<TableNodeData, "tableNode">;
 type LayoutDirection = "LR" | "TB";
 
 // Toolbar clean e unificado - renderizado dentro do ReactFlow para ter acesso ao contexto
-function FlowToolbarInner() {
-  const { zoomIn, zoomOut, fitView } = useReactFlow();
-
-  const handleZoomOut = useCallback(() => {
-    zoomOut({ duration: 200 });
-  }, [zoomOut]);
-
-  const handleFitView = useCallback(() => {
-    fitView({ duration: 300, padding: 0.2 });
-  }, [fitView]);
-
-  const handleZoomIn = useCallback(() => {
-    zoomIn({ duration: 200 });
-  }, [zoomIn]);
-
-  return (
-    <Panel position="top-left" className="m-3! z-50">
-      <div className="flex items-center gap-0.5 rounded-lg bg-card border p-1">
-        <button
-          onClick={handleZoomOut}
-          title="Zoom Out"
-          className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <UiIcon name="zoom-out" className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={handleFitView}
-          title="Fit View"
-          className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <UiIcon name="maximize" className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={handleZoomIn}
-          title="Zoom In"
-          className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <UiIcon name="zoom-in" className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </Panel>
-  );
-}
-
-// Legenda minimal flutuante
 function Legend() {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -136,17 +90,17 @@ function Legend() {
       <div className="flex flex-col items-end gap-1">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex h-8 w-8 items-center justify-center rounded-md bg-card border transition-colors hover:bg-muted"
+          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
           title="Legend"
         >
-          <UiIcon name="layers" className="h-3.5 w-3.5 text-muted-foreground" />
+          <UiIcon name="layers" className="h-3 w-3" />
         </button>
         {isOpen && (
-          <div className="rounded-lg bg-card border p-2">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+          <div className="rounded-md bg-card/80 backdrop-blur-sm border p-2">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
               {items.map((item) => (
-                <div key={item.label} className="flex items-center gap-1.5 text-[10px]">
-                  <item.icon className={`h-3 w-3 ${item.color}`} />
+                <div key={item.label} className="flex items-center gap-1 text-[9px]">
+                  <item.icon className={`h-2.5 w-2.5 ${item.color}`} />
                   <span className="text-muted-foreground">{item.label}</span>
                 </div>
               ))}
@@ -170,46 +124,45 @@ function TableFilters({
 }) {
   return (
     <Panel position="bottom-left" className="m-3!">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-card border p-1.5">
+      <div className="flex flex-wrap items-center gap-1">
         <button
           onClick={() => onChange({ ...filter, showIsolated: !filter.showIsolated })}
-          className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-colors ${
             filter.showIsolated
-              ? "bg-primary/15 text-primary"
-              : "text-muted-foreground hover:bg-muted/50"
+              ? "text-primary/80"
+              : "text-muted-foreground/40 hover:text-muted-foreground"
           }`}
           title="Isolated (no relations)"
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+          <span className="h-1 w-1 rounded-full bg-current" />
           Isolated
         </button>
         <button
           onClick={() => onChange({ ...filter, showWithFk: !filter.showWithFk })}
-          className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-colors ${
             filter.showWithFk
-              ? "bg-violet-500/15 text-violet-600"
-              : "text-muted-foreground hover:bg-muted/50"
+              ? "text-violet-500"
+              : "text-muted-foreground/40 hover:text-muted-foreground"
           }`}
           title="With Foreign Keys"
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+          <span className="h-1 w-1 rounded-full bg-current" />
           FK
         </button>
         <button
           onClick={() => onChange({ ...filter, showWithPk: !filter.showWithPk })}
-          className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-colors ${
             filter.showWithPk
-              ? "bg-amber-500/15 text-amber-600"
-              : "text-muted-foreground hover:bg-muted/50"
+              ? "text-amber-500"
+              : "text-muted-foreground/40 hover:text-muted-foreground"
           }`}
           title="With Primary Keys"
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          <span className="h-1 w-1 rounded-full bg-current" />
           PK
         </button>
-        <div className="mx-1 h-4 w-px bg-border/50" />
-        <span className="px-1 text-[10px] text-muted-foreground">
-          {totalCount} tables
+        <span className="px-1 text-[9px] text-muted-foreground/40">
+          {totalCount}
         </span>
       </div>
     </Panel>
@@ -282,98 +235,89 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
   return (
     <div
       className={cn(
-        "w-[220px] rounded-lg bg-card font-mono shadow-md border border-border transition-all hover:shadow-lg",
-        data.searchActive && data.tableSearchMatched && "ring-2 ring-primary shadow-lg",
+        "w-[200px] rounded-md bg-card font-mono border border-border/50 transition-opacity",
+        data.searchActive && data.tableSearchMatched && "ring-1 ring-primary/60",
         data.searchActive &&
           !data.tableSearchMatched &&
           !data.columns.some((c) => c.searchMatched) &&
-          "opacity-30"
+          "opacity-25"
       )}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-2.5 py-1.5 rounded-t-lg">
-        <div className="flex min-w-0 items-center gap-1.5 text-xs">
-          <UiIcon name="table" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span
-            className={cn(
-              "block truncate font-medium",
-              data.searchActive && data.tableSearchMatched && "text-primary"
-            )}
-          >
-            {data.table}
-          </span>
-        </div>
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border/40">
+        <UiIcon name="table" className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+        <span
+          className={cn(
+            "block truncate text-[11px] font-medium text-foreground/80",
+            data.searchActive && data.tableSearchMatched && "text-primary"
+          )}
+        >
+          {data.table}
+        </span>
         {data.onTableClick && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100 -mr-1"
+          <button
+            type="button"
+            className="ml-auto h-4 w-4 shrink-0 flex items-center justify-center rounded text-muted-foreground/30 hover:text-primary transition-colors"
             onClick={() => data.onTableClick?.(data.schema, data.table)}
           >
-            <UiIcon name="external-link" className="h-3 w-3" />
-          </Button>
+            <UiIcon name="arrow-right" className="h-2.5 w-2.5" />
+          </button>
         )}
       </div>
-      <div className="p-1.5 text-xs">
+      <div className="py-1 text-xs">
         {data.columns.map((column) => (
           <div
             key={column.name}
             className={cn(
-              "group relative px-3 transition-all",
+              "transition-opacity",
               data.searchActive &&
                 column.searchMatched &&
-                "bg-primary/10 text-primary rounded-sm mx-1",
+                "bg-primary/8",
               data.searchActive &&
                 data.columns.some((c) => c.searchMatched) &&
                 !column.searchMatched &&
-                "opacity-40"
+                "opacity-30"
             )}
           >
             <div
-              key={column.id}
-              className={cn(
-                "group flex items-center justify-between gap-1.5 rounded px-1.5 py-0.5 transition-colors text-[11px] leading-tight",
-                column.searchMatched && "bg-primary/10",
-                !column.searchMatched && "hover:bg-muted/50"
-              )}
+              className="flex items-center justify-between gap-1 px-2.5 py-[3px] text-[10px] leading-tight"
             >
               <div className="flex min-w-0 items-center gap-1">
                 {column.primaryKey && (
-                  <UiIcon name="key" className="h-3 w-3 shrink-0 text-amber-500" />
+                  <span className="h-1 w-1 rounded-full bg-amber-500 shrink-0" />
                 )}
                 {column.unique && !column.primaryKey && (
-                  <UiIcon name="fingerprint" className="h-3 w-3 shrink-0 text-emerald-500" />
+                  <span className="h-1 w-1 rounded-full bg-emerald-500 shrink-0" />
                 )}
-                {column.column_default && !column.primaryKey && !column.unique && (
-                  <UiIcon name="book" className="h-3 w-3 shrink-0 text-blue-500" />
+                {column.foreign && (
+                  <span className="h-1 w-1 rounded-full bg-violet-500 shrink-0" />
                 )}
-                {column.is_nullable && (
-                  <UiIcon name="x" className="h-3 w-3 shrink-0 text-slate-400" />
+                {!column.primaryKey && !column.unique && !column.foreign && (
+                  <span className="h-1 w-1 rounded-full bg-transparent shrink-0" />
                 )}
-                <span className="truncate font-medium">{column.name}</span>
+                <span className="truncate text-foreground/70">{column.name}</span>
               </div>
-              <span className="max-w-[40%] truncate text-muted-foreground/60 text-[9px]">
+              <span className="max-w-[40%] truncate text-muted-foreground/35 text-[9px]">
                 {column.data_type}
               </span>
-              {/* Connection handles - always visible for FK/PK */}
-              {column.foreign && (
-                <Handle
-                  type="source"
-                  position={Position.Right}
-                  id={column.id}
-                  className="w-2! h-2! rounded-full! border-2! border-background! bg-foreground! opacity-100!"
-                  isConnectable={false}
-                />
-              )}
-              {(column.primaryKey || column.isEdgeTarget) && (
-                <Handle
-                  type="target"
-                  position={Position.Left}
-                  id={column.id}
-                  className="w-2! h-2! rounded-full! border-2! border-background! bg-foreground! opacity-100!"
-                  isConnectable={false}
-                />
-              )}
             </div>
+            {column.foreign && (
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={column.id}
+                className="w-1.5! h-1.5! rounded-full! border-none! bg-muted-foreground/30!"
+                isConnectable={false}
+              />
+            )}
+            {(column.primaryKey || column.isEdgeTarget) && (
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={column.id}
+                className="w-1.5! h-1.5! rounded-full! border-none! bg-muted-foreground/30!"
+                isConnectable={false}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -398,16 +342,15 @@ function CustomEdge({
     targetPosition: targetPosition || Position.Top,
     targetX,
     targetY,
-    borderRadius: 15,
+    borderRadius: 12,
   });
 
   const animatedStyle = {
     ...style,
-    strokeWidth: 1.2,
-    stroke: "var(--foreground)",
-    opacity: 0.28,
-    strokeDasharray: "5,5",
-    strokeDashoffset: "0",
+    strokeWidth: 1,
+    stroke: "var(--muted-foreground)",
+    opacity: 0.2,
+    strokeDasharray: "4,4",
     animation: "dash 1s linear infinite",
   };
 
@@ -418,7 +361,7 @@ function CustomEdge({
           {`
             @keyframes dash {
               to {
-                stroke-dashoffset: -10;
+                stroke-dashoffset: -8;
               }
             }
           `}
@@ -438,10 +381,10 @@ const nodeTypes = {
 };
 
 function getNodeSize(columns: ColumnData[]): { width: number; height: number } {
-  const rowHeight = 22;
-  const headerHeight = 32;
-  const padding = 12;
-  const width = 220;
+  const rowHeight = 18;
+  const headerHeight = 28;
+  const padding = 8;
+  const width = 200;
   const height = headerHeight + columns.length * rowHeight + padding;
   return { width, height };
 }
@@ -735,13 +678,12 @@ function VisualizerFlow({
       <MiniMap
         pannable
         zoomable
-        bgColor="var(--background)"
-        nodeColor="var(--muted)"
+        bgColor="transparent"
+        nodeColor="var(--muted-foreground)"
         maskColor="var(--muted)"
-        className="border border-border rounded-lg shadow-lg"
-        style={{ width: 120, height: 80 }}
+        className="rounded border border-border/30 opacity-60 hover:opacity-100 transition-opacity"
+        style={{ width: 100, height: 60 }}
       />
-      <FlowToolbarInner />
       <Legend />
       <TableFilters filter={filter} onChange={onFilterChange} totalCount={tables.length} />
     </ReactFlow>
@@ -803,35 +745,30 @@ export function SchemaVisualizer({
       {/* Header flutuante clean */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 items-center gap-2 rounded-md bg-card border px-3">
-            <UiIcon name="zap" className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium">{schemaTableCount} tables</span>
-          </div>
+          <span className="text-[10px] text-muted-foreground/50 tabular-nums">{schemaTableCount}</span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="relative">
-            <div className="flex items-center rounded-md bg-card border">
-              <UiIcon name="search" className="ml-3 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                ref={searchRef}
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 w-44 border-0 bg-transparent pl-2 pr-8 text-xs focus-visible:ring-0"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="mr-2"
-                >
-                  <UiIcon name="x" className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                </button>
-              )}
-            </div>
+          <div className="flex items-center">
+            <UiIcon name="search" className="mr-1.5 h-3 w-3 text-muted-foreground/40" />
+            <Input
+              ref={searchRef}
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-6 w-32 border-0 bg-transparent p-0 text-[11px] text-muted-foreground placeholder:text-muted-foreground/40 focus-visible:ring-0"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="mr-1"
+              >
+                <UiIcon name="x" className="h-2.5 w-2.5 text-muted-foreground/40 hover:text-foreground" />
+              </button>
+            )}
           </div>
           <Select value={currentSchema} onValueChange={(value) => value && onSchemaChange(value)}>
-            <SelectTrigger className="h-8 w-32 rounded-md bg-card border text-xs">
+            <SelectTrigger className="h-6 w-28 border-0 bg-transparent p-0 text-[11px] text-muted-foreground shadow-none">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -847,20 +784,19 @@ export function SchemaVisualizer({
               ))}
             </SelectContent>
           </Select>
-          <div className="h-6 w-px bg-border mx-1" />
           <button
             onClick={() => setDirection(direction === "LR" ? "TB" : "LR")}
             title={direction === "LR" ? "Vertical Layout" : "Horizontal Layout"}
-            className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground"
           >
-            {direction === "LR" ? <UiIcon name="arrows-up-down" className="h-3.5 w-3.5" /> : <UiIcon name="arrows-left-right" className="h-3.5 w-3.5" />}
+            {direction === "LR" ? <UiIcon name="arrows-up-down" className="h-3 w-3" /> : <UiIcon name="arrows-left-right" className="h-3 w-3" />}
           </button>
           <button
             onClick={toggleFullscreen}
             title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-            className="flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground"
           >
-            {isFullscreen ? <UiIcon name="minimize" className="h-3.5 w-3.5" /> : <UiIcon name="maximize" className="h-3.5 w-3.5" />}
+            {isFullscreen ? <UiIcon name="minimize" className="h-3 w-3" /> : <UiIcon name="maximize" className="h-3 w-3" />}
           </button>
         </div>
       </div>

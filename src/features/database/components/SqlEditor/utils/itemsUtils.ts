@@ -99,12 +99,31 @@ export function makeTableSelectSql(schema: string, table: string): string {
   return `SELECT *\nFROM ${schema}.${table}\nLIMIT 100;`;
 }
 
+export function makeTableRef(schema: string, table: string): string {
+  return `${schema}.${table}`;
+}
+
+export function makeTableInsertTemplateSql(schema: string, table: string): string {
+  return `INSERT INTO ${schema}.${table} (column1, column2)\nVALUES (value1, value2);`;
+}
+
+export function makeTableUpdateTemplateSql(schema: string, table: string): string {
+  return `UPDATE ${schema}.${table}\nSET column1 = value1\nWHERE condition;`;
+}
+
 export function makeQualifiedColumnRef(
   schema: string,
   table: string,
   column: string,
 ): string {
   return `${schema}.${table}.${column}`;
+}
+
+export function makeAliasedColumnRef(
+  table: string,
+  column: string,
+): string {
+  return `${table}.${column} AS ${column}`;
 }
 
 export function parseColumnRef(ref: string): ParsedColumnRef | null {

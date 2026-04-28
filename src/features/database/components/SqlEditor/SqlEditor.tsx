@@ -62,10 +62,7 @@ import {
 import { cancelQuery } from "@/features/database/hooks/db-actions";
 
 
-const DEFAULT_SQL = `/*
-Try creating a sample table and querying it.
-*/
-SELECT now() as server_time;`;
+const DEFAULT_SQL = "";
 
 type MonacoEditor = Parameters<OnMount>[0];
 
@@ -95,6 +92,7 @@ export function SqlEditor({
   schemaContext,
   schemaCompletionData,
   isRouteActive = true,
+  insertRequest = null,
 }: SqlEditorProps) {
   const {
     savedQueries,
@@ -456,6 +454,14 @@ export function SqlEditor({
     },
     [setSql],
   );
+
+  // External insert requests should merge into current editor selection/cursor
+  // and preserve undo/redo via executeEdits.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: consume one-shot inserts by key only.
+  useEffect(() => {
+    if (!insertRequest?.text) return;
+    insertIntoEditor(insertRequest.text);
+  }, [insertRequest?.key]);
 
   const replaceStatementAtCursor = useCallback((nextStatementSql: string): boolean => {
     const editorInstance = editorRef.current;

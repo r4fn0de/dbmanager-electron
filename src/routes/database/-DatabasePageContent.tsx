@@ -71,6 +71,14 @@ import {
   SchemaExportDialog,
   DefinitionsBrowserPanel,
 } from "./-lazyComponents";
+import {
+  makeAliasedColumnRef,
+  makeQualifiedColumnRef,
+  makeTableInsertTemplateSql,
+  makeTableRef,
+  makeTableSelectSql,
+  makeTableUpdateTemplateSql,
+} from "@/features/database/components/SqlEditor/utils/itemsUtils";
 
 const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
   "1": "overview",
@@ -120,6 +128,7 @@ export function DatabasePageContent({
   const schemas = schemaSummaryData?.schemas ?? [];
   const tables = schemaSummaryData?.tables ?? [];
   const [initialSqlQuery, setInitialSqlQuery] = useState<string | null>(null);
+  const [sqlInsertRequest, setSqlInsertRequest] = useState<null | { key: string; text: string }>(null);
   const [tableSearch, setTableSearch] = useState("");
 
   // Sidebar visibility: persisted per-connection in localStorage
@@ -406,6 +415,16 @@ export function DatabasePageContent({
     });
   }, [connectionId, activeSection, selectedSchema, setTabNavState]);
 
+  const requestSqlInsert = useCallback((text: string) => {
+    setSqlInsertRequest({
+      key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      text,
+    });
+    if (activeSection !== "sql-editor") {
+      changeSection("sql-editor");
+    }
+  }, [activeSection, changeSection]);
+
   // Stable ref for keyboard handler — avoids re-registering the listener
   // when changeSection/activeSection/toggleSidebar change (rerender-optimization)
   const keyboardHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -543,6 +562,18 @@ export function DatabasePageContent({
     }
     setTimeout(() => setCopyFeedback(null), 2000);
   };
+
+  const copyToClipboardWithToast = useCallback(async (
+    text: string,
+    successMessage: string,
+  ) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(successMessage);
+    } catch {
+      toast.error("Failed to copy");
+    }
+  }, []);
 
   const tablesBySchema = useMemo(() => {
     const grouped = new Map<string, SchemaTableSummary[]>();
@@ -779,6 +810,51 @@ export function DatabasePageContent({
     [connectionId, queryClient],
   );
 
+  const quoteIdentifier = useCallback((value: string) => `"${value.replaceAll("\"", "\"\"")}"`, []);
+
+  const handleBrowseTableData = useCallback((target: { schema: string; name: string }) => {
+    changeSchema(target.schema);
+    changeTable(`${target.schema}.${target.name}`);
+    if (activeSection !== "tables") {
+      changeSection("tables");
+    }
+  }, [activeSection, changeSchema, changeSection, changeTable]);
+
+  const handleTruncateTable = useCallback(async (target: { schema: string; name: string }) => {
+    const confirmed = window.confirm(
+      `Truncate ${target.schema}.${target.name}?\n\nThis will permanently remove all rows.`,
+    );
+    if (!confirmed) return;
+    try {
+      await tableTruncate({
+        connectionId,
+        schema: target.schema,
+        table: target.name,
+      });
+      toast.success(`Table ${target.schema}.${target.name} truncated`);
+      invalidateTableDetails(target.schema, target.name);
+      void refetchSchema();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to truncate table");
+    }
+  }, [connectionId, invalidateTableDetails, refetchSchema]);
+
+  const handleToggleTableRls = useCallback(async (
+    target: { schema: string; name: string; enable: boolean },
+  ) => {
+    if (connection?.db_type !== "postgresql") return;
+    const action = target.enable ? "ENABLE" : "DISABLE";
+    const sql = `ALTER TABLE ${quoteIdentifier(target.schema)}.${quoteIdentifier(target.name)} ${action} ROW LEVEL SECURITY;`;
+    try {
+      await executeQuery(connectionId, sql);
+      toast.success(`RLS ${target.enable ? "enabled" : "disabled"} for ${target.schema}.${target.name}`);
+      invalidateTableDetails(target.schema, target.name);
+      void refetchSchema();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update RLS");
+    }
+  }, [connection?.db_type, connectionId, invalidateTableDetails, quoteIdentifier, refetchSchema]);
+
   const handleDropTableSuccess = useCallback(
     async (droppedKey: string) => {
       await handleDdlSuccess();
@@ -928,6 +1004,7 @@ export function DatabasePageContent({
                   selectedSchema={selectedSchema}
                   selectedTableKey={selectedTableKey}
                   selectedTableRef={selectedTableRef}
+                  selectedTableColumns={selectedTableDetails?.columns ?? []}
                   tableSearch={tableSearch}
                   isLoading={isLoading}
                   onSchemaChange={changeSchema}
@@ -943,6 +1020,48 @@ export function DatabasePageContent({
                   onViewRlsPolicies={setRlsPoliciesTarget}
                   onViewDdl={setDdlViewTarget}
                   onExportSchema={setSchemaExportTarget}
+                  onBrowseTableData={handleBrowseTableData}
+                  onTruncateTable={handleTruncateTable}
+                  onToggleTableRls={handleToggleTableRls}
+                  dbType={connection.db_type}
+                  onCopyTableName={({ name }) => {
+                    void copyToClipboardWithToast(name, "Table name copied");
+                  }}
+                  onCopyTableRef={({ schema, name }) => {
+                    void copyToClipboardWithToast(makeTableRef(schema, name), "Table reference copied");
+                  }}
+                  onInsertTableSelect={({ schema, name }) => {
+                    requestSqlInsert(makeTableSelectSql(schema, name));
+                  }}
+                  onInsertTableInsertTemplate={({ schema, name }) => {
+                    requestSqlInsert(makeTableInsertTemplateSql(schema, name));
+                  }}
+                  onInsertTableUpdateTemplate={({ schema, name }) => {
+                    requestSqlInsert(makeTableUpdateTemplateSql(schema, name));
+                  }}
+                  onCopyColumnName={({ column }) => {
+                    void copyToClipboardWithToast(column, "Column name copied");
+                  }}
+                  onCopyColumnRef={({ schema, table, column }) => {
+                    void copyToClipboardWithToast(
+                      makeQualifiedColumnRef(schema, table, column),
+                      "Column reference copied",
+                    );
+                  }}
+                  onInsertColumnRef={({ schema, table, column }) => {
+                    requestSqlInsert(makeQualifiedColumnRef(schema, table, column));
+                  }}
+                  onInsertAliasedColumnRef={({ table, column }) => {
+                    requestSqlInsert(makeAliasedColumnRef(table, column));
+                  }}
+                  onCopySelectedColumnRefs={({ schema, table, columns }) => {
+                    const refs = columns.map((column) => makeQualifiedColumnRef(schema, table, column));
+                    void copyToClipboardWithToast(refs.join(", "), "Column references copied");
+                  }}
+                  onInsertSelectedColumns={({ schema, table, columns }) => {
+                    const refs = columns.map((column) => makeQualifiedColumnRef(schema, table, column));
+                    requestSqlInsert(refs.join(", "));
+                  }}
                 />
               </ResizablePanel>
 
@@ -1087,6 +1206,7 @@ export function DatabasePageContent({
                 schemaContext={schemaContextForAi}
                 schemaCompletionData={schemaCompletionData}
                 isRouteActive={isActive}
+                insertRequest={sqlInsertRequest}
                 loadRequest={initialSqlQuery ? {
                   key: `query:${Date.now()}`,
                   title: "Query",
@@ -1121,34 +1241,36 @@ export function DatabasePageContent({
             />
           </div>
           <div className={isVisualizerSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isVisualizerSection}>
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading schema...</span></div>}>
-              <div className="flex-1 min-w-0 min-h-0">
-                {isLoadingVisualizer ? (
-                  <div className="flex h-full items-center justify-center">
-                    <Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
-                  </div>
-                ) : visualizerTables.length === 0 ? (
-                  <div className="flex h-full items-center justify-center">
-                    <p className="text-muted-foreground">No tables to visualize</p>
-                  </div>
-                ) : (
-                  <SchemaVisualizer
-                    tables={visualizerTables}
-                    schemas={schemas}
-                    currentSchema={selectedSchema}
-                    onSchemaChange={changeSchema}
-                    onTableClick={(schema, table) => {
-                      changeSection("tables");
-                      changeSchema(schema);
-                      changeTable(`${schema}.${table}`);
-                    }}
-                    isLoading={isLoadingVisualizer}
-                    onNavigateToTables={() => changeSection("tables")}
-                  />
-                )}
-              </div>
-            </Suspense>
+            {isVisualizerSection && (
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading schema...</span></div>}>
+                <div className="flex h-full min-h-0 min-w-0 flex-1">
+                  {isLoadingVisualizer ? (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
+                    </div>
+                  ) : visualizerTables.length === 0 ? (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <p className="text-muted-foreground">No tables to visualize</p>
+                    </div>
+                  ) : (
+                    <SchemaVisualizer
+                      tables={visualizerTables}
+                      schemas={schemas}
+                      currentSchema={selectedSchema}
+                      onSchemaChange={changeSchema}
+                      onTableClick={(schema, table) => {
+                        changeSection("tables");
+                        changeSchema(schema);
+                        changeTable(`${schema}.${table}`);
+                      }}
+                      isLoading={isLoadingVisualizer}
+                      onNavigateToTables={() => changeSection("tables")}
+                    />
+                  )}
+                </div>
+              </Suspense>
+            )}
           </div>
           <div className={isDefinitionsSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isDefinitionsSection}>
             <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading definitions...</span></div>}>

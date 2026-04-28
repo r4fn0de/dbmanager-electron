@@ -41,4 +41,8 @@ export interface SqlEditorProps {
   schemaContext?: string;
   schemaCompletionData?: SchemaCompletionData;
   isRouteActive?: boolean;
+  insertRequest?: {
+    key: string;
+    text: string;
+  } | null;
 }

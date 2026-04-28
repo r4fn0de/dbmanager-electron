@@ -5,7 +5,11 @@ import {
   filterItemsTree,
   getStatementRangeAtOffset,
   makeQualifiedColumnRef,
+  makeAliasedColumnRef,
+  makeTableInsertTemplateSql,
+  makeTableRef,
   makeTableSelectSql,
+  makeTableUpdateTemplateSql,
   mergeDroppedColumnsIntoStatement,
   normalizeColumnRefs,
   parseColumnRef,
@@ -71,8 +75,18 @@ describe("sql editor items utils", () => {
     expect(makeTableSelectSql("public", "users")).toBe(
       "SELECT *\nFROM public.users\nLIMIT 100;",
     );
+    expect(makeTableRef("public", "users")).toBe("public.users");
+    expect(makeTableInsertTemplateSql("public", "users")).toBe(
+      "INSERT INTO public.users (column1, column2)\nVALUES (value1, value2);",
+    );
+    expect(makeTableUpdateTemplateSql("public", "users")).toBe(
+      "UPDATE public.users\nSET column1 = value1\nWHERE condition;",
+    );
     expect(makeQualifiedColumnRef("public", "users", "email")).toBe(
       "public.users.email",
+    );
+    expect(makeAliasedColumnRef("users", "email")).toBe(
+      "users.email AS email",
     );
   });
 
