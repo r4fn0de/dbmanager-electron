@@ -108,39 +108,44 @@ function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
   }
 }
 
-function getDatabaseBrandColor(dbType: DatabaseType, provider?: ConnectionProvider): string {
+function getDatabaseBrandColor(dbType: DatabaseType, provider?: ConnectionProvider): {
+  bgLight: string;
+  textLight: string;
+  bgDark: string;
+  textDark: string;
+} {
   if (provider) {
     switch (provider) {
       case "neon":
-        return "#00E0D9";
+        return { bgLight: "#00E0D914", textLight: "#008F8A", bgDark: "#00E0D920", textDark: "#00E0D9" };
       case "supabase":
-        return "#3ECF8E";
+        return { bgLight: "#3ECF8E14", textLight: "#1A8A55", bgDark: "#3ECF8E20", textDark: "#3ECF8E" };
       case "mysql":
-        return "#00546B";
+        return { bgLight: "#00546B14", textLight: "#00546B", bgDark: "#00546B20", textDark: "#4DB8D4" };
       case "mariadb":
-        return "#C49A6C";
+        return { bgLight: "#C49A6C14", textLight: "#8B6914", bgDark: "#C49A6C20", textDark: "#D4B07C" };
       case "clickhouse":
-        return "#FFCC00";
+        return { bgLight: "#FFCC0014", textLight: "#9A7B00", bgDark: "#FFCC0020", textDark: "#FFD633" };
       case "redis":
-        return "#DC382D";
+        return { bgLight: "#DC382D14", textLight: "#DC382D", bgDark: "#DC382D20", textDark: "#EF6B5E" };
     }
   }
 
   switch (dbType) {
     case "postgresql":
-      return "#336791";
+      return { bgLight: "#33679114", textLight: "#336791", bgDark: "#33679120", textDark: "#6BA0D0" };
     case "mysql":
-      return "#00546B";
+      return { bgLight: "#00546B14", textLight: "#00546B", bgDark: "#00546B20", textDark: "#4DB8D4" };
     case "mariadb":
-      return "#C49A6C";
+      return { bgLight: "#C49A6C14", textLight: "#8B6914", bgDark: "#C49A6C20", textDark: "#D4B07C" };
     case "sqlite":
-      return "#0F80CC";
+      return { bgLight: "#0F80CC14", textLight: "#0F6BA8", bgDark: "#0F80CC20", textDark: "#5CB3E8" };
     case "clickhouse":
-      return "#FFCC00";
+      return { bgLight: "#FFCC0014", textLight: "#9A7B00", bgDark: "#FFCC0020", textDark: "#FFD633" };
     case "redis":
-      return "#DC382D";
+      return { bgLight: "#DC382D14", textLight: "#DC382D", bgDark: "#DC382D20", textDark: "#EF6B5E" };
     default:
-      return "#336791";
+      return { bgLight: "#33679114", textLight: "#336791", bgDark: "#33679120", textDark: "#6BA0D0" };
   }
 }
 
@@ -533,12 +538,7 @@ function ChatMessage({
     return (
       <Message
         from="user"
-        className="
-          group/msg w-full max-w-full pl-3 pr-3 py-2
-          motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2
-          motion-safe:duration-200
-        "
-        style={{ animationTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}
+        className="group/msg w-full max-w-full pl-3 pr-3 py-2"
       >
         <div className="ml-auto flex max-w-[72%] min-w-0 flex-col items-end">
           {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview) && (
@@ -547,20 +547,17 @@ function ChatMessage({
                 <div
                   className="
                     inline-flex w-45.5 max-w-full min-h-13 cursor-default
-                    items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5
-                    motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1
-                    motion-safe:duration-200
+                    items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5
                   "
-                  style={{ animationTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}
                 >
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
-                    AI
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/8 text-[10px] font-semibold text-muted-foreground">
+                    SQL
                   </span>
                   <div className="min-w-0 overflow-hidden">
-                    <p className="truncate text-[12px] font-medium text-foreground">
+                    <p className="truncate text-[12px] font-medium text-foreground/90">
                       {message.contextSnapshot.selectionPreview}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">Selected Text</p>
+                    <p className="text-[11px] text-muted-foreground/70">Selected Text</p>
                   </div>
                 </div>
               )}
@@ -568,37 +565,22 @@ function ChatMessage({
                 <div
                   className="
                     inline-flex max-w-full cursor-default items-center gap-2
-                    rounded-lg bg-amber-500/10 px-2 py-1
-                    motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1
-                    motion-safe:duration-200
+                    rounded-lg bg-amber-500/8 px-2 py-1
                   "
-                  style={{ animationTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}
                 >
-                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600/70 dark:text-amber-400/70" />
                   <div className="min-w-0">
-                    <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
+                    <p className="truncate text-[12px] text-amber-700/80 dark:text-amber-300/80">
                       {message.contextSnapshot.errorPreview}
                     </p>
-                    <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80">Last Error</p>
+                    <p className="text-[11px] text-amber-600/50 dark:text-amber-400/50">Last Error</p>
                   </div>
                 </div>
               )}
             </div>
           )}
-          {/* Light-mode visual spec documented in docs/ai-chat-visual-style.md */}
           {message.content && (
-            <p
-              className="
-                text-[14px] leading-6 whitespace-pre-wrap wrap-break-word rounded-xl
-                border border-zinc-300/70 bg-zinc-200/85 px-2 py-2 text-zinc-900
-                shadow-[0_1px_0_rgba(255,255,255,0.45)_inset] backdrop-blur-sm
-                dark:border-zinc-700/70 dark:bg-zinc-800/85 dark:text-zinc-100
-                dark:shadow-[0_1px_0_rgba(255,255,255,0.05)_inset]
-                motion-safe:animate-in motion-safe:zoom-in-95
-                motion-safe:duration-200
-              "
-              style={{ animationTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}
-            >
+            <p className="text-[14px] leading-6 whitespace-pre-wrap wrap-break-word rounded-2xl bg-muted/60 px-3.5 py-2 text-foreground">
               {message.content}
             </p>
           )}
@@ -1175,13 +1157,14 @@ export function AiChatPanel({
           {hasActiveConnection ? (
             (() => {
               const DbIcon = getDatabaseIcon(dbType, provider);
-              const brandColor = getDatabaseBrandColor(dbType, provider);
+              const colors = getDatabaseBrandColor(dbType, provider);
+              const isDark = resolvedTheme === "dark";
               return (
                 <span
                   className="inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full px-2 text-[10px] font-medium transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
                   style={{
-                    backgroundColor: `${brandColor}12`,
-                    color: brandColor,
+                    backgroundColor: isDark ? colors.bgDark : colors.bgLight,
+                    color: isDark ? colors.textDark : colors.textLight,
                   }}
                 >
                   <DbIcon className="size-3.5" />
