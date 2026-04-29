@@ -16,6 +16,8 @@ interface QueryResultsProps {
   result: QueryResult | null;
   error: string | null;
   durationMs?: number;
+  onFixWithAi?: () => void;
+  isFixingWithAi?: boolean;
 }
 
 /* ─── helpers ──────────────────────────────────────────────────────── */
@@ -172,7 +174,13 @@ function CellExpandDialog({
 
 /* ─── main component ───────────────────────────────────────────────── */
 
-export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
+export function QueryResults({
+  result,
+  error,
+  durationMs,
+  onFixWithAi,
+  isFixingWithAi = false,
+}: QueryResultsProps) {
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -193,19 +201,58 @@ export function QueryResults({ result, error, durationMs }: QueryResultsProps) {
 
   // ── Error state ──────────────────────────────────────────────────
   if (error) {
+    const errorLines = error
+      .split("|")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
     return (
       <div className="h-full min-h-0 border-l-2 border-destructive/50 bg-destructive/5 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Icon name="x" className="size-3.5 text-destructive shrink-0" />
-          <code className="font-mono text-xs text-destructive/90 leading-5 break-all">
-            {error}
-          </code>
+        <div className="flex items-start gap-2">
+          <Icon name="x" className="mt-0.5 size-3.5 text-destructive shrink-0" />
+          <div className="min-w-0 flex-1">
+            {errorLines.length > 0 ? (
+              <div className="space-y-0.5">
+                {errorLines.map((line, idx) => (
+                  <code
+                    key={`${line}-${idx}`}
+                    className={cn(
+                      "block font-mono text-xs leading-5 break-all",
+                      idx === 0 ? "text-destructive" : "text-destructive/85",
+                    )}
+                  >
+                    {line}
+                  </code>
+                ))}
+              </div>
+            ) : (
+              <code className="block font-mono text-xs text-destructive/90 leading-5 break-all">
+                {error}
+              </code>
+            )}
+          </div>
           {durationMs !== undefined && (
-            <span className="ml-auto text-[10px] text-destructive/60 font-mono shrink-0">
+            <span className="text-[10px] text-destructive/60 font-mono shrink-0">
               {formatDuration(durationMs)}
             </span>
           )}
         </div>
+        {onFixWithAi && (
+          <div className="mt-2">
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={onFixWithAi}
+              disabled={isFixingWithAi}
+            >
+              <Icon
+                name={isFixingWithAi ? "loader" : "wand-sparkles"}
+                className={cn("size-3", isFixingWithAi && "animate-spin")}
+              />
+              {isFixingWithAi ? "Fixing..." : "Fix with AI"}
+            </Button>
+          </div>
+        )}
       </div>
     );
   }

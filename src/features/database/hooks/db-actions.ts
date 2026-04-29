@@ -46,6 +46,47 @@ import type {
   TableRowsResponse,
 } from "@/ipc/db/types";
 
+function extractErrorMessage(
+  err: unknown,
+  fallback: string,
+): string {
+  const pickString = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === "string" && err.trim()) return err.trim();
+
+  if (err && typeof err === "object") {
+    const asRecord = err as Record<string, unknown>;
+
+    const candidates: Array<unknown> = [
+      asRecord.message,
+      (asRecord.data as Record<string, unknown> | undefined)?.message,
+      (asRecord.cause as Record<string, unknown> | undefined)?.message,
+      (
+        (asRecord.cause as Record<string, unknown> | undefined)?.data as
+          | Record<string, unknown>
+          | undefined
+      )?.message,
+      (asRecord.shape as Record<string, unknown> | undefined)?.message,
+      (
+        (asRecord.shape as Record<string, unknown> | undefined)?.data as
+          | Record<string, unknown>
+          | undefined
+      )?.message,
+      (asRecord.error as Record<string, unknown> | undefined)?.message,
+      (asRecord.response as Record<string, unknown> | undefined)?.message,
+    ];
+
+    for (const candidate of candidates) {
+      const picked = pickString(candidate);
+      if (picked) return picked;
+    }
+  }
+
+  return fallback;
+}
+
 // ── Connection operations ────────────────────────────────────────────
 
 export async function testConnection(
@@ -80,9 +121,7 @@ export async function executeQuery(
   try {
     return await ipc.client.db.executeQuery({ connectionId, sql, requestId });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Query execution failed",
-    );
+    throw new Error(extractErrorMessage(err, "Query execution failed"));
   }
 }
 

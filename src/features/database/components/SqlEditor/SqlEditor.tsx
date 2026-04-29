@@ -80,6 +80,25 @@ const MONACO_OPTIONS = {
 
 const INITIAL_TAB_ID = "initial-tab";
 
+function getQueryErrorMessage(err: unknown): string {
+  const rawMessage =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : "";
+
+  const message = rawMessage.trim();
+  if (!message) return "Query failed. Please check your SQL and connection.";
+
+  const lower = message.toLowerCase();
+  if (lower === "internal server error") {
+    return "Query failed on the server. Please check your SQL syntax, permissions, and connection status.";
+  }
+
+  return message;
+}
+
 
 export function SqlEditor({
   connections,
@@ -840,7 +859,7 @@ export function SqlEditor({
       setLastResult(result);
       setLastError(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "EXPLAIN failed";
+      const message = getQueryErrorMessage(err);
       const resultId = `explain-${nowIso()}`;
       setRunResults([{
         id: resultId,
@@ -860,11 +879,14 @@ export function SqlEditor({
   }, [selectedConnection, doc.sql, dbType, isExecuting, executeQuery, explainQueryClient]);
 
   // AI: Fix SQL — send current SQL + last error to AI for correction
-  const handleFixSql = useCallback(async () => {
-    if (!selectedConnection || !doc.sql.trim() || !lastError) return;
+  const handleFixSql = useCallback(async (sqlOverride?: string, errorOverride?: string) => {
+    if (!selectedConnection) return;
+    const sqlToFix = (sqlOverride ?? doc.sql).trim();
+    const errorToFix = (errorOverride ?? lastError ?? "").trim();
+    if (!sqlToFix || !errorToFix) return;
     setIsFixingSql(true);
     try {
-      const result = await fixSql(doc.sql, lastError, dbType);
+      const result = await fixSql(sqlToFix, errorToFix, dbType);
       if (result.sql && result.sql.trim()) {
         setSql(result.sql);
         toast.success("SQL fixed by AI");
@@ -1076,7 +1098,7 @@ export function SqlEditor({
         } catch (err) {
           if (controller.signal.aborted) return;
           const durationMs = performance.now() - runStart;
-          const message = err instanceof Error ? err.message : "Unknown error";
+          const message = getQueryErrorMessage(err);
           const runResult: SqlRunResult = {
             id: `${nowIso()}-${index}-err`,
             query: statement,
@@ -1783,30 +1805,6 @@ export function SqlEditor({
               {selectedConnectionMeta.label || "No connection selected"}
             </span>
 
-            {lastError && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => void handleFixSql()}
-                      disabled={isFixingSql || !doc.sql.trim()}
-                      className="gap-1 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
-                    >
-                      {isFixingSql ? (
-                        <UiIcon name="loader" className="size-3 animate-spin" />
-                      ) : (
-                        <UiIcon name="sparkles" className="size-3" />
-                      )}
-                      Fix SQL
-                    </Button>
-                  }
-                />
-                <TooltipContent>Fix SQL with AI</TooltipContent>
-              </Tooltip>
-            )}
-
             <Separator orientation="vertical" className="h-4" />
 
             {/* Run button */}
@@ -2106,6 +2104,12 @@ export function SqlEditor({
                           result={item.result}
                           error={item.error}
                           durationMs={item.durationMs}
+                          onFixWithAi={
+                            item.error
+                              ? () => void handleFixSql(item.query, item.error)
+                              : undefined
+                          }
+                          isFixingWithAi={isFixingSql}
                         />
                       </TabsContent>
                     ))}
@@ -2115,6 +2119,16 @@ export function SqlEditor({
                     result={activeRunResult?.result ?? lastResult}
                     error={activeRunResult?.error ?? lastError}
                     durationMs={activeRunResult?.durationMs ?? lastDurationMs}
+                    onFixWithAi={
+                      (activeRunResult?.error ?? lastError)
+                        ? () =>
+                            void handleFixSql(
+                              activeRunResult?.query ?? doc.sql,
+                              activeRunResult?.error ?? lastError ?? undefined,
+                            )
+                        : undefined
+                    }
+                    isFixingWithAi={isFixingSql}
                   />
                 )}
               </div>

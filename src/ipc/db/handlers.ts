@@ -88,8 +88,18 @@ function resolveDbType(connection: Partial<Connection>): DatabaseType {
 
 /** Strip credentials (passwords, connection strings) from error messages before sending to renderer. */
 function sanitizeErrorMessage(err: unknown, fallback: string): string {
-  if (!(err instanceof Error)) return fallback;
-  let msg = err.message;
+  let msg = "";
+  if (err instanceof Error) {
+    msg = err.message;
+  } else if (typeof err === "string") {
+    msg = err;
+  } else if (err && typeof err === "object") {
+    const maybeMessage = (err as { message?: unknown }).message;
+    if (typeof maybeMessage === "string") {
+      msg = maybeMessage;
+    }
+  }
+  if (!msg) return fallback;
   // Remove postgresql://user:password@... patterns
   msg = msg.replace(/(?:postgresql|postgres|mysql|mariadb|clickhouse|redis):\/\/[^@\s]+@[\w.-]+:\d+/gi, "[CONNECTION_STRING]");
   // Remove password=... patterns
@@ -97,6 +107,44 @@ function sanitizeErrorMessage(err: unknown, fallback: string): string {
   // Remove :password@ patterns that survived the first pass
   msg = msg.replace(/:\w+@/g, ":[REDACTED]@");
   return msg || fallback;
+}
+
+function formatDriverErrorMessage(err: unknown, fallback: string): string {
+  if (!err || typeof err !== "object") {
+    return sanitizeErrorMessage(err, fallback);
+  }
+
+  const e = err as {
+    message?: unknown;
+    code?: unknown;
+    detail?: unknown;
+    hint?: unknown;
+    position?: unknown;
+    errno?: unknown;
+    sqlState?: unknown;
+  };
+
+  const message = typeof e.message === "string" && e.message.trim()
+    ? e.message.trim()
+    : fallback;
+  const code = typeof e.code === "string"
+    ? e.code
+    : typeof e.sqlState === "string"
+      ? e.sqlState
+      : typeof e.errno === "number"
+        ? String(e.errno)
+        : null;
+  const detail = typeof e.detail === "string" && e.detail.trim() ? e.detail.trim() : null;
+  const hint = typeof e.hint === "string" && e.hint.trim() ? e.hint.trim() : null;
+  const position = typeof e.position === "string" && e.position.trim() ? e.position.trim() : null;
+
+  const parts: string[] = [];
+  parts.push(code ? `[${code}] ${message}` : message);
+  if (detail) parts.push(`Detail: ${detail}`);
+  if (hint) parts.push(`Hint: ${hint}`);
+  if (position) parts.push(`Position: ${position}`);
+
+  return sanitizeErrorMessage(parts.join(" | "), fallback);
 }
 
 /** Derive a DriverConnectionConfig from a Connection. */
@@ -256,6 +304,10 @@ export const executeQuery = os
         };
       }
       return result;
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: formatDriverErrorMessage(err, "Failed to execute query"),
+      });
     } finally {
       if (input.requestId) {
         unregisterQuery(input.requestId);
