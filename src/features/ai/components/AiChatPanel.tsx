@@ -565,7 +565,7 @@ function ChatMessage({
                     rounded-lg bg-muted/50 px-2 py-1
                   "
                 >
-                  <UiIcon name="table" className="size-3.5 shrink-0 text-violet-500/70" />
+                  <UiIcon name="table" className="size-3.5 shrink-0 text-muted-foreground/70" />
                   <div className="min-w-0">
                     <p className="truncate text-[12px] font-medium text-foreground/90">
                       {message.contextSnapshot.tablePreview}
@@ -1659,14 +1659,14 @@ export function AiChatPanel({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
                   transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 dark:border-violet-400/35 dark:bg-violet-400/15"
+                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1 dark:bg-muted/30"
                 >
-                  <UiIcon name="table" className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+                  <UiIcon name="table" className="size-3.5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0">
-                    <p className="truncate text-[12px] font-medium text-violet-800 dark:text-violet-200">
+                    <p className="truncate text-[12px] font-medium text-foreground">
                       {contextPreview?.tablePreview}
                     </p>
-                    <p className="text-[11px] text-violet-600/80 dark:text-violet-300/80">Selected Table</p>
+                    <p className="text-[11px] text-muted-foreground/80 dark:text-muted-foreground/70">Selected Table</p>
                   </div>
                   <button
                     type="button"
