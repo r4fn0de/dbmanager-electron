@@ -24,61 +24,61 @@ function getMentionTone(connection: Connection): {
 
   if (provider === 'neon') {
     return {
-      chipClass: 'border-cyan-500/35 bg-cyan-500/10 text-cyan-700 dark:border-cyan-400/40 dark:bg-cyan-400/16 dark:text-cyan-300',
-      iconClass: 'text-cyan-600 dark:text-cyan-300',
+      chipClass: 'border-cyan-500/45 bg-cyan-500/15 text-cyan-800 dark:border-cyan-400/50 dark:bg-cyan-400/22 dark:text-cyan-200',
+      iconClass: 'text-cyan-700 dark:text-cyan-200',
     };
   }
 
   if (provider === 'supabase') {
     return {
-      chipClass: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/16 dark:text-emerald-300',
-      iconClass: 'text-emerald-600 dark:text-emerald-300',
+      chipClass: 'border-emerald-500/45 bg-emerald-500/15 text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-400/22 dark:text-emerald-200',
+      iconClass: 'text-emerald-700 dark:text-emerald-200',
     };
   }
 
   if (provider === 'mysql') {
     return {
-      chipClass: 'border-blue-500/35 bg-blue-500/10 text-blue-700 dark:border-blue-400/40 dark:bg-blue-400/16 dark:text-blue-300',
-      iconClass: 'text-blue-600 dark:text-blue-300',
+      chipClass: 'border-blue-500/45 bg-blue-500/15 text-blue-800 dark:border-blue-400/50 dark:bg-blue-400/22 dark:text-blue-200',
+      iconClass: 'text-blue-700 dark:text-blue-200',
     };
   }
 
   if (provider === 'mariadb') {
     return {
-      chipClass: 'border-amber-500/35 bg-amber-500/10 text-amber-700 dark:border-amber-400/40 dark:bg-amber-400/16 dark:text-amber-300',
-      iconClass: 'text-amber-600 dark:text-amber-300',
+      chipClass: 'border-amber-500/45 bg-amber-500/15 text-amber-800 dark:border-amber-400/50 dark:bg-amber-400/22 dark:text-amber-200',
+      iconClass: 'text-amber-700 dark:text-amber-200',
     };
   }
 
   if (provider === 'clickhouse') {
     return {
-      chipClass: 'border-yellow-500/40 bg-yellow-500/12 text-yellow-800 dark:border-yellow-400/45 dark:bg-yellow-400/18 dark:text-yellow-300',
-      iconClass: 'text-yellow-700 dark:text-yellow-300',
+      chipClass: 'border-yellow-500/50 bg-yellow-500/18 text-yellow-900 dark:border-yellow-400/55 dark:bg-yellow-400/25 dark:text-yellow-200',
+      iconClass: 'text-yellow-800 dark:text-yellow-200',
     };
   }
 
   if (provider === 'redis') {
     return {
-      chipClass: 'border-red-500/35 bg-red-500/10 text-red-700 dark:border-red-400/40 dark:bg-red-400/16 dark:text-red-300',
-      iconClass: 'text-red-600 dark:text-red-300',
+      chipClass: 'border-red-500/45 bg-red-500/15 text-red-800 dark:border-red-400/50 dark:bg-red-400/22 dark:text-red-200',
+      iconClass: 'text-red-700 dark:text-red-200',
     };
   }
 
   switch (connection.db_type) {
     case 'postgresql':
       return {
-        chipClass: 'border-sky-500/35 bg-sky-500/10 text-sky-700 dark:border-sky-400/40 dark:bg-sky-400/16 dark:text-sky-300',
-        iconClass: 'text-sky-600 dark:text-sky-300',
+        chipClass: 'border-sky-500/45 bg-sky-500/15 text-sky-800 dark:border-sky-400/50 dark:bg-sky-400/22 dark:text-sky-200',
+        iconClass: 'text-sky-700 dark:text-sky-200',
       };
     case 'sqlite':
       return {
-        chipClass: 'border-slate-500/35 bg-slate-500/10 text-slate-700 dark:border-slate-400/40 dark:bg-slate-400/16 dark:text-slate-300',
-        iconClass: 'text-slate-600 dark:text-slate-300',
+        chipClass: 'border-slate-500/45 bg-slate-500/15 text-slate-800 dark:border-slate-400/50 dark:bg-slate-400/22 dark:text-slate-200',
+        iconClass: 'text-slate-700 dark:text-slate-200',
       };
     default:
       return {
-        chipClass: 'border-primary/30 bg-primary/12 text-primary/90 dark:border-primary/35 dark:bg-primary/18 dark:text-primary/80',
-        iconClass: 'text-primary/80',
+        chipClass: 'border-primary/40 bg-primary/18 text-primary dark:border-primary/45 dark:bg-primary/25 dark:text-primary/90',
+        iconClass: 'text-primary',
       };
   }
 }

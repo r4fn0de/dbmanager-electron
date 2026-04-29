@@ -1601,16 +1601,16 @@ export function AiChatPanel({
                   animate={conversationMotionPresets.chip.animate}
                   exit={conversationMotionPresets.chip.exit}
                   transition={conversationMotionPresets.chip.transition}
-                  className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5"
+                  className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1.5 dark:bg-muted/30"
                 >
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/15 text-[10px] font-semibold text-foreground dark:bg-foreground/10">
                     AI
                   </span>
                   <div className="min-w-0 overflow-hidden">
                     <p className="truncate text-[12px] font-medium text-foreground">
                       {contextPreview?.selectionPreview}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">Selected Text</p>
+                    <p className="text-[11px] text-muted-foreground/80 dark:text-muted-foreground/70">Selected Text</p>
                   </div>
                   <button
                     type="button"
@@ -1632,14 +1632,14 @@ export function AiChatPanel({
                   animate={conversationMotionPresets.chip.animate}
                   exit={conversationMotionPresets.chip.exit}
                   transition={conversationMotionPresets.chip.transition}
-                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1"
+                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2 py-1 dark:border-amber-400/35 dark:bg-amber-400/20"
                 >
-                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
                   <div className="min-w-0">
-                    <p className="truncate text-[12px] text-amber-700 dark:text-amber-300">
+                    <p className="truncate text-[12px] font-medium text-amber-800 dark:text-amber-200">
                       {contextPreview?.errorPreview}
                     </p>
-                    <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80">Last Error</p>
+                    <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80">Last Error</p>
                   </div>
                   <button
                     type="button"
@@ -1661,14 +1661,14 @@ export function AiChatPanel({
                   animate={conversationMotionPresets.chip.animate}
                   exit={conversationMotionPresets.chip.exit}
                   transition={conversationMotionPresets.chip.transition}
-                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1"
+                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 dark:border-violet-400/35 dark:bg-violet-400/15"
                 >
-                  <UiIcon name="table" className="size-3.5 shrink-0 text-violet-500" />
+                  <UiIcon name="table" className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
                   <div className="min-w-0">
-                    <p className="truncate text-[12px] font-medium text-foreground">
+                    <p className="truncate text-[12px] font-medium text-violet-800 dark:text-violet-200">
                       {contextPreview?.tablePreview}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">Selected Table</p>
+                    <p className="text-[11px] text-violet-600/80 dark:text-violet-300/80">Selected Table</p>
                   </div>
                   <button
                     type="button"
