@@ -5,8 +5,8 @@
  * It uses pragma-based introspection instead of information_schema.
  * Connection strings use the format: sqlite:///absolute/path/to/file.db
  */
-import BetterSqlite3 from "better-sqlite3";
 import path from "node:path";
+import { createRequire } from "node:module";
 import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import {
@@ -17,6 +17,41 @@ import {
 } from "./ddl-sql";
 
 const DB_TYPE = "sqlite" as DatabaseType;
+
+type BetterSqlite3Ctor = new (...args: any[]) => any;
+const requireFromHere = createRequire(
+  path.join(process.resourcesPath || process.cwd(), "package.json"),
+);
+let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
+
+function getBetterSqlite3(): BetterSqlite3Ctor {
+  if (betterSqlite3Cached) return betterSqlite3Cached;
+
+  const resourceBase = process.resourcesPath;
+  const candidates = [
+    "better-sqlite3",
+    resourceBase ? path.join(resourceBase, "node_modules", "better-sqlite3") : null,
+    resourceBase ? path.join(resourceBase, "app.asar.unpacked", "node_modules", "better-sqlite3") : null,
+    resourceBase ? path.join(resourceBase, "better-sqlite3") : null,
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const loaded = requireFromHere(candidate) as BetterSqlite3Ctor;
+      betterSqlite3Cached = loaded;
+      return loaded;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Failed to load better-sqlite3 from known locations. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Connection string helpers
@@ -71,13 +106,14 @@ function mapSqliteType(declType: string | undefined): string {
 // Database handle cache — one better-sqlite3 instance per file path
 // ---------------------------------------------------------------------------
 
-const dbCache = new Map<string, BetterSqlite3.Database>();
+const dbCache = new Map<string, any>();
 
-function getDb(connectionString: string): BetterSqlite3.Database {
+function getDb(connectionString: string): any {
   const existing = dbCache.get(connectionString);
   if (existing) return existing;
 
   const filePath = parseConnectionString(connectionString);
+  const BetterSqlite3 = getBetterSqlite3();
   const db = new BetterSqlite3(filePath);
   // Enable WAL mode for better concurrent read performance
   db.pragma("journal_mode = WAL");
@@ -164,6 +200,7 @@ export function createSqliteDriver(): DatabaseDriver {
       try {
         const connStr = this.buildConnectionString(config);
         const filePath = parseConnectionString(connStr);
+        const BetterSqlite3 = getBetterSqlite3();
         const db = new BetterSqlite3(filePath);
         db.prepare("SELECT 1").get();
         db.close();
@@ -1025,6 +1062,7 @@ export function createSqliteDriver(): DatabaseDriver {
       const filePath = parseConnectionString(connectionString);
       for (let i = 0; i < (maxRetries ?? 20); i++) {
         try {
+          const BetterSqlite3 = getBetterSqlite3();
           const db = new BetterSqlite3(filePath);
           db.prepare("SELECT 1").get();
           db.close();

@@ -10,7 +10,8 @@
  * all ClickHouse queries stay raw since Kysely doesn't support it natively).
  */
 import { Kysely, PostgresDialect, MysqlDialect } from "kysely";
-import { Pool as PgPool } from "pg";
+import { createRequire } from "node:module";
+import { join } from "node:path";
 import type { Pool as MysqlPool } from "mysql2/promise";
 import type { ClickHouseClient } from "@clickhouse/client";
 import type { PgDatabase } from "./kysely-types";
@@ -21,7 +22,44 @@ import { closeAllSqliteDbs } from "./sqlite-driver";
 // Pool cache — one pool per connection string, per engine
 // ---------------------------------------------------------------------------
 
-const pgPools = new Map<string, PgPool>();
+const runtimeRequire = createRequire(
+  join(process.resourcesPath || process.cwd(), "package.json"),
+);
+
+type PgPoolCtor = new (config: Record<string, unknown>) => any;
+let pgPoolCtorCached: PgPoolCtor | null = null;
+
+function loadPgPoolCtor(): PgPoolCtor {
+  if (pgPoolCtorCached) return pgPoolCtorCached;
+
+  const base = process.resourcesPath;
+  const candidates = [
+    "pg",
+    base ? join(base, "node_modules", "pg") : null,
+    base ? join(base, "app.asar.unpacked", "node_modules", "pg") : null,
+    base ? join(base, "pg") : null,
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const mod = runtimeRequire(candidate) as { Pool?: PgPoolCtor };
+      if (!mod?.Pool) continue;
+      pgPoolCtorCached = mod.Pool;
+      return mod.Pool;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Failed to load pg Pool constructor. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
+const pgPools = new Map<string, any>();
 const mysqlPools = new Map<string, MysqlPool>();
 const clickhouseClients = new Map<string, ClickHouseClient>();
 
@@ -36,10 +74,11 @@ const mysqlKyselyInstances = new Map<string, Kysely<MysqlDatabase>>();
 // PostgreSQL — raw pool + Kysely instance
 // ---------------------------------------------------------------------------
 
-export function getPgPool(connectionString: string): PgPool {
+export function getPgPool(connectionString: string): any {
   const existing = pgPools.get(connectionString);
   if (existing) return existing;
 
+  const PgPool = loadPgPoolCtor();
   const pool = new PgPool({
     connectionString,
     max: 10,

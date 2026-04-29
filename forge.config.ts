@@ -23,8 +23,16 @@ const config: ForgeConfig = {
   packagerConfig: {
     icon: "./icons/app-icon",
     asar: {
-      unpack: "**/node_modules/{better-sqlite3,embedded-postgres,@embedded-postgres}/**/*",
+      unpack: "**/node_modules/{better-sqlite3,bindings,file-uri-to-path,embedded-postgres,@embedded-postgres}/**/*",
     },
+    extraResource: [
+      "node_modules/better-sqlite3",
+      "node_modules/bindings",
+      "node_modules/file-uri-to-path",
+      "node_modules/embedded-postgres",
+      "node_modules/@embedded-postgres",
+      "node_modules/pg",
+    ],
   },
   rebuildConfig: {},
   makers: [

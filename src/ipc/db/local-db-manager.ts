@@ -1,4 +1,3 @@
-import EmbeddedPostgres from "embedded-postgres";
 import { app } from "electron";
 import { existsSync, rmSync, mkdirSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -8,15 +7,78 @@ import { createConnection } from "node:net";
 import { createRequire } from "node:module";
 import { platform, arch } from "node:os";
 import { spawnSync } from "node:child_process";
-import BetterSqlite3 from "better-sqlite3";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import { buildSqliteConnectionString, closeDb as closeSqliteDb, closeAllSqliteDbs } from "./sqlite-driver";
 import type { BranchInfo, BranchMeta, LocalDbInfo, LocalDbEngine } from "./types";
 
-/** ESM-compatible require for resolving module paths */
+/** Runtime require rooted at resources/package.json for packaged app compatibility. */
 const runtimeRequire = createRequire(
-  typeof __filename === "string" ? __filename : import.meta.url,
+  join(process.resourcesPath || process.cwd(), "package.json"),
 );
+
+type EmbeddedPostgresCtor = new (...args: any[]) => any;
+type BetterSqlite3Ctor = new (...args: any[]) => any;
+
+let embeddedPostgresCached: EmbeddedPostgresCtor | null = null;
+let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
+
+function loadEmbeddedPostgres(): EmbeddedPostgresCtor {
+  if (embeddedPostgresCached) return embeddedPostgresCached;
+
+  const base = process.resourcesPath;
+  const candidates = [
+    "embedded-postgres",
+    base ? join(base, "node_modules", "embedded-postgres") : null,
+    base ? join(base, "app.asar.unpacked", "node_modules", "embedded-postgres") : null,
+    base ? join(base, "embedded-postgres") : null,
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const loaded = runtimeRequire(candidate) as EmbeddedPostgresCtor;
+      embeddedPostgresCached = loaded;
+      return loaded;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Failed to load embedded-postgres. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
+function loadBetterSqlite3(): BetterSqlite3Ctor {
+  if (betterSqlite3Cached) return betterSqlite3Cached;
+
+  const base = process.resourcesPath;
+  const candidates = [
+    "better-sqlite3",
+    base ? join(base, "node_modules", "better-sqlite3") : null,
+    base ? join(base, "app.asar.unpacked", "node_modules", "better-sqlite3") : null,
+    base ? join(base, "better-sqlite3") : null,
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const loaded = runtimeRequire(candidate) as BetterSqlite3Ctor;
+      betterSqlite3Cached = loaded;
+      return loaded;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Failed to load better-sqlite3 in local-db-manager. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
 
 /** Metadata stored persistently for each local DB instance */
 interface LocalDbMeta {
@@ -38,13 +100,13 @@ interface LocalDbMeta {
 
 /** Running instance tracking — PostgreSQL only (SQLite has no process) */
 interface RunningInstance {
-  pg: EmbeddedPostgres;
+  pg: any;
   meta: LocalDbMeta;
 }
 
 /** SQLite open handle tracking */
 interface SqliteHandle {
-  db: BetterSqlite3.Database;
+  db: any;
   meta: LocalDbMeta;
 }
 
@@ -470,6 +532,7 @@ export class LocalDbManager {
     };
 
     // Create and start the embedded postgres instance
+    const EmbeddedPostgres = loadEmbeddedPostgres();
     const pg = new EmbeddedPostgres({
       databaseDir: dataDir,
       port: meta.port,
@@ -570,6 +633,7 @@ export class LocalDbManager {
 
     // Create the SQLite database file
     try {
+      const BetterSqlite3 = loadBetterSqlite3();
       const db = new BetterSqlite3(filePath);
       db.pragma("journal_mode = WAL");
       db.pragma("foreign_keys = ON");
@@ -632,6 +696,7 @@ export class LocalDbManager {
     // Check that embedded-postgres binaries are available before attempting start
     this.checkBinariesAvailable();
 
+    const EmbeddedPostgres = loadEmbeddedPostgres();
     const pg = new EmbeddedPostgres({
       databaseDir: dataDir,
       port: meta.port,
@@ -680,6 +745,7 @@ export class LocalDbManager {
     }
 
     try {
+      const BetterSqlite3 = loadBetterSqlite3();
       const db = new BetterSqlite3(filePath);
       db.pragma("journal_mode = WAL");
       db.pragma("foreign_keys = ON");

@@ -1,4 +1,5 @@
-import { Client } from "pg";
+import { createRequire } from "node:module";
+import { join } from "node:path";
 import type {
   ColumnMeta,
   DatabaseInfo,
@@ -7,6 +8,47 @@ import type {
 } from "./types";
 import type { DriverConnectionConfig } from "./driver";
 import { getPgPool } from "./kysely-factory";
+
+const runtimeRequire = createRequire(
+  join(process.resourcesPath || process.cwd(), "package.json"),
+);
+
+type PgClientCtor = new (config: Record<string, unknown>) => {
+  connect: () => Promise<void>;
+  query: (sql: string) => Promise<unknown>;
+  end: () => Promise<void>;
+};
+let pgClientCtorCached: PgClientCtor | null = null;
+
+function loadPgClientCtor(): PgClientCtor {
+  if (pgClientCtorCached) return pgClientCtorCached;
+
+  const base = process.resourcesPath;
+  const candidates = [
+    "pg",
+    base ? join(base, "node_modules", "pg") : null,
+    base ? join(base, "app.asar.unpacked", "node_modules", "pg") : null,
+    base ? join(base, "pg") : null,
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const mod = runtimeRequire(candidate) as { Client?: PgClientCtor };
+      if (!mod?.Client) continue;
+      pgClientCtorCached = mod.Client;
+      return mod.Client;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Failed to load pg Client constructor. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
 
 export function pgEscId(id: string): string {
   return `"${id.replace(/"/g, '""')}"`;
@@ -657,7 +699,8 @@ export async function waitForDatabase(
 ): Promise<void> {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const client = new Client({
+      const PgClient = loadPgClientCtor();
+      const client = new PgClient({
         connectionString,
         connectionTimeoutMillis: 2000,
       });

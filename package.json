@@ -1,6 +1,6 @@
 {
   "name": "electron-shadcn",
-  "productName": "TarsDB (DEV)",
+  "productName": "TarsDB",
   "version": "0.0.1",
   "description": "Electron Forge with shadcn-ui (Vite + Typescript)",
   "main": ".vite/build/main.js",
@@ -11,15 +11,27 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "node scripts/publish-private-updates.mjs",
+
+    "typecheck": "tsc --noEmit",
     "check": "ultracite check && bun run check:db-boundaries",
     "fix": "ultracite fix",
+    "check:db-boundaries": "node scripts/check-db-boundaries.mjs",
+    "verify": "bun run check && bun run typecheck && bun run test",
+
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
+    "build:package:dev": "NODE_ENV=development bun run rebuild:native && electron-forge package",
+    "build:make:dev": "NODE_ENV=development bun run rebuild:native && electron-forge make",
+    "build:package:prod": "NODE_ENV=production bun run rebuild:native && electron-forge package",
+    "build:make:prod": "NODE_ENV=production bun run rebuild:native && electron-forge make",
+    "build:prod": "bun run verify && bun run build:make:prod",
+    "build:ci": "bun run check && bun run typecheck && bun run test",
+
     "bump-ui": "ts-node ./scripts/bump-ui.ts",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test",
-    "check:db-boundaries": "node scripts/check-db-boundaries.mjs"
+    "test:all": "vitest run && playwright test"
   },
   "author": "ROG <luanroger.dev@gmail.com>",
   "license": "MIT",
@@ -138,6 +150,7 @@
     "electron": "^41.0.3",
     "electron-devtools-installer": "^4.0.0",
     "electron-playwright-helpers": "^2.1.0",
+    "@electron/rebuild": "^4.0.4",
     "globals": "^17.4.0",
     "jsdom": "^29.0.1",
     "tailwindcss": "^4.2.2",

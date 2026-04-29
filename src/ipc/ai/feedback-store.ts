@@ -4,9 +4,9 @@
  * Stores user feedback (thumbs up/down) on AI responses for quality tracking
  * and future model improvement. Data stays local (privacy-first).
  */
-import BetterSqlite3 from "better-sqlite3";
 import { join } from "node:path";
 import { existsSync, mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { app } from "electron";
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,42 @@ export interface FeedbackStats {
 const DB_FILENAME = "ai-feedback.db";
 const DB_DIR = "feedback";
 
+const runtimeRequire = createRequire(
+  join(process.resourcesPath || process.cwd(), "package.json"),
+);
+
+type BetterSqlite3Ctor = new (...args: any[]) => any;
+let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
+
+function loadBetterSqlite3(): BetterSqlite3Ctor {
+  if (betterSqlite3Cached) return betterSqlite3Cached;
+
+  const base = process.resourcesPath;
+  const candidates = [
+    "better-sqlite3",
+    base ? join(base, "node_modules", "better-sqlite3") : null,
+    base ? join(base, "app.asar.unpacked", "node_modules", "better-sqlite3") : null,
+    base ? join(base, "better-sqlite3") : null,
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const loaded = runtimeRequire(candidate) as BetterSqlite3Ctor;
+      betterSqlite3Cached = loaded;
+      return loaded;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw new Error(
+    `Failed to load better-sqlite3 in feedback-store. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
 let cachedDbPath: string | null = null;
 
 function getDbPath(): string {
@@ -63,11 +99,12 @@ function getDbPath(): string {
   return cachedDbPath;
 }
 
-let db: BetterSqlite3.Database | null = null;
+let db: any = null;
 let isInitialized = false;
 
-function getDb(): BetterSqlite3.Database {
+function getDb(): any {
   if (!isInitialized) {
+    const BetterSqlite3 = loadBetterSqlite3();
     db = new BetterSqlite3(getDbPath());
     db.pragma("journal_mode = WAL");
     initTables(db);
@@ -79,7 +116,7 @@ function getDb(): BetterSqlite3.Database {
   return db;
 }
 
-function initTables(database: BetterSqlite3.Database): void {
+function initTables(database: any): void {
 
   database.exec(`
     CREATE TABLE IF NOT EXISTS ai_feedback (
