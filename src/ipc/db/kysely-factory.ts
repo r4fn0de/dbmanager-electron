@@ -10,7 +10,9 @@
  * all ClickHouse queries stay raw since Kysely doesn't support it natively).
  */
 import { Kysely, PostgresDialect, MysqlDialect } from "kysely";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import Module from "node:module";
 import { join } from "node:path";
 import type { Pool as MysqlPool } from "mysql2/promise";
 import type { ClickHouseClient } from "@clickhouse/client";
@@ -29,7 +31,24 @@ const runtimeRequire = createRequire(
 type PgPoolCtor = new (config: Record<string, unknown>) => any;
 let pgPoolCtorCached: PgPoolCtor | null = null;
 
+function ensureResourcesNodePath(): void {
+  const base = process.resourcesPath;
+  if (!base) return;
+
+  const current = process.env.NODE_PATH || "";
+  const segments = current
+    .split(":")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!segments.includes(base)) {
+    process.env.NODE_PATH = current ? `${base}:${current}` : base;
+    Module._initPaths();
+  }
+}
+
 function loadPgPoolCtor(): PgPoolCtor {
+  ensureResourcesNodePath();
   if (pgPoolCtorCached) return pgPoolCtorCached;
 
   const base = process.resourcesPath;
@@ -37,15 +56,23 @@ function loadPgPoolCtor(): PgPoolCtor {
   const candidates = [
     "pg",
     join(cwd, "node_modules", "pg"),
-    base ? join(base, "node_modules", "pg") : null,
     base ? join(base, "app.asar.unpacked", "node_modules", "pg") : null,
+    base ? join(base, "node_modules", "pg") : null,
     base ? join(base, "pg") : null,
   ].filter(Boolean) as string[];
 
   let lastError: unknown;
   for (const candidate of candidates) {
     try {
-      const mod = runtimeRequire(candidate) as { Pool?: PgPoolCtor };
+      let mod: { Pool?: PgPoolCtor };
+      if (candidate === "pg") {
+        mod = runtimeRequire(candidate) as { Pool?: PgPoolCtor };
+      } else {
+        const pkgJsonPath = join(candidate, "package.json");
+        if (!existsSync(pkgJsonPath)) continue;
+        mod = runtimeRequire(candidate) as { Pool?: PgPoolCtor };
+      }
+
       if (!mod?.Pool) continue;
       pgPoolCtorCached = mod.Pool;
       return mod.Pool;

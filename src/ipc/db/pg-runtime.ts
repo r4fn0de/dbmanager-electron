@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import Module from "node:module";
 import { join } from "node:path";
 import type {
   ColumnMeta,
@@ -20,7 +22,24 @@ type PgClientCtor = new (config: Record<string, unknown>) => {
 };
 let pgClientCtorCached: PgClientCtor | null = null;
 
+function ensureResourcesNodePath(): void {
+  const base = process.resourcesPath;
+  if (!base) return;
+
+  const current = process.env.NODE_PATH || "";
+  const segments = current
+    .split(":")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!segments.includes(base)) {
+    process.env.NODE_PATH = current ? `${base}:${current}` : base;
+    Module._initPaths();
+  }
+}
+
 function loadPgClientCtor(): PgClientCtor {
+  ensureResourcesNodePath();
   if (pgClientCtorCached) return pgClientCtorCached;
 
   const base = process.resourcesPath;
@@ -28,15 +47,23 @@ function loadPgClientCtor(): PgClientCtor {
   const candidates = [
     "pg",
     join(cwd, "node_modules", "pg"),
-    base ? join(base, "node_modules", "pg") : null,
     base ? join(base, "app.asar.unpacked", "node_modules", "pg") : null,
+    base ? join(base, "node_modules", "pg") : null,
     base ? join(base, "pg") : null,
   ].filter(Boolean) as string[];
 
   let lastError: unknown;
   for (const candidate of candidates) {
     try {
-      const mod = runtimeRequire(candidate) as { Client?: PgClientCtor };
+      let mod: { Client?: PgClientCtor };
+      if (candidate === "pg") {
+        mod = runtimeRequire(candidate) as { Client?: PgClientCtor };
+      } else {
+        const pkgJsonPath = join(candidate, "package.json");
+        if (!existsSync(pkgJsonPath)) continue;
+        mod = runtimeRequire(candidate) as { Client?: PgClientCtor };
+      }
+
       if (!mod?.Client) continue;
       pgClientCtorCached = mod.Client;
       return mod.Client;
@@ -83,9 +110,28 @@ export function mapPgType(dataTypeID: number): string {
 }
 
 export function buildPgConnectionString(config: DriverConnectionConfig): string {
-  if (config.url) return config.url;
-  const sslMode = config.ssl_mode || "prefer";
-  return `postgresql://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${config.database}?sslmode=${sslMode}`;
+  const ensureSslCompat = (value: string): string => {
+    try {
+      const url = new URL(value);
+      const sslMode = (url.searchParams.get("sslmode") || "").toLowerCase();
+      if (sslMode === "require" && !url.searchParams.has("uselibpqcompat")) {
+        url.searchParams.set("uselibpqcompat", "true");
+      }
+      return url.toString();
+    } catch {
+      return value;
+    }
+  };
+
+  if (config.url) return ensureSslCompat(config.url);
+
+  const sslMode = (config.ssl_mode || "prefer").toLowerCase();
+  const base = `postgresql://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${config.database}`;
+  const params = new URLSearchParams({ sslmode: sslMode });
+  if (sslMode === "require") {
+    params.set("uselibpqcompat", "true");
+  }
+  return `${base}?${params.toString()}`;
 }
 
 function formatPgUptimeValue(value: unknown): string | undefined {
@@ -124,11 +170,12 @@ export async function testPgConnection(connectionString: string): Promise<boolea
     }
   } catch (err) {
     const safeConn = connectionString.replace(/:\/\/([^:@]+):([^@]+)@/, "://$1:[REDACTED]@");
+    const message = err instanceof Error ? err.message : String(err);
     console.error("[pg] testPgConnection failed", {
       connectionString: safeConn,
-      message: err instanceof Error ? err.message : String(err),
+      message,
     });
-    return false;
+    throw new Error(`PostgreSQL connection test failed: ${message}`);
   }
 }
 

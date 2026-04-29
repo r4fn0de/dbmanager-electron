@@ -1,7 +1,8 @@
 import { app } from "electron";
-import { existsSync, rmSync, mkdirSync } from "node:fs";
+import { existsSync, rmSync, mkdirSync, readFileSync, renameSync, cpSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createConnection } from "node:net";
 import { createRequire } from "node:module";
@@ -19,10 +20,37 @@ const runtimeRequire = createRequire(
 type EmbeddedPostgresCtor = new (...args: any[]) => any;
 type BetterSqlite3Ctor = new (...args: any[]) => any;
 
+function normalizeEmbeddedPostgresCtor(value: unknown): EmbeddedPostgresCtor {
+  if (typeof value === "function") return value as EmbeddedPostgresCtor;
+  if (value && typeof value === "object") {
+    const asRecord = value as Record<string, unknown>;
+    if (typeof asRecord.default === "function") {
+      return asRecord.default as EmbeddedPostgresCtor;
+    }
+  }
+  throw new Error("embedded-postgres module did not export a constructor");
+}
+
 let embeddedPostgresCached: EmbeddedPostgresCtor | null = null;
 let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
+let embeddedPostgresRuntimePath: string | null = null;
 
 function loadEmbeddedPostgres(): EmbeddedPostgresCtor {
+  if (!embeddedPostgresRuntimePath) {
+    ensureEmbeddedPostgresRuntimePackages();
+  }
+
+  if (embeddedPostgresRuntimePath) {
+    const runtimePkgJson = join(embeddedPostgresRuntimePath, "package.json");
+    if (!existsSync(runtimePkgJson)) {
+      throw new Error(`Embedded Postgres runtime package.json not found at: ${runtimePkgJson}`);
+    }
+    const runtimeModuleRequire = createRequire(runtimePkgJson);
+    const loadedModule = runtimeModuleRequire("embedded-postgres") as unknown;
+    const loaded = normalizeEmbeddedPostgresCtor(loadedModule);
+    embeddedPostgresCached = loaded;
+    return loaded;
+  }
   if (embeddedPostgresCached) return embeddedPostgresCached;
 
   const base = process.resourcesPath;
@@ -36,7 +64,18 @@ function loadEmbeddedPostgres(): EmbeddedPostgresCtor {
   let lastError: unknown;
   for (const candidate of candidates) {
     try {
-      const loaded = runtimeRequire(candidate) as EmbeddedPostgresCtor;
+      if (candidate === "embedded-postgres") {
+        const loadedModule = runtimeRequire(candidate) as unknown;
+        const loaded = normalizeEmbeddedPostgresCtor(loadedModule);
+        embeddedPostgresCached = loaded;
+        return loaded;
+      }
+
+      const pkgJsonPath = join(candidate, "package.json");
+      if (!existsSync(pkgJsonPath)) continue;
+      const candidateRequire = createRequire(pkgJsonPath);
+      const loadedModule = candidateRequire("embedded-postgres") as unknown;
+      const loaded = normalizeEmbeddedPostgresCtor(loadedModule);
       embeddedPostgresCached = loaded;
       return loaded;
     } catch (err) {
@@ -141,6 +180,132 @@ function getPlatformPackageName(): string {
 
 function getStoragePath(): string {
   return join(app.getPath("userData"), STORAGE_FILE);
+}
+
+function getEmbeddedRuntimeRoot(): string {
+  return join(app.getPath("userData"), "runtime", "embedded-postgres");
+}
+
+function getEmbeddedRuntimeNodeModules(): string {
+  return join(getEmbeddedRuntimeRoot(), "node_modules");
+}
+
+function getEmbeddedPostgresVersionFromDeps(): string {
+  try {
+    const appPkgPath = join(app.getAppPath(), "package.json");
+    const pkgRaw = readFileSync(appPkgPath, "utf-8");
+    const pkg = JSON.parse(pkgRaw) as { dependencies?: Record<string, string> };
+    const raw = pkg.dependencies?.["embedded-postgres"] ?? "18.3.0-beta.17";
+    return raw.replace(/^[~^]/, "");
+  } catch {
+    return "18.3.0-beta.17";
+  }
+}
+
+function downloadFileSync(url: string, destination: string): void {
+  const result = spawnSync("curl", ["-L", "-f", "-sS", "-o", destination, url], {
+    stdio: "pipe",
+  });
+  if (result.status !== 0) {
+    throw new Error(`Failed to download ${url}: ${result.stderr.toString() || result.stdout.toString()}`);
+  }
+}
+
+function extractTarGzSync(archivePath: string, outputDir: string): void {
+  const result = spawnSync("tar", ["-xzf", archivePath, "-C", outputDir], { stdio: "pipe" });
+  if (result.status !== 0) {
+    throw new Error(`Failed to extract ${archivePath}: ${result.stderr.toString() || result.stdout.toString()}`);
+  }
+}
+
+function installNpmTarballSync(packageName: string, version: string, nodeModulesDir: string): void {
+  const escaped = packageName.replace("/", "%2F");
+  const fileName = `${packageName.split("/").pop() || packageName}-${version}.tgz`;
+  const tarballUrl = `https://registry.npmjs.org/${escaped}/-/${fileName}`;
+
+  const tempDir = join(tmpdir(), `tarsdb-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  mkdirSync(tempDir, { recursive: true });
+
+  const archivePath = join(tempDir, fileName);
+  downloadFileSync(tarballUrl, archivePath);
+
+  const unpackDir = join(tempDir, "unpack");
+  mkdirSync(unpackDir, { recursive: true });
+  extractTarGzSync(archivePath, unpackDir);
+
+  const sourceDir = join(unpackDir, "package");
+  const targetDir = join(nodeModulesDir, packageName);
+  rmSync(targetDir, { recursive: true, force: true });
+  mkdirSync(dirname(targetDir), { recursive: true });
+  renameSync(sourceDir, targetDir);
+
+  rmSync(tempDir, { recursive: true, force: true });
+}
+
+function getBundledPackagePath(packageName: string): string | null {
+  const resourcesPath = process.resourcesPath;
+  const appPath = app.getAppPath();
+
+  const candidates = [
+    resourcesPath ? join(resourcesPath, "node_modules", packageName) : null,
+    resourcesPath ? join(resourcesPath, packageName) : null,
+    resourcesPath
+      ? join(resourcesPath, "app.asar.unpacked", "node_modules", packageName)
+      : null,
+    join(appPath, "node_modules", packageName),
+  ].filter(Boolean) as string[];
+
+  const matched = candidates.find((candidate) => existsSync(join(candidate, "package.json")));
+  return matched ?? null;
+}
+
+function ensureEmbeddedPostgresRuntimePackages(): void {
+  const nodeModulesDir = getEmbeddedRuntimeNodeModules();
+  const platformPkg = getPlatformPackageName();
+
+  const packages = [
+    "embedded-postgres",
+    platformPkg,
+    "async-exit-hook",
+    "pg",
+    "pg-connection-string",
+    "pg-pool",
+    "pg-protocol",
+    "pg-types",
+    "pgpass",
+    "split2",
+    "pg-int8",
+    "postgres-array",
+    "postgres-bytea",
+    "postgres-date",
+    "postgres-interval",
+    "xtend",
+  ];
+
+  mkdirSync(nodeModulesDir, { recursive: true });
+
+  for (const pkg of packages) {
+    const targetPkgPath = join(nodeModulesDir, pkg);
+    if (existsSync(join(targetPkgPath, "package.json"))) continue;
+
+    const bundledPath = getBundledPackagePath(pkg);
+    if (!bundledPath) {
+      throw new Error(`Missing bundled runtime package: ${pkg}`);
+    }
+
+    mkdirSync(dirname(targetPkgPath), { recursive: true });
+    cpSync(bundledPath, targetPkgPath, { recursive: true });
+  }
+
+  const embeddedPkgPath = join(nodeModulesDir, "embedded-postgres", "package.json");
+  const platformPkgPath = join(nodeModulesDir, platformPkg, "package.json");
+  const pgPkgPath = join(nodeModulesDir, "pg", "package.json");
+
+  if (!existsSync(embeddedPkgPath) || !existsSync(platformPkgPath) || !existsSync(pgPkgPath)) {
+    throw new Error("Embedded Postgres runtime is incomplete (missing embedded-postgres/platform/pg packages).");
+  }
+
+  embeddedPostgresRuntimePath = join(nodeModulesDir, "embedded-postgres");
 }
 
 function getBaseDataDir(): string {
@@ -354,7 +519,7 @@ export class LocalDbManager {
     const hydrateScript = join(pkgPath, "scripts", "hydrate-symlinks.js");
     if (!existsSync(hydrateScript)) return;
 
-    const result = spawnSync(process.execPath, [hydrateScript], {
+    const result = spawnSync("node", [hydrateScript], {
       cwd: pkgPath,
       stdio: "ignore",
     });
@@ -382,20 +547,31 @@ export class LocalDbManager {
     const isWindows = platform() === "win32";
     const ext = isWindows ? ".exe" : "";
 
-    // 1. Resolve the platform package path
+    // 1. Resolve the platform package path (bundled first)
     let pkgPath: string;
     try {
       pkgPath = dirname(runtimeRequire.resolve(`${pkgName}/package.json`));
     } catch {
-      // Fallback for packaged Electron apps where node_modules may be pruned/asar'd
       const appPath = app.getAppPath();
-      const fallbackPath = join(appPath, "node_modules", pkgName);
-      if (existsSync(join(fallbackPath, "package.json"))) {
-        pkgPath = fallbackPath;
+      const resourcesPath = process.resourcesPath;
+      const fallbackCandidates = [
+        join(appPath, "node_modules", pkgName),
+        resourcesPath ? join(resourcesPath, "node_modules", pkgName) : null,
+        resourcesPath ? join(resourcesPath, pkgName) : null,
+        resourcesPath
+          ? join(resourcesPath, "app.asar.unpacked", "node_modules", pkgName)
+          : null,
+      ].filter(Boolean) as string[];
+
+      const matched = fallbackCandidates.find((candidate) =>
+        existsSync(join(candidate, "package.json")),
+      );
+
+      if (matched) {
+        pkgPath = matched;
       } else {
         throw new Error(
-          `PostgreSQL binaries for your platform (${pkgName}) are not installed. ` +
-          `Please run: bun install`,
+          `PostgreSQL binaries for your platform (${pkgName}) are not installed in this build.`,
         );
       }
     }
@@ -411,8 +587,7 @@ export class LocalDbManager {
     if (missing.length > 0) {
       throw new Error(
         `PostgreSQL binaries are missing (${missing.join(", ")}). ` +
-        `The postinstall scripts may not have run. ` +
-        `Please run: pnpm approve-builds && pnpm install`,
+        `Try removing ${getEmbeddedRuntimeRoot()} and starting again to re-download runtime binaries.`,
       );
     }
 
@@ -459,10 +634,6 @@ export class LocalDbManager {
 
     // Cache the successful result — binaries won't change at runtime
     this.binariesAvailable = true;
-    // NOTE: In production builds, @embedded-postgres/* must be listed in
-    // electron-forge's asar.unpack config. Native executables cannot run from
-    // inside an asar archive, and existsSync may give false negatives for
-    // asar'd paths. Without unpacking, neither this check nor PG will work.
   }
 
   // ── CRUD ────────────────────────────────────────────────────
