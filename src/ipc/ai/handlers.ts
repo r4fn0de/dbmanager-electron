@@ -15,6 +15,8 @@ import {
   isAiConfigured,
   getProvidersInfo,
   getCurrentModel,
+  addCustomModel,
+  removeCustomModel,
   type AiProviderName,
 } from "./config";
 import type { DatabaseType } from "@/ipc/db/types";
@@ -266,3 +268,32 @@ ${input.context}`,
       return { filters: [], orderBy: [] };
     }
   });
+
+// ---------------------------------------------------------------------------
+// Custom models — add / remove user-defined model IDs per provider
+// ---------------------------------------------------------------------------
+
+export const aiAddCustomModel = os
+  .input(
+    z.object({
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
+      modelId: z.string().min(1),
+    }),
+  )
+  .handler(async ({ input }) => {
+    addCustomModel(input.provider as AiProviderName, input.modelId);
+    return getProvidersInfo();
+  });
+
+export const aiRemoveCustomModel = os
+  .input(
+    z.object({
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
+      modelId: z.string().min(1),
+    }),
+  )
+  .handler(async ({ input }) => {
+    removeCustomModel(input.provider as AiProviderName, input.modelId);
+    return getProvidersInfo();
+  });
+

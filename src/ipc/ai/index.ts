@@ -16,6 +16,8 @@ import {
   aiEnhancePrompt,
   aiGenerateTitle,
   aiFilters,
+  aiAddCustomModel,
+  aiRemoveCustomModel,
 } from "./handlers";
 import {
   saveFeedbackHandler,
@@ -56,6 +58,9 @@ export const ai = {
   generateTitle: aiGenerateTitle,
   // Table filters
   filters: aiFilters,
+  // Custom models
+  addCustomModel: aiAddCustomModel,
+  removeCustomModel: aiRemoveCustomModel,
   // Feedback
   saveFeedback: saveFeedbackHandler,
   getFeedback: getFeedbackHandler,

@@ -25,6 +25,8 @@ export interface AiSettings {
   apiKeys: Record<string, string>;
   /** Base URL for OpenAI-compatible provider */
   openaiCompatibleBaseURL: string;
+  /** User-added custom model IDs per provider */
+  customModels: Record<string, string[]>;
 }
 
 const defaults: AiSettings = {
@@ -32,6 +34,7 @@ const defaults: AiSettings = {
   model: "gpt-4o-mini",
   apiKeys: {},
   openaiCompatibleBaseURL: "http://localhost:1234/v1",
+  customModels: {},
 };
 
 const store = new Store<AiSettings>({
@@ -85,11 +88,7 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
     modelFactory: ({ modelId, apiKey }) => createOpenAI({ apiKey })(modelId),
     defaultModel: "gpt-4o-mini",
     requiresApiKey: true,
-    models: [
-      { id: "gpt-4o", label: "GPT-4o" },
-      { id: "gpt-4o-mini", label: "GPT-4o Mini" },
-      { id: "o3-mini", label: "o3 Mini" },
-    ],
+    models: [],
   },
   anthropic: {
     label: "Anthropic",
@@ -97,10 +96,7 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
       createAnthropic({ apiKey })(modelId),
     defaultModel: "claude-sonnet-4-5-20250514",
     requiresApiKey: true,
-    models: [
-      { id: "claude-sonnet-4-5-20250514", label: "Claude Sonnet 4.5" },
-      { id: "claude-haiku-4-5-20250514", label: "Claude Haiku 4.5" },
-    ],
+    models: [],
   },
   google: {
     label: "Google",
@@ -108,10 +104,7 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
       createGoogleGenerativeAI({ apiKey })(modelId),
     defaultModel: "gemini-2.0-flash",
     requiresApiKey: true,
-    models: [
-      { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
-      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-    ],
+    models: [],
   },
   "openai-compatible": {
     label: "OpenAI-Compatible",
@@ -123,18 +116,19 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
       });
       return provider.chatModel(modelId);
     },
-    defaultModel: "gpt-4o-mini",
+    defaultModel: "",
     allowCustomModel: true,
     requiresApiKey: false,
-    models: [
-      { id: "gpt-4o-mini", label: "GPT-4o Mini (example)" },
-      { id: "meta-llama/Llama-3-70b-chat-hf", label: "Llama 3 70B (example)" },
-    ],
+    models: [],
   },
 };
 
 function isProviderName(value: string): value is AiProviderName {
   return value in PROVIDERS;
+}
+
+function getCustomModels(providerName: string): string[] {
+  return store.get("customModels", {})[providerName] ?? [];
 }
 
 function isModelAllowedForProvider(
@@ -144,6 +138,8 @@ function isModelAllowedForProvider(
   if (PROVIDERS[providerName].allowCustomModel) {
     return modelId.trim().length > 0;
   }
+  const custom = getCustomModels(providerName);
+  if (custom.includes(modelId)) return true;
   return PROVIDERS[providerName].models.some((m) => m.id === modelId);
 }
 
@@ -170,6 +166,7 @@ export function getAiSettings(): AiSettings {
       "openaiCompatibleBaseURL",
       defaults.openaiCompatibleBaseURL,
     ),
+    customModels: store.get("customModels", defaults.customModels),
   };
 }
 
@@ -220,6 +217,36 @@ export function setApiKey(provider: AiProviderName, key: string): void {
 /** Get API key for a specific provider */
 export function getApiKey(provider: AiProviderName): string {
   return store.get("apiKeys", {})[provider] ?? "";
+}
+
+/** Add a custom model ID for a provider (persists across restarts) */
+export function addCustomModel(
+  provider: AiProviderName,
+  modelId: string,
+): void {
+  const id = modelId.trim();
+  if (!id) return;
+  const all = store.get("customModels", {});
+  const list: string[] = all[provider] ?? [];
+  if (!list.includes(id)) {
+    list.push(id);
+    all[provider] = list;
+    store.set("customModels", all);
+  }
+}
+
+/** Remove a custom model ID for a provider */
+export function removeCustomModel(
+  provider: AiProviderName,
+  modelId: string,
+): void {
+  const all = store.get("customModels", {});
+  const list: string[] = all[provider] ?? [];
+  const filtered = list.filter((m) => m !== modelId);
+  if (filtered.length !== list.length) {
+    all[provider] = filtered;
+    store.set("customModels", all);
+  }
 }
 
 /** Get the currently configured LanguageModel instance */
@@ -278,12 +305,20 @@ export function getProvidersInfo() {
       openaiCompatibleBaseURL: settings.openaiCompatibleBaseURL,
     },
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
-    providers: Object.entries(PROVIDERS).map(([name, entry]) => ({
-      name,
-      label: entry.label,
-      defaultModel: entry.defaultModel,
-      models: entry.models,
-      hasApiKey: !!(settings.apiKeys[name]?.trim()),
-    })),
+    providers: Object.entries(PROVIDERS).map(([name, entry]) => {
+      const custom = settings.customModels[name] ?? [];
+      const customModelEntries = custom.map((id) => ({
+        id,
+        label: id,
+        isCustom: true as const,
+      }));
+      return {
+        name,
+        label: entry.label,
+        defaultModel: entry.defaultModel,
+        models: [...entry.models, ...customModelEntries],
+        hasApiKey: !!(settings.apiKeys[name]?.trim()),
+      };
+    }),
   };
 }

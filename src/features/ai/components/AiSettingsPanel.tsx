@@ -14,13 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -73,8 +66,6 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   const [isSavingKey, setIsSavingKey] = useState<Record<string, boolean>>({});
   const [modelInput, setModelInput] = useState("");
   const [baseUrlInput, setBaseUrlInput] = useState("");
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [isFetchingModels, setIsFetchingModels] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -180,11 +171,18 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     [apiKeyInputs, loadSettings]
   );
 
+  const normalizeCompatibleBaseUrl = useCallback((value: string): string => {
+    const trimmed = value.trim().replace(/\/$/, "");
+    return trimmed.replace(/\/models$/i, "");
+  }, []);
+
   const handleSaveBaseUrl = useCallback(async () => {
     if (!baseUrlInput.trim()) return;
     setIsSavingBaseUrl(true);
     try {
-      await updateAiSettings({ openaiCompatibleBaseURL: baseUrlInput.trim() });
+      const normalized = normalizeCompatibleBaseUrl(baseUrlInput);
+      await updateAiSettings({ openaiCompatibleBaseURL: normalized });
+      setBaseUrlInput(normalized);
       await loadSettings();
     } catch (err) {
       toast.error(
@@ -193,43 +191,9 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     } finally {
       setIsSavingBaseUrl(false);
     }
-  }, [baseUrlInput, loadSettings]);
+  }, [baseUrlInput, loadSettings, normalizeCompatibleBaseUrl]);
 
-  const handleFetchModels = useCallback(async () => {
-    const provider = settings?.providers.find(p => p.name === "openai-compatible");
-    if (!provider?.hasApiKey || !baseUrlInput.trim()) {
-      toast.error("API key and Base URL are required to fetch models");
-      return;
-    }
-    setIsFetchingModels(true);
-    try {
-      const apiKey = apiKeyInputs["openai-compatible"] || "";
-      const response = await fetch(`${baseUrlInput.replace(/\/$/, '')}/models`, {
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to fetch models: ${response.statusText}`);
-      }
-      const data = await response.json();
-      const models = data.data
-        ?.filter((m: { id: string }) => m.id)
-        .map((m: { id: string }) => m.id)
-        .sort() || [];
-      setAvailableModels(models);
-      if (models.length === 0) {
-        toast.error("No models found");
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to fetch models"
-      );
-    } finally {
-      setIsFetchingModels(false);
-    }
-  }, [settings, baseUrlInput, apiKeyInputs]);
+
 
   // ------- Render -------
 
@@ -538,82 +502,48 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                     </div>
                   )}
 
-                  {/* Model selection */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
+                  {/* OpenAI-compatible model by ID */}
+                  {provider.name === "openai-compatible" && (
+                    <div className="space-y-2">
                       <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        Model
+                        Model ID
                       </Label>
-                      {provider.name === "openai-compatible" && (
+                      <div className="flex gap-1.5">
+                        <Input
+                          value={modelInput}
+                          onChange={(e) => setModelInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && modelInput.trim()) {
+                              void handleModelChange(modelInput.trim());
+                            }
+                          }}
+                          placeholder="anthropic/claude-sonnet-4.5"
+                          className="h-8 flex-1 font-mono text-xs bg-background"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          spellCheck="false"
+                        />
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                           size="xs"
-                          onClick={handleFetchModels}
-                          disabled={isFetchingModels || !provider.hasApiKey || !baseUrlInput.trim()}
-                          className="h-6 text-[10px] text-muted-foreground hover:text-primary"
+                          onClick={() => void handleModelChange(modelInput.trim())}
+                          disabled={isSavingModel || !modelInput.trim()}
+                          className="h-8 px-2.5 text-[10px] shrink-0"
                         >
-                          {isFetchingModels ? (
-                            <UiIcon name="loader" className="size-3 animate-spin mr-1" />
+                          {isSavingModel ? (
+                            <UiIcon name="loader" className="size-3 animate-spin" />
                           ) : (
-                            "Fetch models"
+                            "Save"
                           )}
                         </Button>
-                      )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Enter the exact model ID exposed by your provider.
+                      </p>
                     </div>
-                    {provider.name === "openai-compatible" && availableModels.length > 0 ? (
-                      <Select
-                        value={modelInput}
-                        onValueChange={(value) => {
-                          if (value) {
-                            setModelInput(value);
-                            handleModelChange(value);
-                          }
-                        }}
-                        disabled={isSavingModel}
-                      >
-                        <SelectTrigger className="h-8 text-xs bg-background">
-                          <SelectValue placeholder="Select a model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableModels.map((modelId) => (
-                            <SelectItem key={modelId} value={modelId}>
-                              {modelId}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : provider.name === "openai-compatible" ? (
-                      <Input
-                        value={modelInput}
-                        onChange={(e) => setModelInput(e.target.value)}
-                        onBlur={() => {
-                          if (modelInput.trim()) {
-                            handleModelChange(modelInput.trim());
-                          }
-                        }}
-                        placeholder="Model id (ex: gpt-4o-mini, llama3.1:8b)"
-                        className="h-8 font-mono text-xs bg-background"
-                      />
-                    ) : (
-                      <Select
-                        value={settings.current.model}
-                        onValueChange={handleModelChange}
-                        disabled={isSavingModel || !provider.hasApiKey}
-                      >
-                        <SelectTrigger className="h-8 text-xs bg-background">
-                          <SelectValue placeholder="Select a model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {provider.models.map((model) => (
-                            <SelectItem key={model.id} value={model.id}>
-                              {model.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })()}

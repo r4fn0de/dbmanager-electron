@@ -20,7 +20,13 @@ export interface AiProvidersInfo {
     model: string;
     openaiCompatibleBaseURL: string;
   };
-  providers: unknown[];
+  providers: {
+    name: string;
+    label: string;
+    defaultModel: string;
+    models: { id: string; label: string; isCustom?: boolean }[];
+    hasApiKey: boolean;
+  }[];
 }
 
 export interface AiApiKeyInfo {
@@ -195,3 +201,30 @@ export async function getAiFilters(
     );
   }
 }
+
+export async function addCustomModel(
+  provider: AiProvider,
+  modelId: string,
+): Promise<AiProvidersInfo> {
+  try {
+    return await ipc.client.ai.addCustomModel({ provider, modelId });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to add custom model",
+    );
+  }
+}
+
+export async function removeCustomModel(
+  provider: AiProvider,
+  modelId: string,
+): Promise<AiProvidersInfo> {
+  try {
+    return await ipc.client.ai.removeCustomModel({ provider, modelId });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to remove custom model",
+    );
+  }
+}
+

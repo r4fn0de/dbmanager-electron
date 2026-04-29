@@ -10,6 +10,7 @@ import { platform, arch } from "node:os";
 import { spawnSync } from "node:child_process";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
 import { buildSqliteConnectionString, closeDb as closeSqliteDb, closeAllSqliteDbs } from "./sqlite-driver";
+import { decryptSecret, encryptSecret } from "../security/secrets";
 import type { BranchInfo, BranchMeta, LocalDbInfo, LocalDbEngine } from "./types";
 
 /** Runtime require rooted at resources/package.json for packaged app compatibility. */
@@ -360,14 +361,35 @@ export class LocalDbManager {
     return normalized;
   }
 
+  private encryptMetaSecrets(list: LocalDbMeta[]): LocalDbMeta[] {
+    return list.map((meta) => ({
+      ...meta,
+      password: encryptSecret(meta.password),
+    }));
+  }
+
+  private decryptMetaSecrets(list: LocalDbMeta[]): { list: LocalDbMeta[]; changed: boolean } {
+    let changed = false;
+    const decrypted = list.map((meta) => {
+      const password = decryptSecret(meta.password);
+      if (password !== meta.password) changed = true;
+      return {
+        ...meta,
+        password,
+      };
+    });
+    return { list: decrypted, changed };
+  }
+
   private async loadMetaList(): Promise<LocalDbMeta[]> {
     if (this.metaCache) return this.metaCache;
     try {
       const data = await readFile(getStoragePath(), "utf-8");
       const parsed = JSON.parse(data) as LocalDbMeta[];
-      const normalized = this.normalizeMetaList(parsed);
+      const { list: decrypted, changed: decryptedChanged } = this.decryptMetaSecrets(parsed);
+      const normalized = this.normalizeMetaList(decrypted);
       this.metaCache = normalized;
-      if (normalized.length !== parsed.length) {
+      if (decryptedChanged || normalized.length !== parsed.length) {
         await this.saveMetaList(normalized);
       }
     } catch {
@@ -379,7 +401,8 @@ export class LocalDbManager {
   private async saveMetaList(list: LocalDbMeta[]): Promise<void> {
     this.metaCache = list;
     await mkdir(join(getStoragePath(), ".."), { recursive: true });
-    await writeFile(getStoragePath(), JSON.stringify(list, null, 2), "utf-8");
+    const persisted = this.encryptMetaSecrets(list);
+    await writeFile(getStoragePath(), JSON.stringify(persisted, null, 2), "utf-8");
   }
 
   // ── Helpers ─────────────────────────────────────────────────

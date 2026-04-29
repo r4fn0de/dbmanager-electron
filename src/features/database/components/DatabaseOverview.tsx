@@ -189,7 +189,7 @@ export function DatabaseOverview({
     }
     setIsDisplayInfoTooltipPinned(true);
     try {
-      await navigator.clipboard.writeText(displayInfo);
+      await onCopyConnectionString();
       setDisplayInfoCopyFeedback("copied");
     } catch {
       setDisplayInfoCopyFeedback("failed");

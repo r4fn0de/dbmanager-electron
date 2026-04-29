@@ -99,6 +99,30 @@ function sanitizeErrorMessage(err: unknown, fallback: string): string {
   return msg || fallback;
 }
 
+function maskSecretInUrl(value?: string): string | undefined {
+  if (!value) return value;
+  try {
+    const parsed = new URL(value);
+    if (parsed.password) parsed.password = "****";
+    return parsed.toString();
+  } catch {
+    return value.replace(/:[^:@/]+@/, ":****@");
+  }
+}
+
+function redactConnectionForRenderer(connection: Connection): Connection {
+  return {
+    ...connection,
+    password: "",
+    url: maskSecretInUrl(connection.url),
+    connection_string: maskSecretInUrl(connection.connection_string),
+  };
+}
+
+function isMaskedSecretUrl(value?: string): boolean {
+  return typeof value === "string" && value.includes(":****@");
+}
+
 function formatDriverErrorMessage(err: unknown, fallback: string): string {
   if (!err || typeof err !== "object") {
     return sanitizeErrorMessage(err, fallback);
@@ -185,7 +209,8 @@ async function resolveConnectionString(connectionId: string): Promise<{ connecti
 // ---------------------------------------------------------------------------
 
 export const listConnections = os.handler(async (): Promise<Connection[]> => {
-  return await loadConnections();
+  const connections = await loadConnections();
+  return connections.map(redactConnectionForRenderer);
 });
 
 export const saveConnection = os
@@ -198,6 +223,17 @@ export const saveConnection = os
       const dbType: DatabaseType = input.db_type || "postgresql";
       const driver = driverRegistry.get(dbType);
 
+      const existing = existingIndex >= 0 ? connections[existingIndex] : null;
+      const nextPassword = input.password.trim().length > 0
+        ? input.password
+        : (existing?.password ?? "");
+      const nextUrl = isMaskedSecretUrl(input.url)
+        ? existing?.url
+        : input.url;
+      const nextConnectionString = isMaskedSecretUrl(input.connection_string)
+        ? existing?.connection_string
+        : input.connection_string;
+
       const connection: Connection = {
         id: input.id || randomUUID(),
         name: input.name,
@@ -206,11 +242,11 @@ export const saveConnection = os
         port: input.port,
         database: input.database,
         username: input.username,
-        password: input.password,
+        password: nextPassword,
         ssl_mode: input.ssl_mode,
-        url: input.url,
+        url: nextUrl,
         is_local: input.is_local,
-        connection_string: input.connection_string,
+        connection_string: nextConnectionString,
         engine_version: input.engine_version,
         // Backward compat: persist postgres_version if it was provided
         postgres_version: input.postgres_version,

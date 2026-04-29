@@ -37,7 +37,7 @@ import {
   useLocalDatabases,
   useCloneToLocal,
 } from "@/features/localDb";
-import { testConnection } from "@/features/database/hooks/db-actions";
+import { getConnection, testConnection } from "@/features/database/hooks/db-actions";
 import type { BranchInfo, TableRowCount } from "@/ipc/db/types";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
@@ -285,8 +285,9 @@ function Home() {
     }
   };
 
-  const handleEdit = (connection: Connection) => {
-    setEditingConnection(connection);
+  const handleEdit = async (connection: Connection) => {
+    const completeConnection = await getConnection(connection.id);
+    setEditingConnection(completeConnection ?? connection);
     setIsFormOpen(true);
   };
 

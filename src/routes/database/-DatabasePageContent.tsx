@@ -558,6 +558,21 @@ export function DatabasePageContent({
     return `${protocol}://${connection.username}:${connection.password}@${connection.host}:${port}/${connection.database}${queryPart}`;
   }, [connection]);
 
+  const buildMaskedConnStr = useCallback(() => {
+    const raw = buildConnStr();
+    if (!raw) return raw;
+
+    try {
+      const parsed = new URL(raw);
+      if (parsed.password) {
+        parsed.password = "****";
+      }
+      return parsed.toString();
+    } catch {
+      return raw.replace(/:[^:@/]+@/, ":****@");
+    }
+  }, [buildConnStr]);
+
   const handleCopyConnectionString = async () => {
     if (!connection) return;
     try {
@@ -1300,7 +1315,7 @@ export function DatabasePageContent({
               onViewTables={() => changeSection("tables")}
               onStartLocalDb={handleStartLocalDb}
               onPauseLocalDb={handlePauseLocalDb}
-              connectionString={buildConnStr()}
+              connectionString={buildMaskedConnStr()}
               copyConnectionStringFeedback={copyConnFeedback}
               onCopyConnectionString={handleCopyConnectionString}
             />
