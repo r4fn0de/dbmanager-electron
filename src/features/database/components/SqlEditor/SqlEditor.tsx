@@ -1692,7 +1692,7 @@ export function SqlEditor({
                       isActive
                         ? "bg-muted/50 text-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted/30",
-                      "[@media(hover:hover)and(pointer:fine)]:active:scale-[0.98] [@media(hover:hover)and(pointer:fine)]:active:transition-transform [@media(hover:hover)and(pointer:fine)]:active:duration-100",
+                      "[@media(hover:hover)_and_(pointer:fine)]:active:scale-[0.98] [@media(hover:hover)_and_(pointer:fine)]:active:transition-transform [@media(hover:hover)_and_(pointer:fine)]:active:duration-100",
                     )}
                     onClick={() => setActiveTabId(tab.id)}
                   >
