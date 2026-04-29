@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ipc } from "@/ipc/manager";
+import { formatRowCount } from "@/constants";
 import type { BranchInfo, SchemaTableSummary } from "@/ipc/db/types";
 
 export interface CreateBranchInput {
@@ -40,15 +41,6 @@ interface CreateBranchDialogProps {
   onCreate: (input: CreateBranchInput) => Promise<BranchInfo>;
   /** Optional tooltip label shown on hover over the trigger button. */
   tooltipLabel?: string;
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────
-
-function formatRowCount(n: number): string {
-  if (n === 0) return "—";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toString();
 }
 
 // ── Data mode ──────────────────────────────────────────────────────────
@@ -406,7 +398,7 @@ export function CreateBranchDialog({
                               {t.table}
                             </span>
                             <span className="text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
-                              {formatRowCount(t.estimatedRowCount)}
+                              {t.estimatedRowCount === 0 ? "—" : formatRowCount(t.estimatedRowCount)}
                             </span>
                           </label>
                         ))}

@@ -2,14 +2,14 @@ import { inDevelopment } from "./constants";
 
 const APP_BASE_NAME = "TarsDB";
 
-export function resolveAppStageLabel(): string {
+function resolveAppStageLabel(): string {
   if (inDevelopment) {
     return "DEV";
   }
   return "Alpha";
 }
 
-export function resolveAppBranding(): {
+function resolveAppBranding(): {
   baseName: string;
   stageLabel: string;
   displayName: string;

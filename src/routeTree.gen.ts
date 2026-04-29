@@ -9,15 +9,9 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SecondRouteImport } from './routes/second'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DatabaseConnectionIdRouteImport } from './routes/database.$connectionId'
 
-const SecondRoute = SecondRouteImport.update({
-  id: '/second',
-  path: '/second',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,43 +25,32 @@ const DatabaseConnectionIdRoute = DatabaseConnectionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/second': typeof SecondRoute
   '/database/$connectionId': typeof DatabaseConnectionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/second': typeof SecondRoute
   '/database/$connectionId': typeof DatabaseConnectionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/second': typeof SecondRoute
   '/database/$connectionId': typeof DatabaseConnectionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/second' | '/database/$connectionId'
+  fullPaths: '/' | '/database/$connectionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/second' | '/database/$connectionId'
-  id: '__root__' | '/' | '/second' | '/database/$connectionId'
+  to: '/' | '/database/$connectionId'
+  id: '__root__' | '/' | '/database/$connectionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SecondRoute: typeof SecondRoute
   DatabaseConnectionIdRoute: typeof DatabaseConnectionIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/second': {
-      id: '/second'
-      path: '/second'
-      fullPath: '/second'
-      preLoaderRoute: typeof SecondRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -87,7 +70,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SecondRoute: SecondRoute,
   DatabaseConnectionIdRoute: DatabaseConnectionIdRoute,
 }
 export const routeTree = rootRouteImport

@@ -618,7 +618,7 @@ export function ConnectionList({
       />
       <ConnectionGroup
         label="Remote"
-        icon={(props) => <Icon name="globe" {...props} />}
+        icon={(props) => <Icon name="world" {...props} />}
         connections={remoteConnections}
         {...sharedProps}
       />

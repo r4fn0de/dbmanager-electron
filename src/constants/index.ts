@@ -31,11 +31,11 @@ export const DB_IPC_CHANNELS = {
   QUERY_CANCEL: "db:query:cancel",
 } as const;
 
-export const ENVIRONMENT_VARIABLES = {
+const environmentVariables = {
   NODE_ENV: process.env.NODE_ENV,
 };
 
-export const inDevelopment = ENVIRONMENT_VARIABLES.NODE_ENV === "development";
+export const inDevelopment = environmentVariables.NODE_ENV === "development";
 
 /** Database type display labels — shared across components. */
 export const DB_TYPE_LABELS: Record<string, string> = {

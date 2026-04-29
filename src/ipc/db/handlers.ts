@@ -88,18 +88,8 @@ function resolveDbType(connection: Partial<Connection>): DatabaseType {
 
 /** Strip credentials (passwords, connection strings) from error messages before sending to renderer. */
 function sanitizeErrorMessage(err: unknown, fallback: string): string {
-  let msg = "";
-  if (err instanceof Error) {
-    msg = err.message;
-  } else if (typeof err === "string") {
-    msg = err;
-  } else if (err && typeof err === "object") {
-    const maybeMessage = (err as { message?: unknown }).message;
-    if (typeof maybeMessage === "string") {
-      msg = maybeMessage;
-    }
-  }
-  if (!msg) return fallback;
+  if (!(err instanceof Error)) return fallback;
+  let msg = err.message;
   // Remove postgresql://user:password@... patterns
   msg = msg.replace(/(?:postgresql|postgres|mysql|mariadb|clickhouse|redis):\/\/[^@\s]+@[\w.-]+:\d+/gi, "[CONNECTION_STRING]");
   // Remove password=... patterns

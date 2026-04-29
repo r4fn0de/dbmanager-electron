@@ -68,6 +68,7 @@ import { FeedbackBar } from "@/components/ui/feedback-bar";
 import { ChatTool, type ChatToolPart } from "./ai-elements/tool";
 import { ChatTable } from "./ai-elements/chat-table";
 import { cn } from "@/lib/utils";
+import { DotmSquare12 } from "@/components/ui/dotm-square-12";
 import type { DatabaseType } from "@/ipc/db/types";
 import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 
@@ -837,10 +838,16 @@ function ChatMessage({
           {message.isStreaming && !message.content && (
             <Reasoning isStreaming className="mb-0! px-3">
               <ReasoningTrigger className="gap-1.5 py-1 text-xs">
-                <span className="relative flex size-1.5">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/40 animation-duration-[1.5s] [animation-timing-function:cubic-bezier(0,0,0.2,1)]" />
-                  <span className="inline-flex size-1.5 rounded-full bg-primary" />
-                </span>
+                <DotmSquare12
+                  size={14}
+                  dotSize={2}
+                  speed={1.2}
+                  pattern="full"
+                  animated
+                  hoverAnimated={false}
+                  className="shrink-0 opacity-85"
+                  aria-hidden
+                />
                 <Shimmer
                   as="span"
                   className="text-xs font-medium"
@@ -1135,6 +1142,8 @@ export function AiChatPanel({
   const showTableContextChip = Boolean(
     contextPreview?.tablePreview && !dismissedContext.table,
   );
+
+  const hasChips = showSelectionContextChip || showErrorContextChip || showTableContextChip || selectedMentions.size > 0;
 
   const handleInputChange = useCallback((value: string) => {
     setInput(value);
@@ -1572,14 +1581,15 @@ export function AiChatPanel({
             onValueChange={handleInputChange}
             onSubmit={handleSubmit}
             isLoading={isLoading}
-            className="
-              relative z-30 rounded-2xl border border-border/30
-              bg-background/60 px-2 py-1 shadow-none backdrop-blur-md
-              dark:bg-background/50
-              focus-within:border-border/50 focus-within:bg-background/70
-              dark:focus-within:bg-background/60
-              transition-[background,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]
-            "
+            className={cn(
+              "relative z-30 rounded-2xl border border-border/30",
+              "bg-background/60 px-2 shadow-none backdrop-blur-md",
+              "dark:bg-background/50",
+              "focus-within:border-border/50 focus-within:bg-background/70",
+              "dark:focus-within:bg-background/60",
+              "transition-[background,border-color,padding] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+              hasChips ? "pt-2.5 pb-1" : "py-1",
+            )}
           >
           <div className="mb-1 flex flex-wrap gap-1.5">
             <AnimatePresence>
