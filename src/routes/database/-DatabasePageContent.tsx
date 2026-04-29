@@ -72,8 +72,6 @@ import {
   DefinitionsBrowserPanel,
 } from "./-lazyComponents";
 import {
-  makeAliasedColumnRef,
-  makeQualifiedColumnRef,
   makeTableInsertTemplateSql,
   makeTableRef,
   makeTableSelectSql,
@@ -274,6 +272,13 @@ export function DatabasePageContent({
   const isOverviewSection = activeSection === "overview";
   const isVisualizerSection = activeSection === "visualizer";
   const isDefinitionsSection = activeSection === "definitions";
+
+  // Always expand sidebar when entering tables section
+  useEffect(() => {
+    if (isTablesSection && sidebarPanelRef.current?.isCollapsed()) {
+      sidebarPanelRef.current.expand();
+    }
+  }, [isTablesSection]);
 
   const {
     data: databaseInfo = null,
@@ -1089,7 +1094,6 @@ export function DatabasePageContent({
                   selectedSchema={selectedSchema}
                   selectedTableKey={selectedTableKey}
                   selectedTableRef={selectedTableRef}
-                  selectedTableColumns={selectedTableDetails?.columns ?? []}
                   tableSearch={tableSearch}
                   isLoading={isLoading}
                   onSchemaChange={changeSchema}
@@ -1123,29 +1127,6 @@ export function DatabasePageContent({
                   }}
                   onInsertTableUpdateTemplate={({ schema, name }) => {
                     requestSqlInsert(makeTableUpdateTemplateSql(schema, name));
-                  }}
-                  onCopyColumnName={({ column }) => {
-                    void copyToClipboardWithToast(column, "Column name copied");
-                  }}
-                  onCopyColumnRef={({ schema, table, column }) => {
-                    void copyToClipboardWithToast(
-                      makeQualifiedColumnRef(schema, table, column),
-                      "Column reference copied",
-                    );
-                  }}
-                  onInsertColumnRef={({ schema, table, column }) => {
-                    requestSqlInsert(makeQualifiedColumnRef(schema, table, column));
-                  }}
-                  onInsertAliasedColumnRef={({ table, column }) => {
-                    requestSqlInsert(makeAliasedColumnRef(table, column));
-                  }}
-                  onCopySelectedColumnRefs={({ schema, table, columns }) => {
-                    const refs = columns.map((column) => makeQualifiedColumnRef(schema, table, column));
-                    void copyToClipboardWithToast(refs.join(", "), "Column references copied");
-                  }}
-                  onInsertSelectedColumns={({ schema, table, columns }) => {
-                    const refs = columns.map((column) => makeQualifiedColumnRef(schema, table, column));
-                    requestSqlInsert(refs.join(", "));
                   }}
                 />
               </ResizablePanel>

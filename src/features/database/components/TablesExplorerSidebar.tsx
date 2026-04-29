@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
-import type { SchemaColumn, SchemaTableSummary } from "@/ipc/db/types";
+import type { SchemaTableSummary } from "@/ipc/db/types";
 
 /** Parsed table reference (schema.name) */
 interface TableRef {
@@ -54,8 +54,6 @@ export interface TablesExplorerSidebarProps {
   selectedTableKey: string | null;
   /** Parsed reference for the selected table (for disabled-state checks) */
   selectedTableRef: TableRef | null;
-  /** Loaded details for selected table (columns/actions) */
-  selectedTableColumns?: SchemaColumn[];
   /** Search/filter text */
   tableSearch: string;
   /** Whether the schema is currently loading */
@@ -86,12 +84,6 @@ export interface TablesExplorerSidebarProps {
   onInsertTableSelect: (target: { schema: string; name: string }) => void;
   onInsertTableInsertTemplate: (target: { schema: string; name: string }) => void;
   onInsertTableUpdateTemplate: (target: { schema: string; name: string }) => void;
-  onCopyColumnName: (target: { schema: string; table: string; column: string }) => void;
-  onCopyColumnRef: (target: { schema: string; table: string; column: string }) => void;
-  onInsertColumnRef: (target: { schema: string; table: string; column: string }) => void;
-  onInsertAliasedColumnRef: (target: { schema: string; table: string; column: string }) => void;
-  onCopySelectedColumnRefs: (target: { schema: string; table: string; columns: string[] }) => void;
-  onInsertSelectedColumns: (target: { schema: string; table: string; columns: string[] }) => void;
 }
 
 export function TablesExplorerSidebar({
@@ -101,7 +93,6 @@ export function TablesExplorerSidebar({
   selectedSchema,
   selectedTableKey,
   selectedTableRef,
-  selectedTableColumns = [],
   tableSearch,
   isLoading,
   onSchemaChange,
@@ -126,67 +117,8 @@ export function TablesExplorerSidebar({
   onInsertTableSelect,
   onInsertTableInsertTemplate,
   onInsertTableUpdateTemplate,
-  onCopyColumnName,
-  onCopyColumnRef,
-  onInsertColumnRef,
-  onInsertAliasedColumnRef,
-  onCopySelectedColumnRefs,
-  onInsertSelectedColumns,
 }: TablesExplorerSidebarProps) {
   const tableMenuClassName = "min-w-52";
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
-  const [lastSelectedColumn, setLastSelectedColumn] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelectedColumns([]);
-    setLastSelectedColumn(null);
-  }, [selectedTableRef?.schema, selectedTableRef?.name]);
-
-  const columnNames = useMemo(
-    () => selectedTableColumns.map((column) => column.name),
-    [selectedTableColumns],
-  );
-
-  const toggleColumnSelection = useCallback((
-    event: MouseEvent<HTMLButtonElement>,
-    columnName: string,
-  ) => {
-    const isMeta = event.metaKey || event.ctrlKey;
-    const isShift = event.shiftKey;
-    if (isShift && lastSelectedColumn) {
-      const start = columnNames.indexOf(lastSelectedColumn);
-      const end = columnNames.indexOf(columnName);
-      if (start >= 0 && end >= 0) {
-        const [from, to] = start < end ? [start, end] : [end, start];
-        const range = columnNames.slice(from, to + 1);
-        setSelectedColumns((prev) => {
-          const next = [...prev];
-          for (const col of range) {
-            if (!next.includes(col)) next.push(col);
-          }
-          return next;
-        });
-        return;
-      }
-    }
-    if (isMeta) {
-      setSelectedColumns((prev) => (
-        prev.includes(columnName)
-          ? prev.filter((col) => col !== columnName)
-          : [...prev, columnName]
-      ));
-      setLastSelectedColumn(columnName);
-      return;
-    }
-    setSelectedColumns([columnName]);
-    setLastSelectedColumn(columnName);
-  }, [columnNames, lastSelectedColumn]);
-
-  const getColumnSelection = useCallback((column: string) => {
-    return selectedColumns.includes(column)
-      ? selectedColumns
-      : [column];
-  }, [selectedColumns]);
 
   return (
     <aside className="h-full min-h-0 flex flex-col bg-sidebar">
@@ -578,89 +510,6 @@ export function TablesExplorerSidebar({
                   </ContextMenu>
                 );
               })}
-
-              {selectedTableRef && selectedTableColumns.length > 0 && (
-                <div className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
-                  <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                    Columns ({selectedTableColumns.length})
-                  </div>
-                  {selectedTableColumns.map((column) => {
-                    const selectedForColumn = getColumnSelection(column.name);
-                    const columnTarget = {
-                      schema: selectedTableRef.schema,
-                      table: selectedTableRef.name,
-                      column: column.name,
-                    };
-                    const isSelected = selectedColumns.includes(column.name);
-                    return (
-                      <ContextMenu key={`${selectedTableRef.schema}.${selectedTableRef.name}.${column.name}`}>
-                        <ContextMenuTrigger
-                          render={
-                            <button
-                              type="button"
-                              onClick={(event) => toggleColumnSelection(event, column.name)}
-                              className={cn(
-                                "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-                                isSelected
-                                  ? "bg-accent/70 text-accent-foreground"
-                                  : "text-foreground/75 hover:bg-muted/50 hover:text-foreground",
-                              )}
-                            >
-                              <Icon name="key" className="size-3 text-muted-foreground" />
-                              <span className="flex-1 truncate text-xs font-mono">{column.name}</span>
-                              <span className="truncate text-[10px] text-muted-foreground/70">
-                                {column.data_type}
-                              </span>
-                            </button>
-                          }
-                        />
-                        <ContextMenuContent>
-                          <ContextMenuItem onClick={() => onCopyColumnName(columnTarget)}>
-                            <Icon name="copy" className="size-3.5" />
-                            Copy column name
-                          </ContextMenuItem>
-                          <ContextMenuItem onClick={() => onCopyColumnRef(columnTarget)}>
-                            <Icon name="copy" className="size-3.5" />
-                            Copy qualified ref
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem onClick={() => onInsertColumnRef(columnTarget)}>
-                            <Icon name="terminal" className="size-3.5" />
-                            Insert column ref
-                          </ContextMenuItem>
-                          <ContextMenuItem onClick={() => onInsertAliasedColumnRef(columnTarget)}>
-                            <Icon name="code" className="size-3.5" />
-                            Insert aliased ref
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            disabled={selectedForColumn.length <= 1}
-                            onClick={() => onCopySelectedColumnRefs({
-                              schema: selectedTableRef.schema,
-                              table: selectedTableRef.name,
-                              columns: selectedForColumn,
-                            })}
-                          >
-                            <Icon name="copy" className="size-3.5" />
-                            Copy selected refs
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            disabled={selectedForColumn.length <= 1}
-                            onClick={() => onInsertSelectedColumns({
-                              schema: selectedTableRef.schema,
-                              table: selectedTableRef.name,
-                              columns: selectedForColumn,
-                            })}
-                          >
-                            <Icon name="code" className="size-3.5" />
-                            Insert selected refs
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
         </div>

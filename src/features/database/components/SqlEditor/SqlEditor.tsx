@@ -1664,7 +1664,7 @@ export function SqlEditor({
                     key={tab.id}
                     type="button"
                     className={cn(
-                      "group/tab relative flex items-center gap-1.5 px-3 h-[30px] rounded-t-[6px] text-[12px] leading-none whitespace-nowrap select-none",
+                      "group/tab relative flex items-center gap-1.5 px-3 h-[30px] text-[12px] leading-none whitespace-nowrap select-none",
                       tabs.length > 1 && "pr-7",
                       "transition-colors duration-150",
                       isActive
