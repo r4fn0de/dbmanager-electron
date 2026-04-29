@@ -4,6 +4,7 @@ import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
+import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { PublisherGithub } from "@electron-forge/publisher-github";
@@ -22,7 +23,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     icon: "./icons/app-icon",
     asar: {
-      unpack: "{**/node_modules/embedded-postgres/**,**/node_modules/@embedded-postgres/**,**/node_modules/better-sqlite3/**}",
+      unpack: "**/node_modules/{better-sqlite3,embedded-postgres,@embedded-postgres}/**/*",
     },
   },
   rebuildConfig: {},
@@ -54,6 +55,7 @@ const config: ForgeConfig = {
     }),
   ],
   plugins: [
+    new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       build: [
         {
