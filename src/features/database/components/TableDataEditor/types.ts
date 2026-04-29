@@ -13,7 +13,6 @@ import type {
 export interface TableDataEditorProps {
   connectionId: string;
   table: SchemaTable;
-  tableListRows: (input: ListRowsInput) => Promise<TableRowsResponse>;
   tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
   tableTruncate: (tableRef: TableRef) => Promise<void>;
   tableFkLookup: (input: FkLookupInput) => Promise<FkLookupResponse>;

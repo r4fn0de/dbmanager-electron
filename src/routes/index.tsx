@@ -453,11 +453,11 @@ function Home() {
                     placeholder="Search by name, host, or database…"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-7 pl-8 text-xs"
+                    className="h-8 pl-8 text-xs"
                   />
                 </div>
                 <Select value={activeTagFilter} onValueChange={setActiveTagFilter}>
-                  <SelectTrigger className="h-7 w-[180px] text-xs">
+                  <SelectTrigger size="default" className="h-8 w-[180px] text-xs">
                     <SelectValue placeholder="Tag" />
                   </SelectTrigger>
                   <SelectContent>

@@ -117,7 +117,6 @@ function getDefaultColumnWidth(column: SchemaColumn): number {
 export function TableDataEditor({
   connectionId,
   table,
-  tableListRows,
   tableSaveChanges,
   tableTruncate,
   tableFkLookup,
@@ -1262,7 +1261,7 @@ export function TableDataEditor({
                   if (value) setDdlColumnName(value);
                 }}
               >
-                <SelectTrigger className="h-8 text-xs w-auto min-w-32">
+                <SelectTrigger size="sm" className="h-7 text-xs w-auto min-w-32">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

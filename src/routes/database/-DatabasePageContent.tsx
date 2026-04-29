@@ -1199,7 +1199,6 @@ export function DatabasePageContent({
                     <TableDataEditor
                       connectionId={connectionId}
                       table={td}
-                      tableListRows={tableListRows}
                       tableSaveChanges={tableSaveChanges}
                       tableTruncate={tableTruncate}
                       tableFkLookup={tableFkLookup}
