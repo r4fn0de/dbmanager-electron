@@ -1143,7 +1143,10 @@ export function AiChatPanel({
     contextPreview?.tablePreview && !dismissedContext.table,
   );
 
-  const hasChips = showSelectionContextChip || showErrorContextChip || showTableContextChip || selectedMentions.size > 0;
+  const hasChips =
+    showSelectionContextChip || showErrorContextChip || showTableContextChip ||
+    exitingContext.selection || exitingContext.error || exitingContext.table ||
+    selectedMentions.size > 0;
 
   const handleInputChange = useCallback((value: string) => {
     setInput(value);
@@ -1232,7 +1235,7 @@ export function AiChatPanel({
           setDismissedContext((prev) => ({ ...prev, table: true }));
           setExitingContext((prev) => ({ ...prev, table: false }));
         }
-      }, 170);
+      }, 250);
     }
 
     // Resolve any @mentions in the input to connection IDs
@@ -1275,7 +1278,7 @@ export function AiChatPanel({
       setDismissedContext((prev) => ({ ...prev, [kind]: true }));
       setExitingContext((prev) => ({ ...prev, [kind]: false }));
       contextDismissTimeoutsRef.current[kind] = undefined;
-    }, 180);
+    }, 250);
   }, []);
 
   const isEmpty = messages.length === 0;
@@ -1587,20 +1590,19 @@ export function AiChatPanel({
               "dark:bg-background/50",
               "focus-within:border-border/50 focus-within:bg-background/70",
               "dark:focus-within:bg-background/60",
-              "transition-[background,border-color,padding] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+              "transition-[background,border-color,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
               hasChips ? "pt-2.5 pb-1" : "py-1",
             )}
           >
-          <div className="mb-1 flex flex-wrap gap-1.5">
-            <AnimatePresence>
-              {showSelectionContextChip && (
+          <AnimatePresence>
+                  {showSelectionContextChip && (
                 <motion.div
                   key="selection-context"
                   layout="position"
-                  initial={conversationMotionPresets.chip.initial}
-                  animate={conversationMotionPresets.chip.animate}
-                  exit={conversationMotionPresets.chip.exit}
-                  transition={conversationMotionPresets.chip.transition}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                   className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1.5 dark:bg-muted/30"
                 >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/15 text-[10px] font-semibold text-foreground dark:bg-foreground/10">
@@ -1622,16 +1624,14 @@ export function AiChatPanel({
                   </button>
                 </motion.div>
               )}
-            </AnimatePresence>
-            <AnimatePresence>
-              {showErrorContextChip && (
+                  {showErrorContextChip && (
                 <motion.div
                   key="error-context"
                   layout="position"
-                  initial={conversationMotionPresets.chip.initial}
-                  animate={conversationMotionPresets.chip.animate}
-                  exit={conversationMotionPresets.chip.exit}
-                  transition={conversationMotionPresets.chip.transition}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                   className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2 py-1 dark:border-amber-400/35 dark:bg-amber-400/20"
                 >
                   <UiIcon name="code" className="size-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
@@ -1651,16 +1651,14 @@ export function AiChatPanel({
                   </button>
                 </motion.div>
               )}
-            </AnimatePresence>
-            <AnimatePresence>
-              {showTableContextChip && (
+                  {showTableContextChip && (
                 <motion.div
                   key="table-context"
                   layout="position"
-                  initial={conversationMotionPresets.chip.initial}
-                  animate={conversationMotionPresets.chip.animate}
-                  exit={conversationMotionPresets.chip.exit}
-                  transition={conversationMotionPresets.chip.transition}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                   className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 dark:border-violet-400/35 dark:bg-violet-400/15"
                 >
                   <UiIcon name="table" className="size-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
@@ -1680,8 +1678,7 @@ export function AiChatPanel({
                   </button>
                 </motion.div>
               )}
-            </AnimatePresence>
-          </div>
+          </AnimatePresence>
           <div className="flex flex-wrap items-center gap-1 px-1.5 py-0">
             {Array.from(selectedMentions.entries()).map(([id, connection]) => (
               <MentionChip

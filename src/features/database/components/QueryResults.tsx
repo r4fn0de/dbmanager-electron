@@ -267,18 +267,53 @@ export function QueryResults({
     );
   }
 
-  // ── Success but no rows ──────────────────────────────────────────
+  // ── Success with no result set (DDL/DML without RETURNING) ──────
+  if (result.columns.length === 0) {
+    return (
+      <div className="h-full min-h-0 px-3 py-2">
+        <div className="rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
+          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+            <Icon name="circle-check" className="size-3.5 shrink-0" />
+            <span className="text-xs font-medium">
+              {result.row_count > 0
+                ? `${result.row_count.toLocaleString()} ${result.row_count === 1 ? "row" : "rows"} affected`
+                : "Statement executed successfully"}
+            </span>
+            {durationMs !== undefined && (
+              <span className="ml-auto text-[10px] font-mono text-emerald-700/70 dark:text-emerald-300/70">
+                {formatDuration(durationMs)}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            This query did not return a result set.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Success but empty result set (SELECT with 0 rows) ────────────
   if (result.row_count === 0) {
     return (
       <div className="h-full min-h-0 px-3 py-2">
-        <div className="flex items-center gap-2 text-muted-foreground/70">
-          <span className="text-[10px] text-emerald-500">✓</span>
-          <span className="text-xs">Query executed successfully</span>
-          {durationMs !== undefined && (
-            <span className="ml-auto text-[10px] font-mono text-muted-foreground/60">
-              {formatDuration(durationMs)}
+        <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+          <div className="flex items-center gap-2 text-muted-foreground/80">
+            <Icon name="circle-check" className="size-3.5 text-emerald-500 shrink-0" />
+            <span className="text-xs font-medium">0 rows returned</span>
+            <span className="text-[10px] text-muted-foreground/50">·</span>
+            <span className="text-xs text-muted-foreground/70">
+              {result.columns.length} {result.columns.length === 1 ? "column" : "columns"}
             </span>
-          )}
+            {durationMs !== undefined && (
+              <span className="ml-auto text-[10px] font-mono text-muted-foreground/60">
+                {formatDuration(durationMs)}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Query executed successfully, but no records matched your filters.
+          </p>
         </div>
       </div>
     );
