@@ -63,6 +63,7 @@ function Home() {
   const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
   const [cloningConnection, setCloningConnection] = useState<Connection | null>(null);
   const [cloneRowCounts, setCloneRowCounts] = useState<TableRowCount[]>([]);
+  const [clonedConnection, setClonedConnection] = useState<Connection | null>(null);
   const [isLoadingCloneSchema, setIsLoadingCloneSchema] = useState(false);
   const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null);
@@ -314,6 +315,7 @@ function Home() {
     setCloningConnection(connection);
     setIsCloneDialogOpen(true);
     setIsLoadingCloneSchema(true);
+    setClonedConnection(null);
     resetClone();
 
     try {
@@ -347,25 +349,33 @@ function Home() {
       );
 
       if (newConnection) {
-        // Add tab and navigate to the new connection
-        useConnectionTabsStore.getState().addTab({
-          id: newConnection.id,
-          name: newConnection.name,
-          isLocal: true,
-          provider: "direct",
-        });
-        navigate({
-          to: "/database/$connectionId",
-          params: { connectionId: newConnection.id },
-        });
+        setClonedConnection(newConnection);
         toast.success(`Database "${targetName}" cloned successfully`);
-        setIsCloneDialogOpen(false);
-        setCloningConnection(null);
-        setCloneRowCounts([]);
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Clone failed");
     }
+  };
+
+  const handleOpenClonedDatabase = () => {
+    if (!clonedConnection) return;
+
+    useConnectionTabsStore.getState().addTab({
+      id: clonedConnection.id,
+      name: clonedConnection.name,
+      isLocal: true,
+      provider: "direct",
+    });
+    navigate({
+      to: "/database/$connectionId",
+      params: { connectionId: clonedConnection.id },
+    });
+
+    setIsCloneDialogOpen(false);
+    setCloningConnection(null);
+    setCloneRowCounts([]);
+    setClonedConnection(null);
+    resetClone();
   };
 
   const handleCloseCloneDialog = () => {
@@ -373,6 +383,7 @@ function Home() {
       setIsCloneDialogOpen(false);
       setCloningConnection(null);
       setCloneRowCounts([]);
+      setClonedConnection(null);
       resetClone();
     }
   };
@@ -570,6 +581,8 @@ function Home() {
         isLoadingSchema={isLoadingCloneSchema}
         onStartClone={handleStartClone}
         onCancelClone={cancelClone}
+        onOpenClonedDatabase={handleOpenClonedDatabase}
+        clonedDatabaseName={clonedConnection?.name}
         progress={cloneProgress}
         isCloning={isCloning}
         error={cloneError}

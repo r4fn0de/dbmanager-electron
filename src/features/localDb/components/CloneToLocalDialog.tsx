@@ -61,6 +61,8 @@ interface CloneToLocalDialogProps {
     postgresVersion: string,
   ) => void;
   onCancelClone: () => void;
+  onOpenClonedDatabase?: () => void;
+  clonedDatabaseName?: string;
   progress: CloneToLocalProgress | null;
   isCloning: boolean;
   error: string | null;
@@ -74,6 +76,8 @@ export function CloneToLocalDialog({
   isLoadingSchema,
   onStartClone,
   onCancelClone,
+  onOpenClonedDatabase,
+  clonedDatabaseName,
   progress,
   isCloning,
   error,
@@ -275,8 +279,12 @@ export function CloneToLocalDialog({
                           Database cloned successfully!
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          {formatNumber(progress?.rowsProcessed || 0)} rows imported across{" "}
-                          {progress?.totalTables} tables.
+                          {clonedDatabaseName ? (
+                            <>
+                              <span className="font-medium text-foreground">{clonedDatabaseName}</span> is ready. {" "}
+                            </>
+                          ) : null}
+                          {formatNumber(progress?.rowsProcessed || 0)} rows imported across {progress?.totalTables} tables.
                         </p>
                       </div>
                     </div>
@@ -462,9 +470,32 @@ export function CloneToLocalDialog({
                 Cancel Clone
               </Button>
             ) : isComplete || hasError ? (
-              <Button type="button" size="sm" onClick={onClose} className="h-7 text-xs">
-                {hasError ? "Close" : "Done"}
-              </Button>
+              hasError ? (
+                <Button type="button" size="sm" onClick={onClose} className="h-7 text-xs">
+                  Close
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onClose}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Later
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={onOpenClonedDatabase}
+                    className="h-7 text-xs gap-1"
+                  >
+                    <Icon name="arrow-right" className="size-3" />
+                    Open Database
+                  </Button>
+                </>
+              )
             ) : (
               <>
                 <Button
