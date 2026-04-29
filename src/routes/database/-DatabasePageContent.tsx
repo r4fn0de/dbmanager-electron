@@ -786,7 +786,7 @@ export function DatabasePageContent({
   const tablesContextSourceId = tablesAiSourceIdRef.current;
 
   useEffect(() => {
-    if (!isActive || activeSection !== "tables" || !selectedTableRef || !selectedTableDetails) {
+    if (!isActive || !selectedTableRef || !selectedTableDetails) {
       return;
     }
 
@@ -836,8 +836,22 @@ export function DatabasePageContent({
       },
     });
 
+  }, [
+    selectedTableRef,
+    selectedTableDetails,
+    isActive,
+    setSqlContextForTable,
+    clearSqlContextForTable,
+    tablesContextSourceId,
+    connectionId,
+    connection?.name,
+    connection?.database,
+    connection?.db_type,
+  ]);
+
+  useEffect(() => {
     return () => clearSqlContextForTable(tablesContextSourceId);
-  }, [activeSection, selectedTableRef, selectedTableDetails, isActive]);
+  }, [clearSqlContextForTable, tablesContextSourceId]);
 
   // Invalidate table details cache on DDL changes so next read refetches.
   const invalidateTableDetails = useCallback(

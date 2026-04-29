@@ -5,6 +5,31 @@ import type { ComponentProps } from "react";
 import { useCallback } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
+
+export const conversationMotionPresets = {
+  message: {
+    initial: { opacity: 0, y: 8, scale: 0.985 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: 4, scale: 0.992 },
+    transition: {
+      duration: 0.22,
+      ease: EASE_OUT,
+    },
+  },
+  chip: {
+    initial: { opacity: 0, y: -6, scale: 0.95 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: -4, scale: 0.97 },
+    transition: {
+      type: "spring",
+      stiffness: 440,
+      damping: 30,
+      mass: 0.75,
+    },
+  },
+} as const;
+
 /**
  * Minimal message shape accepted by conversation utilities.
  * Compatible with both AI SDK's `UIMessage` (parts-based) and

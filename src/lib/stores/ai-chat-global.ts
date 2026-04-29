@@ -72,14 +72,22 @@ export const useAiChatGlobalStore = create<AiChatGlobalState>()(
         set({ panelSize: Math.max(15, Math.min(45, Number.isFinite(nextSize) ? nextSize : 30)) }),
 
       setSqlContext: (sourceId, context) =>
-        set({
+        set((state) => ({
           currentSqlContextOwner: sourceId,
           currentContext: {
+            ...state.currentContext,
             ...context,
+            contextPreview: {
+              ...(state.currentContext.contextPreview ?? {
+                connectionLabel: context.connectionLabel,
+                dbType: context.dbType,
+              }),
+              ...(context.contextPreview ?? {}),
+            },
             mode: "sql-editor",
             updatedAt: nowIso(),
           },
-        }),
+        })),
 
       clearSqlContext: (sourceId) =>
         set((state) => {

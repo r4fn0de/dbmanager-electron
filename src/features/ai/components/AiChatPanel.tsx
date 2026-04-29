@@ -19,6 +19,7 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
+  conversationMotionPresets,
 } from "./ai-elements/conversation";
 import {
   Reasoning,
@@ -537,11 +538,18 @@ function ChatMessage({
   // ── User message: right-aligned, no avatar ──
   if (isUser) {
     return (
-      <Message
-        from="user"
-        className="group/msg w-full max-w-full pl-3 pr-3 py-2"
+      <motion.div
+        layout="position"
+        initial={conversationMotionPresets.message.initial}
+        animate={conversationMotionPresets.message.animate}
+        exit={conversationMotionPresets.message.exit}
+        transition={conversationMotionPresets.message.transition}
       >
-        <div className="ml-auto flex max-w-[72%] min-w-0 flex-col items-end">
+        <Message
+          from="user"
+          className="group/msg w-full max-w-full pl-3 pr-3 py-2"
+        >
+          <div className="ml-auto flex max-w-[72%] min-w-0 flex-col items-end">
           {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview || message.contextSnapshot?.tablePreview) && (
             <div className="mb-1.5 flex w-full justify-end">
               {message.contextSnapshot?.tablePreview && (
@@ -602,7 +610,8 @@ function ChatMessage({
             </p>
           )}
         </div>
-      </Message>
+        </Message>
+      </motion.div>
     );
   }
 
@@ -663,16 +672,18 @@ function ChatMessage({
   const hasContent = renderedParts.length > 0;
 
   return (
-    <Message
-      from="assistant"
-      className="
-        group/msg w-full max-w-full pl-1 pr-2 py-2
-        motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1
-        motion-safe:duration-250
-      "
-      style={{ animationTimingFunction: "cubic-bezier(0.23,1,0.32,1)" }}
+    <motion.div
+      layout="position"
+      initial={conversationMotionPresets.message.initial}
+      animate={conversationMotionPresets.message.animate}
+      exit={conversationMotionPresets.message.exit}
+      transition={conversationMotionPresets.message.transition}
     >
-      <div className="min-w-0 flex flex-col gap-1.5">
+      <Message
+        from="assistant"
+        className="group/msg w-full max-w-full pl-1 pr-2 py-2"
+      >
+        <div className="min-w-0 flex flex-col gap-1.5">
           {/* Render parts in their original interleaved order */}
           {hasContent && (
             <div className="space-y-3">
@@ -841,7 +852,8 @@ function ChatMessage({
             <p className="px-3 text-xs text-muted-foreground">No response</p>
           )}
         </div>
-    </Message>
+      </Message>
+    </motion.div>
   );
 }
 
@@ -1486,18 +1498,20 @@ export function AiChatPanel({
               </div>
             </ConversationEmptyState>
           ) : (
-            messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-                codeTheme={codeTheme}
-                onInsertSql={onInsertSql}
-                connectionId={connectionId}
-                conversationId={activeConversationId!}
-                onApproveToolCall={approveToolCall}
-                onRejectToolCall={rejectToolCall}
-              />
-            ))
+            <AnimatePresence initial={false} mode="popLayout">
+              {messages.map((msg) => (
+                <ChatMessage
+                  key={msg.id}
+                  message={msg}
+                  codeTheme={codeTheme}
+                  onInsertSql={onInsertSql}
+                  connectionId={connectionId}
+                  conversationId={activeConversationId!}
+                  onApproveToolCall={approveToolCall}
+                  onRejectToolCall={rejectToolCall}
+                />
+              ))}
+            </AnimatePresence>
           )}
         </ConversationContent>
         <ConversationScrollButton className="bottom-8 z-40" />
@@ -1547,15 +1561,11 @@ export function AiChatPanel({
               {showSelectionContextChip && (
                 <motion.div
                   key="selection-context"
-                  initial={{ opacity: 0, scale: 0.92, y: -6 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.94, y: -4 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 400,
-                    damping: 28,
-                    bounce: 0.1,
-                  }}
+                  layout="position"
+                  initial={conversationMotionPresets.chip.initial}
+                  animate={conversationMotionPresets.chip.animate}
+                  exit={conversationMotionPresets.chip.exit}
+                  transition={conversationMotionPresets.chip.transition}
                   className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1.5"
                 >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/10 text-[10px] font-semibold text-foreground">
@@ -1582,15 +1592,11 @@ export function AiChatPanel({
               {showErrorContextChip && (
                 <motion.div
                   key="error-context"
-                  initial={{ opacity: 0, scale: 0.92, y: -6 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.94, y: -4 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 400,
-                    damping: 28,
-                    bounce: 0.1,
-                  }}
+                  layout="position"
+                  initial={conversationMotionPresets.chip.initial}
+                  animate={conversationMotionPresets.chip.animate}
+                  exit={conversationMotionPresets.chip.exit}
+                  transition={conversationMotionPresets.chip.transition}
                   className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/10 px-2 py-1"
                 >
                   <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -1615,15 +1621,11 @@ export function AiChatPanel({
               {showTableContextChip && (
                 <motion.div
                   key="table-context"
-                  initial={{ opacity: 0, scale: 0.92, y: -6 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.94, y: -4 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 400,
-                    damping: 28,
-                    bounce: 0.1,
-                  }}
+                  layout="position"
+                  initial={conversationMotionPresets.chip.initial}
+                  animate={conversationMotionPresets.chip.animate}
+                  exit={conversationMotionPresets.chip.exit}
+                  transition={conversationMotionPresets.chip.transition}
                   className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1"
                 >
                   <UiIcon name="table" className="size-3.5 shrink-0 text-violet-500" />
