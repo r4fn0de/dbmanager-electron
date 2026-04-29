@@ -3,6 +3,7 @@ import type { DragEvent, KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { AnimatePresence, motion } from "motion/react";
 import { QueryResults } from "../QueryResults";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/button";
@@ -1958,23 +1959,38 @@ export function SqlEditor({
                 options={MONACO_OPTIONS}
               />
 
+              <AnimatePresence>
               {isEditorEmpty && !isInlineAiPromptOpen && (
-                <div className="pointer-events-none absolute left-[70px] top-[12px] z-10 font-mono text-sm leading-5 text-muted-foreground/40">
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
+                  exit={{ opacity: 0, y: 2, transition: { duration: 0.12 } }}
+                  className="pointer-events-none absolute left-[70px] top-[12px] z-10 font-mono text-sm leading-5 text-muted-foreground/40"
+                >
                   <span className="pointer-events-auto">
                     Type SQL or{" "}
                     <button
                       type="button"
                       onClick={() => setIsInlineAiPromptOpen(true)}
-                      className="font-medium text-primary/60 hover:text-primary hover:underline"
+                      className="font-medium text-primary/60 hover:text-primary hover:underline transition-colors duration-150"
                     >
                       Generate with AI...
                     </button>
                   </span>
-                </div>
+                </motion.div>
               )}
+              </AnimatePresence>
 
+              <AnimatePresence>
               {isInlineAiPromptOpen && (
-                <div className="absolute left-[44px] top-[34px] z-20 w-[min(560px,calc(100%-56px))] rounded-lg border border-border/60 bg-background/95 px-2.5 py-2 shadow-lg backdrop-blur-sm">
+                <motion.div
+                  key="inline-ai-prompt"
+                  initial={{ opacity: 0, scale: 0.97, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] } }}
+                  exit={{ opacity: 0, scale: 0.98, y: -2, transition: { duration: 0.15, ease: [0.23, 1, 0.32, 1] } }}
+                  className="absolute left-[44px] top-[34px] z-20 w-[min(560px,calc(100%-56px))] rounded-lg border border-border/60 bg-background/95 px-2.5 py-2 shadow-lg backdrop-blur-sm"
+                  style={{ transformOrigin: "left center" }}
+                >
                   {isGeneratingInlineAi ? (
                     <div className="flex items-center gap-2 px-3 py-2">
                       <UiIcon name="loader" className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
@@ -2041,8 +2057,9 @@ export function SqlEditor({
                       </Button>
                     </div>
                   )}
-                </div>
+                </motion.div>
               )}
+              </AnimatePresence>
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />

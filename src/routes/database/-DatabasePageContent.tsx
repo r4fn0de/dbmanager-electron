@@ -79,6 +79,7 @@ import {
   makeTableSelectSql,
   makeTableUpdateTemplateSql,
 } from "@/features/database/components/SqlEditor/utils/itemsUtils";
+import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 
 const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
   "1": "overview",
@@ -424,6 +425,15 @@ export function DatabasePageContent({
       changeSection("sql-editor");
     }
   }, [activeSection, changeSection]);
+
+  const pendingChatInsert = useAiChatGlobalStore((state) => state.pendingSqlInsert);
+  const consumeSqlInsert = useAiChatGlobalStore((state) => state.consumeSqlInsert);
+
+  useEffect(() => {
+    if (!pendingChatInsert) return;
+    consumeSqlInsert();
+    requestSqlInsert(pendingChatInsert.text);
+  }, [pendingChatInsert]);
 
   // Stable ref for keyboard handler — avoids re-registering the listener
   // when changeSection/activeSection/toggleSidebar change (rerender-optimization)

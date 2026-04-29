@@ -138,6 +138,7 @@ function Root() {
   const setAiChatOpen = useAiChatGlobalStore((state) => state.setOpen);
   const setAiPanelSize = useAiChatGlobalStore((state) => state.setPanelSize);
   const storeContext = useAiChatGlobalStore((state) => state.currentContext);
+  const requestSqlInsertFromChat = useAiChatGlobalStore((state) => state.requestSqlInsert);
 
   // Derive effective context: route params are source of truth for connectionId
   const activeConnection = routeConnectionId
@@ -469,6 +470,7 @@ function Root() {
                           isOpen={isAiChatOpen}
                           className="-mt-1.5 h-[calc(100%+6px)] pl-0 pr-0"
                           onClose={handleAiChatClose}
+                          onInsertSql={requestSqlInsertFromChat}
                         />
                       </motion.div>
                     )}
