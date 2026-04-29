@@ -24,8 +24,10 @@ function loadPgClientCtor(): PgClientCtor {
   if (pgClientCtorCached) return pgClientCtorCached;
 
   const base = process.resourcesPath;
+  const cwd = process.cwd();
   const candidates = [
     "pg",
+    join(cwd, "node_modules", "pg"),
     base ? join(base, "node_modules", "pg") : null,
     base ? join(base, "app.asar.unpacked", "node_modules", "pg") : null,
     base ? join(base, "pg") : null,
@@ -120,7 +122,12 @@ export async function testPgConnection(connectionString: string): Promise<boolea
     } finally {
       client.release();
     }
-  } catch {
+  } catch (err) {
+    const safeConn = connectionString.replace(/:\/\/([^:@]+):([^@]+)@/, "://$1:[REDACTED]@");
+    console.error("[pg] testPgConnection failed", {
+      connectionString: safeConn,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return false;
   }
 }

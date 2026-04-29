@@ -249,7 +249,35 @@ export const testConnection = os
   .handler(async ({ input }): Promise<boolean> => {
     const dbType: DatabaseType = input.db_type || "postgresql";
     const driver = driverRegistry.get(dbType);
-    return await driver.testConnection(toDriverConfig(input));
+
+    try {
+      const ok = await driver.testConnection(toDriverConfig(input));
+      if (!ok) {
+        console.warn("[db] testConnection returned false", {
+          dbType,
+          host: input.host,
+          port: input.port,
+          database: input.database,
+          hasUrl: Boolean(input.url),
+          sslMode: input.ssl_mode,
+          isLocal: Boolean(input.is_local),
+        });
+      }
+      return ok;
+    } catch (err) {
+      const message = sanitizeErrorMessage(err, "Connection test failed");
+      console.error("[db] testConnection threw", {
+        dbType,
+        host: input.host,
+        port: input.port,
+        database: input.database,
+        hasUrl: Boolean(input.url),
+        sslMode: input.ssl_mode,
+        isLocal: Boolean(input.is_local),
+        message,
+      });
+      throw new ORPCError("BAD_REQUEST", { message });
+    }
   });
 
 export const getConnection = os

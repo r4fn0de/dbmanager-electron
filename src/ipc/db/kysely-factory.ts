@@ -33,8 +33,10 @@ function loadPgPoolCtor(): PgPoolCtor {
   if (pgPoolCtorCached) return pgPoolCtorCached;
 
   const base = process.resourcesPath;
+  const cwd = process.cwd();
   const candidates = [
     "pg",
+    join(cwd, "node_modules", "pg"),
     base ? join(base, "node_modules", "pg") : null,
     base ? join(base, "app.asar.unpacked", "node_modules", "pg") : null,
     base ? join(base, "pg") : null,

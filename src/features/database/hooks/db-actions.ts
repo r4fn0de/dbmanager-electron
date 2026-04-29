@@ -93,11 +93,30 @@ export async function testConnection(
   connection: ConnectionInput,
 ): Promise<boolean> {
   try {
-    return await ipc.client.db.testConnection({ ...connection });
+    const ok = await ipc.client.db.testConnection({ ...connection });
+    if (!ok) {
+      console.warn("[db-actions] testConnection returned false", {
+        dbType: connection.db_type,
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        sslMode: connection.ssl_mode,
+        isLocal: connection.is_local,
+      });
+    }
+    return ok;
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Connection test failed",
-    );
+    const message = err instanceof Error ? err.message : "Connection test failed";
+    console.error("[db-actions] testConnection failed", {
+      dbType: connection.db_type,
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      sslMode: connection.ssl_mode,
+      isLocal: connection.is_local,
+      message,
+    });
+    throw new Error(message);
   }
 }
 
