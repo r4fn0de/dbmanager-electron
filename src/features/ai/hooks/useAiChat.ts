@@ -72,6 +72,7 @@ export interface AiChatMessage {
   contextSnapshot?: {
     selectionPreview?: string;
     errorPreview?: string;
+    tablePreview?: string;
   };
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
@@ -220,6 +221,9 @@ function toModelContent(message: AiChatMessage): string {
     }
     if (snapshot.errorPreview) {
       contextParts.push(`[Last error in editor]\n${snapshot.errorPreview}`);
+    }
+    if (snapshot.tablePreview) {
+      contextParts.push(`[Selected table]\n${snapshot.tablePreview}`);
     }
     if (contextParts.length > 0) {
       content = `${contextParts.join("\n\n")}\n\n${content}`;
@@ -895,6 +899,7 @@ export function useAiChat({
         contextSnapshot?: {
           selectionPreview?: string;
           errorPreview?: string;
+          tablePreview?: string;
         };
         mentionedConnectionId?: string | null;
       },

@@ -182,6 +182,9 @@ function Root() {
           errorPreview: storeContext.connectionId === activeConnection.id
             ? storeContext.contextPreview?.errorPreview
             : undefined,
+          tablePreview: storeContext.connectionId === activeConnection.id
+            ? storeContext.contextPreview?.tablePreview
+            : undefined,
         },
       };
     }

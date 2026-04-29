@@ -7,6 +7,7 @@ export interface AiChatContextPreview {
   dbType: DatabaseType;
   selectionPreview?: string;
   errorPreview?: string;
+  tablePreview?: string;
 }
 
 export interface AiChatCurrentContext {
@@ -47,6 +48,7 @@ const DEFAULT_CONTEXT: AiChatCurrentContext = {
     dbType: "postgresql",
     selectionPreview: "",
     errorPreview: "",
+    tablePreview: undefined,
   },
   updatedAt: new Date(0).toISOString(),
 };

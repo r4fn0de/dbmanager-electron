@@ -174,6 +174,7 @@ interface AiChatPanelProps {
     dbType: DatabaseType;
     selectionPreview?: string;
     errorPreview?: string;
+    tablePreview?: string;
   };
   /** Whether the panel is visible */
   isOpen: boolean;
@@ -541,8 +542,24 @@ function ChatMessage({
         className="group/msg w-full max-w-full pl-3 pr-3 py-2"
       >
         <div className="ml-auto flex max-w-[72%] min-w-0 flex-col items-end">
-          {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview) && (
+          {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview || message.contextSnapshot?.tablePreview) && (
             <div className="mb-1.5 flex w-full justify-end">
+              {message.contextSnapshot?.tablePreview && (
+                <div
+                  className="
+                    inline-flex max-w-full cursor-default items-center gap-2
+                    rounded-lg bg-muted/50 px-2 py-1
+                  "
+                >
+                  <UiIcon name="table" className="size-3.5 shrink-0 text-violet-500/70" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[12px] font-medium text-foreground/90">
+                      {message.contextSnapshot.tablePreview}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/70">Selected Table</p>
+                  </div>
+                </div>
+              )}
               {message.contextSnapshot?.selectionPreview && (
                 <div
                   className="
@@ -969,11 +986,13 @@ export function AiChatPanel({
   const [dismissedContext, setDismissedContext] = useState<{
     selection: boolean;
     error: boolean;
-  }>({ selection: false, error: false });
+    table: boolean;
+  }>({ selection: false, error: false, table: false });
   const [exitingContext, setExitingContext] = useState<{
     selection: boolean;
     error: boolean;
-  }>({ selection: false, error: false });
+    table: boolean;
+  }>({ selection: false, error: false, table: false });
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mentionDropdownRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<StickToBottomContext | null>(null);
@@ -982,6 +1001,7 @@ export function AiChatPanel({
   const contextDismissTimeoutsRef = useRef<{
     selection?: ReturnType<typeof setTimeout>;
     error?: ReturnType<typeof setTimeout>;
+    table?: ReturnType<typeof setTimeout>;
   }>({});
 
   // ── Mention support ──
@@ -1051,9 +1071,9 @@ export function AiChatPanel({
   }, [activeConversationId, isOpen]);
 
   useEffect(() => {
-    setDismissedContext({ selection: false, error: false });
-    setExitingContext({ selection: false, error: false });
-  }, [contextPreview?.selectionPreview, contextPreview?.errorPreview]);
+    setDismissedContext({ selection: false, error: false, table: false });
+    setExitingContext({ selection: false, error: false, table: false });
+  }, [contextPreview?.selectionPreview, contextPreview?.errorPreview, contextPreview?.tablePreview]);
 
   useEffect(() => {
     return () => {
@@ -1063,6 +1083,9 @@ export function AiChatPanel({
       if (contextDismissTimeoutsRef.current.error) {
         clearTimeout(contextDismissTimeoutsRef.current.error);
       }
+      if (contextDismissTimeoutsRef.current.table) {
+        clearTimeout(contextDismissTimeoutsRef.current.table);
+      }
     };
   }, []);
 
@@ -1071,6 +1094,9 @@ export function AiChatPanel({
   );
   const showErrorContextChip = Boolean(
     contextPreview?.errorPreview && !dismissedContext.error,
+  );
+  const showTableContextChip = Boolean(
+    contextPreview?.tablePreview && !dismissedContext.table,
   );
 
   const handleInputChange = useCallback((value: string) => {
@@ -1131,6 +1157,10 @@ export function AiChatPanel({
         showErrorContextChip && contextPreview?.errorPreview
           ? contextPreview.errorPreview
           : undefined,
+      tablePreview:
+        showTableContextChip && contextPreview?.tablePreview
+          ? contextPreview.tablePreview
+          : undefined,
     };
 
     if (showSelectionContextChip) {
@@ -1139,7 +1169,10 @@ export function AiChatPanel({
     if (showErrorContextChip) {
       setExitingContext((prev) => ({ ...prev, error: true }));
     }
-    if (showSelectionContextChip || showErrorContextChip) {
+    if (showTableContextChip) {
+      setExitingContext((prev) => ({ ...prev, table: true }));
+    }
+    if (showSelectionContextChip || showErrorContextChip || showTableContextChip) {
       setTimeout(() => {
         if (showSelectionContextChip) {
           setDismissedContext((prev) => ({ ...prev, selection: true }));
@@ -1148,6 +1181,10 @@ export function AiChatPanel({
         if (showErrorContextChip) {
           setDismissedContext((prev) => ({ ...prev, error: true }));
           setExitingContext((prev) => ({ ...prev, error: false }));
+        }
+        if (showTableContextChip) {
+          setDismissedContext((prev) => ({ ...prev, table: true }));
+          setExitingContext((prev) => ({ ...prev, table: false }));
         }
       }, 170);
     }
@@ -1162,7 +1199,7 @@ export function AiChatPanel({
 
     sendMessage(input.trim(), {
       contextSnapshot:
-        contextSnapshot.selectionPreview || contextSnapshot.errorPreview
+        contextSnapshot.selectionPreview || contextSnapshot.errorPreview || contextSnapshot.tablePreview
           ? contextSnapshot
           : undefined,
       mentionedConnectionId: mentionedConnection?.id ?? null,
@@ -1176,13 +1213,15 @@ export function AiChatPanel({
     closeMention,
     showSelectionContextChip,
     showErrorContextChip,
+    showTableContextChip,
     contextPreview?.selectionPreview,
     contextPreview?.errorPreview,
+    contextPreview?.tablePreview,
     selectedMentions,
     clearMentions,
   ]);
 
-  const handleDismissContextChip = useCallback((kind: "selection" | "error") => {
+  const handleDismissContextChip = useCallback((kind: "selection" | "error" | "table") => {
     setExitingContext((prev) => ({ ...prev, [kind]: true }));
     const existing = contextDismissTimeoutsRef.current[kind];
     if (existing) clearTimeout(existing);
@@ -1566,6 +1605,39 @@ export function AiChatPanel({
                     aria-label="Remove error context"
                     className="absolute -right-2 -top-2 rounded-full border border-amber-400/35 bg-background p-0.5 text-amber-700/70 opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-amber-900 group-hover/ctx:opacity-100 dark:text-amber-300/80 dark:hover:text-amber-200"
                     onClick={() => handleDismissContextChip("error")}
+                  >
+                    <UiIcon name="x" className="size-3" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {showTableContextChip && (
+                <motion.div
+                  key="table-context"
+                  initial={{ opacity: 0, scale: 0.92, y: -6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.94, y: -4 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 28,
+                    bounce: 0.1,
+                  }}
+                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-background/70 px-2 py-1"
+                >
+                  <UiIcon name="table" className="size-3.5 shrink-0 text-violet-500" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[12px] font-medium text-foreground">
+                      {contextPreview?.tablePreview}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">Selected Table</p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Remove table context"
+                    className="absolute -right-2 -top-2 rounded-full border border-border/60 bg-background p-0.5 text-muted-foreground opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-foreground group-hover/ctx:opacity-100"
+                    onClick={() => handleDismissContextChip("table")}
                   >
                     <UiIcon name="x" className="size-3" />
                   </button>

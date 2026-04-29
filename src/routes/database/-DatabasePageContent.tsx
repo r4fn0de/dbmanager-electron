@@ -428,6 +428,11 @@ export function DatabasePageContent({
 
   const pendingChatInsert = useAiChatGlobalStore((state) => state.pendingSqlInsert);
   const consumeSqlInsert = useAiChatGlobalStore((state) => state.consumeSqlInsert);
+  const setSqlContextForTable = useAiChatGlobalStore((state) => state.setSqlContext);
+  const clearSqlContextForTable = useAiChatGlobalStore((state) => state.clearSqlContext);
+  const tablesAiSourceIdRef = useRef<string>(
+    `tables-${connectionId}-${Math.random().toString(36).slice(2)}`,
+  );
 
   useEffect(() => {
     if (!pendingChatInsert) return;
@@ -777,6 +782,62 @@ export function DatabasePageContent({
   });
 
   const isLoadingTableDetails = isFetchingTableDetails;
+
+  const tablesContextSourceId = tablesAiSourceIdRef.current;
+
+  useEffect(() => {
+    if (!isActive || activeSection !== "tables" || !selectedTableRef || !selectedTableDetails) {
+      return;
+    }
+
+    const { schema, name } = selectedTableRef;
+    const cols = selectedTableDetails.columns;
+    const fks = selectedTableDetails.foreign_keys;
+    const pkIndex = selectedTableDetails.indexes.find((i) => i.is_primary);
+    const pkCols = new Set(pkIndex?.column_names ?? []);
+
+    const colLines = cols.map((c) => {
+      const parts = [`  - ${c.name}: ${c.data_type}`];
+      if (pkCols.has(c.name)) parts.push("[PK]");
+      if (!c.is_nullable) parts.push("[NOT NULL]");
+      const fk = fks.find((f) => f.column_name === c.name);
+      if (fk) parts.push(`→ ${fk.referenced_table}.${fk.referenced_column}`);
+      if (c.column_default) parts.push(`= ${c.column_default.slice(0, 40)}`);
+      return parts.join(" ");
+    });
+
+    const fkLines = fks.length > 0
+      ? [`\nForeign Keys:` , ...fks.map((fk) => `  - ${fk.name}: ${schema}.${name}.${fk.column_name} → ${fk.referenced_schema || schema}.${fk.referenced_table}.${fk.referenced_column}`)]
+      : [];
+
+    const idxLines = selectedTableDetails.indexes.length > 0
+      ? ["\nIndexes:", ...selectedTableDetails.indexes.map((idx) => `  - ${idx.name}: (${idx.column_names.join(", ")})${idx.is_unique ? " UNIQUE" : ""}${idx.is_primary ? " PRIMARY" : ""}`)]
+      : [];
+
+    const ctx = [
+      `Selected Table: ${schema}.${name}`,
+      `Columns (${cols.length}):`,
+      ...colLines,
+      ...fkLines,
+      ...idxLines,
+    ].join("\n");
+
+    const preview = `${schema}.${name} (${cols.length} col${cols.length !== 1 ? "s" : ""})`;
+
+    setSqlContextForTable(tablesContextSourceId, {
+      connectionId,
+      connectionLabel: connection?.name?.trim() || connection?.database?.trim() || connectionId,
+      dbType: connection?.db_type || "postgresql",
+      schemaContext: ctx,
+      contextPreview: {
+        connectionLabel: connection?.name?.trim() || connection?.database?.trim() || connectionId,
+        dbType: connection?.db_type || "postgresql",
+        tablePreview: preview,
+      },
+    });
+
+    return () => clearSqlContextForTable(tablesContextSourceId);
+  }, [activeSection, selectedTableRef, selectedTableDetails, isActive]);
 
   // Invalidate table details cache on DDL changes so next read refetches.
   const invalidateTableDetails = useCallback(

@@ -13,10 +13,11 @@ import {
   getSmoothStepPath,
   type EdgeProps,
 } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import "@/styles/xyflow.css";
 import dagre from "@dagrejs/dagre";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useReactFlow, Panel } from "@xyflow/react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -172,7 +173,7 @@ function TableFilters({
 // Skeleton para carregamento
 function TableNodeSkeleton() {
   return (
-    <div className="w-[240px] rounded-xl bg-card font-mono shadow-lg border border-border animate-pulse">
+    <div className="w-60 rounded-xl bg-card font-mono shadow-lg border border-border animate-pulse">
       <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-2.5 rounded-t-xl">
         <div className="h-4 w-4 rounded bg-muted" />
         <div className="h-4 w-32 rounded bg-muted" />
@@ -235,7 +236,7 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
   return (
     <div
       className={cn(
-        "w-[200px] rounded-md bg-card font-mono border border-border/50 transition-opacity",
+        "w-50 rounded-md bg-card font-mono border border-border/50 transition-opacity",
         data.searchActive && data.tableSearchMatched && "ring-1 ring-primary/60",
         data.searchActive &&
           !data.tableSearchMatched &&
@@ -279,7 +280,7 @@ function TableNode({ data }: NodeProps<TableNodeType>) {
             )}
           >
             <div
-              className="flex items-center justify-between gap-1 px-2.5 py-[3px] text-[10px] leading-tight"
+              className="flex items-center justify-between gap-1 px-2.5 py-0.75 text-[10px] leading-tight"
             >
               <div className="flex min-w-0 items-center gap-1">
                 {column.primaryKey && (
