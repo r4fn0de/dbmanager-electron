@@ -208,7 +208,12 @@ function AssistantCodeBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const displayLang = language?.trim() || "sql";
-  const isSqlLike = /^(sql|postgres|postgresql|mysql|mariadb|sqlite|clickhouse)$/i.test(displayLang);
+  const isSqlLikeLanguage = /^(sql|postgres|postgresql|mysql|mariadb|sqlite|clickhouse)$/i.test(displayLang);
+  const isSqlByContent =
+    /\b(select|insert|update|delete|create|alter|drop|with|from|where|join)\b/i.test(
+      code,
+    );
+  const canInsertSql = (isSqlLikeLanguage || isSqlByContent) && !!onInsertSql;
 
   useEffect(() => {
     if (!copied) return;
@@ -236,7 +241,7 @@ function AssistantCodeBlock({
           >
             {copied ? <UiIcon name="check" className="size-3" /> : <UiIcon name="copy" className="size-3" />}
           </MessageAction>
-          {!isStreaming && isSqlLike && onInsertSql && (
+          {canInsertSql && (
             <MessageAction
               tooltip="Insert SQL"
               label="Insert SQL"
@@ -903,7 +908,27 @@ function splitTextIntoSegments(text: string): TextSegment[] {
   // Handle trailing text after last code fence
   if (lastIndex < text.length) {
     const trailing = text.slice(lastIndex);
-    pushProseSegments(segments, trailing);
+    // Streaming can leave the final code fence unclosed for a while.
+    // Detect an open fence in the trailing chunk and render it as code immediately.
+    const openFenceMatch = trailing.match(/```([\w-]+)?\s*\n([\s\S]*)$/);
+    if (openFenceMatch) {
+      const openFencePrefix = openFenceMatch[0];
+      const openFenceStart = trailing.lastIndexOf(openFencePrefix);
+      const proseBeforeFence = trailing.slice(0, openFenceStart);
+      if (proseBeforeFence.trim()) {
+        pushProseSegments(segments, proseBeforeFence);
+      }
+      const openFenceCode = (openFenceMatch[2] ?? "").trim();
+      if (openFenceCode) {
+        segments.push({
+          type: "code",
+          code: openFenceCode,
+          language: openFenceMatch[1]?.trim() || undefined,
+        });
+      }
+    } else {
+      pushProseSegments(segments, trailing);
+    }
   }
 
   if (segments.length === 0) {

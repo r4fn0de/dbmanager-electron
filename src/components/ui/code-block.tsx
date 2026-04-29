@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { codeToHtml } from "shiki/bundle/web"
 
 export type CodeBlockProps = {
@@ -92,6 +92,7 @@ function CodeBlockCode({
   ...props
 }: CodeBlockCodeProps) {
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+  const highlightRequestIdRef = useRef(0)
 
   useEffect(() => {
     const normalizeTheme = (value: string): string => {
@@ -126,9 +127,14 @@ function CodeBlockCode({
       return aliases[normalized] ?? normalized
     }
 
+    const requestId = ++highlightRequestIdRef.current
+    let cancelled = false
+
     async function highlight() {
       if (!code) {
-        setHighlightedHtml("<pre><code></code></pre>")
+        if (!cancelled && requestId === highlightRequestIdRef.current) {
+          setHighlightedHtml("<pre><code></code></pre>")
+        }
         return
       }
 
@@ -143,7 +149,9 @@ function CodeBlockCode({
           lang: normalizedLanguage,
           theme: normalizeTheme(theme),
         })
-        setHighlightedHtml(html)
+        if (!cancelled && requestId === highlightRequestIdRef.current) {
+          setHighlightedHtml(html)
+        }
       } catch {
         try {
           // SQL is the safest fallback for this app context.
@@ -151,26 +159,35 @@ function CodeBlockCode({
             lang: "sql",
             theme: normalizeTheme(theme),
           })
-          setHighlightedHtml(sqlFallback)
+          if (!cancelled && requestId === highlightRequestIdRef.current) {
+            setHighlightedHtml(sqlFallback)
+          }
         } catch {
           try {
             const plaintextFallback = await codeToHtml(code, {
               lang: "text",
               theme: normalizeTheme(theme),
             })
-            setHighlightedHtml(plaintextFallback)
+            if (!cancelled && requestId === highlightRequestIdRef.current) {
+              setHighlightedHtml(plaintextFallback)
+            }
           } catch {
             // Robust fallback for Electron renderer: keep themed code even if Shiki runtime fails.
-            setHighlightedHtml(
-              useSqlFallback
-                ? buildSqlFallbackHtml(code, theme)
-                : buildPlainThemedHtml(code, theme),
-            )
+            if (!cancelled && requestId === highlightRequestIdRef.current) {
+              setHighlightedHtml(
+                useSqlFallback
+                  ? buildSqlFallbackHtml(code, theme)
+                  : buildPlainThemedHtml(code, theme),
+              )
+            }
           }
         }
       }
     }
     highlight()
+    return () => {
+      cancelled = true
+    }
   }, [code, language, theme])
 
   const classNames = cn(
