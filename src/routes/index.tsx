@@ -559,6 +559,7 @@ function Home() {
 
       <ConnectionForm
         connection={editingConnection}
+        connections={connections}
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSave={handleSave}

@@ -183,14 +183,7 @@ function UrlInput({
           </span>
         ))}
       </div>
-      {items.length > 0 && (
-        <p className="text-[11px] text-muted-foreground">
-          Detected:{" "}
-          <span className="font-mono text-foreground">
-            {items.join(" · ")}
-          </span>
-        </p>
-      )}
+
     </div>
   );
 }
@@ -489,6 +482,7 @@ type InputMode = "url" | "details";
 
 interface ConnectionFormProps {
   connection: Connection | null;
+  connections: Connection[];
   isOpen: boolean;
   onClose: () => void;
   onSave: (connection: ConnectionInput) => Promise<void>;
@@ -497,8 +491,47 @@ interface ConnectionFormProps {
   isTesting: boolean;
 }
 
+function normalizeUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw.trim());
+    url.hash = "";
+    url.searchParams.delete("sslmode");
+    url.searchParams.delete("ssl");
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function findDuplicateConnection(
+  connections: Connection[],
+  formData: ConnectionInput,
+  urlValue: string | undefined,
+  inputMode: InputMode,
+  editingId: string | undefined,
+): Connection | null {
+  return connections.find((c) => {
+    if (c.id === editingId) return false;
+    if (c.db_type !== (formData.db_type || "postgresql")) return false;
+
+    if (inputMode === "url" && urlValue) {
+      const normalized = normalizeUrl(urlValue);
+      const existing = normalizeUrl(c.url || c.connection_string || "");
+      if (normalized && existing && normalized === existing) return true;
+    }
+
+    return (
+      c.host === formData.host
+      && c.port === formData.port
+      && c.database === formData.database
+      && c.username === formData.username
+    );
+  }) ?? null;
+}
+
 export function ConnectionForm({
   connection,
+  connections,
   isOpen,
   onClose,
   onSave,
@@ -524,6 +557,20 @@ export function ConnectionForm({
   );
 
   const hasTestedCurrent = lastTestedHash === connectionHash && testStatus?.success === true;
+
+  const duplicateConnection = useMemo(
+    () =>
+      !isEditing
+        ? findDuplicateConnection(
+            connections,
+            formData,
+            inputMode === "url" ? urlValue : undefined,
+            inputMode,
+            connection?.id,
+          )
+        : null,
+    [connections, formData, inputMode, urlValue, isEditing, connection?.id],
+  );
 
   // Reset / init form when dialog opens
   useEffect(() => {
@@ -703,11 +750,27 @@ export function ConnectionForm({
             </div>
           </div>
 
+          {/* Duplicate warning */}
+          {duplicateConnection && (
+            <div className="mx-5 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+              <UiIcon name="alert-triangle" className="size-3.5 shrink-0" />
+              <span>
+                Duplicate of <strong>{duplicateConnection.name}</strong> — same
+                host, port, database and user already registered.
+              </span>
+            </div>
+          )}
+
           {/* Footer */}
           <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
             {/* Status */}
             <div className="text-xs">
-              {isEditing ? (
+              {duplicateConnection ? (
+                <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <UiIcon name="alert-triangle" className="size-3" />
+                  Duplicate connection
+                </span>
+              ) : isEditing ? (
                 <span className="text-muted-foreground">Save changes directly</span>
               ) : hasTestedCurrent ? (
                 <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400">
@@ -736,11 +799,11 @@ export function ConnectionForm({
                 Cancel
               </Button>
 
-              {isEditing || hasTestedCurrent ? (
+              {isEditing || (hasTestedCurrent && !duplicateConnection) ? (
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={isSaving || !formData.name.trim()}
+                  disabled={isSaving || !formData.name.trim() || !!duplicateConnection}
                   className="h-7 gap-1 text-xs"
                 >
                   {isSaving ? (
@@ -759,7 +822,7 @@ export function ConnectionForm({
                 <Button
                   type="button"
                   size="sm"
-                  disabled={isTesting}
+                  disabled={isTesting || !!duplicateConnection}
                   onClick={handleTest}
                   className="h-7 gap-1 text-xs"
                 >
