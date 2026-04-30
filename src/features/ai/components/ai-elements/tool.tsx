@@ -164,23 +164,23 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-md bg-muted/20",
+        "overflow-hidden rounded-lg border border-border/10 bg-muted/15",
         className,
       )}
     >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger
           className={cn(
-            "flex w-full items-center justify-between gap-2 px-2.5 py-1.5",
-            "text-left transition-colors duration-100 ease-out",
-            "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "flex w-full items-center justify-between gap-2 px-3 py-2",
+            "text-left transition-colors duration-150 ease-out",
+            "hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             hasExpandableContent && "cursor-pointer",
             !hasExpandableContent && "cursor-default",
           )}
         >
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-2">
             <StatusDot state={state} />
-            <span className="truncate font-mono text-xs font-medium text-foreground/90">
+            <span className="truncate font-mono text-xs font-medium text-foreground/80">
               {toolPart.type}
             </span>
             <StateLabel state={state} />
@@ -189,7 +189,7 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
             <Icon
               name="chevron-down"
               className={cn(
-                "size-3 shrink-0 text-muted-foreground/50 transition-transform duration-150 ease-out",
+                "size-3.5 shrink-0 text-muted-foreground/40 transition-transform duration-200 ease-out",
                 isOpen && "rotate-180",
               )}
             />
@@ -200,16 +200,16 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
           <CollapsibleContent
             className="data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden"
           >
-            <div className="space-y-2 px-2.5 py-2 text-xs">
+            <div className="space-y-2 px-3 py-2 text-xs">
               {hasInput && (
                 <div>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
                     Input
                   </span>
-                  <div className="mt-1 max-h-40 overflow-auto rounded bg-background/40 p-1.5 font-mono text-[11px] leading-relaxed">
+                  <div className="mt-1 max-h-40 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] leading-relaxed">
                     {Object.entries(input ?? {}).map(([key, value]) => (
-                      <div key={key} className="flex gap-1">
-                        <span className="text-muted-foreground/70">{key}:</span>
+                      <div key={key} className="flex gap-1.5">
+                        <span className="text-muted-foreground/60">{key}:</span>
                         <span className="break-all text-foreground/80">{formatCompact(value)}</span>
                       </div>
                     ))}
@@ -219,10 +219,10 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
 
               {hasOutput && (
                 <div>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
                     Output
                   </span>
-                  <div className="mt-1 max-h-48 overflow-auto rounded bg-background/40 p-1.5 font-mono text-[11px] leading-relaxed">
+                  <div className="mt-1 max-h-48 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] leading-relaxed">
                     <pre className="whitespace-pre-wrap wrap-break-word text-foreground/80">
                       {formatCompact(output)}
                     </pre>
@@ -232,10 +232,10 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
 
               {state === "output-error" && errorText && (
                 <div>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-red-500/80">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-red-500/70">
                     Error
                   </span>
-                  <div className="mt-1 rounded border border-red-200/40 bg-red-500/5 p-1.5 text-[11px] text-red-600 dark:border-red-900/30 dark:text-red-400">
+                  <div className="mt-1 rounded-md border border-red-200/30 bg-red-500/5 p-2 text-[11px] text-red-600 dark:border-red-900/20 dark:text-red-400">
                     {errorText}
                   </div>
                 </div>
@@ -254,10 +254,10 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
                   {/* SQL preview */}
                   {approvalRequest?.preview && (
                     <div>
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
                         SQL
                       </span>
-                      <pre className="mt-1 max-h-32 overflow-auto rounded bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+                      <pre className="mt-1 max-h-32 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
                         {approvalRequest.preview}
                       </pre>
                     </div>
@@ -269,7 +269,7 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
                       {approvalRequest.warnings.map((warning, index) => (
                         <div
                           key={index}
-                          className="flex items-start gap-1.5 rounded border border-amber-200/40 bg-amber-500/5 px-2 py-1 text-[11px] text-amber-700 dark:border-amber-800/30 dark:text-amber-400"
+                          className="flex items-start gap-1.5 rounded-md border border-amber-200/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-700 dark:border-amber-800/20 dark:text-amber-400"
                         >
                           <Icon name="alert-triangle" className="mt-px size-3 shrink-0" />
                           <span>{warning}</span>
@@ -279,36 +279,34 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
                   )}
 
                   {/* Approve / Reject buttons */}
-                  <div className="flex items-center gap-2 pt-0.5">
+                  <div className="flex items-center gap-2 pt-1">
                     <button
                       type="button"
                       onClick={() => toolCallId && onApprove?.(toolCallId)}
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium",
-                        "bg-emerald-600/90 text-white shadow-sm",
-                        "hover:bg-emerald-600 active:bg-emerald-700",
-                        "dark:bg-emerald-500/80 dark:hover:bg-emerald-500 dark:active:bg-emerald-600",
-                        "transition-[background,transform] duration-100 ease-out active:scale-[0.97]",
+                        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                        "bg-foreground text-background",
+                        "hover:bg-foreground/90 active:bg-foreground/80",
+                        "transition-[background,transform] duration-150 ease-out active:scale-[0.97]",
                       )}
                     >
                       <Icon name="check" className="size-3" />
                       Approve
-                      <Kbd className="ml-1 h-4 min-w-4 bg-white/15 text-white/70 dark:bg-white/10 dark:text-white/60">↵</Kbd>
+                      <Kbd className="ml-1 h-4 min-w-4 bg-white/15 text-background/60">↵</Kbd>
                     </button>
                     <button
                       type="button"
                       onClick={() => toolCallId && onReject?.(toolCallId)}
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium",
-                        "border border-border/50 bg-background text-muted-foreground",
-                        "hover:bg-muted/60 hover:text-foreground",
-                        "dark:hover:bg-muted/40",
-                        "transition-[background,color,transform] duration-100 ease-out active:scale-[0.97]",
+                        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                        "border border-border/20 bg-transparent text-muted-foreground",
+                        "hover:bg-muted/30 hover:text-foreground",
+                        "transition-[background,color,transform] duration-150 ease-out active:scale-[0.97]",
                       )}
                     >
                       <Icon name="x" className="size-3" />
                       Reject
-                      <Kbd className="ml-1 h-4 min-w-4 bg-muted/60 text-muted-foreground/60">⎋</Kbd>
+                      <Kbd className="ml-1 h-4 min-w-4 bg-muted/40 text-muted-foreground/50">⎋</Kbd>
                     </button>
                   </div>
                 </div>

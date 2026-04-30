@@ -63,7 +63,7 @@ export const ConversationContent = ({
 }: ConversationContentProps) => (
   <StickToBottom.Content
     scrollClassName="h-full overflow-y-auto overscroll-contain"
-    className={cn("flex min-h-full flex-col gap-8 p-4", className)}
+    className={cn("flex min-h-full flex-col gap-6 p-4", className)}
     {...props}
   />
 );
@@ -84,18 +84,18 @@ export const ConversationEmptyState = ({
 }: ConversationEmptyStateProps) => (
   <div
     className={cn(
-      "flex size-full flex-col items-center justify-center gap-3 p-8 text-center",
+      "flex size-full flex-col items-center justify-center gap-4 p-8 text-center",
       className
     )}
     {...props}
   >
     {children ?? (
       <>
-        {icon && <div className="text-muted-foreground">{icon}</div>}
-        <div className="space-y-1">
-          <h3 className="font-medium text-sm">{title}</h3>
+        {icon && <div className="text-muted-foreground/60">{icon}</div>}
+        <div className="space-y-1.5">
+          <h3 className="font-medium text-sm text-foreground/80">{title}</h3>
           {description && (
-            <p className="text-muted-foreground text-sm">{description}</p>
+            <p className="text-muted-foreground/60 text-xs">{description}</p>
           )}
         </div>
       </>
@@ -119,7 +119,8 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted",
+          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full size-7 border-border/30 bg-background/80 backdrop-blur-sm shadow-sm dark:bg-background/80 dark:hover:bg-muted/60",
+          "transition-all duration-150 ease-out hover:shadow-md",
           className
         )}
         onClick={handleScrollToBottom}
@@ -128,7 +129,7 @@ export const ConversationScrollButton = ({
         variant="outline"
         {...props}
       >
-        <Icon name="chevron-down" className="size-4" />
+        <Icon name="chevron-down" className="size-3.5" />
       </Button>
     )
   );
@@ -192,7 +193,8 @@ export const ConversationDownload = ({
   return (
     <Button
       className={cn(
-        "absolute top-4 right-4 rounded-full dark:bg-background dark:hover:bg-muted",
+        "absolute top-4 right-4 rounded-full size-7 border-border/30 bg-background/80 backdrop-blur-sm shadow-sm dark:bg-background/80 dark:hover:bg-muted/60",
+        "transition-all duration-150 ease-out hover:shadow-md",
         className
       )}
       onClick={handleDownload}
@@ -201,7 +203,7 @@ export const ConversationDownload = ({
       variant="outline"
       {...props}
     >
-      {children ?? <Icon name="download" className="size-4" />}
+      {children ?? <Icon name="download" className="size-3.5" />}
     </Button>
   );
 };

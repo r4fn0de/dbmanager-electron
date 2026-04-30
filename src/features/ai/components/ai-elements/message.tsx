@@ -35,7 +35,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full max-w-[95%] flex-col gap-2",
+      "group flex w-full max-w-[92%] flex-col gap-1.5",
       from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
       className
     )}
@@ -52,10 +52,10 @@ export const MessageContent = ({
 }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-2 text-sm",
+      "flex w-fit min-w-0 max-w-full flex-col gap-1.5 text-sm leading-relaxed",
       "group-[.is-user]:overflow-hidden group-[.is-assistant]:overflow-visible",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
-      "group-[.is-assistant]:text-foreground",
+      "group-[.is-user]:ml-auto group-[.is-user]:rounded-xl group-[.is-user]:bg-secondary/80 group-[.is-user]:px-3.5 group-[.is-user]:py-2.5 group-[.is-user]:text-foreground",
+      "group-[.is-assistant]:text-foreground/90",
       className
     )}
     {...props}
@@ -71,7 +71,7 @@ export const MessageActions = ({
   children,
   ...props
 }: MessageActionsProps) => (
-  <div className={cn("flex items-center gap-1", className)} {...props}>
+  <div className={cn("flex items-center gap-0.5 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100", className)} {...props}>
     {children}
   </div>
 );
@@ -354,7 +354,7 @@ export const MessageToolbar = ({
 }: MessageToolbarProps) => (
   <div
     className={cn(
-      "mt-4 flex w-full items-center justify-between gap-4",
+      "mt-3 flex w-full items-center justify-between gap-4 opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100",
       className
     )}
     {...props}
