@@ -39,6 +39,7 @@ export interface MemorySearchResult {
 }
 
 export interface MemoryContext {
+  mode?: "semantic" | "text-fallback";
   recentMessages: Array<Pick<MemoryEntry, "id" | "role" | "content" | "timestamp" | "metadata">>;
   similarPastQueries: Array<{
     query: string;
@@ -95,6 +96,7 @@ export interface UseAiMemoryReturn {
 
   // Embedding status
   embeddingStatus: { status: string; ready: boolean } | undefined;
+  memoryStatus: "ready" | "degraded";
   isStatusLoading: boolean;
 
   // History
@@ -240,6 +242,11 @@ export function useAiMemory(): UseAiMemoryReturn {
     [cleanupMemoryMutate],
   );
 
+  const memoryStatus: "ready" | "degraded" =
+    embeddingStatus?.ready || embeddingStatus?.status === "ready"
+      ? "ready"
+      : "degraded";
+
   const refetchStats = useCallback(async () => {
     await refetchStatsQuery();
   }, [refetchStatsQuery]);
@@ -258,6 +265,7 @@ export function useAiMemory(): UseAiMemoryReturn {
     statsError: statsError instanceof Error ? statsError.message : null,
     refetchStats,
     embeddingStatus,
+    memoryStatus,
     isStatusLoading,
     history,
     isHistoryLoading,

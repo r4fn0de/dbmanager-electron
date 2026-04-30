@@ -47,6 +47,7 @@ const DB_DIR = "feedback";
 const runtimeRequire = createRequire(
   join(process.resourcesPath || process.cwd(), "package.json"),
 );
+const cwdRequire = createRequire(join(process.cwd(), "package.json"));
 
 type BetterSqlite3Ctor = new (...args: any[]) => any;
 let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
@@ -62,14 +63,17 @@ function loadBetterSqlite3(): BetterSqlite3Ctor {
     base ? join(base, "better-sqlite3") : null,
   ].filter(Boolean) as string[];
 
+  const requireFns = [runtimeRequire, cwdRequire];
   let lastError: unknown;
-  for (const candidate of candidates) {
-    try {
-      const loaded = runtimeRequire(candidate) as BetterSqlite3Ctor;
-      betterSqlite3Cached = loaded;
-      return loaded;
-    } catch (err) {
-      lastError = err;
+  for (const req of requireFns) {
+    for (const candidate of candidates) {
+      try {
+        const loaded = req(candidate) as BetterSqlite3Ctor;
+        betterSqlite3Cached = loaded;
+        return loaded;
+      } catch (err) {
+        lastError = err;
+      }
     }
   }
 

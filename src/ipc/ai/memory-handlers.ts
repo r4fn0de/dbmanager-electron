@@ -277,6 +277,7 @@ export const getMemoryContextHandler = os
     }),
   )
   .handler(async ({ input }) => {
+    let mode: "semantic" | "text-fallback" = "text-fallback";
     const context: {
       recentMessages: Array<Pick<MemoryEntry, "id" | "role" | "content" | "timestamp" | "metadata">>;
       similarPastQueries: Array<{
@@ -284,9 +285,11 @@ export const getMemoryContextHandler = os
         response: string;
         similarity: number;
       }>;
+      mode: "semantic" | "text-fallback";
     } = {
       recentMessages: [],
       similarPastQueries: [],
+      mode: "text-fallback",
     };
 
     // Get recent conversation history
@@ -350,10 +353,46 @@ export const getMemoryContextHandler = os
 
           if (context.similarPastQueries.length >= input.similarLimit) break;
         }
+        mode = "semantic";
       } catch (err) {
         console.warn("[Memory] Failed to get similar queries:", err);
       }
     }
+
+    if (context.similarPastQueries.length === 0) {
+      try {
+        const textMatches = searchMemoriesByText(input.query, {
+          connectionId: input.connectionId,
+          limit: input.similarLimit * 3,
+        });
+
+        for (const match of textMatches) {
+          if (match.role !== "user") continue;
+
+          const pairedConversation = getRecentMemories({
+            conversationId: match.conversationId,
+            limit: 20,
+          });
+
+          const assistantMatch = pairedConversation.find(
+            (m) => m.role === "assistant" && m.messageId === match.messageId,
+          );
+          if (!assistantMatch) continue;
+
+          context.similarPastQueries.push({
+            query: match.content,
+            response: assistantMatch.content,
+            similarity: 0.6,
+          });
+
+          if (context.similarPastQueries.length >= input.similarLimit) break;
+        }
+      } catch (err) {
+        console.warn("[Memory] Text fallback search failed:", err);
+      }
+    }
+
+    context.mode = mode;
 
     return context;
   });

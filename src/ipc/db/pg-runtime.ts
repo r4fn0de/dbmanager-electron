@@ -216,17 +216,14 @@ export async function getPgDatabaseInfo(connectionString: string): Promise<Datab
   const client = await pool.connect();
   try {
     // Core info — these should always work on any PostgreSQL connection
-    const [versionResult, encodingResult, timezoneResult, sizeResult] =
-      await Promise.all([
-        client.query("SELECT version()"),
-        client.query(
-          "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()",
-        ),
-        client.query("SHOW timezone"),
-        client.query(
-          "SELECT pg_size_pretty(pg_database_size(current_database()))",
-        ),
-      ]);
+    const versionResult = await client.query("SELECT version()");
+    const encodingResult = await client.query(
+      "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()",
+    );
+    const timezoneResult = await client.query("SHOW timezone");
+    const sizeResult = await client.query(
+      "SELECT pg_size_pretty(pg_database_size(current_database()))",
+    );
 
     // Extended stats — may fail on restricted/managed environments (Neon, Supabase, etc.)
     // Wrapped in try/catch so basic info always returns even if stats are inaccessible.
@@ -240,8 +237,7 @@ export async function getPgDatabaseInfo(connectionString: string): Promise<Datab
     let databaseName: string | undefined;
 
     try {
-      const [statsResult, uptimeResult, deadTuplesResult] = await Promise.all([
-        client.query(`
+      const statsResult = await client.query(`
           SELECT
             (SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()) AS active_connections,
             (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') AS max_connections,
@@ -254,12 +250,13 @@ export async function getPgDatabaseInfo(connectionString: string): Promise<Datab
             current_database() AS database_name
           FROM pg_stat_database
           WHERE datname = current_database()
-        `),
-        client.query("SELECT now() - pg_postmaster_start_time() AS uptime"),
-        client.query(
-          "SELECT sum(n_dead_tup)::bigint AS dead_tuples FROM pg_stat_user_tables"
-        ),
-      ]);
+        `);
+      const uptimeResult = await client.query(
+        "SELECT now() - pg_postmaster_start_time() AS uptime",
+      );
+      const deadTuplesResult = await client.query(
+        "SELECT sum(n_dead_tup)::bigint AS dead_tuples FROM pg_stat_user_tables",
+      );
 
       const stats = statsResult.rows[0] as Record<string, unknown> | undefined;
       activeConnections = stats?.active_connections != null ? Number(stats.active_connections) : undefined;

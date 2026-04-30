@@ -31,6 +31,7 @@ import type { ToolApprovalRequestPayload, ToolApprovalResponsePayload } from "@/
 import {
   saveMemory,
   searchSimilarMemories,
+  searchMemoriesByText,
   getRecentMemories,
 } from "./memory-store";
 import {
@@ -111,6 +112,7 @@ interface InlineGenerateStartInput {
 }
 
 interface MemoryContextData {
+  mode: "semantic" | "text-fallback";
   recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
   similarQueries: Array<{ query: string; response: string; similarity: number }>;
 }
@@ -684,6 +686,7 @@ async function fetchMemoryContext(
   connectionId: string | null,
 ): Promise<MemoryContextData> {
   const context: MemoryContextData = {
+    mode: "text-fallback",
     recentMessages: [],
     similarQueries: [],
   };
@@ -745,8 +748,37 @@ async function fetchMemoryContext(
           seenConversations.add(convId);
           if (context.similarQueries.length >= 3) break;
         }
+        context.mode = "semantic";
       } catch (err) {
         console.warn("[ai:memory] Failed to get similar queries:", err);
+      }
+    }
+
+    if (context.similarQueries.length === 0) {
+      const fallbackMatches = searchMemoriesByText(userMessage, {
+        connectionId: connectionId ?? undefined,
+        limit: 12,
+      });
+
+      for (const match of fallbackMatches) {
+        if (match.role !== "user") continue;
+
+        const conversationMemories = getRecentMemories({
+          conversationId: match.conversationId,
+          limit: 10,
+        });
+        const assistantMatch = conversationMemories.find(
+          (m) => m.role === "assistant" && m.messageId === match.messageId,
+        );
+        if (!assistantMatch) continue;
+
+        context.similarQueries.push({
+          query: match.content,
+          response: assistantMatch.content,
+          similarity: 0.6,
+        });
+
+        if (context.similarQueries.length >= 3) break;
       }
     }
   } catch (err) {

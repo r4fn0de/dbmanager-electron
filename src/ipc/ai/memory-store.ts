@@ -43,10 +43,13 @@ export interface MemoryContext {
 
 const DB_FILENAME = "ai-memory.db";
 const DB_DIR = "memory";
+const MAX_MEMORY_ENTRIES_GLOBAL = 5_000;
+const MAX_MEMORY_ENTRIES_PER_CONVERSATION = 200;
 
 const runtimeRequire = createRequire(
   join(process.resourcesPath || process.cwd(), "package.json"),
 );
+const cwdRequire = createRequire(join(process.cwd(), "package.json"));
 
 type BetterSqlite3Ctor = new (...args: any[]) => any;
 let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
@@ -62,14 +65,17 @@ function loadBetterSqlite3(): BetterSqlite3Ctor {
     base ? join(base, "better-sqlite3") : null,
   ].filter(Boolean) as string[];
 
+  const requireFns = [runtimeRequire, cwdRequire];
   let lastError: unknown;
-  for (const candidate of candidates) {
-    try {
-      const loaded = runtimeRequire(candidate) as BetterSqlite3Ctor;
-      betterSqlite3Cached = loaded;
-      return loaded;
-    } catch (err) {
-      lastError = err;
+  for (const req of requireFns) {
+    for (const candidate of candidates) {
+      try {
+        const loaded = req(candidate) as BetterSqlite3Ctor;
+        betterSqlite3Cached = loaded;
+        return loaded;
+      } catch (err) {
+        lastError = err;
+      }
     }
   }
 
@@ -252,6 +258,8 @@ export function saveMemory(
     metadata: string | null;
   };
 
+  enforceMemoryRetention(database);
+
   return {
     id: row.id,
     conversationId: row.conversation_id,
@@ -263,6 +271,38 @@ export function saveMemory(
     timestamp: row.timestamp,
     metadata: row.metadata ?? undefined,
   };
+}
+
+function enforceMemoryRetention(database: any): void {
+  database.exec(`
+    DELETE FROM ai_memory
+    WHERE rowid IN (
+      SELECT rowid FROM ai_memory
+      WHERE conversation_id IN (
+        SELECT conversation_id
+        FROM ai_memory
+        GROUP BY conversation_id
+        HAVING COUNT(*) > ${MAX_MEMORY_ENTRIES_PER_CONVERSATION}
+      )
+      AND rowid NOT IN (
+        SELECT rowid
+        FROM ai_memory AS keep
+        WHERE keep.conversation_id = ai_memory.conversation_id
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ${MAX_MEMORY_ENTRIES_PER_CONVERSATION}
+      )
+    );
+  `);
+
+  database.exec(`
+    DELETE FROM ai_memory
+    WHERE rowid NOT IN (
+      SELECT rowid
+      FROM ai_memory
+      ORDER BY timestamp DESC, rowid DESC
+      LIMIT ${MAX_MEMORY_ENTRIES_GLOBAL}
+    );
+  `);
 }
 
 /**
