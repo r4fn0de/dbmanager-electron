@@ -42,6 +42,8 @@ import {
   detectConnectionProvider,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
+import { useAppearanceStore } from "@/lib/stores/appearance";
+import { cn } from "@/lib/utils";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
 
@@ -93,6 +95,7 @@ export function TitleBar() {
   const [platform] = useState<Platform>(() => detectPlatform());
   const [isMaximized, setIsMaximized] = useState(false);
   const [isConnectionMenuOpen, setIsConnectionMenuOpen] = useState(false);
+  const solidBackground = useAppearanceStore((s) => s.solidBackground);
   const navigate = useNavigate();
 
   // Auto-add tabs when navigating to database pages
@@ -203,7 +206,10 @@ export function TitleBar() {
                           setIsConnectionMenuOpen(true);
                         }
                       }}
-                      className="shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground hover:text-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors after:duration-150 hover:after:bg-muted/60"
+                      className={cn(
+                        "shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors after:duration-150",
+                        solidBackground ? "hover:after:bg-muted/85" : "hover:after:bg-muted/60",
+                      )}
                       aria-label="Open connections"
                       transition={{
                         type: "spring",
@@ -317,7 +323,10 @@ export function TitleBar() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-none hover:bg-muted no-drag"
+            className={cn(
+              "h-8 w-8 rounded-none no-drag",
+              solidBackground ? "hover:bg-muted/85" : "hover:bg-muted",
+            )}
             onClick={handleMinimize}
             aria-label="Minimize"
           >
@@ -326,7 +335,10 @@ export function TitleBar() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-none hover:bg-muted no-drag"
+            className={cn(
+              "h-8 w-8 rounded-none no-drag",
+              solidBackground ? "hover:bg-muted/85" : "hover:bg-muted",
+            )}
             onClick={handleMaximize}
             aria-label={isMaximized ? "Restore" : "Maximize"}
           >

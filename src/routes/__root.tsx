@@ -23,6 +23,8 @@ import {
   type PanelImperativeHandle,
 } from "@/components/ui/resizable";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
+import { useAppearanceStore } from "@/lib/stores/appearance";
+import { ipc } from "@/ipc/manager";
 import { useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
 import { useConnectionsList } from "@/features/connection";
 import { useLocalDatabases } from "@/features/localDb";
@@ -139,6 +141,13 @@ function Root() {
   const setAiPanelSize = useAiChatGlobalStore((state) => state.setPanelSize);
   const storeContext = useAiChatGlobalStore((state) => state.currentContext);
   const requestSqlInsertFromChat = useAiChatGlobalStore((state) => state.requestSqlInsert);
+
+  const solidBackground = useAppearanceStore((s) => s.solidBackground);
+
+  // Apply vibrancy setting on mount and when it changes
+  useEffect(() => {
+    void ipc.client.window.setWindowVibrancy({ solid: solidBackground });
+  }, [solidBackground]);
 
   // Derive effective context: route params are source of truth for connectionId
   const activeConnection = routeConnectionId
@@ -384,7 +393,7 @@ function Root() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <TooltipProvider delay={500}>
-        <div className="h-screen flex flex-col overflow-hidden bg-transparent antialiased">
+        <div className="h-screen flex flex-col overflow-hidden bg-transparent antialiased" data-solid-bg={solidBackground || undefined}>
           <TitleBar />
           <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
             <div className="page-frame h-full relative">

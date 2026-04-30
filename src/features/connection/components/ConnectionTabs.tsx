@@ -21,6 +21,7 @@ import {
   detectConnectionProvider,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
+import { useAppearanceStore } from "@/lib/stores/appearance";
 import { cn } from "@/lib/utils";
 import type { ConnectionTab } from "@/lib/stores/connection-tabs";
 
@@ -44,6 +45,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const [closingTabIds, setClosingTabIds] = useState<Set<string>>(new Set());
   const matchRoute = useMatchRoute();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const solidBackground = useAppearanceStore((s) => s.solidBackground);
 
   const dbMatch = matchRoute({ to: "/database/$connectionId", fuzzy: true });
   const currentConnectionId =
@@ -349,7 +351,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
               !isActive &&
-                "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors hover:after:bg-muted/60",
+                cn(
+                  "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors",
+                  solidBackground ? "hover:after:bg-muted/85" : "hover:after:bg-muted/60",
+                ),
               gooeyFilterId &&
                 (isActive
                   ? "rounded-t-[5px] rounded-b-[5px]"
@@ -433,7 +438,9 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               className={cn(
                 "absolute right-1.5 top-[calc(50%-2px)] -translate-y-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 transition-opacity outline-none",
                 "focus-visible:ring-2 focus-visible:ring-ring",
-                "text-muted-foreground hover:bg-muted hover:text-foreground",
+                solidBackground
+                  ? "text-muted-foreground hover:bg-muted/85 hover:text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 "opacity-0 group-hover:opacity-80 hover:!opacity-100 focus-visible:opacity-100",
               )}
               aria-label={`Close ${tab.name}`}

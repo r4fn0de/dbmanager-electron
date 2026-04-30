@@ -3,6 +3,7 @@ import {
   maximizeWindow,
   minimizeWindow,
   setUnsavedChanges,
+  setWindowVibrancy,
 } from "./hadlers";
 
 export const window = {
@@ -10,4 +11,5 @@ export const window = {
   maximizeWindow,
   closeWindow,
   setUnsavedChanges,
+  setWindowVibrancy,
 };

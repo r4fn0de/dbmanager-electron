@@ -226,6 +226,11 @@ code {
   background: rgba(0, 0, 0, 0.5);
 }
 
+/* Solid background mode: only set the window/root background */
+[data-solid-bg] {
+  background: color-mix(in oklch, var(--background) 94%, var(--foreground)) !important;
+}
+
 .t-resize {
   transition:
     width var(--resize-dur) var(--resize-ease),

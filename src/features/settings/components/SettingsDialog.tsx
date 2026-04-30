@@ -20,6 +20,9 @@ import {
 import { ThemeToggle } from "./ThemeToggle";
 import { AiSettingsPanel } from "@/features/ai";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { Switch } from "@/components/ui/switch";
+import { useAppearanceStore } from "@/lib/stores/appearance";
+import { ipc } from "@/ipc/manager";
 import { cn } from "@/lib/utils";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
@@ -39,6 +42,9 @@ const SETTINGS_ITEMS: SettingsItem[] = [
 ];
 
 function AppearanceSettings() {
+  const solidBackground = useAppearanceStore((s) => s.solidBackground);
+  const setSolidBackground = useAppearanceStore((s) => s.setSolidBackground);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border">
@@ -49,6 +55,23 @@ function AppearanceSettings() {
           </p>
         </div>
         <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors duration-150 ease-out active:scale-[0.97]" />
+      </div>
+
+      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Solid background</p>
+          <p className="text-xs text-muted-foreground">
+            Disable blur and transparency effects
+          </p>
+        </div>
+        <Switch
+          size="default"
+          checked={solidBackground}
+          onCheckedChange={(checked) => {
+            setSolidBackground(checked);
+            void ipc.client.window.setWindowVibrancy({ solid: checked });
+          }}
+        />
       </div>
     </div>
   );
