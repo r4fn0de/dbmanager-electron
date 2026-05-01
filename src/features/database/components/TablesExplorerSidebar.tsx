@@ -233,7 +233,7 @@ export function TablesExplorerSidebar({
             value={tableSearch}
             onChange={(e) => onTableSearchChange(e.target.value)}
             className={cn(
-              "h-7 pl-7 text-xs bg-muted/30 border-transparent focus:bg-background focus:border-border/50",
+              "h-7 pl-7 text-xs bg-muted/50 border-border/40 focus:bg-background focus:border-border",
               aiSearchEnabled && tableSearch && "pr-14",
               aiSearchEnabled && !tableSearch && "pr-8",
               !aiSearchEnabled && tableSearch && "pr-8",

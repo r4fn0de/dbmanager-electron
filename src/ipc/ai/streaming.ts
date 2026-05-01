@@ -27,6 +27,7 @@ import { getCurrentModel } from "./config";
 import { createAiTools, type ToolApprovalFn } from "./tools";
 import { AI_IPC_CHANNELS } from "@/constants";
 import type { DatabaseType } from "@/ipc/db/types";
+import { loadConnections } from "@/ipc/db/connection-store";
 import type { ToolApprovalRequestPayload, ToolApprovalResponsePayload } from "@/shared/ai/streaming-contracts";
 import {
   saveMemory,
@@ -516,6 +517,7 @@ ${getDatabaseSpecificGuidance(dbType)}
 - Always use the correct identifier quoting rules for the target database
 - Prefer explicit JOINs and readable aliases
 - Do not claim you executed anything unless a tool actually did it
+- Never output pseudo-tool syntax like "<tool_call>" or XML-like tool tags. If a tool is needed, call it directly.
 - If schema context is present, use it; if it is missing, be honest about assumptions
 - Prefer single, efficient queries over fragmented multi-query solutions when appropriate
 - Warn before destructive operations
@@ -539,7 +541,7 @@ You have access to database tools. Follow this workflow when the user wants to m
 
 1. **Validate first** — Use validateSqlSafety to classify the query as safe, risky, or blocked.
 2. **Preview impact** — For UPDATE/DELETE, use dryRunMutation to show how many rows would be affected before executing.
-3. **Execute with approval** — Use executeMutation to run INSERT, UPDATE, DELETE, or MERGE statements.
+3. **Execute with approval** — Use executeMutation to run mutation statements (DML or DDL), including INSERT/UPDATE/DELETE/MERGE and schema operations like CREATE/ALTER/DROP/TRUNCATE.
    - This tool **ALWAYS requires explicit user approval** before execution. No exceptions.
    - The user will see the SQL statement and any warnings, then choose to approve or reject.
    - Briefly explain what the mutation will do before calling executeMutation so the user can make an informed decision.
@@ -842,10 +844,18 @@ function handleStreamChunk(
 
     case "tool-call":
     case "tool-call-streaming-start":
-    case "tool-call-delta": {
+    case "tool-call-delta":
+    case "tool-input-start":
+    case "tool-input-delta": {
+      const mappedType =
+        chunk.type === "tool-input-start"
+          ? "tool-call-streaming-start"
+          : chunk.type === "tool-input-delta"
+            ? "tool-call-delta"
+            : chunk.type;
       safeSend(contents, channel, {
         [requestIdKey]: requestId,
-        type: chunk.type,
+        type: mappedType,
         toolCallId: chunk.toolCallId,
         toolName: chunk.toolName,
         input: chunk.input,
@@ -871,6 +881,34 @@ function handleStreamChunk(
   }
 }
 
+function hasDbWriteIntent(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return /\b(create|alter|drop|truncate|insert|update|delete|merge|upsert|grant|revoke)\b/.test(normalized)
+    || /\b(criar|alterar|deletar|apagar|inserir|atualizar|tabela|schema)\b/.test(normalized);
+}
+
+async function inferConnectionIdFromMessage(
+  userMessage: string,
+): Promise<string | null> {
+  const text = userMessage.trim().toLowerCase();
+  if (!text) return null;
+
+  try {
+    const connections = await loadConnections();
+    const matches = connections.filter((conn) => {
+      const name = (conn.name ?? "").trim().toLowerCase();
+      const id = (conn.id ?? "").trim().toLowerCase();
+      if (!name && !id) return false;
+      return (name && text.includes(name)) || (id && text.includes(id));
+    });
+
+    if (matches.length === 1) return matches[0]?.id ?? null;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleChatStart(
   contents: WebContents,
   input: ChatStartInput,
@@ -892,9 +930,22 @@ async function handleChatStart(
   const lastUserMessage = findLastUserMessage(messages);
   const userContent = extractMessageContent(lastUserMessage?.content ?? "");
   let assistantResponse = "";
+  let sawToolCall = false;
 
-  // Use mentioned connection for tools/context if provided, otherwise fall back to active connection
-  const effectiveConnectionId = mentionedConnectionId ?? connectionId;
+  const inferredConnectionId = await inferConnectionIdFromMessage(userContent);
+  // Use explicit mention first, then active connection, then inferred connection by message text.
+  const effectiveConnectionId =
+    mentionedConnectionId ?? connectionId ?? inferredConnectionId;
+  const dbWriteIntent = hasDbWriteIntent(userContent);
+
+  if (!effectiveConnectionId && dbWriteIntent) {
+    safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
+      chatId,
+      message:
+        "Nenhuma conexão de banco foi resolvida para este pedido. Abra uma aba de banco ou mencione a conexão no prompt (ex.: cosmic-lake) para habilitar tool calls.",
+    });
+    return;
+  }
 
   try {
     const model = getCurrentModel();
@@ -907,6 +958,7 @@ async function handleChatStart(
       ? createAiTools(effectiveConnectionId, approvalFn)
       : undefined;
 
+    const forceToolCall = Boolean(tools) && dbWriteIntent;
     const result = streamText({
       model,
       system: buildSystemPrompt(
@@ -919,11 +971,22 @@ async function handleChatStart(
       ),
       messages,
       ...(tools ? { tools } : {}),
+      ...(forceToolCall ? { toolChoice: "required" as const } : {}),
       abortSignal: abortController.signal,
       timeout: CHAT_TIMEOUT,
       stopWhen: stepCountIs(MAX_TOOL_STEPS),
       experimental_transform: smoothStream({ chunking: "word" }),
       onChunk(event) {
+        const chunkType = event.chunk?.type;
+        if (
+          chunkType === "tool-call"
+          || chunkType === "tool-result"
+          || chunkType === "tool-input-start"
+          || chunkType === "tool-input-delta"
+        ) {
+          sawToolCall = true;
+        }
+
         handleStreamChunk(
           contents,
           AI_IPC_CHANNELS.CHAT_CHUNK,
@@ -942,6 +1005,31 @@ async function handleChatStart(
 
     for await (const _ of result.textStream) {
       // Consuming the stream triggers onChunk callbacks.
+    }
+
+    // smoothStream({ chunking: "word" }) can buffer the final word and
+    // not flush it via onChunk. Send any trailing text that was missed.
+    const fullText = await result.text;
+    const tail = fullText.slice(assistantResponse.length);
+    if (tail) {
+      assistantResponse += tail;
+      safeSend(contents, AI_IPC_CHANNELS.CHAT_CHUNK, {
+        chatId,
+        type: "text",
+        text: tail,
+      });
+    }
+
+    if (forceToolCall && !sawToolCall) {
+      const looksLikePseudoToolSyntax = /<\s*tool_call\b|tool_call>|<tool>/i.test(assistantResponse);
+      const message = looksLikePseudoToolSyntax
+        ? "O modelo atual retornou pseudo tool-call em texto (por exemplo, '<tool_call>') em vez de chamada de tool real. Troque para um modelo com tool calling nativo para executar consultas no banco."
+        : "O modelo atual não executou tool calls reais para esta ação no banco. Troque para um modelo com suporte nativo a tool calling.";
+
+      safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
+        chatId,
+        message,
+      });
     }
 
     const finishReason = await result.finishReason;
@@ -1023,6 +1111,7 @@ async function handleInlineGenerateStart(
     const model = getCurrentModel();
     const sourceSql = sql?.trim() ?? "";
     const instruction = prompt.trim();
+    let inlineResponse = "";
 
     const finalPrompt = sourceSql
       ? `Original code:
@@ -1047,6 +1136,9 @@ ${instruction}`
           "requestId",
           requestId,
           event.chunk,
+          (text) => {
+            inlineResponse += text;
+          },
         );
       },
       onError(event) {
@@ -1056,6 +1148,18 @@ ${instruction}`
 
     for await (const _ of result.textStream) {
       // Consuming the stream triggers onChunk callbacks.
+    }
+
+    // smoothStream({ chunking: "word" }) can buffer the final word and
+    // not flush it via onChunk. Send any trailing text that was missed.
+    const fullInlineText = await result.text;
+    const inlineTail = fullInlineText.slice(inlineResponse.length);
+    if (inlineTail) {
+      safeSend(contents, AI_IPC_CHANNELS.INLINE_CHUNK, {
+        requestId,
+        type: "text",
+        text: inlineTail,
+      });
     }
 
     const finishReason = await result.finishReason;

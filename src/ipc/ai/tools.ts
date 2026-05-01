@@ -82,6 +82,14 @@ function describeMutation(sql: string): { description: string; warnings: string[
     description = "Insert new rows into a table";
   } else if (/^merge\b/i.test(normalized)) {
     description = "Merge (upsert) rows into a table";
+  } else if (/^create\b/i.test(normalized)) {
+    description = "Create a new database object (table/index/schema/view)";
+  } else if (/^alter\b/i.test(normalized)) {
+    description = "Alter an existing database object structure";
+  } else if (/^drop\b/i.test(normalized)) {
+    description = "Drop a database object";
+  } else if (/^truncate\b/i.test(normalized)) {
+    description = "Truncate table data";
   }
 
   // Check for dangerous patterns
@@ -90,6 +98,9 @@ function describeMutation(sql: string): { description: string; warnings: string[
   }
   if (/\bdrop\b|\btruncate\b|\balter\b/i.test(normalized)) {
     warnings.push("Contains DDL keywords — this modifies database structure, not just data.");
+  }
+  if (/\bdrop\b|\btruncate\b/i.test(normalized)) {
+    warnings.push("Potentially destructive operation detected — double-check the target before approving.");
   }
 
   return { description, warnings };
@@ -786,29 +797,14 @@ export function createAiTools(
       const normalized = sql.trim().toLowerCase().replace(/\s+/g, " ");
       const reasons: string[] = [];
 
-      // Blocked patterns — DDL and admin commands
-      const blockedPatterns = [
-        { pattern: /\b(drop|truncate)\b/, reason: "Contains DROP or TRUNCATE which destroys data or structures." },
-        { pattern: /\b(alter\s+(table|schema|database|index|sequence))\b/, reason: "Contains ALTER which modifies database structure." },
+      // Risky patterns — DML/DDL/admin mutations requiring explicit approval
+      const riskyPatterns = [
+        { pattern: /\b(update|delete|insert|merge|upsert|replace)\b/, reason: "Contains UPDATE/DELETE/INSERT/MERGE which modifies data." },
+        { pattern: /\b(drop|truncate)\b/, reason: "Contains DROP/TRUNCATE which can destroy data or structures." },
+        { pattern: /\b(alter\s+(table|schema|database|index|sequence|view|materialized\s+view))\b/, reason: "Contains ALTER which modifies database structure." },
         { pattern: /\b(create\s+(table|schema|database|index|sequence|view|materialized\s+view|or\s+replace))\b/, reason: "Contains CREATE which modifies database structure." },
         { pattern: /\b(grant|revoke)\b/, reason: "Contains GRANT/REVOKE which changes permissions." },
         { pattern: /\b(comment\s+on)\b/, reason: "Contains COMMENT ON which modifies metadata." },
-        { pattern: /;\s*(drop|truncate|alter|create|grant|revoke|comment\s+on)\b/, reason: "Multiple statements detected with dangerous commands." },
-      ];
-
-      for (const { pattern, reason } of blockedPatterns) {
-        if (pattern.test(normalized)) {
-          reasons.push(reason);
-        }
-      }
-
-      if (reasons.length > 0) {
-        return { classification: "blocked" as const, reasons };
-      }
-
-      // Risky patterns — DML mutations
-      const riskyPatterns = [
-        { pattern: /\b(update|delete|insert|merge|upsert|replace)\b/, reason: "Contains UPDATE/DELETE/INSERT/MERGE which modifies data." },
         { pattern: /\b(copy\s+.*\s+from)\b/, reason: "Contains COPY FROM which imports data." },
       ];
 
@@ -1041,26 +1037,23 @@ export function createAiTools(
    */
   const executeMutation = tool({
     description:
-      "Execute a data mutation SQL statement (INSERT, UPDATE, DELETE, MERGE) on the connected database. IMPORTANT: This tool requires user approval before execution — the user will see the SQL and must explicitly approve it. Always use validateSqlSafety first to check the query classification. Only use this for data changes; for schema changes (CREATE, ALTER, DROP), inform the user that those operations are not supported through this tool.",
+      "Execute a database mutation SQL statement (DML or DDL) on the connected database. IMPORTANT: This tool requires user approval before execution — the user will see the SQL and must explicitly approve it. Always use validateSqlSafety first to check the query classification.",
     inputSchema: z.object({
-      sql: z.string().min(1).describe("The mutation SQL statement to execute (INSERT, UPDATE, DELETE, or MERGE)"),
+      sql: z.string().min(1).describe("The mutation SQL statement to execute (e.g. INSERT, UPDATE, DELETE, MERGE, CREATE, ALTER, DROP, TRUNCATE)"),
     }),
     strict: true,
     execute: async ({ sql }, { abortSignal, toolCallId }) => {
-      const trimmed = sql.trim().toLowerCase().replace(/\s+/g, " ");
+      const normalizedSql = sql.trim();
+      const sqlWithoutTrailingSemicolon = normalizedSql.replace(/;\s*$/, "");
+      const trimmed = sqlWithoutTrailingSemicolon.toLowerCase().replace(/\s+/g, " ");
 
-      // Only allow DML mutations
-      if (!/^\b(insert|update|delete|merge)\b/i.test(trimmed)) {
-        return toolError("Only INSERT, UPDATE, DELETE, and MERGE statements can be executed. For DDL (CREATE, ALTER, DROP), inform the user this is not supported.");
-      }
-
-      // Block dangerous sub-patterns
-      const strippedForCheck = stripStringLiterals(trimmed);
-      if (/\b(drop|truncate|alter|create|grant|revoke)\b/i.test(strippedForCheck)) {
-        return toolError("Query contains DDL keywords (DROP, TRUNCATE, ALTER, CREATE). Only data mutations (INSERT/UPDATE/DELETE/MERGE) are supported.");
+      // Only allow mutation/admin statements that require explicit approval
+      if (!/^\b(insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|comment)\b/i.test(trimmed)) {
+        return toolError("Unsupported mutation type. Use this tool for DML/DDL statements that modify data, schema, or permissions.");
       }
 
       // Block multi-statement injection
+      const strippedForCheck = stripStringLiterals(trimmed);
       if (/;/.test(strippedForCheck)) {
         return toolError("Semicolons are not allowed (prevents multi-statement injection).");
       }
@@ -1084,9 +1077,9 @@ export function createAiTools(
       const approved = await requestApproval({
         toolCallId,
         toolName: "executeMutation",
-        args: { sql },
+        args: { sql: sqlWithoutTrailingSemicolon },
         description,
-        preview: sql.trim(),
+        preview: sqlWithoutTrailingSemicolon,
         warnings: warnings.length > 0 ? warnings : undefined,
       });
 
@@ -1100,10 +1093,10 @@ export function createAiTools(
         const { driver, connStr } = await resolveConnection(connectionId);
         if (isAborted(abortSignal)) return toolError("Operation was aborted.");
 
-        const result = await driver.executeQuery(connStr, sql);
+        const result = await driver.executeQuery(connStr, sqlWithoutTrailingSemicolon);
         return {
           success: true,
-          command: sql.trim(),
+          command: sqlWithoutTrailingSemicolon,
           rowsAffected: result.row_count,
           columns: result.columns.map((c) => c.name),
           rows: result.rows,

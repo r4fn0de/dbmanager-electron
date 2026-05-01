@@ -1126,15 +1126,15 @@ export function useAiChat({
     setIsLoading(false);
     // Clean up stale pending approvals for the aborted stream
     pendingApprovalRef.current.clear();
-    const streamConversationId = streamConversationIdRef.current;
+    const streamConversationId =
+      streamConversationIdRef.current ?? activeConversationIdRef.current;
     if (streamConversationId) {
       updateConversationById(streamConversationId, (conversation) => {
-        const id = assistantIdRef.current;
-        if (!id) return conversation;
         return {
           ...conversation,
+          updatedAt: toIsoNow(),
           messages: conversation.messages.map((message) =>
-            message.id === id ? { ...message, isStreaming: false } : message,
+            message.isStreaming ? { ...message, isStreaming: false } : message,
           ),
         };
       });

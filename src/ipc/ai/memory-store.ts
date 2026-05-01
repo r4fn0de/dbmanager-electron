@@ -37,6 +37,42 @@ export interface MemoryContext {
   schemaContext?: string;
 }
 
+/**
+ * Build a safe FTS5 MATCH query from free-form user text.
+ *
+ * Why: raw user input can contain FTS operators/syntax (e.g. '-', '?', ':')
+ * that cause parser errors such as:
+ * - "no such column: lake" for input like "cosmic-lake"
+ * - "fts5: syntax error near '?'
+ *
+ * IMPORTANT: FTS5 MATCH does not support bound parameters (?), so the result
+ * of this function is interpolated directly into SQL strings. It MUST stay
+ * safe against both SQL injection and FTS syntax errors.
+ *
+ * Strategy:
+ * - extract lexical tokens only (strips all FTS operators)
+ * - quote each token as a phrase term (double-quote escaped)
+ * - join terms with OR for broad recall
+ * - single-quote escaping is handled at the call-site
+ */
+function buildSafeFtsQuery(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const tokens = trimmed
+    .toLowerCase()
+    .match(/[\p{L}\p{N}_-]+/gu)
+    ?.map((token) => token.replace(/^-+|-+$/g, "").trim())
+    .filter((token) => token.length > 1)
+    .slice(0, 12) ?? [];
+
+  if (tokens.length === 0) return null;
+
+  return tokens
+    .map((token) => `"${token.replace(/"/g, "\"\"")}"`)
+    .join(" OR ");
+}
+
 // ---------------------------------------------------------------------------
 // Database setup
 // ---------------------------------------------------------------------------
@@ -407,18 +443,22 @@ export function searchMemoriesByText(
 ): MemoryEntry[] {
   const database = getDb();
   const limit = options?.limit ?? 5;
+  const ftsQuery = buildSafeFtsQuery(query);
+  if (!ftsQuery) return [];
 
-  // Use FTS for text search
+  // FTS5 MATCH does not support bound parameters — the match expression must be
+  // a literal string in the SQL. buildSafeFtsQuery already sanitises the input
+  // (quotes every token, strips operators), so interpolation is safe here.
   const stmt = database.prepare(`
     SELECT m.* FROM ai_memory m
     JOIN memory_fts fts ON m.rowid = fts.rowid
-    WHERE memory_fts MATCH ?
+    WHERE memory_fts MATCH '${ftsQuery.replace(/'/g, "''")}'
     ${options?.connectionId ? "AND m.connection_id = ?" : ""}
     ORDER BY rank
     LIMIT ?
   `);
 
-  const params: unknown[] = [query];
+  const params: unknown[] = [];
   if (options?.connectionId) params.push(options.connectionId);
   params.push(limit);
 

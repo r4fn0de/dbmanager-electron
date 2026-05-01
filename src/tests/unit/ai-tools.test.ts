@@ -144,35 +144,35 @@ describe("validateSqlSafety", () => {
     expect(result.reasons[0]).toContain("DELETE");
   });
 
-  test("classifies DROP as blocked", async () => {
+  test("classifies DROP as risky", async () => {
     const { validateSqlSafety } = makeTools();
     const result = await validateSqlSafety.execute!({ sql: "DROP TABLE users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
-    expect(result.classification).toBe("blocked");
+    expect(result.classification).toBe("risky");
     expect(result.reasons[0]).toContain("DROP");
   });
 
-  test("classifies TRUNCATE as blocked", async () => {
+  test("classifies TRUNCATE as risky", async () => {
     const { validateSqlSafety } = makeTools();
     const result = await validateSqlSafety.execute!({ sql: "TRUNCATE users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
-    expect(result.classification).toBe("blocked");
+    expect(result.classification).toBe("risky");
   });
 
-  test("classifies ALTER as blocked", async () => {
+  test("classifies ALTER as risky", async () => {
     const { validateSqlSafety } = makeTools();
     const result = await validateSqlSafety.execute!({ sql: "ALTER TABLE users ADD COLUMN age INT" }, { toolCallId: "test", messages: [] }) as SafetyResult;
-    expect(result.classification).toBe("blocked");
+    expect(result.classification).toBe("risky");
   });
 
-  test("classifies GRANT as blocked", async () => {
+  test("classifies GRANT as risky", async () => {
     const { validateSqlSafety } = makeTools();
     const result = await validateSqlSafety.execute!({ sql: "GRANT SELECT ON users TO app" }, { toolCallId: "test", messages: [] }) as SafetyResult;
-    expect(result.classification).toBe("blocked");
+    expect(result.classification).toBe("risky");
   });
 
-  test("classifies multi-statement with DROP as blocked", async () => {
+  test("classifies multi-statement with DROP as risky", async () => {
     const { validateSqlSafety } = makeTools();
     const result = await validateSqlSafety.execute!({ sql: "SELECT 1; DROP TABLE users" }, { toolCallId: "test", messages: [] }) as SafetyResult;
-    expect(result.classification).toBe("blocked");
+    expect(result.classification).toBe("risky");
   });
 
   test("classifies unknown query as blocked", async () => {
