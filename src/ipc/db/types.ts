@@ -171,6 +171,8 @@ export interface SchemaTableSummary {
   has_rls: boolean;
   /** Estimated row count (approximate, from DB statistics). 0 means unknown/empty. */
   estimated_row_count: number;
+  /** True when this table was matched by AI semantic search (not fuzzy). */
+  aiMatch?: boolean;
 }
 
 export interface SchemaSummary {

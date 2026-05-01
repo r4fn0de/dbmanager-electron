@@ -16,6 +16,7 @@ import {
   aiEnhancePrompt,
   aiGenerateTitle,
   aiFilters,
+  aiTableSearch,
   aiAddCustomModel,
   aiRemoveCustomModel,
 } from "./handlers";
@@ -58,6 +59,8 @@ export const ai = {
   generateTitle: aiGenerateTitle,
   // Table filters
   filters: aiFilters,
+  // Table search
+  tableSearch: aiTableSearch,
   // Custom models
   addCustomModel: aiAddCustomModel,
   removeCustomModel: aiRemoveCustomModel,

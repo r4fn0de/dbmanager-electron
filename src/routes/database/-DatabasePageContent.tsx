@@ -1,6 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
 import { AnimatePresence } from "motion/react";
 import { Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSmartTableSearch } from "@/features/database/hooks/useSmartTableSearch";
+import { isAiConfigured } from "@/features/ai/hooks/ai-actions";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dbQueryKeys, dbQueryOptions } from "@/lib/query-options";
 import { toast } from "sonner";
@@ -129,6 +131,16 @@ export function DatabasePageContent({
   const [initialSqlQuery, setInitialSqlQuery] = useState<string | null>(null);
   const [sqlInsertRequest, setSqlInsertRequest] = useState<null | { key: string; text: string }>(null);
   const [tableSearch, setTableSearch] = useState("");
+  const [aiSearchEnabled, setAiSearchEnabled] = useState(false);
+
+  // Check if AI is configured on mount
+  useEffect(() => {
+    let cancelled = false;
+    void isAiConfigured().then((configured) => {
+      if (!cancelled) setAiSearchEnabled(configured);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Sidebar visibility: persisted per-connection in localStorage
   const [isSidebarVisible, setIsSidebarVisible] = useState(() => {
@@ -623,14 +635,20 @@ export function DatabasePageContent({
     return Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [tables]);
 
-  const filteredTablesForSchema = useMemo(() => {
+  // Tables for the currently selected schema (input to smart search)
+  const schemaTables = useMemo(() => {
     if (!selectedSchema) return [];
     const group = tablesBySchema.find(([s]) => s === selectedSchema);
     if (!group) return [];
-    const needle = tableSearch.trim().toLowerCase();
-    if (!needle) return group[1];
-    return group[1].filter((table) => table.name.toLowerCase().includes(needle));
-  }, [selectedSchema, tablesBySchema, tableSearch]);
+    return group[1];
+  }, [selectedSchema, tablesBySchema]);
+
+  // Hybrid fuzzy + AI search
+  const { filteredTables: filteredTablesForSchema, isAiSearching, aiMatchedNames } = useSmartTableSearch(
+    tableSearch,
+    schemaTables,
+    aiSearchEnabled,
+  );
 
   // Build a comprehensive schema context string for the AI assistant.
   // Includes table names, columns with types, primary keys, foreign keys,
@@ -1111,6 +1129,9 @@ export function DatabasePageContent({
                   selectedTableRef={selectedTableRef}
                   tableSearch={tableSearch}
                   isLoading={isLoading}
+                  aiSearchEnabled={aiSearchEnabled}
+                  isAiSearching={isAiSearching}
+                  aiMatchedNames={aiMatchedNames}
                   onSchemaChange={changeSchema}
                   onTableSelect={changeTable}
                   onTableSearchChange={setTableSearch}

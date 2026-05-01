@@ -202,6 +202,24 @@ export async function getAiFilters(
   }
 }
 
+export interface AiTableSearchResult {
+  matches: string[];
+}
+
+export async function getAiTableSearchMatches(
+  query: string,
+  tables: string[],
+  schemaContext?: string,
+): Promise<AiTableSearchResult> {
+  try {
+    return await ipc.client.ai.tableSearch({ query, tables, schemaContext });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to search tables with AI",
+    );
+  }
+}
+
 export async function addCustomModel(
   provider: AiProvider,
   modelId: string,

@@ -270,6 +270,60 @@ ${input.context}`,
   });
 
 // ---------------------------------------------------------------------------
+// AI Table Search — find tables by natural language description
+// ---------------------------------------------------------------------------
+
+export const aiTableSearch = os
+  .input(
+    z.object({
+      query: z.string().describe("Natural language search query from the user"),
+      tables: z.array(z.string()).describe("List of available table names to search within"),
+      schemaContext: z.string().optional().describe("Optional schema context with column details"),
+    }),
+  )
+  .handler(async ({ input }) => {
+    if (input.tables.length === 0) return { matches: [] };
+
+    const model = getCurrentModel();
+
+    const contextSection = input.schemaContext
+      ? `\n\nAdditional context:\n${input.schemaContext}`
+      : "";
+
+    const { text } = await generateText({
+      model,
+      system: `You are a database table search assistant. Given a list of table names and a user's search query, return the tables that best match the user's intent.
+
+Rules:
+- Return ONLY a JSON array of table name strings from the provided list
+- Match by semantic meaning (e.g. "vendas" → orders, sales, invoices; "usuários" → users, accounts, profiles)
+- Match by partial name similarity (e.g. "prod" → products, product_categories)
+- Match by domain/purpose (e.g. "authentication" → users, sessions, tokens)
+- If nothing matches, return an empty array
+- Do NOT invent table names — only return names from the provided list
+- Return at most 20 matches, ordered by relevance
+
+Available tables:
+${input.tables.join(", ")}${contextSection}`,
+      prompt: input.query,
+    });
+
+    try {
+      const cleaned = text.replace(/^```json?\s*/m, "").replace(/\s*```$/m, "").trim();
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) return { matches: [] };
+      // Validate that all returned names actually exist in the input list
+      const tableSet = new Set(input.tables);
+      const matches = parsed.filter((name: unknown) =>
+        typeof name === "string" && tableSet.has(name),
+      );
+      return { matches: matches.slice(0, 20) as string[] };
+    } catch {
+      return { matches: [] };
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // Custom models — add / remove user-defined model IDs per provider
 // ---------------------------------------------------------------------------
 

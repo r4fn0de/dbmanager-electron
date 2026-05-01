@@ -58,6 +58,12 @@ export interface TablesExplorerSidebarProps {
   tableSearch: string;
   /** Whether the schema is currently loading */
   isLoading: boolean;
+  /** Whether AI-powered search is enabled */
+  aiSearchEnabled: boolean;
+  /** Whether AI search is currently in progress */
+  isAiSearching: boolean;
+  /** Set of table names matched by AI (not fuzzy) */
+  aiMatchedNames: Set<string>;
 
   // ── Callbacks ──────────────────────────────────────────
   onSchemaChange: (schema: string) => void;
@@ -95,6 +101,9 @@ export function TablesExplorerSidebar({
   selectedTableRef,
   tableSearch,
   isLoading,
+  aiSearchEnabled,
+  isAiSearching,
+  aiMatchedNames,
   onSchemaChange,
   onTableSelect,
   onTableSearchChange,
@@ -220,20 +229,35 @@ export function TablesExplorerSidebar({
           <Icon name="search" className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
           <Input
             type="text"
-            placeholder="Filter tables..."
+            placeholder={aiSearchEnabled ? "Search tables…" : "Filter tables…"}
             value={tableSearch}
             onChange={(e) => onTableSearchChange(e.target.value)}
-            className="h-7 pl-7 pr-7 text-xs bg-muted/40 border-dashed focus:bg-background focus:border-solid"
+            className={cn(
+              "h-7 pl-7 text-xs bg-muted/30 border-transparent focus:bg-background focus:border-border/50",
+              aiSearchEnabled && tableSearch && "pr-14",
+              aiSearchEnabled && !tableSearch && "pr-8",
+              !aiSearchEnabled && tableSearch && "pr-8",
+              !aiSearchEnabled && !tableSearch && "pr-6",
+            )}
           />
-          {tableSearch && (
-            <button
-              type="button"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => onTableSearchChange("")}
-            >
-              <Icon name="x" className="size-3" />
-            </button>
-          )}
+          {/* Right-side controls — minimal, no visual noise */}
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+            {isAiSearching && (
+              <Icon name="loader" className="size-3 animate-spin text-muted-foreground" />
+            )}
+            {aiSearchEnabled && !isAiSearching && (
+              <Icon name="sparkles" className="size-3 text-muted-foreground/40" />
+            )}
+            {tableSearch && (
+              <button
+                type="button"
+                className="text-muted-foreground/50 hover:text-muted-foreground transition-colors rounded-sm p-0.5"
+                onClick={() => onTableSearchChange("")}
+              >
+                <Icon name="x" className="size-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -460,6 +484,9 @@ export function TablesExplorerSidebar({
                           <span className="flex-1 truncate text-[13px] font-medium leading-tight">
                             {table.name}
                           </span>
+                          {aiMatchedNames.has(table.name) && (
+                            <span className="size-1.5 shrink-0 rounded-full bg-primary/40" />
+                          )}
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               render={
