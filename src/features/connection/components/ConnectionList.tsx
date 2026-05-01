@@ -34,6 +34,7 @@ import { Sqlite } from "@/components/icons/Sqlite";
 import { cn } from "@/lib/utils";
 import type { BranchInfo, Connection, LocalDbInfo } from "@/ipc/db/types";
 import { getClickhouseEffectivePort } from "@/ipc/db/types";
+import { ipc } from "@/ipc/manager";
 
 interface ConnectionListProps {
   connections: Connection[];
@@ -53,6 +54,16 @@ interface ConnectionListProps {
 }
 
 type ConnectionProvider = "neon" | "supabase" | "mysql" | "mariadb" | "clickhouse" | "redis" | "url" | "direct";
+
+function hasMaskedPasswordInUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    // Backends often mask secrets as "***"/"****" when returning connection strings.
+    return parsed.password.length > 0 && /^\*+$/.test(parsed.password);
+  } catch {
+    return false;
+  }
+}
 
 function resolveProviderHost(connection: Connection): string {
   if (connection.url) {
@@ -79,8 +90,10 @@ function detectConnectionProvider(connection: Connection): ConnectionProvider {
 }
 
 function buildConnectionStringFromConnection(connection: Connection): string {
-  if (connection.connection_string) return connection.connection_string;
-  if (connection.url) return connection.url;
+  if (connection.connection_string && !hasMaskedPasswordInUrl(connection.connection_string)) {
+    return connection.connection_string;
+  }
+  if (connection.url && !hasMaskedPasswordInUrl(connection.url)) return connection.url;
   const username = encodeURIComponent(connection.username);
   const password = encodeURIComponent(connection.password);
   const hasPassword = connection.password.length > 0;
@@ -168,7 +181,19 @@ function ConnectionCard({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(connectionCopyValue(connection));
+      // Connection list payload may contain masked/empty password fields.
+      // Fetch full connection by id before copying to ensure real credentials.
+      let sourceConnection = connection;
+      if (connection.id) {
+        try {
+          const freshConnection = await ipc.client.db.getConnection({ id: connection.id });
+          if (freshConnection) sourceConnection = freshConnection;
+        } catch {
+          // Fallback to current in-memory connection if refetch fails.
+        }
+      }
+
+      await navigator.clipboard.writeText(connectionCopyValue(sourceConnection));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {

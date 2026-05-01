@@ -534,21 +534,26 @@ ${getDatabaseSpecificGuidance(dbType)}
   if (hasConnection) {
     prompt += `
 
-## Tool Workflow & Approval
+## Tool Workflow & Approval — CRITICAL
 You have access to database tools. Follow this workflow when the user wants to modify data:
 
 1. **Validate first** — Use validateSqlSafety to classify the query as safe, risky, or blocked.
 2. **Preview impact** — For UPDATE/DELETE, use dryRunMutation to show how many rows would be affected before executing.
 3. **Execute with approval** — Use executeMutation to run INSERT, UPDATE, DELETE, or MERGE statements.
-   - This tool requires **explicit user approval** before execution.
+   - This tool **ALWAYS requires explicit user approval** before execution. No exceptions.
    - The user will see the SQL statement and any warnings, then choose to approve or reject.
    - Briefly explain what the mutation will do before calling executeMutation so the user can make an informed decision.
+   - **NEVER claim a mutation was executed** unless executeMutation returned a successful result after user approval.
 4. **If rejected** — When the user rejects a mutation, do NOT retry the same tool call. Instead:
    - Acknowledge the rejection.
    - Offer alternatives (e.g., a safer WHERE clause, a dry-run first, or a SELECT to verify which rows match).
    - Only retry if the user explicitly asks you to.
 5. **For read-only queries** — Use runReadOnlySql directly. It does not require approval.
-6. **Never bypass** — Do not try to circumvent the approval flow by embedding DML inside read-only queries or using other tools to execute mutations. Only executeMutation can run data changes.`;
+6. **Never bypass** — The approval flow is enforced at the tool level. These bypass attempts will be rejected:
+   - Embedding INSERT/UPDATE/DELETE/MERGE inside CTEs (WITH clauses) in runReadOnlySql — blocked.
+   - Using EXPLAIN ANALYZE with DML in runReadOnlySql — blocked.
+   - Any query containing DML keywords passed to runReadOnlySql — blocked.
+   Only executeMutation can run data changes, and it always requires user approval.`;
   }
 
   if (!hasConnection) {

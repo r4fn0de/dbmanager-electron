@@ -730,6 +730,13 @@ export function useAiChat({
           };
         });
       } else if (chunk.type === "tool-call") {
+        const toolCallId = chunk.toolCallId ?? nextId();
+        // Check if an approval request arrived before this tool-call chunk
+        // (race condition: TOOL_APPROVAL_REQUEST IPC can arrive before the
+        // tool-call chunk, leaving the approval UI never shown)
+        const pendingApproval = pendingApprovalRef.current.get(toolCallId);
+        const initialState = pendingApproval ? "pending-approval" as const : "call" as const;
+
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
           if (!id) return conversation;
@@ -742,10 +749,11 @@ export function useAiChat({
               parts.push({
                 type: "tool-invocation",
                 toolInvocation: {
-                  toolCallId: chunk.toolCallId ?? nextId(),
+                  toolCallId,
                   toolName: chunk.toolName ?? "tool",
                   args: chunk.input,
-                  state: "call",
+                  state: initialState,
+                  ...(pendingApproval ? { approvalRequest: { description: pendingApproval.description, preview: pendingApproval.preview, warnings: pendingApproval.warnings } } : {}),
                 },
               });
               return { ...msg, parts };
@@ -788,16 +796,22 @@ export function useAiChat({
                   };
                 }
               } else {
+                const streamingToolCallId = chunk.toolCallId ?? nextId();
+                // Check if an approval request arrived before this streaming-start chunk
+                const pendingStreamingApproval = pendingApprovalRef.current.get(streamingToolCallId);
+                const streamingInitialState = pendingStreamingApproval ? "pending-approval" as const : "partial-call" as const;
+
                 parts.push({
                   type: "tool-invocation",
                   toolInvocation: {
-                    toolCallId: chunk.toolCallId ?? nextId(),
+                    toolCallId: streamingToolCallId,
                     toolName: chunk.toolName ?? "tool",
                     args:
                       chunk.type === "tool-call-delta" && chunk.argsTextDelta
                         ? chunk.argsTextDelta
                         : chunk.input,
-                    state: "partial-call",
+                    state: streamingInitialState,
+                    ...(pendingStreamingApproval ? { approvalRequest: { description: pendingStreamingApproval.description, preview: pendingStreamingApproval.preview, warnings: pendingStreamingApproval.warnings } } : {}),
                   },
                 });
               }

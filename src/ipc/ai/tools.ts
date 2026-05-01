@@ -13,7 +13,7 @@
  * - `inputExamples` for complex tools
  * - `outputSchema` for structured output type safety
  * - Consistent `{ error: string }` error returns
- * - `needsApproval` flagged for dangerous tools (TODO: requires streaming flow)
+ * - `needsApproval` gated via ToolApprovalFn (deny-by-default, IPC approval bridge)
  */
 import { tool } from "ai";
 import { z } from "zod";
@@ -226,10 +226,10 @@ export type ToolApprovalFn = (request: {
 }) => Promise<boolean>;
 
 /**
- * No-op approval function — used when no approval callback is provided.
- * Auto-approves everything (backward compatible).
+ * Deny-by-default approval function — used when no approval callback is provided.
+ * Rejects all mutations to prevent accidental execution without user consent.
  */
-const autoApprove: ToolApprovalFn = async () => true;
+const autoDeny: ToolApprovalFn = async () => false;
 
 /**
  * Create the AI tool set for a specific connection.
@@ -238,13 +238,14 @@ const autoApprove: ToolApprovalFn = async () => true;
  * The connectionId is captured in each tool's execute closure.
  *
  * @param connectionId — The database connection to bind tools to.
- * @param requestApproval — Optional callback for tool approval gating.
- *   When provided, tools that require approval (e.g. executeMutation)
- *   will call this before executing. If not provided, all tools auto-approve.
+ * @param requestApproval — Callback for tool approval gating.
+ *   Tools that require approval (e.g. executeMutation) will call this
+ *   before executing. Defaults to deny-by-default — mutations are
+ *   rejected unless an explicit approval callback is provided.
  */
 export function createAiTools(
   connectionId: string,
-  requestApproval: ToolApprovalFn = autoApprove,
+  requestApproval: ToolApprovalFn = autoDeny,
 ) {
   /**
    * List columns in a specific table — gives the AI column names, types,
@@ -834,9 +835,6 @@ export function createAiTools(
   /**
    * Execute a read-only SQL query safely.
    * Only accepts SELECT, WITH, and EXPLAIN statements. Enforces row limits and timeouts.
-   *
-   * TODO: Add `needsApproval: true` once the streaming layer supports
-   * tool-approval-request/response flow (requires renderer-side UI).
    */
   const runReadOnlySql = tool({
     description:
@@ -860,6 +858,15 @@ export function createAiTools(
       const dangerous = /\b(into\s+(outfile|dumpfile)|copy\s+.*\s+to)|;\s*\w+/;
       if (dangerous.test(trimmed)) {
         return toolError("Query contains dangerous patterns (INTO OUTFILE, COPY TO, or multiple statements).");
+      }
+
+      // Reject DML keywords even inside CTEs — prevents data-modifying CTEs
+      // (e.g. WITH ins AS (INSERT INTO ... RETURNING *) SELECT * FROM ins)
+      // from bypassing the approval flow. Strip string literals first to avoid
+      // false positives on values like 'delete_pending'.
+      const strippedForDmlCheck = stripStringLiterals(trimmed);
+      if (/\b(insert|update|delete|merge)\b/i.test(strippedForDmlCheck)) {
+        return toolError("Query contains data modification keywords (INSERT, UPDATE, DELETE, MERGE). Use executeMutation for data changes — it requires user approval.");
       }
 
       if (isAborted(abortSignal)) return toolError("Operation was aborted.");
@@ -896,9 +903,6 @@ export function createAiTools(
   /**
    * Dry-run a mutation query (UPDATE or DELETE) to estimate impact before execution.
    * Converts the query to a SELECT COUNT(*) to show how many rows would be affected.
-   *
-   * TODO: Add `needsApproval: true` once the streaming layer supports
-   * tool-approval-request/response flow (requires renderer-side UI).
    */
   const dryRunMutation = tool({
     description:

@@ -143,11 +143,13 @@ function Root() {
   const requestSqlInsertFromChat = useAiChatGlobalStore((state) => state.requestSqlInsert);
 
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
+  const appearanceHydrated = useAppearanceStore((s) => s.hasHydrated);
 
   // Apply vibrancy setting on mount and when it changes
   useEffect(() => {
+    if (!appearanceHydrated) return;
     void ipc.client.window.setWindowVibrancy({ solid: solidBackground });
-  }, [solidBackground]);
+  }, [appearanceHydrated, solidBackground]);
 
   // Derive effective context: route params are source of truth for connectionId
   const activeConnection = routeConnectionId

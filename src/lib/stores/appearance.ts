@@ -1,9 +1,11 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 interface AppearanceState {
   solidBackground: boolean;
   setSolidBackground: (value: boolean) => void;
+  hasHydrated: boolean;
+  setHasHydrated: (value: boolean) => void;
 }
 
 export const useAppearanceStore = create<AppearanceState>()(
@@ -11,9 +13,15 @@ export const useAppearanceStore = create<AppearanceState>()(
     (set) => ({
       solidBackground: false,
       setSolidBackground: (value) => set({ solidBackground: value }),
+      hasHydrated: false,
+      setHasHydrated: (value) => set({ hasHydrated: value }),
     }),
     {
       name: "appearance:v1",
+      storage: createJSONStorage(() => localStorage),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
       partialize: (state) => ({
         solidBackground: state.solidBackground,
       }),
