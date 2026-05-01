@@ -397,7 +397,7 @@ function Home() {
       exit={{ paddingLeft: 24 }}
       transition={{ duration: 0.36, ease: [0.23, 1, 0.32, 1] }}
     >
-      <div className="flex-1 flex flex-col bg-background rounded-md ring-1 ring-border/40 overflow-hidden">
+      <div className="flex-1 flex flex-col bg-background rounded-md border overflow-hidden">
         <div className="max-w-3xl mx-auto w-full px-5 py-5 flex-1 flex flex-col min-h-0 gap-5">
           {/* Page header */}
           <div className="flex items-center justify-between">

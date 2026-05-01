@@ -1073,7 +1073,7 @@ export function DatabasePageContent({
         </AnimatePresence>
 
         <div
-          className="border-x border-b rounded-md flex-1 flex min-h-0 bg-background overflow-hidden"
+          className="border rounded-md flex-1 flex min-h-0 bg-background overflow-hidden"
         >
           {/* Main Content Area */}
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
