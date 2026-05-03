@@ -408,10 +408,6 @@ function AiMessageFeedback({
   conversationId: string;
   showFeedback: boolean;
 }) {
-  // Only show feedback for ~25% of messages (deterministic based on message ID)
-  if (!showFeedback) {
-    return null;
-  }
   const dismissStorageKey = `ai-feedback-dismissed:${conversationId}:${message.id}`;
   const [isDismissed, setIsDismissed] = useState(() => {
     try {
@@ -439,6 +435,11 @@ function AiMessageFeedback({
   );
 
   useEffect(() => {
+    if (!showFeedback) {
+      setIsLoadingExistingFeedback(false);
+      return;
+    }
+
     let cancelled = false;
 
     const run = async () => {
@@ -470,6 +471,10 @@ function AiMessageFeedback({
   }, [toggleFeedback]);
 
   const activeRating = localRating ?? rating;
+
+  if (!showFeedback) {
+    return null;
+  }
 
   if (isLoadingExistingFeedback && !localRating) {
     return null;

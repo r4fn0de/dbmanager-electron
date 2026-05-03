@@ -253,7 +253,6 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     prevTabIdsRef.current = currentIds;
   }, [tabs]);
 
-  if (tabs.length === 0) return null;
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
   const connectionsById = useMemo(
     () => new Map(connections.map((connection) => [connection.id, connection])),
@@ -269,6 +268,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     },
     [reorderTabsByIds],
   );
+
+  if (tabs.length === 0) return null;
 
   return (
     <Reorder.Group
