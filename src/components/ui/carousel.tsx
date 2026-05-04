@@ -33,7 +33,7 @@ type CarouselContextProps = {
 const CarouselContext = React.createContext<CarouselContextProps | null>(null)
 
 function useCarousel() {
-  const context = React.useContext(CarouselContext)
+  const context = React.use(CarouselContext)
 
   if (!context) {
     throw new Error("useCarousel must be used within a <Carousel />")
@@ -60,6 +60,7 @@ function Carousel({
   )
   const [canScrollPrev, setCanScrollPrev] = React.useState(false)
   const [canScrollNext, setCanScrollNext] = React.useState(false)
+  const setApiRef = React.useRef(setApi)
 
   const onSelect = React.useCallback((api: CarouselApi) => {
     if (!api) return
@@ -89,9 +90,13 @@ function Carousel({
   )
 
   React.useEffect(() => {
-    if (!api || !setApi) return
-    setApi(api)
-  }, [api, setApi])
+    setApiRef.current = setApi
+  }, [setApi])
+
+  React.useEffect(() => {
+    if (!api) return
+    setApiRef.current?.(api)
+  }, [api])
 
   React.useEffect(() => {
     if (!api) return

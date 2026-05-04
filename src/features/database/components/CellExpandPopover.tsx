@@ -251,7 +251,7 @@ function intRangeFor(
   if (!column) return null;
   const t = column.data_type.toLowerCase();
   for (const [key, range] of Object.entries(INT_RANGE)) {
-    if (t === key || t.includes(key)) return range;
+    if (t === key || t.indexOf(key) !== -1) return range;
   }
   return null;
 }

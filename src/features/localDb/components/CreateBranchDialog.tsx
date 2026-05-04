@@ -233,7 +233,6 @@ export function CreateBranchDialog({
               onChange={(e) => setName(e.target.value)}
               maxLength={63}
               className={cn(nameError && "border-destructive")}
-              autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter" && canCreate) handleCreate();
               }}

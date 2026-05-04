@@ -722,7 +722,6 @@ export function ConnectionForm({
                   dbType={dbType}
                   urlValue={urlValue}
                   onUrlChange={handleUrlChange}
-                  autoFocus={!connection}
                 />
               ) : connection ? (
                 <div className="flex flex-col gap-1">

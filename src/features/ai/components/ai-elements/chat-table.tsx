@@ -38,7 +38,13 @@ function parseMarkdownTable(raw: string): ParsedTable | null {
   const separatorPattern = /^[\s|:\-]+$/;
   if (!separatorPattern.test(lines[1])) return null;
 
-  const rows = lines.slice(2).map(splitRow).filter((row) => row.length > 0);
+  const rows = lines.slice(2).reduce<string[][]>((acc, line) => {
+    const row = splitRow(line);
+    if (row.length > 0) {
+      acc.push(row);
+    }
+    return acc;
+  }, []);
   if (rows.length === 0) return null;
 
   return { headers, rows };

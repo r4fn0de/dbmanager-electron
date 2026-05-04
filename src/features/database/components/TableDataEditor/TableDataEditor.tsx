@@ -373,12 +373,13 @@ export function TableDataEditor({
   const isBlockingTableLoading = isLoading && !rowsResponse;
 
   const effectiveRows = useMemo(() => {
-    return displayedRows
-      .map((row, index) => {
-        const key = rowKeyFromPk(primaryKey, row, `row:${index}`);
-        return { row, rowKey: key, index };
-      })
-      .filter((entry) => !draftDeletes[entry.rowKey]);
+    return displayedRows.reduce<Array<{ row: RowRecord; rowKey: string; index: number }>>((acc, row, index) => {
+      const key = rowKeyFromPk(primaryKey, row, `row:${index}`);
+      if (!draftDeletes[key]) {
+        acc.push({ row, rowKey: key, index });
+      }
+      return acc;
+    }, []);
   }, [displayedRows, draftDeletes, primaryKey]);
 
   const effectiveRowsRef = useRef(effectiveRows);
@@ -397,16 +398,21 @@ export function TableDataEditor({
   const virtualItems = rowVirtualizer.getVirtualItems();
 
   const visibleInsertIndices = useMemo(
-    () => new Set(virtualItems.filter(v => v.index < draftInserts.length).map(v => v.index)),
+    () => new Set(virtualItems.reduce<number[]>((indices, virtualItem) => {
+      if (virtualItem.index < draftInserts.length) {
+        indices.push(virtualItem.index);
+      }
+      return indices;
+    }, [])),
     [virtualItems, draftInserts.length],
   );
   const visibleEffectiveArrayIndices = useMemo(
-    () =>
-      new Set(
-        virtualItems
-          .filter(v => v.index >= draftInserts.length)
-          .map(v => v.index - draftInserts.length),
-      ),
+    () => new Set(virtualItems.reduce<number[]>((indices, virtualItem) => {
+      if (virtualItem.index >= draftInserts.length) {
+        indices.push(virtualItem.index - draftInserts.length);
+      }
+      return indices;
+    }, [])),
     [virtualItems, draftInserts.length],
   );
 
@@ -917,8 +923,9 @@ export function TableDataEditor({
   const batchDeleteSelected = useCallback(() => {
     if (primaryKey.length === 0) return;
     const toDelete: Record<string, DeleteDraft> = {};
+    const effectiveRowsByKey = new Map(effectiveRows.map((entry) => [entry.rowKey, entry]));
     for (const rowKey of selectedRowKeys) {
-      const entry = effectiveRows.find((r) => r.rowKey === rowKey);
+      const entry = effectiveRowsByKey.get(rowKey);
       if (!entry) continue;
       const row = entry.row;
       const pk = Object.fromEntries(
@@ -1563,12 +1570,20 @@ export function TableDataEditor({
                         </div>
                       </button>
                       {/* Resize handle */}
-                      <div
+                      <button
+                        type="button"
+                        aria-label={`Resize column ${columnName}`}
                         className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-20"
                         onMouseDown={(e) =>
                           handleResizeMouseDown(columnName, e)
                         }
                         onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }
+                        }}
                       />
                     </TableHead>
                   );
@@ -1621,7 +1636,6 @@ export function TableDataEditor({
                               {normalizeDisplay(value)}
                             </span>
                             <Input
-                              autoFocus
                               value={editingValue}
                               onChange={(event) => {
                                 setEditingValue(event.target.value);
@@ -1782,7 +1796,6 @@ export function TableDataEditor({
                                 {normalizeDisplay(effectiveValue)}
                               </span>
                               <Input
-                                autoFocus
                                 value={editingValue}
                                 onChange={(event) => {
                                   setEditingValue(event.target.value);

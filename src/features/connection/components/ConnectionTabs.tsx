@@ -512,6 +512,7 @@ export function useConnectionTabSync() {
   // This is synchronizing with an external system (IPC backend) — valid Effect.
   useEffect(() => {
     if (isLoading) return;
+    const connectionsById = new Map(connections.map((connection) => [connection.id, connection]));
 
     // Remove tabs for connections that no longer exist
     if (connections.length > 0) {
@@ -525,7 +526,7 @@ export function useConnectionTabSync() {
 
     // Update existing tabs with fresh connection data
     for (const tab of tabs) {
-      const conn = connections.find((c) => c.id === tab.id);
+      const conn = connectionsById.get(tab.id);
       if (!conn) continue;
 
       const freshProvider = detectConnectionProvider(conn);

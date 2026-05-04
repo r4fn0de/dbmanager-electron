@@ -3,6 +3,7 @@ export { generateSchemaTypeScript } from "./formats/typescript";
 export { generateSchemaZod } from "./formats/zod";
 export { generateSchemaKysely } from "./formats/kysely";
 export { generateSchemaDrizzle } from "./formats/drizzle";
+export { generateSchemaPrisma } from "./formats/prisma";
 export {
   type GeneratorFormat,
   type GroupedIndex,
@@ -28,6 +29,7 @@ import { generateSchemaTypeScript } from "./formats/typescript";
 import { generateSchemaZod } from "./formats/zod";
 import { generateSchemaKysely } from "./formats/kysely";
 import { generateSchemaDrizzle } from "./formats/drizzle";
+import { generateSchemaPrisma } from "./formats/prisma";
 
 export interface SchemaGeneratorParams {
   table: string;
@@ -54,6 +56,8 @@ export function generateSchema(
       return generateSchemaKysely(params);
     case "drizzle":
       return generateSchemaDrizzle(params);
+    case "prisma":
+      return generateSchemaPrisma(params);
   }
 }
 
@@ -64,6 +68,7 @@ export const FORMAT_LABELS: Record<GeneratorFormat, string> = {
   zod: "Zod",
   kysely: "Kysely",
   drizzle: "Drizzle",
+  prisma: "Prisma",
 };
 
 /** Language identifier for syntax highlighting. */
@@ -73,4 +78,5 @@ export const FORMAT_LANGUAGES: Record<GeneratorFormat, string> = {
   zod: "typescript",
   kysely: "typescript",
   drizzle: "typescript",
+  prisma: "prisma",
 };

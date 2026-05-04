@@ -323,7 +323,6 @@ export function CreateTableDialog({
                 value={tableName}
                 onChange={(e) => setTableName(e.target.value)}
                 placeholder="users"
-                autoFocus
                 className="flex-1"
               />
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer shrink-0">
@@ -679,7 +678,6 @@ export function RenameTableDialog({
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            autoFocus
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           />
         </div>
@@ -790,7 +788,6 @@ export function AddColumnDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="column_name"
-              autoFocus
             />
           </div>
 
@@ -1032,7 +1029,6 @@ export function CreateSchemaDialog({
         <div className="space-y-1.5 py-2">
           <Label className="text-xs text-muted-foreground">Schema name</Label>
           <Input
-            autoFocus
             value={schemaName}
             onChange={(e) => setSchemaName(e.target.value)}
             placeholder="analytics"
@@ -1486,7 +1482,6 @@ export function RenameColumnDialog({
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            autoFocus
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           />
         </div>

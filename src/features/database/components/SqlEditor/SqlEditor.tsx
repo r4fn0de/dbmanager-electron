@@ -1718,7 +1718,7 @@ export function SqlEditor({
                     {tabs.length > 1 && (
                       <span
                         role="button"
-                        tabIndex={-1}
+                        tabIndex={0}
                         className={cn(
                           "absolute right-1 top-1/2 -translate-y-1/2 rounded-[3px] p-[2px]",
                           "opacity-0 group-hover/tab:opacity-100 transition-opacity duration-100",
@@ -1727,6 +1727,13 @@ export function SqlEditor({
                         onClick={(e) => {
                           e.stopPropagation();
                           closeTab(tab.id);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            closeTab(tab.id);
+                          }
                         }}
                       >
                         <UiIcon name="x" className="size-[11px]" />

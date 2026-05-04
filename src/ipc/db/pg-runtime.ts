@@ -171,11 +171,29 @@ export async function testPgConnection(connectionString: string): Promise<boolea
   } catch (err) {
     const safeConn = connectionString.replace(/:\/\/([^:@]+):([^@]+)@/, "://$1:[REDACTED]@");
     const message = err instanceof Error ? err.message : String(err);
+    const host = (() => {
+      try {
+        return new URL(connectionString).hostname;
+      } catch {
+        return "";
+      }
+    })();
+    const isDnsLookupError =
+      /ENOTFOUND/i.test(message) || /getaddrinfo/i.test(message);
+    const isSupabaseHost = /supabase\.(co|com|in)$/i.test(host);
+
+    const friendlyMessage = isDnsLookupError
+      ? isSupabaseHost
+        ? `DNS lookup failed for host "${host}". This usually means the Supabase host is invalid or mistyped. Use the exact host from your Supabase connection string (typically "db.<project-ref>.supabase.co").`
+        : `DNS lookup failed for host "${host || "unknown"}". Check if the host is correct and reachable.`
+      : message;
+
     console.error("[pg] testPgConnection failed", {
       connectionString: safeConn,
       message,
+      friendlyMessage,
     });
-    throw new Error(`PostgreSQL connection test failed: ${message}`);
+    throw new Error(`PostgreSQL connection test failed: ${friendlyMessage}`);
   }
 }
 

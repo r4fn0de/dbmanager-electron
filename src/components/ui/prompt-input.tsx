@@ -10,10 +10,10 @@ import {
 import { cn } from "@/lib/utils"
 import React, {
   createContext,
-  useContext,
   useLayoutEffect,
   useRef,
   useState,
+  use,
 } from "react"
 
 type PromptInputContextType = {
@@ -37,7 +37,7 @@ const PromptInputContext = createContext<PromptInputContextType>({
 })
 
 function usePromptInput() {
-  return useContext(PromptInputContext)
+  return use(PromptInputContext)
 }
 
 export type PromptInputProps = {
@@ -66,12 +66,12 @@ function PromptInput({
   const [internalValue, setInternalValue] = useState(value || "")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const handleChange = (newValue: string) => {
+  const updatePromptValue = (newValue: string) => {
     setInternalValue(newValue)
     onValueChange?.(newValue)
   }
 
-  const handleClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
+  const focusTextareaFromContainer: React.MouseEventHandler<HTMLDivElement> = (e) => {
     if (!disabled) textareaRef.current?.focus()
     onClick?.(e)
   }
@@ -82,7 +82,7 @@ function PromptInput({
         value={{
           isLoading,
           value: value ?? internalValue,
-          setValue: onValueChange ?? handleChange,
+          setValue: onValueChange ?? updatePromptValue,
           maxHeight,
           onSubmit,
           disabled,
@@ -90,7 +90,15 @@ function PromptInput({
         }}
       >
         <div
-          onClick={handleClick}
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          onClick={focusTextareaFromContainer}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault()
+              if (!disabled) textareaRef.current?.focus()
+            }
+          }}
           className={cn(
             "border-input bg-background cursor-text rounded-3xl p-2 shadow-xs",
             disabled && "cursor-not-allowed opacity-60",
@@ -149,7 +157,7 @@ function PromptInputTextarea({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, maxHeight, disableAutosize])
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const updateTextareaAndResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     adjustHeight(e.target)
     setValue(e.target.value)
   }
@@ -168,7 +176,7 @@ function PromptInputTextarea({
     <Textarea
       ref={handleRef}
       value={value}
-      onChange={handleChange}
+      onChange={updateTextareaAndResize}
       onKeyDown={handleKeyDown}
       className={cn(
         "text-foreground field-sizing-fixed min-h-11 w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 focus-visible:ring-offset-0",

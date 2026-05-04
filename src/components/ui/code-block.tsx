@@ -98,12 +98,17 @@ function CodeBlockCode({
     const normalizeTheme = (value: string): string => {
       const normalized = value.trim().toLowerCase()
       const aliases: Record<string, string> = {
-        "dark-plus": "github-dark",
-        "dark+": "github-dark",
-        "light-plus": "github-light",
-        "light+": "github-light",
-        "vscode-dark": "github-dark",
-        "vscode-light": "github-light",
+        // Map common editor theme names to Shiki themes known to work in bundle/web.
+        "github-dark": "vitesse-dark",
+        "github-light": "vitesse-light",
+        "github-dark-default": "vitesse-dark",
+        "github-light-default": "vitesse-light",
+        "dark-plus": "vitesse-dark",
+        "dark+": "vitesse-dark",
+        "light-plus": "vitesse-light",
+        "light+": "vitesse-light",
+        "vscode-dark": "vitesse-dark",
+        "vscode-light": "vitesse-light",
       }
       return aliases[normalized] ?? value
     }

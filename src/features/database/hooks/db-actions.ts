@@ -106,8 +106,8 @@ export async function testConnection(
     }
     return ok;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Connection test failed";
-    console.error("[db-actions] testConnection failed", {
+    const message = extractErrorMessage(err, "Connection test failed");
+    const logPayload = {
       dbType: connection.db_type,
       host: connection.host,
       port: connection.port,
@@ -115,7 +115,8 @@ export async function testConnection(
       sslMode: connection.ssl_mode,
       isLocal: connection.is_local,
       message,
-    });
+    };
+    console.error(`[db-actions] testConnection failed ${JSON.stringify(logPayload)}`);
     throw new Error(message);
   }
 }

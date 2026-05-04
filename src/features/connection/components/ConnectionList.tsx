@@ -285,6 +285,8 @@ function ConnectionCard({
             <TooltipTrigger
               render={
                 <p
+                  role="button"
+                  tabIndex={0}
                   className={cn(
                     "inline-block w-fit max-w-full text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150",
                     copied
@@ -293,6 +295,13 @@ function ConnectionCard({
                   )}
                   style={{ transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)" }}
                   onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleCopy()
+                    }
+                  }}
                 />
               }
             >

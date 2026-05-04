@@ -551,6 +551,7 @@ function applySearchHighlight(
         t.schema === schema && t.name.toLowerCase().includes(needle)
     )
     .map((t) => t.name);
+  const matchedTableSet = new Set(matchedTables);
 
   const matchedColumns = new Set<string>();
   for (const table of tables) {
@@ -567,7 +568,7 @@ function applySearchHighlight(
     data: {
       ...node.data,
       searchActive: true,
-      tableSearchMatched: matchedTables.includes(nodeData(node).table),
+      tableSearchMatched: matchedTableSet.has(nodeData(node).table),
       columns: nodeData(node).columns.map((col: ColumnData) => ({
         ...col,
         searchMatched: matchedColumns.has(col.name),

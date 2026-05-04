@@ -4,7 +4,7 @@ import type { DatabaseType, SchemaColumn, SchemaIndex } from "@/ipc/db/types";
 // Types
 // ---------------------------------------------------------------------------
 
-export type GeneratorFormat = "sql" | "ts" | "zod" | "kysely" | "drizzle";
+export type GeneratorFormat = "sql" | "ts" | "zod" | "kysely" | "drizzle" | "prisma";
 
 export interface GroupedIndex {
   name: string;
@@ -20,6 +20,7 @@ export const GENERATOR_COMPATIBILITY: Partial<Record<GeneratorFormat, DatabaseTy
   zod: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"],
   kysely: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"],
   drizzle: ["postgresql", "mysql", "mariadb", "clickhouse"],
+  prisma: ["postgresql", "mysql", "mariadb", "sqlite"],
 };
 
 // ---------------------------------------------------------------------------
@@ -114,6 +115,21 @@ function drizzleClickhouseMapper(t: string): string {
   return "text";
 }
 
+function prismaMapper(t: string): string {
+  if (/bigint/i.test(t)) return "BigInt";
+  if (/serial|int|integer|smallint/i.test(t)) return "Int";
+  if (/decimal|numeric/i.test(t)) return "Decimal";
+  if (/double|float|real/i.test(t)) return "Float";
+  if (/bool|bit/i.test(t)) return "Boolean";
+  if (/timestamp|datetime/i.test(t)) return "DateTime";
+  if (/date|time/i.test(t)) return "DateTime";
+  if (/json/i.test(t)) return "Json";
+  if (/uuid/i.test(t)) return "String @db.Uuid";
+  if (/char|varchar|text|citext/i.test(t)) return "String";
+  if (/bytea|blob|binary|varbinary/i.test(t)) return "Bytes";
+  return "String";
+}
+
 export const TYPE_MAPPINGS: Record<
   GeneratorFormat,
   Record<string, (type: string) => string>
@@ -154,6 +170,13 @@ export const TYPE_MAPPINGS: Record<
     mariadb: drizzleMysqlMapper,
     clickhouse: drizzleClickhouseMapper,
     sqlite: () => "text", // Drizzle doesn't support SQLite schema gen well
+  },
+  prisma: {
+    postgresql: prismaMapper,
+    mysql: prismaMapper,
+    mariadb: prismaMapper,
+    clickhouse: () => "String", // Prisma does not support ClickHouse
+    sqlite: prismaMapper,
   },
 };
 

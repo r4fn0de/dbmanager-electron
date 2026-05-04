@@ -138,10 +138,12 @@ export const ConversationScrollButton = ({
 const getMessageText = (message: ConversationMessage): string => {
   // Prefer parts-based extraction (AI SDK UIMessage), fall back to content string
   if (message.parts) {
-    return message.parts
-      .filter((part) => part.type === "text")
-      .map((part) => part.text ?? "")
-      .join("");
+    return message.parts.reduce((text, part) => {
+      if (part.type === "text") {
+        return `${text}${part.text ?? ""}`;
+      }
+      return text;
+    }, "");
   }
   return message.content ?? "";
 };

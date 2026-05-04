@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +40,7 @@ interface SchemaExportDialogProps {
   cachedDetails?: SchemaTableDetails | null;
 }
 
-const ALL_FORMATS: GeneratorFormat[] = ["sql", "ts", "zod", "kysely", "drizzle"];
+const ALL_FORMATS: GeneratorFormat[] = ["sql", "ts", "zod", "kysely", "drizzle", "prisma"];
 
 function getAvailableFormats(dbType: DatabaseType): GeneratorFormat[] {
   return ALL_FORMATS.filter((f) => {
@@ -57,6 +58,8 @@ export function SchemaExportDialog({
   dbType,
   cachedDetails,
 }: SchemaExportDialogProps) {
+  const { resolvedTheme } = useTheme();
+  const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
   const availableFormats = useMemo(() => getAvailableFormats(dbType), [dbType]);
   const [selectedFormat, setSelectedFormat] = useState<GeneratorFormat>(availableFormats[0] ?? "sql");
   const [details, setDetails] = useState<SchemaTableDetails | null>(null);
@@ -204,6 +207,7 @@ export function SchemaExportDialog({
                 <CodeBlockCode
                   code={generatedCode}
                   language={FORMAT_LANGUAGES[selectedFormat]}
+                  theme={codeTheme}
                   className="[&>pre]:py-3"
                 />
               </CodeBlock>

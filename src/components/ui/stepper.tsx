@@ -1,7 +1,7 @@
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "motion/react";
-import { createContext, useContext, useMemo, useRef } from "react";
+import { createContext, use, useMemo, useRef } from "react";
 
 type Direction = "forward" | "backward";
 
@@ -12,7 +12,7 @@ const StepperContext = createContext<{
 } | null>(null);
 
 function useStepperContext() {
-  const ctx = useContext(StepperContext);
+  const ctx = use(StepperContext);
   if (!ctx) throw new Error("Stepper compound components must be used within <Stepper>");
   return ctx;
 }

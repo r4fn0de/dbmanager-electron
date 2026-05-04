@@ -420,8 +420,12 @@ function AiMessageFeedback({
   const [isLoadingExistingFeedback, setIsLoadingExistingFeedback] = useState(true);
 
   const prompt = message.parts
-    ?.filter((p): p is TextPart => p.type === "text")
-    .map((p) => p.text)
+    ?.reduce<string[]>((texts, part) => {
+      if (part.type === "text") {
+        texts.push(part.text);
+      }
+      return texts;
+    }, [])
     .join(" ") ?? "";
 
   const response = message.content ?? "";
