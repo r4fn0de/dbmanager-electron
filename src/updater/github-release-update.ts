@@ -2,6 +2,7 @@ import { app, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_HAZEL_URL = "https://hazel-six-gamma.vercel.app";
 
 function logUpdateEvent(event: string, payload?: Record<string, unknown>) {
   const data = payload ? { ...payload } : {};
@@ -81,20 +82,13 @@ export async function configureGitHubUpdates(): Promise<void> {
     return;
   }
 
-  // For private repos, you need a GitHub token with repo access
-  // Set TARSDB_GH_TOKEN env var for the packaged app
-  const githubToken = process.env.TARSDB_GH_TOKEN?.trim();
-  if (githubToken) {
-    // Feed URL for private GitHub releases
-    // electron-updater will use this to fetch releases
-    autoUpdater.setFeedURL({
-      provider: "github",
-      owner: process.env.TARSDB_GH_OWNER || "your-org",
-      repo: process.env.TARSDB_GH_REPO || "your-repo",
-      private: true,
-      token: githubToken,
-    });
-  }
+  // Hazel endpoint (required): e.g. https://your-hazel.vercel.app
+  const updateBaseUrl = (
+    process.env.UPDATE_BASE_URL?.trim() || DEFAULT_HAZEL_URL
+  ).replace(/\/+$/, "");
+
+  const feedUrl = `${updateBaseUrl}/update/${process.platform}/${app.getVersion()}`;
+  autoUpdater.setFeedURL({ url: feedUrl });
 
   // Configure auto-updater
   autoUpdater.autoDownload = true;
@@ -125,7 +119,7 @@ export async function configureGitHubUpdates(): Promise<void> {
 
   logUpdateEvent("configured", {
     intervalMs,
-    hasToken: !!githubToken,
+    feedUrl,
   });
-  console.log(`[updater] Configured with ${intervalMs}ms check interval`);
+  console.log(`[updater] Configured with ${intervalMs}ms check interval (${feedUrl})`);
 }
