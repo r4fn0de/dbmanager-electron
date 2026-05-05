@@ -1,0 +1,35 @@
+README.md
+  4c970676e75eb0bb 84,86,88,90,92,94,96,98-99,101,103-155
+forge.config.ts
+  4c970676e75eb0bb 14,17,65
+src/features/shell/main.ts
+  4c970676e75eb0bb 4,6,403-424,609-610
+.github/workflows/publish.yaml
+  4c970676e75eb0bb 1,7,18,21,23,27-28,30-35
+guia.md
+  4c970676e75eb0bb 1-289
+scripts/upload-r2-updates.sh
+  4c970676e75eb0bb 1-56
+package.json
+  4c970676e75eb0bb 13-14,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "12e6ff77a64be7920712a00904a216501983e9ea",
+  "prompts": {
+    "4c970676e75eb0bb": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019df9a6-8741-76c3-9a9d-cec9f2390ab1",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto",
+      "messages": [],
+      "total_additions": 470,
+      "total_deletions": 76,
+      "accepted_lines": 454,
+      "overriden_lines": 0
+    }
+  }
+}
