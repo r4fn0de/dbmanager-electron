@@ -213,9 +213,11 @@ bun run make:and:upload:updates:r2
 
 Workflow: `.github/workflows/publish.yaml`
 
+Ele publica apenas **macOS arm64** via CI. Se você quiser publicar **x64**, faça localmente com `bun run release:updates:r2` no ambiente x64.
+
 Ele:
 
-1. Roda em `macos-13` (x64) e `macos-latest` (arm64)
+1. Roda em `macos-latest` (arm64)
 2. Instala deps com Bun
 3. Executa `bun run make`
 4. Executa `bun run upload:updates:r2`
