@@ -191,9 +191,15 @@ export R2_ENDPOINT="https://<accountid>.r2.cloudflarestorage.com"
 export AWS_ACCESS_KEY_ID="..."
 export AWS_SECRET_ACCESS_KEY="..."
 export UPDATE_BASE_PREFIX="updates"
+export UPDATE_ARCHIVE_PREFIX="updates-archive"
 
 bun run upload:updates:r2
 ```
+
+Esse upload publica em dois caminhos:
+
+- Ativo: `updates/<platform>/<arch>/...`
+- Arquivo por versão: `updates-archive/v<version>/<platform>/<arch>/...`
 
 Atalho:
 
@@ -209,7 +215,7 @@ Workflow: `.github/workflows/publish.yaml`
 
 Ele:
 
-1. Roda em `windows-latest` e `macos-latest`
+1. Roda em `macos-13` (x64) e `macos-latest` (arm64)
 2. Instala deps com Bun
 3. Executa `bun run make`
 4. Executa `bun run upload:updates:r2`

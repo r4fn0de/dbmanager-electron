@@ -405,11 +405,8 @@ function setupAutoUpdates() {
     return;
   }
 
-  const updateBaseUrl = process.env.UPDATE_BASE_URL?.trim().replace(/\/+$/, "");
-  if (!updateBaseUrl) {
-    log.warn("[updater] UPDATE_BASE_URL is not defined; skipping auto-update checks.");
-    return;
-  }
+  // Runtime override via env, with production fallback for packaged app.
+  const updateBaseUrl = (process.env.UPDATE_BASE_URL?.trim() || "https://update.novon.tech/updates").replace(/\/+$/, "");
 
   const baseUrl = `${updateBaseUrl}/${process.platform}/${process.arch}`;
   log.info(`[updater] Using static storage URL: ${baseUrl}`);

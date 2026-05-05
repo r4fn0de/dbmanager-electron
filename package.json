@@ -11,6 +11,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "upload:updates:r2": "bash scripts/upload-r2-updates.sh",
+    "release:updates:r2": "bash scripts/release-r2-interactive.sh",
     "make:and:upload:updates:r2": "bun run make && bun run upload:updates:r2",
     "publish": "node scripts/publish-private-updates.mjs",
 
