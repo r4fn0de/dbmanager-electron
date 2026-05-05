@@ -1,0 +1,27 @@
+guia.md
+  4c970676e75eb0bb 171,173,176,179-210,229-234,240
+scripts/release-r2-interactive.sh
+  4c970676e75eb0bb 4-5,7-9,16,21-34,45,51-54,56-58,60-61,82-109,112-121,123-124,126-167,171-190,199-211,214-215
+scripts/upload-r2-updates.sh
+  4c970676e75eb0bb 40-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "2d88eef8588e54aeed5f68a89c1f943442e8307a",
+  "prompts": {
+    "4c970676e75eb0bb": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019df9a6-8741-76c3-9a9d-cec9f2390ab1",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto",
+      "messages": [],
+      "total_additions": 192,
+      "total_deletions": 74,
+      "accepted_lines": 192,
+      "overriden_lines": 0
+    }
+  }
+}
