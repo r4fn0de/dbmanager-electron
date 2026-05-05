@@ -7,16 +7,14 @@ import { MakerZIP } from "@electron-forge/maker-zip";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { VitePlugin } from "@electron-forge/plugin-vite";
-import { PublisherGithub } from "@electron-forge/publisher-github";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 
 const updateBaseUrl = process.env.UPDATE_BASE_URL?.trim().replace(/\/+$/, "");
-const updateChannel = process.env.UPDATE_CHANNEL?.trim() || "stable";
 const winRemoteReleases = updateBaseUrl
-  ? `${updateBaseUrl}/${updateChannel}/win32/${process.arch}`
+  ? `${updateBaseUrl}/win32/${process.arch}`
   : undefined;
 const macUpdateManifestBaseUrl = updateBaseUrl
-  ? `${updateBaseUrl}/${updateChannel}/darwin/${process.arch}`
+  ? `${updateBaseUrl}/darwin/${process.arch}`
   : undefined;
 
 const config: ForgeConfig = {
@@ -64,17 +62,7 @@ const config: ForgeConfig = {
     new MakerRpm({}),
     new MakerDeb({}),
   ],
-  publishers: [
-    new PublisherGithub({
-      repository: {
-        owner: process.env.GH_OWNER || "your-username",
-        name: process.env.GH_REPO || "your-repo-name",
-      },
-      draft: true,
-      prerelease: false,
-      generateReleaseNotes: true,
-    }),
-  ],
+  publishers: [],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({

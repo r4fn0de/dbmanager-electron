@@ -1,42 +1,35 @@
-name: Publish Release
+name: Publish R2 Updates
 
 on:
   workflow_dispatch:
 
 jobs:
-  publish-release:
+  make-and-upload:
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     steps:
       - name: Checkout git repo
         uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
 
-      - name: Install and build
+      - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Make artifacts
+      - name: Make artifacts (Forge)
         env:
+          # Used by forge.config.ts to generate update metadata URLs
           UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
-          UPDATE_CHANNEL: ${{ vars.UPDATE_CHANNEL || 'stable' }}
         run: bun run make
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Publish private update artifacts
+      - name: Upload update artifacts to Cloudflare R2
+        shell: bash
         env:
-          UPDATE_BUCKET: ${{ secrets.UPDATE_BUCKET }}
-          UPDATE_PREFIX: ${{ vars.UPDATE_PREFIX || 'updates' }}
-          UPDATE_CHANNEL: ${{ vars.UPDATE_CHANNEL || 'stable' }}
-          UPDATE_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.UPDATE_CLOUDFRONT_DISTRIBUTION_ID }}
-        run: node scripts/publish-private-updates.mjs
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          UPDATE_BASE_PREFIX: ${{ vars.UPDATE_BASE_PREFIX || 'updates' }}
+        run: bun run upload:updates:r2

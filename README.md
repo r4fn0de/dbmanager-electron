@@ -81,31 +81,78 @@ Now you can go directly to `/src/routes/index.tsx` and modify the app as you wan
 
 > You can also delete the `/src/routes/second.tsx` file if you don't want a second page.
 
-## Auto update
+## Auto update (Cloudflare R2 + StaticStorage)
 
-This project is configured for **private auto updates** using:
+The app uses `update-electron-app` with `UpdateSourceType.StaticStorage`.
 
-- `update-electron-app` with `StaticStorage`
-- S3/CloudFront artifact hosting (private distribution)
-- Signed CloudFront cookies obtained from a backend auth endpoint
+Set runtime env var:
 
-At startup, the app asks your auth endpoint for temporary update access, configures auto-updater, downloads updates silently, and applies them on next app restart.
+- `UPDATE_BASE_URL=https://updates.MEU_DOMINIO.com/updates`
 
-### Runtime env vars
+The app resolves platform URL as:
 
-- `TARSDB_UPDATE_AUTH_ENDPOINT` (required in production)
-- `TARSDB_UPDATE_CHANNEL` (default: `stable`)
-- `TARSDB_UPDATE_CHECK_INTERVAL` (default: `10 minutes`)
-- `TARSDB_UPDATE_AUTH_TIMEOUT_MS` (default: `8000`)
-- `TARSDB_UPDATE_AUTH_BEARER` (optional bearer token for auth endpoint)
+- `${UPDATE_BASE_URL}/${process.platform}/${process.arch}`
 
-### Release pipeline
+Example resolved URLs:
 
-`.github/workflows/publish.yaml` builds artifacts on `windows-latest` and `macos-latest`, then uploads update metadata/artifacts to S3 and optionally invalidates CloudFront.
+- `https://updates.MEU_DOMINIO.com/updates/win32/x64`
+- `https://updates.MEU_DOMINIO.com/updates/darwin/arm64`
 
-Required CI secrets/vars are documented in [`docs/private-updates.md`](docs/private-updates.md).
+### Required R2 file layout
 
-> For background on Squirrel metadata formats and storage layout, see Electron's [Updating Applications](https://www.electronjs.org/docs/latest/tutorial/updates).
+```
+updates/
+  win32/
+    x64/
+      RELEASES
+      TarsDB-0.0.2-full.nupkg
+      TarsDB Setup 0.0.2.exe
+  darwin/
+    arm64/
+      RELEASES.json
+      TarsDB-darwin-arm64-0.0.2.zip
+```
+
+`RELEASES` (Windows) and `RELEASES.json` (macOS) are the manifests read by `update-electron-app` static storage.
+
+Example `RELEASES.json` (macOS):
+
+```json
+{
+  "currentRelease": "TarsDB-darwin-arm64-0.0.2.zip",
+  "releases": [
+    {
+      "updateTo": {
+        "name": "TarsDB-darwin-arm64-0.0.2.zip",
+        "version": "0.0.2",
+        "pub_date": "2026-05-05T12:00:00.000Z",
+        "notes": "Bug fixes"
+      }
+    }
+  ]
+}
+```
+
+### Build and upload
+
+```bash
+# URL que o app usa para checar updates
+export UPDATE_BASE_URL="https://updates.MEU_DOMINIO.com/updates"
+
+bun run make
+bash scripts/upload-r2-updates.sh
+```
+
+Required upload env vars: `R2_BUCKET`, `R2_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+
+### Onde configurar a URL do R2
+
+- **Runtime do app (obrigatório em produção):** `UPDATE_BASE_URL`
+- **CI (GitHub Actions):** Secret `UPDATE_BASE_URL` (mesmo valor)
+
+Exemplo:
+
+`https://updates.MEU_DOMINIO.com/updates`
 
 ## Documentation
 

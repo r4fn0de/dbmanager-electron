@@ -10,6 +10,8 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "upload:updates:r2": "bash scripts/upload-r2-updates.sh",
+    "make:and:upload:updates:r2": "bun run make && bun run upload:updates:r2",
     "publish": "node scripts/publish-private-updates.mjs",
 
     "typecheck": "tsc --noEmit",
@@ -76,8 +78,8 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-log": "^5.4.3",
     "electron-store": "^11.0.2",
-    "electron-updater": "^6.8.3",
     "embedded-postgres": "18.3.0-beta.17",
     "embla-carousel-react": "^8.6.0",
     "i18next": "^25.10.5",

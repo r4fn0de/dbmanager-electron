@@ -1,7 +1,9 @@
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, nativeTheme, session } from "electron";
 import { ipcMain } from "electron/main";
+import log from "electron-log";
 import { downloadChromeExtension } from "electron-devtools-installer/dist/downloadChromeExtension";
+import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, DB_IPC_CHANNELS, inDevelopment } from "@/constants";
 import { getBasePath } from "@/lib/path";
@@ -11,7 +13,6 @@ import { closeAllPools } from "@/ipc/db/kysely-factory";
 import { registerAiStreamingHandlers } from "@/ipc/ai";
 import { APP_DISPLAY_NAME } from "@/appBranding";
 import { cancelQuery as cancelActiveQuery } from "@/ipc/db/active-queries";
-import { configureGitHubUpdates } from "@/updater/github-release-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -399,8 +400,28 @@ async function installExtensions() {
   }
 }
 
-async function checkForUpdates() {
-  await configureGitHubUpdates();
+function setupAutoUpdates() {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  const updateBaseUrl = process.env.UPDATE_BASE_URL?.trim().replace(/\/+$/, "");
+  if (!updateBaseUrl) {
+    log.warn("[updater] UPDATE_BASE_URL is not defined; skipping auto-update checks.");
+    return;
+  }
+
+  const baseUrl = `${updateBaseUrl}/${process.platform}/${process.arch}`;
+  log.info(`[updater] Using static storage URL: ${baseUrl}`);
+
+  updateElectronApp({
+    updateSource: {
+      type: UpdateSourceType.StaticStorage,
+      baseUrl,
+    },
+    logger: log,
+    updateInterval: "1 hour",
+  });
 }
 
 async function runPostWindowInitialization() {
@@ -413,11 +434,6 @@ async function runPostWindowInitialization() {
       name: "installExtensions",
       fn: () => installExtensions(),
       timeout: 15000,
-    },
-    {
-      name: "checkForUpdates",
-      fn: () => checkForUpdates(),
-      timeout: 5000,
     },
     {
       name: "registerDrivers",
@@ -589,6 +605,9 @@ app.whenReady().then(async () => {
   try {
     configureAppIdentity();
     console.log("[startup] App identity configured");
+
+    setupAutoUpdates();
+    console.log("[startup] Auto-update configured (when enabled)");
 
     // Setup ORPC with retry logic
     let orpcRetries = 0;
