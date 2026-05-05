@@ -37,6 +37,9 @@ upload_to_key() {
   local file="$1"
   local key="$2"
   echo "Uploading $file -> s3://${R2_BUCKET}/${key}"
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    return
+  fi
   aws s3 cp "$file" "s3://${R2_BUCKET}/${key}" --endpoint-url "$R2_ENDPOINT"
 }
 

@@ -168,16 +168,46 @@ const macUpdateManifestBaseUrl = updateBaseUrl
 
 ---
 
-## 7) Build e upload manual
+## 7) Release local (wizard interativo) — recomendado
 
-## 7.1 Build
+Use o wizard para automatizar versão + build + upload:
 
 ```bash
-export UPDATE_BASE_URL="https://update.novon.tech/updates"
-bun run make
+bun run release:updates:r2
 ```
 
-## 7.2 Upload para R2
+O wizard faz:
+
+- valida dependências (`bun`, `node`, `aws`, `git`)
+- alerta se há alterações locais não commitadas
+- permite escolher: patch/minor/major/custom/manter versão
+- build opcional (`bun run make`)
+- upload opcional para R2
+- dry-run opcional (simula upload sem enviar)
+- validação opcional da listagem remota no R2
+
+### 7.1 Configuração de ambiente para o wizard
+
+Crie um arquivo local (não commitar):
+
+```bash
+cp .env.updates.example .env.updates
+```
+
+Preencha:
+
+```bash
+R2_BUCKET=your-bucket
+R2_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+UPDATE_BASE_PREFIX=updates
+UPDATE_ARCHIVE_PREFIX=updates-archive
+```
+
+> Se alguma variável estiver faltando, o wizard pergunta interativamente.
+
+### 7.2 Upload manual (avançado)
 
 Script disponível:
 
@@ -196,12 +226,18 @@ export UPDATE_ARCHIVE_PREFIX="updates-archive"
 bun run upload:updates:r2
 ```
 
+Dry-run manual:
+
+```bash
+DRY_RUN=1 bun run upload:updates:r2
+```
+
 Esse upload publica em dois caminhos:
 
 - Ativo: `updates/<platform>/<arch>/...`
 - Arquivo por versão: `updates-archive/v<version>/<platform>/<arch>/...`
 
-Atalho:
+Atalho build+upload:
 
 ```bash
 bun run make:and:upload:updates:r2
