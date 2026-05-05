@@ -20,6 +20,28 @@ require_cmd bun
 require_cmd node
 require_cmd aws
 
+# Optional local env file for release/upload secrets (do not commit)
+if [[ -f ".env.updates" ]]; then
+  # shellcheck disable=SC1091
+  source .env.updates
+fi
+
+ensure_env() {
+  local name="$1"
+  local current="${!name:-}"
+  if [[ -n "$current" ]]; then
+    # Guarantee it is exported for child processes.
+    export "$name=$current"
+    return
+  fi
+  read -r -p "Enter ${name}: " value
+  if [[ -z "$value" ]]; then
+    echo "${name} is required" >&2
+    exit 1
+  fi
+  export "$name=$value"
+}
+
 CURRENT_VERSION="$(node -p "require('./package.json').version")"
 
 echo "Current version: ${CURRENT_VERSION}"
@@ -45,9 +67,40 @@ if [[ "$BUMP_KIND" == "custom" ]]; then
     echo "Version is required" >&2
     exit 1
   fi
-  bun version "$TARGET_VERSION" --no-git-tag-version
+  node -e '
+    const fs = require("fs");
+    const path = "package.json";
+    const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+    const target = process.argv[1];
+    if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.test(target)) {
+      console.error("Invalid semver:", target);
+      process.exit(1);
+    }
+    pkg.version = target;
+    fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+  ' "$TARGET_VERSION"
 else
-  bun version "$BUMP_KIND" --no-git-tag-version
+  node -e '
+    const fs = require("fs");
+    const path = "package.json";
+    const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+    const [major, minor, patch] = pkg.version.split(".").map(Number);
+    if (![major, minor, patch].every(Number.isFinite)) {
+      console.error("Current version is not valid semver:", pkg.version);
+      process.exit(1);
+    }
+    const kind = process.argv[1];
+    let next = [major, minor, patch];
+    if (kind === "patch") next = [major, minor, patch + 1];
+    else if (kind === "minor") next = [major, minor + 1, 0];
+    else if (kind === "major") next = [major + 1, 0, 0];
+    else {
+      console.error("Invalid bump kind:", kind);
+      process.exit(1);
+    }
+    pkg.version = next.join(".");
+    fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+  ' "$BUMP_KIND"
 fi
 
 NEW_VERSION="$(node -p "require('./package.json').version")"
@@ -66,7 +119,16 @@ echo "Upload artifacts to R2 now?"
 read -r -p "[Y/n]: " UPLOAD_ANSWER
 UPLOAD_ANSWER="${UPLOAD_ANSWER:-Y}"
 if [[ "$UPLOAD_ANSWER" =~ ^[Yy]$ ]]; then
-  APP_VERSION="$NEW_VERSION" bun run upload:updates:r2
+  ensure_env "R2_BUCKET"
+  ensure_env "R2_ENDPOINT"
+  ensure_env "AWS_ACCESS_KEY_ID"
+  ensure_env "AWS_SECRET_ACCESS_KEY"
+
+  # Optional defaults
+  export UPDATE_BASE_PREFIX="${UPDATE_BASE_PREFIX:-updates}"
+  export UPDATE_ARCHIVE_PREFIX="${UPDATE_ARCHIVE_PREFIX:-updates-archive}"
+
+  APP_VERSION="$NEW_VERSION" bash scripts/upload-r2-updates.sh
 fi
 
 echo

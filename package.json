@@ -1,7 +1,7 @@
 {
   "name": "electron-shadcn",
   "productName": "TarsDB",
-  "version": "0.0.1",
+  "version": "0.1.2",
   "description": "Electron Forge with shadcn-ui (Vite + Typescript)",
   "main": ".vite/build/main.js",
   "private": true,
@@ -14,13 +14,11 @@
     "release:updates:r2": "bash scripts/release-r2-interactive.sh",
     "make:and:upload:updates:r2": "bun run make && bun run upload:updates:r2",
     "publish": "node scripts/publish-private-updates.mjs",
-
     "typecheck": "tsc --noEmit",
     "check": "ultracite check && bun run check:db-boundaries",
     "fix": "ultracite fix",
     "check:db-boundaries": "node scripts/check-db-boundaries.mjs",
     "verify": "bun run check && bun run typecheck && bun run test",
-
     "rebuild:native": "electron-rebuild -f -w better-sqlite3",
     "build:package:dev": "NODE_ENV=development bun run rebuild:native && electron-forge package",
     "build:make:dev": "NODE_ENV=development bun run rebuild:native && electron-forge make",
@@ -28,7 +26,6 @@
     "build:make:prod": "NODE_ENV=production bun run rebuild:native && electron-forge make",
     "build:prod": "bun run verify && bun run build:make:prod",
     "build:ci": "bun run check && bun run typecheck && bun run test",
-
     "bump-ui": "ts-node ./scripts/bump-ui.ts",
     "test": "vitest run",
     "test:watch": "vitest watch",
