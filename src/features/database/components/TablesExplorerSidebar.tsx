@@ -303,7 +303,6 @@ export function TablesExplorerSidebar({
                       Copy table name
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onCopyTableRef(tableTarget)}>
-                      <Icon name="copy" className="size-3.5" />
                       Copy table ref
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => onInsertTableInsertTemplate(tableTarget)}>
@@ -378,7 +377,6 @@ export function TablesExplorerSidebar({
                       Copy table name
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => onCopyTableRef(tableTarget)}>
-                      <Icon name="copy" className="size-3.5" />
                       Copy table ref
                     </ContextMenuItem>
                     <ContextMenuItem onClick={() => onInsertTableInsertTemplate(tableTarget)}>
