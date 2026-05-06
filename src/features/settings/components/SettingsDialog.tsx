@@ -8,7 +8,7 @@
  * Uses a sidebar layout instead of top tabs for better scannability
  * and to match the app's existing sidebar-heavy visual language.
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Settings } from "@/components/icons/Settings";
 import { Icon } from "@/components/ui/Icon";
 import { AnimatePresence, motion } from "motion/react";
@@ -45,37 +45,8 @@ const SETTINGS_ITEMS: SettingsItem[] = [
   { id: "updates", label: "Updates", icon: 'download' },
 ];
 
-const updateStatusBadgeVariantMap = {
-  idle: "outline",
-  disabled: "secondary",
-  checking: "secondary",
-  available: "default",
-  "not-available": "outline",
-  downloading: "secondary",
-  downloaded: "default",
-  error: "destructive",
-} as const;
-
-const updateStatusLabelMap = {
-  idle: "Idle",
-  disabled: "Disabled",
-  checking: "Checking for updates",
-  available: "Update available",
-  "not-available": "Up to date",
-  downloading: "Downloading",
-  downloaded: "Ready to install",
-  error: "Error",
-} as const;
-
 function UpdatesPanel() {
   const queryClient = useQueryClient();
-
-  const statusQuery = useQuery({
-    queryKey: ["app", "update-status"],
-    queryFn: () => ipc.client.app.updateStatus(),
-    refetchInterval: 5000,
-  });
-
   const manualInfoQuery = useQuery({
     queryKey: ["app", "manual-update-info"],
     queryFn: () => ipc.client.app.checkManualUpdateInfo(),
@@ -89,124 +60,49 @@ function UpdatesPanel() {
     },
   });
 
-  const status = statusQuery.data;
-
-  const statusLabel = useMemo(() => {
-    if (!status) return "Loading";
-    return updateStatusLabelMap[status.stage];
-  }, [status]);
-
   const manualInfo = checkManualMutation.data ?? manualInfoQuery.data ?? null;
   const manualError =
     (checkManualMutation.error instanceof Error && checkManualMutation.error.message) ||
     (manualInfoQuery.error instanceof Error && manualInfoQuery.error.message) ||
     null;
 
-  const isBusy = checkManualMutation.isPending;
-
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border/60 bg-muted/[0.02] p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">Automatic updates</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Disabled. This build uses manual updates from latest.json.
-            </p>
-          </div>
-          <Badge variant={status ? updateStatusBadgeVariantMap[status.stage] : "secondary"}>
-            {statusLabel}
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-          <div>
-            Current version: <span className="text-foreground font-medium">{status?.currentVersion ?? "-"}</span>
-          </div>
-          <div>
-            Last checked: <span className="text-foreground font-medium">{status?.lastCheckedAt ?? "-"}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <Button
-            variant="outline"
-            disabled={isBusy}
-            onClick={() => {
-              checkManualMutation.mutate();
-            }}
-          >
-            Check latest release
-          </Button>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-border/60 bg-muted/[0.02] p-4 space-y-2">
-        <p className="text-sm font-medium">Manual update channel</p>
-        <p className="text-xs text-muted-foreground">
-          Use this if automatic updates are unavailable on your platform.
-        </p>
-        {manualError && (
-          <p className="text-xs text-destructive">{manualError}</p>
-        )}
-
-        <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-          <div>
-            Current version: <span className="text-foreground font-medium">{manualInfo?.currentVersion ?? "-"}</span>
-          </div>
-          <div>
-            Latest version: <span className="text-foreground font-medium">{manualInfo?.latestVersion ?? "-"}</span>
-          </div>
-          <div>
-            Detected platform: <span className="text-foreground font-medium">{manualInfo?.platform ?? "-"}</span>
-          </div>
-          <div>
-            Detected architecture: <span className="text-foreground font-medium">{manualInfo?.arch ?? "-"}</span>
-          </div>
-          <div className="sm:col-span-2 break-all">
-            Metadata URL: <span className="text-foreground/80">{manualInfo?.metaUrl ?? "-"}</span>
-          </div>
-          {manualInfo?.notes && (
-            <div className="sm:col-span-2">
-              Notes: <span className="text-foreground/80">{manualInfo.notes}</span>
-            </div>
-          )}
-          {manualInfo?.downloadUrl && (
-            <div className="sm:col-span-2 break-all">
-              Download URL: <span className="text-foreground/80">{manualInfo.downloadUrl}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <Button
-            variant="outline"
-            disabled={!manualInfo?.downloadUrl}
-            onClick={() => {
-              if (!manualInfo?.downloadUrl) return;
-              void ipc.client.shell.openExternalLink({ url: manualInfo.downloadUrl });
-            }}
-          >
-            Download latest version
-          </Button>
-
+      <div className="rounded-lg border border-border/60 bg-muted/[0.02] p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">Update</p>
           {manualInfo && (
             <Badge variant={manualInfo.hasUpdate ? "default" : "outline"}>
-              {manualInfo.hasUpdate ? "Update available" : "Already up to date"}
+              {manualInfo.hasUpdate ? "Update available" : "Up to date"}
             </Badge>
           )}
         </div>
 
-        {manualInfo?.hasUpdate && (
-          <div className="rounded-lg border border-border/60 bg-background/40 p-3 text-xs text-muted-foreground space-y-1.5">
-            <p className="font-medium text-foreground">How to install on macOS</p>
-            <p>1. Click "Download latest version".</p>
-            <p>2. Close TarsDB.</p>
-            <p>3. Extract the downloaded archive.</p>
-            <p>4. Drag the new TarsDB.app into Applications.</p>
-            <p>5. Open TarsDB again.</p>
+        {manualError && <p className="text-xs text-destructive">{manualError}</p>}
+
+        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+          <div>
+            Current: <span className="text-foreground font-medium">{manualInfo?.currentVersion ?? "-"}</span>
           </div>
-        )}
+          <div>
+            Latest: <span className="text-foreground font-medium">{manualInfo?.latestVersion ?? "-"}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <Button variant="outline" disabled={checkManualMutation.isPending} onClick={() => checkManualMutation.mutate()}>
+            Check updates
+          </Button>
+          <Button
+            disabled={!manualInfo?.downloadUrl || !manualInfo?.hasUpdate}
+            onClick={() => {
+              if (!manualInfo?.downloadUrl || !manualInfo?.hasUpdate) return;
+              void ipc.client.shell.openExternalLink({ url: manualInfo.downloadUrl });
+            }}
+          >
+            Download
+          </Button>
+        </div>
       </div>
     </div>
   );
