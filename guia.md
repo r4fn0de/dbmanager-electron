@@ -167,79 +167,46 @@ const macUpdateManifestBaseUrl = updateBaseUrl
 
 ---
 
-## 7) Release local (wizard interativo) — recomendado
+## 7) Disparo de release (CI-only) — recomendado
 
-Use o wizard para automatizar versão + build + upload:
+O fluxo de update agora é **somente via CI**.
+
+Use:
 
 ```bash
 bun run release:updates:r2
 ```
 
-O wizard faz:
+Esse comando executa `scripts/release-r2-ci-dispatch.sh`, que:
 
-- valida dependências (`bun`, `node`, `aws`, `git`)
-- alerta se há alterações locais não commitadas
-- permite escolher: patch/minor/major/custom/manter versão
-- build opcional (`bun run make`)
-- upload opcional para R2
-- dry-run opcional (simula upload sem enviar)
-- validação opcional da listagem remota no R2
+- valida `gh` autenticado
+- exige working tree limpo
+- dispara o workflow `.github/workflows/publish.yaml`
 
-### 7.1 Configuração de ambiente para o wizard
+### 7.1 Execução direta pelo GitHub Actions
 
-Crie um arquivo local (não commitar):
+- Actions → **Publish Manual Updates (latest.json)**
+- Clique em **Run workflow**
+- (Opcional) preencha `release_notes`
 
-```bash
-cp .env.updates.example .env.updates
-```
+### 7.2 Scripts locais de update (bloqueados por padrão)
 
-Preencha:
-
-```bash
-R2_BUCKET=your-bucket
-R2_ENDPOINT=https://<accountid>.r2.cloudflarestorage.com
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-UPDATE_BASE_PREFIX=updates
-UPDATE_ARCHIVE_PREFIX=updates-archive
-```
-
-> Se alguma variável estiver faltando, o wizard pergunta interativamente.
-
-### 7.2 Upload manual (avançado)
-
-Script disponível:
+Os scripts abaixo continuam existindo, mas bloqueiam execução local:
 
 - `scripts/upload-r2-updates.sh`
+- `scripts/publish-latest-json.sh`
+- `scripts/cleanup-r2-old-updates.sh`
 
-Uso:
+Para uso emergencial local, habilite explicitamente:
 
 ```bash
-export R2_BUCKET="meu-bucket"
-export R2_ENDPOINT="https://<accountid>.r2.cloudflarestorage.com"
-export AWS_ACCESS_KEY_ID="..."
-export AWS_SECRET_ACCESS_KEY="..."
-export UPDATE_BASE_PREFIX="updates"
-export UPDATE_ARCHIVE_PREFIX="updates-archive"
-
-bun run upload:updates:r2
+ALLOW_LOCAL_UPDATE_SCRIPTS=1 <comando>
 ```
 
-Dry-run manual:
+Exemplo:
 
 ```bash
-DRY_RUN=1 bun run upload:updates:r2
-```
-
-Esse upload publica em dois caminhos:
-
-- Ativo: `updates/<platform>/<arch>/...`
-- Arquivo por versão: `updates-archive/v<version>/<platform>/<arch>/...`
-
-Atalho build+upload:
-
-```bash
-bun run make:and:upload:updates:r2
+ALLOW_LOCAL_UPDATE_SCRIPTS=1 bun run upload:updates:r2
 ```
 
 ---
@@ -248,42 +215,59 @@ bun run make:and:upload:updates:r2
 
 Workflow: `.github/workflows/publish.yaml`
 
-Ele publica apenas **macOS arm64** via CI. Se você quiser publicar **x64**, faça localmente com `bun run release:updates:r2` no ambiente x64.
-
 Ele:
 
-1. Roda em `macos-latest` (arm64)
-2. Instala deps com Bun
-3. Executa `bun run make`
-4. Executa `bun run upload:updates:r2`
+1. Roda em `macos-13` para **x64**
+2. Roda em `macos-14` para **arm64**
+3. Instala deps com Bun
+4. Executa `bun run make -- --arch=<arch>`
+5. Executa `bun run upload:updates:r2` em cada job
+6. Publica `latest.json` no job final, incluindo os dois `download_path` (x64 + arm64)
 
-Isso garante publicação dos artefatos de update em cada plataforma/arquitetura.
+Isso garante publicação consistente de artefatos para as duas arquiteturas no mesmo fluxo.
 
 ---
 
 ## 9) Passo a passo para lançar uma nova atualização
 
-### 9.1 Pré-requisitos (uma vez)
+### Formato recomendado do `latest.json` (com arquitetura)
 
-- Configurar `.env.updates` (ou usar prompts do wizard)
-- Garantir `UPDATE_BASE_URL=https://update.novon.tech/updates`
+```json
+{
+  "version": "0.1.4",
+  "downloadUrl": "https://update.novon.tech/updates/darwin/arm64/TarsDB-0.1.4-arm64.zip",
+  "downloads": {
+    "darwin": {
+      "arm64": "https://update.novon.tech/updates/darwin/arm64/TarsDB-0.1.4-arm64.zip",
+      "x64": "https://update.novon.tech/updates/darwin/x64/TarsDB-0.1.4-x64.zip"
+    }
+  },
+  "notes": "Bug fixes and stability improvements.",
+  "publishedAt": "2026-05-06T00:00:00Z"
+}
+```
 
-### 9.2 Lançamento local (recomendado)
+O app detecta `platform` + `arch` e prioriza `downloads[platform][arch]`.
+
+### 9.1 Pré-requisitos
+
+- Secrets/vars do workflow configurados (`R2_BUCKET`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `UPDATE_BASE_URL`, etc.)
+- `gh auth login` (se for disparar via CLI)
+- Versão já atualizada no `package.json` quando necessário
+
+### 9.2 Lançamento (recomendado via CLI)
 
 ```bash
 bun run release:updates:r2
 ```
 
-No wizard:
+### 9.3 Lançamento via UI (alternativo)
 
-1. Escolha bump de versão (`patch/minor/major/custom`)
-2. Confirme build (`bun run make`)
-3. Confirme upload para R2
-4. Confirme publish de `latest.json`
-5. (Opcional) adicione release notes
-6. (Opcional) escolha interativamente o artefato do `downloadUrl`
+- Actions → **Publish Manual Updates (latest.json)**
+- Clique em **Run workflow**
+- (Opcional) preencha `release_notes`
 
-### 9.3 Commit da release
+### 9.4 Commit da release (quando houver bump de versão)
 
 ```bash
 git add package.json bun.lock
@@ -291,20 +275,30 @@ git commit -m "chore(release): vX.Y.Z"
 git push
 ```
 
-### 9.4 Lançamento via CI (alternativo)
-
-- Actions → **Publish Manual Updates (latest.json)**
-- Clique em **Run workflow**
-- (Opcional) preencha `release_notes`
-
 ### 9.5 Verificação pós-release
 
 - Verificar `updates/latest.json` publicado
-- Verificar artefatos em `updates/darwin/arm64/` (e x64 se aplicável)
+- Verificar artefatos em `updates/darwin/arm64/` e `updates/darwin/x64/`
 - Abrir app → Settings → Updates → **Check latest release**
 - Confirmar que mostra `latestVersion` e habilita **Download latest version**
 
 ---
+
+### 9.6 Limpeza de versões antigas (economizar storage)
+
+Via CI (recomendado) ou local em emergência com override:
+
+```bash
+# simulação (emergência local)
+ALLOW_LOCAL_UPDATE_SCRIPTS=1 DRY_RUN=1 KEEP_VERSIONS=2 bun run cleanup:updates:r2
+
+# execução real (emergência local)
+ALLOW_LOCAL_UPDATE_SCRIPTS=1 KEEP_VERSIONS=2 bun run cleanup:updates:r2
+```
+
+Isso apaga apenas `updates-archive/v*/...` antigos e mantém as 2 versões mais novas (latest e anterior).
+
+> Recomendado também: configurar Lifecycle Rule no Cloudflare R2 para expirar objetos antigos automaticamente.
 
 ## 10) Troubleshooting
 
@@ -324,24 +318,24 @@ git push
 - Confirme secrets `R2_BUCKET`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
 - Confirme que os artefatos `.zip` foram gerados em `out/make`
 
-## 10.4 Download abre URL errada
+## 10.4 Tentativa de upload local bloqueada
 
-- Refaça release e, no wizard, escolha manualmente o artefato de download
-- Ou defina `LATEST_DOWNLOAD_PATH` explicitamente
+- Comportamento esperado: fluxo oficial é CI-only
+- Para emergência, use `ALLOW_LOCAL_UPDATE_SCRIPTS=1`
 
 ---
 
 ## 11) Checklist final
 
-- [ ] Versão atualizada no `package.json`
+- [ ] Versão atualizada no `package.json` (quando aplicável)
+- [ ] Workflow `publish.yaml` concluído sem erro
 - [ ] Artefatos enviados para `updates/<platform>/<arch>/`
 - [ ] `updates/latest.json` publicado
 - [ ] `downloadUrl` do `latest.json` válido
-- [ ] Workflow CI/manual concluído sem erro
 - [ ] Testado no app: **Check latest release** + **Download latest version**
 
 ---
 
 ## 12) Resumo rápido do fluxo
 
-`bun run release:updates:r2` → build + upload de artefatos no R2 + publish de `updates/latest.json` → app consulta `latest.json` → usuário clica em **Download latest version** para atualizar manualmente.
+`bun run release:updates:r2` → dispatch do workflow CI `publish.yaml` → build/upload x64 + arm64 no R2 → publish de `updates/latest.json` → app consulta `latest.json` → usuário clica em **Download latest version** para atualizar manualmente.

@@ -9,14 +9,11 @@ on:
         default: ""
 
 jobs:
-  make-and-upload:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            targetArch: arm64
-    runs-on: ${{ matrix.os }}
+  make-and-upload-x64:
+    runs-on: macos-13
+    outputs:
+      version: ${{ steps.build_meta.outputs.version }}
+      download_path: ${{ steps.build_meta.outputs.download_path }}
     steps:
       - name: Checkout git repo
         uses: actions/checkout@v6
@@ -40,7 +37,22 @@ jobs:
         env:
           # Used by forge.config.ts to generate update metadata URLs
           UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
-        run: bun run make
+        run: bun run make -- --arch=x64
+
+      - name: Resolve build metadata
+        id: build_meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          ZIP_PATH="$(find out/make/zip/darwin/x64 -type f -name "*${VERSION}*.zip" | head -n 1)"
+          if [[ -z "$ZIP_PATH" ]]; then
+            echo "No zip found for arch=x64 version=${VERSION}" >&2
+            exit 1
+          fi
+          FILE_NAME="$(basename "$ZIP_PATH")"
+          DOWNLOAD_PATH="darwin/x64/${FILE_NAME}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "download_path=$DOWNLOAD_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload update artifacts to Cloudflare R2
         shell: bash
@@ -53,9 +65,76 @@ jobs:
           UPDATE_ARCHIVE_PREFIX: ${{ vars.UPDATE_ARCHIVE_PREFIX || 'updates-archive' }}
         run: bun run upload:updates:r2
 
-      - name: Publish latest.json (manual update metadata)
+  make-and-upload-arm64:
+    runs-on: macos-14
+    outputs:
+      version: ${{ steps.build_meta.outputs.version }}
+      download_path: ${{ steps.build_meta.outputs.download_path }}
+    steps:
+      - name: Checkout git repo
+        uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install deps (retry)
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            echo "Install attempt $i..."
+            if bun install --frozen-lockfile; then
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "bun install failed after retries"
+          exit 1
+
+      - name: Make artifacts (Forge)
+        env:
+          # Used by forge.config.ts to generate update metadata URLs
+          UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
+        run: bun run make -- --arch=arm64
+
+      - name: Resolve build metadata
+        id: build_meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          ZIP_PATH="$(find out/make/zip/darwin/arm64 -type f -name "*${VERSION}*.zip" | head -n 1)"
+          if [[ -z "$ZIP_PATH" ]]; then
+            echo "No zip found for arch=arm64 version=${VERSION}" >&2
+            exit 1
+          fi
+          FILE_NAME="$(basename "$ZIP_PATH")"
+          DOWNLOAD_PATH="darwin/arm64/${FILE_NAME}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "download_path=$DOWNLOAD_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload update artifacts to Cloudflare R2
         shell: bash
         env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          UPDATE_BASE_PREFIX: ${{ vars.UPDATE_BASE_PREFIX || 'updates' }}
+          UPDATE_ARCHIVE_PREFIX: ${{ vars.UPDATE_ARCHIVE_PREFIX || 'updates-archive' }}
+        run: bun run upload:updates:r2
+
+  publish-latest-json:
+    runs-on: ubuntu-latest
+    needs:
+      - make-and-upload-x64
+      - make-and-upload-arm64
+    steps:
+      - name: Checkout git repo
+        uses: actions/checkout@v6
+
+      - name: Publish latest.json for x64
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs['make-and-upload-x64'].outputs.version }}
+          LATEST_DOWNLOAD_PATH: ${{ needs['make-and-upload-x64'].outputs.download_path }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -64,4 +143,19 @@ jobs:
           UPDATE_BASE_PREFIX: ${{ vars.UPDATE_BASE_PREFIX || 'updates' }}
           UPDATE_ARCHIVE_PREFIX: ${{ vars.UPDATE_ARCHIVE_PREFIX || 'updates-archive' }}
           RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
-        run: bun run publish:latest-json:r2
+        run: bash scripts/publish-latest-json.sh
+
+      - name: Publish latest.json for arm64
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs['make-and-upload-arm64'].outputs.version }}
+          LATEST_DOWNLOAD_PATH: ${{ needs['make-and-upload-arm64'].outputs.download_path }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
+          UPDATE_BASE_PREFIX: ${{ vars.UPDATE_BASE_PREFIX || 'updates' }}
+          UPDATE_ARCHIVE_PREFIX: ${{ vars.UPDATE_ARCHIVE_PREFIX || 'updates-archive' }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+        run: bash scripts/publish-latest-json.sh

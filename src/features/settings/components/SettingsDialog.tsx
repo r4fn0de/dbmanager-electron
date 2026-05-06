@@ -157,6 +157,12 @@ function UpdatesPanel() {
           <div>
             Latest version: <span className="text-foreground font-medium">{manualInfo?.latestVersion ?? "-"}</span>
           </div>
+          <div>
+            Detected platform: <span className="text-foreground font-medium">{manualInfo?.platform ?? "-"}</span>
+          </div>
+          <div>
+            Detected architecture: <span className="text-foreground font-medium">{manualInfo?.arch ?? "-"}</span>
+          </div>
           <div className="sm:col-span-2 break-all">
             Metadata URL: <span className="text-foreground/80">{manualInfo?.metaUrl ?? "-"}</span>
           </div>
@@ -190,6 +196,17 @@ function UpdatesPanel() {
             </Badge>
           )}
         </div>
+
+        {manualInfo?.hasUpdate && (
+          <div className="rounded-lg border border-border/60 bg-background/40 p-3 text-xs text-muted-foreground space-y-1.5">
+            <p className="font-medium text-foreground">How to install on macOS</p>
+            <p>1. Click "Download latest version".</p>
+            <p>2. Close TarsDB.</p>
+            <p>3. Extract the downloaded archive.</p>
+            <p>4. Drag the new TarsDB.app into Applications.</p>
+            <p>5. Open TarsDB again.</p>
+          </div>
+        )}
       </div>
     </div>
   );

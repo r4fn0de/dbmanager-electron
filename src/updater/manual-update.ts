@@ -3,7 +3,23 @@ import { z } from "zod";
 
 const latestReleaseSchema = z.object({
   version: z.string().min(1),
-  downloadUrl: z.string().url(),
+  downloadUrl: z.string().url().optional(),
+  downloads: z
+    .object({
+      darwin: z
+        .object({
+          arm64: z.string().url().optional(),
+          x64: z.string().url().optional(),
+        })
+        .optional(),
+      win32: z
+        .object({
+          x64: z.string().url().optional(),
+          arm64: z.string().url().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   notes: z.string().optional().nullable(),
   publishedAt: z.string().optional().nullable(),
 });
@@ -16,6 +32,8 @@ export type ManualUpdateInfo = {
   notes: string | null;
   publishedAt: string | null;
   metaUrl: string;
+  platform: NodeJS.Platform;
+  arch: string;
 };
 
 function compareSemver(a: string, b: string): number {
@@ -66,13 +84,26 @@ export async function checkManualUpdate(): Promise<ManualUpdateInfo> {
   const latest = parsed.data;
   const hasUpdate = compareSemver(latest.version, currentVersion) > 0;
 
+  const platform = process.platform;
+  const arch = process.arch;
+
+  const platformDownloads = latest.downloads?.[platform as "darwin" | "win32"];
+  const archDownloadUrl = platformDownloads?.[arch as "arm64" | "x64"];
+  const downloadUrl = archDownloadUrl ?? latest.downloadUrl;
+
+  if (!downloadUrl) {
+    throw new Error(`No download URL for platform=${platform} arch=${arch}`);
+  }
+
   return {
     currentVersion,
     latestVersion: latest.version,
     hasUpdate,
-    downloadUrl: latest.downloadUrl,
+    downloadUrl,
     notes: latest.notes ?? null,
     publishedAt: latest.publishedAt ?? null,
     metaUrl,
+    platform,
+    arch,
   };
 }

@@ -15,6 +15,13 @@ set -euo pipefail
 # - UPDATE_ARCHIVE_PREFIX (default: updates-archive)
 # - MAKE_DIR (default: out/make)
 # - APP_VERSION (default: package.json version)
+# - ALLOW_LOCAL_UPDATE_SCRIPTS=1 (override CI-only guard for emergencies)
+
+if [[ "${CI:-}" != "true" && "${ALLOW_LOCAL_UPDATE_SCRIPTS:-0}" != "1" ]]; then
+  echo "Local update upload is disabled. Use CI workflow publish.yaml." >&2
+  echo "Override only for emergencies with ALLOW_LOCAL_UPDATE_SCRIPTS=1." >&2
+  exit 1
+fi
 
 R2_BUCKET="${R2_BUCKET:?R2_BUCKET is required}"
 R2_ENDPOINT="${R2_ENDPOINT:?R2_ENDPOINT is required}"
