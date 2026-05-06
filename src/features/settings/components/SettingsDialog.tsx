@@ -69,15 +69,6 @@ const updateStatusLabelMap = {
 
 function UpdatesPanel() {
   const queryClient = useQueryClient();
-  const [manualInfo, setManualInfo] = useState<{
-    currentVersion: string;
-    latestVersion: string;
-    hasUpdate: boolean;
-    downloadUrl: string;
-    notes: string | null;
-    publishedAt: string | null;
-    metaUrl: string;
-  } | null>(null);
 
   const statusQuery = useQuery({
     queryKey: ["app", "update-status"],
@@ -85,10 +76,16 @@ function UpdatesPanel() {
     refetchInterval: 5000,
   });
 
+  const manualInfoQuery = useQuery({
+    queryKey: ["app", "manual-update-info"],
+    queryFn: () => ipc.client.app.checkManualUpdateInfo(),
+    retry: 1,
+  });
+
   const checkManualMutation = useMutation({
     mutationFn: () => ipc.client.app.checkManualUpdateInfo(),
     onSuccess: (info) => {
-      setManualInfo(info);
+      queryClient.setQueryData(["app", "manual-update-info"], info);
     },
   });
 
@@ -98,6 +95,12 @@ function UpdatesPanel() {
     if (!status) return "Loading";
     return updateStatusLabelMap[status.stage];
   }, [status]);
+
+  const manualInfo = checkManualMutation.data ?? manualInfoQuery.data ?? null;
+  const manualError =
+    (checkManualMutation.error instanceof Error && checkManualMutation.error.message) ||
+    (manualInfoQuery.error instanceof Error && manualInfoQuery.error.message) ||
+    null;
 
   const isBusy = checkManualMutation.isPending;
 
@@ -143,6 +146,9 @@ function UpdatesPanel() {
         <p className="text-xs text-muted-foreground">
           Use this if automatic updates are unavailable on your platform.
         </p>
+        {manualError && (
+          <p className="text-xs text-destructive">{manualError}</p>
+        )}
 
         <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
           <div>
@@ -157,6 +163,11 @@ function UpdatesPanel() {
           {manualInfo?.notes && (
             <div className="sm:col-span-2">
               Notes: <span className="text-foreground/80">{manualInfo.notes}</span>
+            </div>
+          )}
+          {manualInfo?.downloadUrl && (
+            <div className="sm:col-span-2 break-all">
+              Download URL: <span className="text-foreground/80">{manualInfo.downloadUrl}</span>
             </div>
           )}
         </div>
