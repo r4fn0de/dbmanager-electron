@@ -249,10 +249,6 @@ export function DatabaseOverview({
                     />
                     {isLoadingDatabaseInfo ? "Loading" : "Connected"}
                   </span>
-                  <span className="text-muted-foreground/30">·</span>
-                  <span className="text-[11px] text-muted-foreground font-mono">
-                    {connection.host}:{connection.port}
-                  </span>
                 </div>
               </div>
             </div>
