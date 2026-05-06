@@ -1,6 +1,6 @@
 import { inDevelopment } from "./constants";
 
-const APP_BASE_NAME = "TarsDB";
+const APP_BASE_NAME = "Tars";
 
 function resolveAppBranding(): {
   baseName: string;

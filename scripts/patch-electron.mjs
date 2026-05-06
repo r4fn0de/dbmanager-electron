@@ -15,7 +15,7 @@ if (process.platform !== "darwin") {
   process.exit(0);
 }
 
-const APP_BASE_NAME = "TarsDB";
+const APP_BASE_NAME = "Tars";
 const APP_DISPLAY_NAME = `${APP_BASE_NAME} (DEV)`;
 const APP_BUNDLE_ID = "com.tarsdb.app.dev";
 const PATCH_VERSION = 1;

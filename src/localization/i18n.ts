@@ -6,12 +6,12 @@ i18n.use(initReactI18next).init({
   resources: {
     en: {
       translation: {
-        appName: "TarsDB",
+        appName: "Tars",
       },
     },
     "pt-BR": {
       translation: {
-        appName: "TarsDB",
+        appName: "Tars",
       },
     },
   },

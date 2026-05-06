@@ -32,7 +32,7 @@ function renderBootstrapError(error: unknown): void {
       ">
         <h1 style="margin: 0 0 8px; font-size: 18px; line-height: 1.2;">Renderer startup error</h1>
         <p style="margin: 0 0 12px; font-size: 13px; opacity: 0.9;">
-          TarsDB could not initialize the renderer process.
+          Tars could not initialize the renderer process.
         </p>
         <pre style="
           margin: 0;
