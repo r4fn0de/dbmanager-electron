@@ -39,10 +39,10 @@ fi
 DOWNLOAD_PATH="${LATEST_DOWNLOAD_PATH:-}"
 if [[ -z "$DOWNLOAD_PATH" ]]; then
   # Prefer darwin/arm64 zip from local build output
-  CANDIDATE="$(find "$MAKE_DIR" -type f | rg "/zip/darwin/arm64/.*${VERSION}.*\.zip$" | head -n 1 || true)"
+  CANDIDATE="$(find "$MAKE_DIR" -type f | grep -E "/zip/darwin/arm64/.*${VERSION}.*\.zip$" | head -n 1 || true)"
   if [[ -z "$CANDIDATE" ]]; then
     # Fallback to any darwin zip with current version
-    CANDIDATE="$(find "$MAKE_DIR" -type f | rg "/zip/darwin/.*/.*${VERSION}.*\.zip$" | head -n 1 || true)"
+    CANDIDATE="$(find "$MAKE_DIR" -type f | grep -E "/zip/darwin/.*/.*${VERSION}.*\.zip$" | head -n 1 || true)"
   fi
 
   if [[ -z "$CANDIDATE" ]]; then
