@@ -159,6 +159,7 @@ function ConnectionCard({
 }) {
   const isUrl = !!connection.url;
   const isLocal = connection.is_local === true;
+  const canCloneToLocal = !isLocal && connection.db_type === "postgresql";
   const provider = detectConnectionProvider(connection);
   const displayInfo = isUrl
     ? (connection.url ?? "").replace(/:[^:]*@/, ":****@")
@@ -365,7 +366,7 @@ function ConnectionCard({
               </TooltipContent>
             </Tooltip>
           )}
-          {!isLocal && onCloneToLocal && (
+          {canCloneToLocal && onCloneToLocal && (
             <Tooltip>
               <TooltipTrigger
                 render={

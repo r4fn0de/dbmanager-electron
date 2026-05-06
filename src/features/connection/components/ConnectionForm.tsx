@@ -205,10 +205,6 @@ function UrlInput({
         value={urlValue}
         onChange={(e) => onUrlChange(e.target.value)}
       />
-      <p className={cn("text-[11px]", validation.isValid ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>
-        {validation.message}
-      </p>
-
     </div>
   );
 }
