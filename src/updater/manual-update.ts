@@ -89,10 +89,11 @@ export async function checkManualUpdate(): Promise<ManualUpdateInfo> {
 
   const platformDownloads = latest.downloads?.[platform as "darwin" | "win32"];
   const archDownloadUrl = platformDownloads?.[arch as "arm64" | "x64"];
-  const downloadUrl = archDownloadUrl ?? latest.downloadUrl;
+  const hasPlatformMatrix = Boolean(platformDownloads);
+  const downloadUrl = hasPlatformMatrix ? archDownloadUrl : latest.downloadUrl;
 
   if (!downloadUrl) {
-    throw new Error(`No download URL for platform=${platform} arch=${arch}`);
+    throw new Error(`No download URL for platform=${platform} arch=${arch}.`);
   }
 
   return {
