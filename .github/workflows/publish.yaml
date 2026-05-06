@@ -10,7 +10,7 @@ on:
 
 jobs:
   make-and-upload-x64:
-    runs-on: macos-13
+    runs-on: macos-14
     outputs:
       version: ${{ steps.build_meta.outputs.version }}
       download_path: ${{ steps.build_meta.outputs.download_path }}
