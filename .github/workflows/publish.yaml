@@ -1,7 +1,12 @@
-name: Publish R2 Updates
+name: Publish Manual Updates (latest.json)
 
 on:
   workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Release notes for updates/latest.json"
+        required: false
+        default: ""
 
 jobs:
   make-and-upload:
@@ -35,4 +40,18 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           UPDATE_BASE_PREFIX: ${{ vars.UPDATE_BASE_PREFIX || 'updates' }}
+          UPDATE_ARCHIVE_PREFIX: ${{ vars.UPDATE_ARCHIVE_PREFIX || 'updates-archive' }}
         run: bun run upload:updates:r2
+
+      - name: Publish latest.json (manual update metadata)
+        shell: bash
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
+          UPDATE_BASE_PREFIX: ${{ vars.UPDATE_BASE_PREFIX || 'updates' }}
+          UPDATE_ARCHIVE_PREFIX: ${{ vars.UPDATE_ARCHIVE_PREFIX || 'updates-archive' }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+        run: bun run publish:latest-json:r2
