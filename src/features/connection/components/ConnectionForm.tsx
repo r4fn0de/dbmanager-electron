@@ -23,6 +23,7 @@ import { MariaDb } from "@/components/icons/MariaDb";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Sqlite } from "@/components/icons/Sqlite";
 import type { Connection, ConnectionInput, DatabaseType, SslMode } from "@/ipc/db/types";
+import { getClickhouseEffectivePort } from "@/ipc/db/types";
 import { cn } from "@/lib/utils";
 
 const DB_TYPE_OPTIONS: {
@@ -137,15 +138,45 @@ function getConnectionHash(data: ConnectionInput, url?: string): string {
   });
 }
 
+function validateConnectionUrl(value: string): { isValid: boolean; message: string } {
+  const raw = value.trim();
+  if (!raw) return { isValid: false, message: "Enter a connection string." };
+  try {
+    const parsed = new URL(raw);
+    const protocol = parsed.protocol.toLowerCase();
+    const supportedProtocols = ["postgres:", "postgresql:", "mysql:", "mariadb:", "clickhouse:", "clickhouses:", "sqlite:"];
+    if (!supportedProtocols.includes(protocol)) {
+      return { isValid: false, message: "Unsupported protocol in connection string." };
+    }
+    if (protocol === "sqlite:") {
+      if (!parsed.pathname || parsed.pathname === "/") {
+        return { isValid: false, message: "SQLite URL must include the database file path." };
+      }
+      return { isValid: true, message: "Valid SQLite connection string." };
+    }
+    if (!parsed.hostname) {
+      return { isValid: false, message: "Connection string must include a host." };
+    }
+    if (!parsed.pathname || parsed.pathname === "/") {
+      return { isValid: false, message: "Connection string must include a database name." };
+    }
+    return { isValid: true, message: "Valid connection string." };
+  } catch {
+    return { isValid: false, message: "Invalid connection string format." };
+  }
+}
+
 function UrlInput({
   dbType,
   urlValue,
   onUrlChange,
+  validation,
   autoFocus,
 }: {
   dbType: DatabaseType;
   urlValue: string;
   onUrlChange: (value: string) => void;
+  validation: { isValid: boolean; message: string };
   autoFocus?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -174,15 +205,9 @@ function UrlInput({
         value={urlValue}
         onChange={(e) => onUrlChange(e.target.value)}
       />
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground/70">
-        <span>Supported:</span>
-        {DB_TYPE_OPTIONS.map((opt) => (
-          <span key={opt.value} className="inline-flex items-center gap-1">
-            <span className="text-muted-foreground">{opt.icon}</span>
-            {opt.label}
-          </span>
-        ))}
-      </div>
+      <p className={cn("text-[11px]", validation.isValid ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>
+        {validation.message}
+      </p>
 
     </div>
   );
@@ -198,51 +223,21 @@ function DetailsFields({
   const dbType = (formData.db_type || "postgresql") as DatabaseType;
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleDbTypeChange = (newType: DatabaseType) => {
-    const defaults = DB_DEFAULTS[newType];
-    onUpdateField("db_type", newType);
-    if (formData.host === "localhost") {
-      onUpdateField("port", defaults.port);
+  const handleSslModeChange = (value: SslMode) => {
+    onUpdateField("ssl_mode", value);
+    if (dbType !== "clickhouse") return;
+    const currentPort = Number(formData.port) || DB_DEFAULTS.clickhouse.port;
+    if (value === "require" && currentPort === 8123) {
+      onUpdateField("port", getClickhouseEffectivePort("require", currentPort));
+      return;
     }
-    if (["postgres", "mysql", "mariadb", "default"].includes(formData.database)) {
-      onUpdateField("database", defaults.database);
-    }
-    if (["postgres", "root", "default", ""].includes(formData.username)) {
-      onUpdateField("username", defaults.username);
-    }
-    // SQLite doesn't use host/port — set sensible defaults
-    if (newType === "sqlite") {
-      onUpdateField("host", "");
-      onUpdateField("port", 0);
-    } else if (formData.host === "") {
-      onUpdateField("host", "localhost");
+    if (value !== "require" && currentPort === 8443) {
+      onUpdateField("port", 8123);
     }
   };
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-1.5">
-        {DB_TYPE_OPTIONS.map((opt) => {
-          const isActive = dbType === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => handleDbTypeChange(opt.value)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-all active:scale-[0.97]",
-                isActive
-                  ? "border-primary/30 bg-primary/5 text-primary"
-                  : "border-border bg-transparent text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground",
-              )}
-            >
-              {opt.icon}
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-
       {/* SQLite: file-based, no host/port/user/password needed */}
       {dbType === "sqlite" ? (
         <div className="flex flex-col gap-1">
@@ -348,7 +343,7 @@ function DetailsFields({
           </Label>
           <Select
             value={formData.ssl_mode}
-            onValueChange={(value) => onUpdateField("ssl_mode", value as SslMode)}
+            onValueChange={(value) => handleSslModeChange(value as SslMode)}
           >
             <SelectTrigger className="h-7 text-xs">
               <SelectValue />
@@ -361,6 +356,11 @@ function DetailsFields({
               ))}
             </SelectContent>
           </Select>
+          {dbType === "clickhouse" && (
+            <p className="text-[10px] text-muted-foreground">
+              SSL require uses HTTPS (`clickhouses://`) and usually port 8443.
+            </p>
+          )}
         </div>
       </>)}
     </div>
@@ -479,6 +479,8 @@ function OrganizationFields({
 }
 
 type InputMode = "url" | "details";
+type FormStep = "select_db" | "configure";
+type ConfigureStep = "connection" | "organization";
 
 interface ConnectionFormProps {
   connection: Connection | null;
@@ -548,6 +550,8 @@ export function ConnectionForm({
     message: string;
   } | null>(null);
   const [lastTestedHash, setLastTestedHash] = useState<string>("");
+  const [formStep, setFormStep] = useState<FormStep>("configure");
+  const [configureStep, setConfigureStep] = useState<ConfigureStep>("connection");
 
   const dbType = (formData.db_type || "postgresql") as DatabaseType;
 
@@ -557,6 +561,10 @@ export function ConnectionForm({
   );
 
   const hasTestedCurrent = lastTestedHash === connectionHash && testStatus?.success === true;
+  const connectionStringValidation = useMemo(
+    () => validateConnectionUrl(urlValue),
+    [urlValue],
+  );
 
   const duplicateConnection = useMemo(
     () =>
@@ -597,12 +605,16 @@ export function ConnectionForm({
       };
       setFormData(base);
       setInputMode("details");
+      setFormStep("configure");
+      setConfigureStep("connection");
       setUrlValue("");
       setLastTestedHash(getConnectionHash(base, connection.url || undefined));
       setTestStatus({ success: true, message: "Connection already verified" });
     } else {
       setFormData(DEFAULT_CONNECTION);
       setInputMode("url");
+      setFormStep("select_db");
+      setConfigureStep("connection");
       setUrlValue("");
       setLastTestedHash("");
       setTestStatus(null);
@@ -659,13 +671,25 @@ export function ConnectionForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const preservedUrl =
-      connection?.url || connection?.connection_string || undefined;
+    if (formStep !== "configure") return;
     const dataToSave: ConnectionInput =
       inputMode === "url" && urlValue
         ? { ...formData, url: urlValue }
-        : { ...formData, url: preservedUrl };
+        : { ...formData, url: undefined, connection_string: undefined };
     await onSave(dataToSave);
+  };
+
+  const handleSelectDbType = (type: DatabaseType) => {
+    const defaults = DB_DEFAULTS[type];
+    setFormData((prev) => ({
+      ...prev,
+      db_type: type,
+      host: type === "sqlite" ? "" : "localhost",
+      port: defaults.port,
+      database: defaults.database,
+      username: defaults.username,
+      ssl_mode: type === "clickhouse" ? "disable" : type === "sqlite" ? "disable" : "prefer",
+    }));
   };
 
   return (
@@ -673,80 +697,117 @@ export function ConnectionForm({
       <DialogContent className="t-resize sm:max-w-115 max-h-[90vh] overflow-y-auto p-0 gap-0">
         <div className="p-5 pb-0">
           <DialogHeader className="gap-1">
-            <DialogTitle>{connection ? "Edit Connection" : "New Connection"}</DialogTitle>
+            <DialogTitle>
+              {connection
+                ? "Edit Connection"
+                : formStep === "select_db"
+                  ? "Select Database Type"
+                  : configureStep === "connection"
+                    ? "New Connection · Connection"
+                    : "New Connection · Organization"}
+            </DialogTitle>
           </DialogHeader>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col">
-          <div className="flex flex-col gap-5 p-5">
-            {/* Connection section */}
-            <div className="flex flex-col gap-3.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Connection
-                </span>
-                {!connection && (
-                <div className="flex max-w-full gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setInputMode("url")}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
-                      inputMode === "url"
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <UiIcon name="wifi" className="size-3" />
-                    URL
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInputMode("details")}
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
-                      inputMode === "details"
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <UiIcon name="server" className="size-3" />
-                    Details
-                  </button>
+          {formStep === "select_db" && !connection ? (
+            <>
+              <div className="flex flex-col gap-3 p-5">
+                <p className="text-xs text-muted-foreground">
+                  Choose the database engine first to preload the correct fields and connection guidance.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {DB_TYPE_OPTIONS.filter((option) => option.value !== "redis").map((option) => {
+                    const isActive = dbType === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleSelectDbType(option.value)}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                          isActive
+                            ? "border-primary/30 bg-primary/5 text-primary"
+                            : "border-border hover:border-muted-foreground/40",
+                        )}
+                      >
+                        {option.icon}
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
+                <Button type="button" variant="ghost" size="sm" onClick={onClose} className="h-7 px-2 text-xs">
+                  Cancel
+                </Button>
+                <Button type="button" size="sm" className="h-7 gap-1 text-xs" onClick={() => setFormStep("configure")}>
+                  Continue
+                  <UiIcon name="arrow-right" className="size-3" />
+                </Button>
+              </div>
+            </>
+          ) : (
+          <>
+          <div className="flex flex-col gap-5 p-5">
+            {configureStep === "connection" ? (
+              <div className="flex flex-col gap-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                    Connection
+                  </span>
+                  {!connection && (
+                  <div className="flex max-w-full gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("url")}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
+                        inputMode === "url"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <UiIcon name="wifi" className="size-3" />
+                      URL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("details")}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
+                        inputMode === "details"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <UiIcon name="server" className="size-3" />
+                      Details
+                    </button>
+                  </div>
+                  )}
+                </div>
+
+                {inputMode === "url" ? (
+                  <UrlInput
+                    dbType={dbType}
+                    urlValue={urlValue}
+                    onUrlChange={handleUrlChange}
+                    validation={connectionStringValidation}
+                  />
+                ) : (
+                  <DetailsFields formData={formData} onUpdateField={updateField} />
                 )}
               </div>
-
-              {inputMode === "url" ? (
-                <UrlInput
-                  dbType={dbType}
-                  urlValue={urlValue}
-                  onUrlChange={handleUrlChange}
-                />
-              ) : connection ? (
-                <div className="flex flex-col gap-1">
-                  <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    URL
-                  </Label>
-                  <p className="rounded-lg border border-border bg-muted/15 px-3 py-2 font-mono text-xs leading-relaxed break-all text-muted-foreground">
-                    {(connection.url || connection.connection_string || `${connection.host}:${connection.port}/${connection.database}`).replace(/:[^:]*@/, ":****@")}
-                  </p>
-                </div>
-              ) : (
-                <DetailsFields formData={formData} onUpdateField={updateField} />
-              )}
-            </div>
-
-            {/* Divider */}
-            <div className="border-t" />
-
-            {/* Organization section */}
-            <div className="flex flex-col gap-3.5">
-              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                Organization
-              </span>
-              <OrganizationFields formData={formData} onUpdateField={updateField} />
-            </div>
+            ) : (
+              <div className="flex flex-col gap-3.5">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Organization
+                </span>
+                <OrganizationFields formData={formData} onUpdateField={updateField} />
+              </div>
+            )}
           </div>
 
           {/* Duplicate warning */}
@@ -787,6 +848,32 @@ export function ConnectionForm({
             </div>
 
             <div className="flex items-center gap-2">
+              {configureStep === "connection" && !connection && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFormStep("select_db")}
+                  disabled={isSaving || isTesting}
+                  className="h-7 gap-1 px-2 text-xs"
+                >
+                  <UiIcon name="arrow-left" className="size-3" />
+                  Back
+                </Button>
+              )}
+              {configureStep === "organization" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfigureStep("connection")}
+                  disabled={isSaving || isTesting}
+                  className="h-7 gap-1 px-2 text-xs"
+                >
+                  <UiIcon name="arrow-left" className="size-3" />
+                  Back
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -798,7 +885,42 @@ export function ConnectionForm({
                 Cancel
               </Button>
 
-              {isEditing || (hasTestedCurrent && !duplicateConnection) ? (
+              {configureStep === "connection" ? (
+                <>
+                  {!hasTestedCurrent ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={isTesting || !!duplicateConnection || (inputMode === "url" && !connectionStringValidation.isValid)}
+                      onClick={handleTest}
+                      className="h-7 gap-1 text-xs"
+                    >
+                      {isTesting ? (
+                        <>
+                          <UiIcon name="loader" className="size-3 animate-spin" />
+                          Testing
+                        </>
+                      ) : (
+                        <>
+                          <UiIcon name="wifi" className="size-3" />
+                          Test
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setConfigureStep("organization")}
+                      disabled={!!duplicateConnection}
+                      className="h-7 gap-1 text-xs"
+                    >
+                      Next
+                      <UiIcon name="arrow-right" className="size-3" />
+                    </Button>
+                  )}
+                </>
+              ) : isEditing || (hasTestedCurrent && !duplicateConnection) ? (
                 <Button
                   type="submit"
                   size="sm"
@@ -817,29 +939,11 @@ export function ConnectionForm({
                     </>
                   )}
                 </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={isTesting || !!duplicateConnection}
-                  onClick={handleTest}
-                  className="h-7 gap-1 text-xs"
-                >
-                  {isTesting ? (
-                    <>
-                      <UiIcon name="loader" className="size-3 animate-spin" />
-                      Testing
-                    </>
-                  ) : (
-                    <>
-                      <UiIcon name="wifi" className="size-3" />
-                      Test
-                    </>
-                  )}
-                </Button>
-              )}
+              ) : null}
             </div>
           </div>
+          </>
+          )}
         </form>
       </DialogContent>
     </Dialog>
