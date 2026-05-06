@@ -1,0 +1,24 @@
+src/features/database/components/TablesExplorerSidebar.tsx
+  s_7665951e39e3ac::t_1453c5f9839eff 2-3,137-140,143,289,294-296,308-314,466-496,499,501-502,504-529,531-537,539-568,574
+  s_7665951e39e3ac::t_cb50f0a7deab53 141-142
+  s_7665951e39e3ac::t_9c683a1b3aa92c 146-155,575
+src/routes/database/-DatabasePageContent.tsx
+  s_7665951e39e3ac::t_7900ca4bea965d 1070,1123
+  s_7665951e39e3ac::t_b8042824a336ea 145,1055,1057-1059,1065,1084,1137,1179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "d68348efd1ad7bf66e870362cffb52be1ce52a70",
+  "prompts": {},
+  "sessions": {
+    "s_7665951e39e3ac": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "ac377c46-c85a-4f19-b1ba-972123a6ec0b",
+        "model": "custom:gpt-5.3-codex(medium)-1"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
