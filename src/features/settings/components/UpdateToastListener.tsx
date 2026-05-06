@@ -1,44 +1,38 @@
 import { useEffect, useRef } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ipc } from "@/ipc/manager";
 
 export function UpdateToastListener() {
-  const lastNotifiedDownloadKeyRef = useRef<string | null>(null);
-
-  const statusQuery = useQuery({
-    queryKey: ["app", "update-status"],
-    queryFn: () => ipc.client.app.updateStatus(),
-    refetchInterval: 5000,
+  const lastNotifiedVersionKeyRef = useRef<string | null>(null);
+  const manualInfoQuery = useQuery({
+    queryKey: ["app", "manual-update-info", "toast-listener"],
+    queryFn: () => ipc.client.app.checkManualUpdateInfo(),
+    refetchInterval: 1000 * 60 * 30,
+    retry: 1,
   });
-
-  const installMutation = useMutation({
-    mutationFn: () => ipc.client.app.restartAndInstallUpdate({ confirm: true }),
-  });
-
-  const status = statusQuery.data;
+  const manualInfo = manualInfoQuery.data;
 
   useEffect(() => {
-    if (!status) return;
-    if (status.stage !== "downloaded") return;
+    if (!manualInfo) return;
+    if (!manualInfo.hasUpdate) return;
+    if (!manualInfo.downloadUrl) return;
 
-    const downloadKey = `${status.currentVersion}::${status.availableVersion ?? "unknown"}`;
-    if (lastNotifiedDownloadKeyRef.current === downloadKey) return;
-    lastNotifiedDownloadKeyRef.current = downloadKey;
+    const versionKey = `${manualInfo.currentVersion}::${manualInfo.latestVersion}`;
+    if (lastNotifiedVersionKeyRef.current === versionKey) return;
+    lastNotifiedVersionKeyRef.current = versionKey;
 
-    toast("Update ready to install", {
-      description: status.availableVersion
-        ? `Version ${status.availableVersion} has been downloaded.`
-        : "A new version has been downloaded.",
+    toast("Update available", {
+      description: `Version ${manualInfo.latestVersion} is available.`,
       duration: 20000,
       action: {
-        label: "Restart now",
+        label: "Download",
         onClick: () => {
-          installMutation.mutate();
+          void ipc.client.shell.openExternalLink({ url: manualInfo.downloadUrl });
         },
       },
     });
-  }, [installMutation, status]);
+  }, [manualInfo]);
 
   return null;
 }

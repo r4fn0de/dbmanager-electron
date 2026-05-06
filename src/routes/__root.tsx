@@ -8,7 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnimatePresence, motion } from "motion/react";
-import { ThemeProvider } from "@/features/settings";
+import { ThemeProvider, UpdateToastListener } from "@/features/settings";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/TitleBar";
 import { Toaster } from "@/components/ui/sonner";
@@ -496,6 +496,7 @@ function Root() {
           </div>
         </div>
       </TooltipProvider>
+      <UpdateToastListener />
       <Toaster position="bottom-right" />
     </ThemeProvider>
   );
