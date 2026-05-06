@@ -12,14 +12,13 @@ Este guia documenta o fluxo completo de atualização automática do app usando 
 
 ## 1) Visão geral da arquitetura
 
-Fluxo:
+Fluxo (manual via `latest.json`):
 
-1. CI gera builds com `bun run make` (Electron Forge).
-2. Artefatos de update são enviados ao R2 em `updates/<platform>/<arch>/`.
-3. App em produção resolve URL:
-   - `${UPDATE_BASE_URL}/${process.platform}/${process.arch}`
-4. `update-electron-app` consulta o feed estático dessa pasta.
-5. Se houver versão nova, baixa e solicita reinício para aplicar.
+1. CI/local gera builds com `bun run make` (Electron Forge).
+2. Artefatos são enviados ao R2 em `updates/<platform>/<arch>/`.
+3. Publica `updates/latest.json` com versão e `downloadUrl`.
+4. App consulta `latest.json` (via oRPC), compara versão e mostra CTA.
+5. Usuário clica em **Download latest version** e instala manualmente.
 
 ---
 
@@ -262,72 +261,87 @@ Isso garante publicação dos artefatos de update em cada plataforma/arquitetura
 
 ---
 
-## 9) Como validar em ambiente real
+## 9) Passo a passo para lançar uma nova atualização
 
-## 9.1 Rodar app empacotado
+### 9.1 Pré-requisitos (uma vez)
 
-- Instale/abra o app buildado (não em dev)
-- Garanta `UPDATE_BASE_URL` configurada
+- Configurar `.env.updates` (ou usar prompts do wizard)
+- Garantir `UPDATE_BASE_URL=https://update.novon.tech/updates`
 
-## 9.2 Forçar testes de update
+### 9.2 Lançamento local (recomendado)
 
-- Temporariamente reduzir intervalo para `"5 minutes"`
-- Publicar uma versão mais nova no R2
-- Reiniciar o app e observar checagem
+```bash
+bun run release:updates:r2
+```
 
-## 9.3 Verificar logs
+No wizard:
 
-Com `electron-log`, procure por entradas como:
+1. Escolha bump de versão (`patch/minor/major/custom`)
+2. Confirme build (`bun run make`)
+3. Confirme upload para R2
+4. Confirme publish de `latest.json`
+5. (Opcional) adicione release notes
+6. (Opcional) escolha interativamente o artefato do `downloadUrl`
 
-- URL base resolvida (`[updater] Using static storage URL: ...`)
-- erros de conexão/manifest/arquivo
+### 9.3 Commit da release
+
+```bash
+git add package.json bun.lock
+git commit -m "chore(release): vX.Y.Z"
+git push
+```
+
+### 9.4 Lançamento via CI (alternativo)
+
+- Actions → **Publish Manual Updates (latest.json)**
+- Clique em **Run workflow**
+- (Opcional) preencha `release_notes`
+
+### 9.5 Verificação pós-release
+
+- Verificar `updates/latest.json` publicado
+- Verificar artefatos em `updates/darwin/arm64/` (e x64 se aplicável)
+- Abrir app → Settings → Updates → **Check latest release**
+- Confirmar que mostra `latestVersion` e habilita **Download latest version**
 
 ---
 
 ## 10) Troubleshooting
 
-## 10.1 App não checa update
+## 10.1 Tela de Updates mostra `-`
 
-- Verifique `app.isPackaged` (em dev não checa)
-- Verifique `UPDATE_BASE_URL`
-- Verifique se a URL final por plataforma existe
+- Clique em **Check latest release**
+- Verifique se `updates/latest.json` existe e está público
+- Verifique `UPDATE_BASE_URL` / `UPDATE_META_URL`
 
-## 10.2 404 no feed
+## 10.2 Erro ao checar release
 
-- Confirme pasta correta: `updates/<platform>/<arch>/`
-- Confirme presença de `RELEASES` (Win) ou `RELEASES.json` (macOS)
+- Verifique formato JSON (campos obrigatórios: `version`, `downloadUrl`)
+- Verifique URL HTTPS válida no `downloadUrl`
 
-## 10.3 macOS não atualiza
+## 10.3 CI falha no publish do latest.json
 
-- Verifique assinatura de código
-- Confirme `.zip` presente junto do `RELEASES.json`
+- Confirme secrets `R2_BUCKET`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
+- Confirme que os artefatos `.zip` foram gerados em `out/make`
 
-## 10.4 Windows não atualiza
+## 10.4 Download abre URL errada
 
-- Confirme `RELEASES` + `.nupkg`
-- Confirme nomes de arquivos sem alteração manual indevida
-
-## 10.5 URL inválida no runtime
-
-- Deve ser HTTPS pública
-- Exemplo válido:
-  - `https://update.novon.tech/updates`
+- Refaça release e, no wizard, escolha manualmente o artefato de download
+- Ou defina `LATEST_DOWNLOAD_PATH` explicitamente
 
 ---
 
 ## 11) Checklist final
 
-- [ ] `update-electron-app` instalado
-- [ ] `electron-log` instalado
-- [ ] `electron-updater` fora do fluxo
-- [ ] `main.ts` com `StaticStorage` + `UPDATE_BASE_URL`
-- [ ] `forge.config.ts` com `remoteReleases`/`macUpdateManifestBaseUrl`
-- [ ] Estrutura R2 em `updates/<platform>/<arch>/`
-- [ ] Workflow CI publicando para R2
-- [ ] Teste de update feito com app empacotado
+- [ ] Versão atualizada no `package.json`
+- [ ] Artefatos enviados para `updates/<platform>/<arch>/`
+- [ ] `updates/latest.json` publicado
+- [ ] `downloadUrl` do `latest.json` válido
+- [ ] Workflow CI/manual concluído sem erro
+- [ ] Testado no app: **Check latest release** + **Download latest version**
 
 ---
 
 ## 12) Resumo rápido do fluxo
 
-`bun run make` → gera artefatos e manifests → upload para R2 (`updates/<platform>/<arch>/`) → app em produção monta URL por `platform/arch` → `update-electron-app` checa/baixa update automaticamente.
+`bun run release:updates:r2` → build + upload de artefatos no R2 + publish de `updates/latest.json` → app consulta `latest.json` → usuário clica em **Download latest version** para atualizar manualmente.
