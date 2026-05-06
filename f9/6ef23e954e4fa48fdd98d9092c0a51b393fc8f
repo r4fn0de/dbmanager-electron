@@ -1,0 +1,43 @@
+src/ipc/app/handlers.ts
+  4c970676e75eb0bb 3-9,18-35
+src/features/settings/index.ts
+  4c970676e75eb0bb 6
+src/features/shell/main.ts
+  4c970676e75eb0bb 14,584
+src/updater/manual-update.ts
+  4c970676e75eb0bb 1-78
+src/updater/auto-update.ts
+  4c970676e75eb0bb 1-53
+src/ipc/app/index.ts
+  4c970676e75eb0bb 1-8,13-16
+src/features/settings/components/SettingsDialog.tsx
+  4c970676e75eb0bb 11,27-29,33,38,45,48-186,395
+src/features/settings/components/UpdateToastListener.tsx
+  4c970676e75eb0bb 1-44
+scripts/publish-latest-json.sh
+  4c970676e75eb0bb 1-90
+package.json
+  4c970676e75eb0bb 14
+scripts/release-r2-interactive.sh
+  4c970676e75eb0bb 4,8-9,102-144,209-213,225,256-277,281-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "f96ef23e954e4fa48fdd98d9092c0a51b393fc8f",
+  "prompts": {
+    "4c970676e75eb0bb": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019df9a6-8741-76c3-9a9d-cec9f2390ab1",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto",
+      "messages": [],
+      "total_additions": 740,
+      "total_deletions": 241,
+      "accepted_lines": 532,
+      "overriden_lines": 0
+    }
+  }
+}
