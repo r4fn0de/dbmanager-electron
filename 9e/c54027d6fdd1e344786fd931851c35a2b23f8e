@@ -1,0 +1,23 @@
+src/updater/manual-update.ts
+  b8aa5a4800bb6848 92-93,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "9ec54027d6fdd1e344786fd931851c35a2b23f8e",
+  "prompts": {
+    "b8aa5a4800bb6848": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "6acb072c-c62f-435b-b5f4-805c75986557",
+        "model": "custom:gpt-5.3-codex(medium)-1"
+      },
+      "human_author": "Rafael Porto",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
