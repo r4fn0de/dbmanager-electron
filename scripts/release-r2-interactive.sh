@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Interactive release wizard:
+# Interactive MANUAL release wizard (latest.json):
 # - validates local state
 # - bumps package.json version
 # - optional build (electron-forge make)
-# - optional upload to R2 (active + archive)
+# - optional upload artifacts to R2 (active + archive)
+# - interactive latest.json publication (manual update channel)
 # - optional post-check of remote files
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -98,6 +99,49 @@ set_version_node() {
   ' "$target"
 }
 
+pick_latest_download_path() {
+  local version="$1"
+  local make_dir="${MAKE_DIR:-out/make}"
+  local -a candidates
+
+  while IFS= read -r line; do
+    candidates+=("$line")
+  done < <(find "$make_dir" -type f | rg "/zip/darwin/.*/.*${version}.*\.zip$" || true)
+
+  if [[ ${#candidates[@]} -eq 0 ]]; then
+    echo ""
+    return
+  fi
+
+  echo "Select which artifact should be used in latest.json downloadUrl:"
+  local idx=1
+  for path in "${candidates[@]}"; do
+    echo "  ${idx}) ${path}"
+    idx=$((idx + 1))
+  done
+
+  read -r -p "Option [1-${#candidates[@]}] (default 1): " selected
+  if [[ -z "$selected" ]]; then
+    selected=1
+  fi
+
+  if ! [[ "$selected" =~ ^[0-9]+$ ]] || (( selected < 1 || selected > ${#candidates[@]} )); then
+    echo "Invalid option, using 1"
+    selected=1
+  fi
+
+  local chosen="${candidates[$((selected - 1))]}"
+  local normalized="${chosen//\\/\/}"
+  if [[ "$normalized" =~ /zip/darwin/([^/]+)/([^/]+\.zip)$ ]]; then
+    local arch="${BASH_REMATCH[1]}"
+    local file_name="${BASH_REMATCH[2]}"
+    echo "darwin/${arch}/${file_name}"
+    return
+  fi
+
+  echo ""
+}
+
 require_cmd bun
 require_cmd node
 require_cmd aws
@@ -162,6 +206,11 @@ if confirm "Upload artifacts to R2 now?" "Y"; then
   UPLOAD_MODE="yes"
 fi
 
+PUBLISH_LATEST_JSON="no"
+if [[ "$UPLOAD_MODE" == "yes" ]] && confirm "Publish latest.json metadata now?" "Y"; then
+  PUBLISH_LATEST_JSON="yes"
+fi
+
 DRY_RUN="no"
 if [[ "$UPLOAD_MODE" == "yes" ]] && confirm "Dry-run upload (show only, no upload)?" "N"; then
   DRY_RUN="yes"
@@ -173,6 +222,7 @@ if confirm "Show release plan before execution?" "Y"; then
   echo "- version: ${NEW_VERSION}"
   echo "- build: ${BUILD_MODE}"
   echo "- upload: ${UPLOAD_MODE}"
+  echo "- publish latest.json: ${PUBLISH_LATEST_JSON}"
   echo "- dry-run: ${DRY_RUN}"
   echo
 fi
@@ -203,9 +253,33 @@ if [[ "$UPLOAD_MODE" == "yes" ]]; then
     APP_VERSION="$NEW_VERSION" bash scripts/upload-r2-updates.sh
   fi
 
+  if [[ "$PUBLISH_LATEST_JSON" == "yes" ]]; then
+    if [[ "$DRY_RUN" == "yes" ]]; then
+      echo "\n🧪 Dry-run: skipping latest.json upload"
+    else
+      RELEASE_NOTES=""
+      if confirm "Add release notes to latest.json?" "Y"; then
+        read -r -p "Release notes: " RELEASE_NOTES
+      fi
+
+      LATEST_DOWNLOAD_PATH=""
+      if confirm "Choose download artifact interactively for latest.json?" "Y"; then
+        LATEST_DOWNLOAD_PATH="$(pick_latest_download_path "$NEW_VERSION")"
+      fi
+
+      if [[ -n "$LATEST_DOWNLOAD_PATH" ]]; then
+        APP_VERSION="$NEW_VERSION" RELEASE_NOTES="$RELEASE_NOTES" LATEST_DOWNLOAD_PATH="$LATEST_DOWNLOAD_PATH" bash scripts/publish-latest-json.sh
+      else
+        APP_VERSION="$NEW_VERSION" RELEASE_NOTES="$RELEASE_NOTES" bash scripts/publish-latest-json.sh
+      fi
+    fi
+  fi
+
   if confirm "Validate remote listing after upload?" "Y"; then
     echo "\n🔎 Active path"
     aws s3 ls "s3://${R2_BUCKET}/${UPDATE_BASE_PREFIX}/darwin/" --recursive --endpoint-url "$R2_ENDPOINT" | tail -n 20 || true
+    echo "\n🔎 latest.json"
+    aws s3 ls "s3://${R2_BUCKET}/${UPDATE_BASE_PREFIX}/latest.json" --endpoint-url "$R2_ENDPOINT" || true
     echo "\n🔎 Archive path"
     aws s3 ls "s3://${R2_BUCKET}/${UPDATE_ARCHIVE_PREFIX}/v${NEW_VERSION}/darwin/" --recursive --endpoint-url "$R2_ENDPOINT" | tail -n 20 || true
   fi

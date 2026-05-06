@@ -8,7 +8,7 @@
  * Uses a sidebar layout instead of top tabs for better scannability
  * and to match the app's existing sidebar-heavy visual language.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Settings } from "@/components/icons/Settings";
 import { Icon } from "@/components/ui/Icon";
 import { AnimatePresence, motion } from "motion/react";
@@ -24,22 +24,165 @@ import { Switch } from "@/components/ui/switch";
 import { useAppearanceStore } from "@/lib/stores/appearance";
 import { ipc } from "@/ipc/manager";
 import { cn } from "@/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
-type SettingsCategory = "appearance" | "ai" | "shortcuts";
+type SettingsCategory = "appearance" | "ai" | "shortcuts" | "updates";
 
 interface SettingsItem {
   id: SettingsCategory;
   label: string;
-  icon: 'palette' | 'sparkles' | 'keyboard';
+  icon: 'palette' | 'sparkles' | 'keyboard' | 'download';
 }
 
 const SETTINGS_ITEMS: SettingsItem[] = [
   { id: "appearance", label: "Appearance", icon: 'palette' },
   { id: "ai", label: "AI Assistant", icon: 'sparkles' },
   { id: "shortcuts", label: "Shortcuts", icon: 'keyboard' },
+  { id: "updates", label: "Updates", icon: 'download' },
 ];
+
+const updateStatusBadgeVariantMap = {
+  idle: "outline",
+  disabled: "secondary",
+  checking: "secondary",
+  available: "default",
+  "not-available": "outline",
+  downloading: "secondary",
+  downloaded: "default",
+  error: "destructive",
+} as const;
+
+const updateStatusLabelMap = {
+  idle: "Idle",
+  disabled: "Disabled",
+  checking: "Checking for updates",
+  available: "Update available",
+  "not-available": "Up to date",
+  downloading: "Downloading",
+  downloaded: "Ready to install",
+  error: "Error",
+} as const;
+
+function UpdatesPanel() {
+  const queryClient = useQueryClient();
+  const [manualInfo, setManualInfo] = useState<{
+    currentVersion: string;
+    latestVersion: string;
+    hasUpdate: boolean;
+    downloadUrl: string;
+    notes: string | null;
+    publishedAt: string | null;
+    metaUrl: string;
+  } | null>(null);
+
+  const statusQuery = useQuery({
+    queryKey: ["app", "update-status"],
+    queryFn: () => ipc.client.app.updateStatus(),
+    refetchInterval: 5000,
+  });
+
+  const checkManualMutation = useMutation({
+    mutationFn: () => ipc.client.app.checkManualUpdateInfo(),
+    onSuccess: (info) => {
+      setManualInfo(info);
+    },
+  });
+
+  const status = statusQuery.data;
+
+  const statusLabel = useMemo(() => {
+    if (!status) return "Loading";
+    return updateStatusLabelMap[status.stage];
+  }, [status]);
+
+  const isBusy = checkManualMutation.isPending;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border/60 bg-muted/[0.02] p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Automatic updates</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Disabled. This build uses manual updates from latest.json.
+            </p>
+          </div>
+          <Badge variant={status ? updateStatusBadgeVariantMap[status.stage] : "secondary"}>
+            {statusLabel}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+          <div>
+            Current version: <span className="text-foreground font-medium">{status?.currentVersion ?? "-"}</span>
+          </div>
+          <div>
+            Last checked: <span className="text-foreground font-medium">{status?.lastCheckedAt ?? "-"}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button
+            variant="outline"
+            disabled={isBusy}
+            onClick={() => {
+              checkManualMutation.mutate();
+            }}
+          >
+            Check latest release
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border/60 bg-muted/[0.02] p-4 space-y-2">
+        <p className="text-sm font-medium">Manual update channel</p>
+        <p className="text-xs text-muted-foreground">
+          Use this if automatic updates are unavailable on your platform.
+        </p>
+
+        <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+          <div>
+            Current version: <span className="text-foreground font-medium">{manualInfo?.currentVersion ?? "-"}</span>
+          </div>
+          <div>
+            Latest version: <span className="text-foreground font-medium">{manualInfo?.latestVersion ?? "-"}</span>
+          </div>
+          <div className="sm:col-span-2 break-all">
+            Metadata URL: <span className="text-foreground/80">{manualInfo?.metaUrl ?? "-"}</span>
+          </div>
+          {manualInfo?.notes && (
+            <div className="sm:col-span-2">
+              Notes: <span className="text-foreground/80">{manualInfo.notes}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button
+            variant="outline"
+            disabled={!manualInfo?.downloadUrl}
+            onClick={() => {
+              if (!manualInfo?.downloadUrl) return;
+              void ipc.client.shell.openExternalLink({ url: manualInfo.downloadUrl });
+            }}
+          >
+            Download latest version
+          </Button>
+
+          {manualInfo && (
+            <Badge variant={manualInfo.hasUpdate ? "default" : "outline"}>
+              {manualInfo.hasUpdate ? "Update available" : "Already up to date"}
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AppearanceSettings() {
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
@@ -249,6 +392,7 @@ export function SettingsDialog() {
                 {activeCategory === "appearance" && <AppearanceSettings />}
                 {activeCategory === "ai" && <AiSettingsPanel compact />}
                 {activeCategory === "shortcuts" && <ShortcutsPanel />}
+                {activeCategory === "updates" && <UpdatesPanel />}
               </motion.div>
             </AnimatePresence>
           </div>

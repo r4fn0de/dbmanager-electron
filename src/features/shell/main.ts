@@ -1,9 +1,7 @@
 import path from "node:path";
 import { app, BrowserWindow, dialog, Menu, nativeTheme, session } from "electron";
 import { ipcMain } from "electron/main";
-import log from "electron-log";
 import { downloadChromeExtension } from "electron-devtools-installer/dist/downloadChromeExtension";
-import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS, DB_IPC_CHANNELS, inDevelopment } from "@/constants";
 import { getBasePath } from "@/lib/path";
@@ -13,6 +11,7 @@ import { closeAllPools } from "@/ipc/db/kysely-factory";
 import { registerAiStreamingHandlers } from "@/ipc/ai";
 import { APP_DISPLAY_NAME } from "@/appBranding";
 import { cancelQuery as cancelActiveQuery } from "@/ipc/db/active-queries";
+import { initializeAutoUpdates } from "@/updater/auto-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -400,27 +399,6 @@ async function installExtensions() {
   }
 }
 
-function setupAutoUpdates() {
-  if (!app.isPackaged) {
-    return;
-  }
-
-  // Runtime override via env, with production fallback for packaged app.
-  const updateBaseUrl = (process.env.UPDATE_BASE_URL?.trim() || "https://update.novon.tech/updates").replace(/\/+$/, "");
-
-  const baseUrl = `${updateBaseUrl}/${process.platform}/${process.arch}`;
-  log.info(`[updater] Using static storage URL: ${baseUrl}`);
-
-  updateElectronApp({
-    updateSource: {
-      type: UpdateSourceType.StaticStorage,
-      baseUrl,
-    },
-    logger: log,
-    updateInterval: "1 hour",
-  });
-}
-
 async function runPostWindowInitialization() {
   const startTime = Date.now();
   console.log("[startup] Starting post-window initialization...");
@@ -603,7 +581,7 @@ app.whenReady().then(async () => {
     configureAppIdentity();
     console.log("[startup] App identity configured");
 
-    setupAutoUpdates();
+    initializeAutoUpdates();
     console.log("[startup] Auto-update configured (when enabled)");
 
     // Setup ORPC with retry logic
