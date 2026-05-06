@@ -142,21 +142,11 @@ export function DatabasePageContent({
     return () => { cancelled = true; };
   }, []);
 
-  // Sidebar visibility: persisted per-connection in localStorage
-  const [isSidebarVisible, setIsSidebarVisible] = useState(() => {
-    try {
-      const raw = localStorage.getItem(`db-tables-sidebar-visible:${connectionId}`);
-      return raw !== null ? raw === "true" : true; // visible by default
-    } catch {
-      return true;
-    }
-  });
+  const isSidebarVisible = true;
   const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
-  const [isSidebarAnimating, setIsSidebarAnimating] = useState(false);
   const [isNavVisible, setIsNavVisible] = useState(true);
   const [tablesSidebarWidthPx, setTablesSidebarWidthPx] = useState(280);
   const [sqlSidebarWidthPx, setSqlSidebarWidthPx] = useState(280);
-  const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const tablesSidebarWidthRef = useRef(tablesSidebarWidthPx);
   const tabWidthUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -166,19 +156,6 @@ export function DatabasePageContent({
     id: `db-tables-layout-${connectionId}`,
     storage: localStorage,
   });
-
-  const toggleSidebar = useCallback(() => {
-    const panel = sidebarPanelRef.current;
-    if (!panel) return;
-    setIsSidebarAnimating(true);
-    if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
-    if (panel.isCollapsed()) {
-      panel.expand();
-    } else {
-      panel.collapse();
-    }
-    animationTimeoutRef.current = setTimeout(() => setIsSidebarAnimating(false), 220);
-  }, []);
 
   const handleBackToConnections = useCallback(() => {
     setIsNavVisible(false);
@@ -190,35 +167,17 @@ export function DatabasePageContent({
   // Clean up animation timeout on unmount
   useEffect(() => {
     return () => {
-      if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
       if (tabWidthUpdateTimeoutRef.current) clearTimeout(tabWidthUpdateTimeoutRef.current);
     };
   }, []);
 
-
-  // Track sidebar visibility in a ref so onResize can skip redundant setState during drag
-  const sidebarVisibleRef = useRef(isSidebarVisible);
-  sidebarVisibleRef.current = isSidebarVisible;
-
-  // Sync isSidebarVisible when sidebar panel resizes (including collapse/expand)
   // Width is only updated on layout change (after drag), not per-pixel
   const handleSidebarResize = useCallback(
     (panelSize: { asPercentage: number; inPixels: number }) => {
-      const visible = !sidebarPanelRef.current?.isCollapsed();
       tablesSidebarWidthRef.current = panelSize.inPixels;
-      if (sidebarVisibleRef.current !== visible) {
-        setIsSidebarVisible(visible);
-      }
     },
     [],
   );
-
-  // Persist sidebar visibility to localStorage when it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem(`db-tables-sidebar-visible:${connectionId}`, String(isSidebarVisible));
-    } catch { /* quota exceeded or private mode */ }
-  }, [isSidebarVisible, connectionId]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<null | "copied" | "failed">(null);
@@ -472,11 +431,6 @@ export function DatabasePageContent({
       e.preventDefault();
       changeSection(section);
       return;
-    }
-
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && isTablesSection) {
-      e.preventDefault();
-      toggleSidebar();
     }
 
     // Cmd+R / Ctrl+R: Refresh schema
@@ -1098,27 +1052,22 @@ export function DatabasePageContent({
           <div className={isTablesSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isTablesSection}>
             <ResizablePanelGroup
               className="flex-1 min-w-0"
-              defaultLayout={isSidebarVisible ? tablesLayout.defaultLayout : undefined}
+              defaultLayout={tablesLayout.defaultLayout}
               onLayoutChanged={(layout) => {
-                // Don't persist layout while sidebar is collapsed — avoids saving [0, 100]
-                if (isSidebarVisible) {
-                  tablesLayout.onLayoutChanged(layout);
-                  // Update tab chrome width after drag ends (not per-pixel)
-                  setTablesSidebarWidthPx(tablesSidebarWidthRef.current);
-                }
+                tablesLayout.onLayoutChanged(layout);
+                // Update tab chrome width after drag ends (not per-pixel)
+                setTablesSidebarWidthPx(tablesSidebarWidthRef.current);
               }}
             >
               {/* Tables Sidebar — always mounted, collapses to a thin strip for smooth animation */}
               <ResizablePanel
                 id="tables-sidebar"
-                defaultSize={isSidebarVisible ? 25 : 0}
+                defaultSize={25}
                 minSize="15%"
                 maxSize="25%"
-                collapsible
-                collapsedSize={2}
                 panelRef={sidebarPanelRef}
                 onResize={handleSidebarResize}
-                className={`min-w-0 ${isSidebarAnimating ? 'transition-[flex-grow] duration-200 ease-out' : ''}`}
+                className="min-w-0"
               >
                 <TablesExplorerSidebar
                   tablesBySchema={tablesBySchema}
@@ -1132,8 +1081,7 @@ export function DatabasePageContent({
                   aiSearchEnabled={aiSearchEnabled}
                   isAiSearching={isAiSearching}
                   aiMatchedNames={aiMatchedNames}
-                  isCollapsed={!isSidebarVisible}
-                  onExpand={toggleSidebar}
+                  isCollapsed={false}
                   onSchemaChange={changeSchema}
                   onTableSelect={changeTable}
                   onTableSearchChange={setTableSearch}
@@ -1172,7 +1120,7 @@ export function DatabasePageContent({
               <ResizableHandle withHandle />
 
               {/* Main Panel */}
-              <ResizablePanel id="tables-main" minSize={30} className={`min-w-0 ${isSidebarAnimating ? 'transition-[flex-grow] duration-200 ease-out' : ''}`}>
+              <ResizablePanel id="tables-main" minSize={30} className="min-w-0">
                 {(() => {
                   if (!selectedTable) {
                     return (
@@ -1186,22 +1134,9 @@ export function DatabasePageContent({
                               Select a table
                             </p>
                             <p className="text-xs text-muted-foreground/60 mt-0.5">
-                              {isSidebarVisible
-                                ? "Choose a table from the sidebar to get started"
-                                : "Show the explorer sidebar to select a table"}
+                              Choose a table from the sidebar to get started
                             </p>
                           </div>
-                          {!isSidebarVisible && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={toggleSidebar}
-                              className="mt-1"
-                            >
-                              <Icon name="database" className="h-3.5 w-3.5 mr-1.5" />
-                              Show explorer
-                            </Button>
-                          )}
                         </div>
                       </div>
                     );
@@ -1241,8 +1176,7 @@ export function DatabasePageContent({
                       tableTruncate={tableTruncate}
                       tableFkLookup={tableFkLookup}
                       isSwitchingTable={isSwitching}
-                      isSidebarVisible={isSidebarVisible}
-                      onToggleSidebar={toggleSidebar}
+                      isSidebarVisible
                       onRequestAddColumn={() =>
                         setDdlAddColumnTarget({
                           schema: td.schema,

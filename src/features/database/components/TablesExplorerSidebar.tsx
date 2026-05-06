@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -16,7 +17,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -134,21 +134,25 @@ export function TablesExplorerSidebar({
   onInsertTableUpdateTemplate,
 }: TablesExplorerSidebarProps) {
   const tableMenuClassName = "min-w-52";
-
-  if (isCollapsed) {
-    return (
-      <aside className="h-full min-h-0 flex flex-col items-center bg-sidebar cursor-pointer"
-        onClick={onExpand}
-      >
-        <div className="flex-1 flex items-center justify-center w-full">
-          <Icon name="chevron-right" className="size-4 text-muted-foreground/60 hover:text-foreground transition-colors" />
-        </div>
-      </aside>
-    );
-  }
+  const tableListParentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredTables.length,
+    getScrollElement: () => tableListParentRef.current,
+    estimateSize: () => 30,
+    overscan: 6,
+  });
 
   return (
-    <aside className="h-full min-h-0 flex flex-col bg-sidebar">
+    <aside
+      className={cn("h-full min-h-0 bg-sidebar overflow-hidden", isCollapsed ? "relative cursor-pointer" : "flex flex-col")}
+      onClick={isCollapsed ? onExpand : undefined}
+    >
+      <div
+        className={cn(
+          "h-full min-h-0 flex flex-col",
+          isCollapsed && "opacity-0 pointer-events-none select-none",
+        )}
+      >
       {/* Sidebar Header */}
       <div className="px-3 pt-3 pb-1 shrink-0">
         {/* Title Row */}
@@ -282,14 +286,14 @@ export function TablesExplorerSidebar({
       <Separator className="bg-border/30" />
 
       {/* Table list */}
-      <ScrollArea className="flex-1 min-h-0">
+      <div ref={tableListParentRef} className="flex-1 min-h-0 overflow-auto">
         <div className="px-2 py-1.5">
           {isLoading ? (
             <div className="space-y-2 px-1 py-1">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-2.5 px-2 py-2">
-                  <Skeleton className="size-3.5 rounded-sm shrink-0" />
-                  <Skeleton className="h-3 w-24" />
+                <div key={i} className="flex items-center gap-2 px-2 py-1">
+                  <Skeleton className="size-3 rounded-sm shrink-0" />
+                  <Skeleton className="h-2.5 w-20" />
                 </div>
               ))}
             </div>
@@ -301,8 +305,13 @@ export function TablesExplorerSidebar({
               </p>
             </div>
           ) : (
-            <div className="space-y-0.5">
-              {filteredTables.map((table) => {
+            <div
+              className="relative w-full"
+              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const table = filteredTables[virtualRow.index];
+                if (!table) return null;
                 const isActive = selectedTableKey === `${table.schema}.${table.name}`;
                 const tableTarget = { schema: table.schema, name: table.name };
                 const tableActions = (
@@ -454,109 +463,116 @@ export function TablesExplorerSidebar({
                   </>
                 );
                 return (
-                  <ContextMenu key={`${table.schema}.${table.name}`}>
-                    <ContextMenuTrigger
-                      render={
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          draggable
-                          onDragStart={(e) => {
-                            const ref = `${table.schema}.${table.name}`;
-                            e.dataTransfer.setData("text/sql-table-ref", ref);
-                            e.dataTransfer.effectAllowed = "copy";
-                          }}
-                          onClick={() =>
-                            onTableSelect(`${table.schema}.${table.name}`)
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              onTableSelect(`${table.schema}.${table.name}`);
+                  <div
+                    key={virtualRow.key}
+                    className="absolute left-0 top-0 w-full px-0"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    <ContextMenu>
+                      <ContextMenuTrigger
+                        render={
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            draggable
+                            onDragStart={(e) => {
+                              const ref = `${table.schema}.${table.name}`;
+                              e.dataTransfer.setData("text/sql-table-ref", ref);
+                              e.dataTransfer.effectAllowed = "copy";
+                            }}
+                            onClick={() =>
+                              onTableSelect(`${table.schema}.${table.name}`)
                             }
-                          }}
-                          onMouseEnter={() =>
-                            onPrefetchTable(table.schema, table.name)
-                          }
-                          onFocus={() =>
-                            onPrefetchTable(table.schema, table.name)
-                          }
-                          className={cn(
-                            "group w-full flex items-center gap-2.5 px-2.5 py-1.75 rounded-md text-left transition-colors duration-100",
-                            isActive
-                              ? "bg-accent text-accent-foreground"
-                              : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
-                          )}
-                        >
-                          <Icon
-                            name="table"
-                            className={cn(
-                              "size-3.5 shrink-0 transition-colors",
-                              isActive
-                                ? "text-accent-foreground"
-                                : "text-muted-foreground group-hover:text-foreground/70"
-                            )}
-                          />
-                          <span className="flex-1 truncate text-[13px] font-medium leading-tight">
-                            {table.name}
-                          </span>
-                          {aiMatchedNames.has(table.name) && (
-                            <span className="size-1.5 shrink-0 rounded-full bg-primary/40" />
-                          )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <button
-                                  type="button"
-                                  aria-label="Table actions"
-                                  onClick={(event) => event.stopPropagation()}
-                                  className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
-                                />
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                onTableSelect(`${table.schema}.${table.name}`);
                               }
-                            >
-                              <Icon name="more-horizontal" className="size-3" />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              className={tableMenuClassName}
-                              align="end"
-                              side="bottom"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              {tableActions}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                          {table.has_rls ? (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={<span className="inline-flex shrink-0" />}
+                            }}
+                            onMouseEnter={() =>
+                              onPrefetchTable(table.schema, table.name)
+                            }
+                            onFocus={() =>
+                              onPrefetchTable(table.schema, table.name)
+                            }
+                            className={cn(
+                              "group w-full flex items-center gap-2 px-2 py-1 rounded-md text-left transition-colors duration-100",
+                              isActive
+                                ? "bg-accent text-accent-foreground"
+                                : "hover:bg-muted/50 text-foreground/80 hover:text-foreground"
+                            )}
+                          >
+                            <Icon
+                              name="table"
+                              className={cn(
+                                "size-3 shrink-0 transition-colors",
+                                isActive
+                                  ? "text-accent-foreground"
+                                  : "text-muted-foreground group-hover:text-foreground/70"
+                              )}
+                            />
+                            <span className="flex-1 truncate text-[12px] font-medium leading-tight">
+                              {table.name}
+                            </span>
+                            {aiMatchedNames.has(table.name) && (
+                              <span className="size-1.5 shrink-0 rounded-full bg-primary/40" />
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    aria-label="Table actions"
+                                    onClick={(event) => event.stopPropagation()}
+                                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                                  />
+                                }
                               >
-                                <Icon name="lock" className="size-3 text-cyan-500 shrink-0" />
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom" sideOffset={4}>RLS enabled</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={<span className="inline-flex shrink-0" />}
+                                <Icon name="more-horizontal" className="size-3" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                className={tableMenuClassName}
+                                align="end"
+                                side="bottom"
+                                onClick={(event) => event.stopPropagation()}
                               >
-                                <Icon name="lock-open" className="size-3 text-muted-foreground/40 shrink-0" />
-                              </TooltipTrigger>
-                              <TooltipContent side="bottom" sideOffset={4}>RLS disabled</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                      }
-                    />
-                    <ContextMenuContent className={tableMenuClassName}>
-                      {tableContextActions}
-                    </ContextMenuContent>
-                  </ContextMenu>
+                                {tableActions}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                            {table.has_rls ? (
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={<span className="inline-flex shrink-0" />}
+                                >
+                                  <Icon name="lock" className="size-3 text-cyan-500 shrink-0" />
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" sideOffset={4}>RLS enabled</TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={<span className="inline-flex shrink-0" />}
+                                >
+                                  <Icon name="lock-open" className="size-3 text-muted-foreground/40 shrink-0" />
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" sideOffset={4}>RLS disabled</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        }
+                      />
+                      <ContextMenuContent className={tableMenuClassName}>
+                        {tableContextActions}
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  </div>
                 );
               })}
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
+      </div>
     </aside>
   );
 }
