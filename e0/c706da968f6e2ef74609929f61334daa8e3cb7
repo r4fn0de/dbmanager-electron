@@ -1,0 +1,23 @@
+src/features/settings/components/SettingsDialog.tsx
+  b8aa5a4800bb6848 11,71-72,74-78,81,83,85,88,92-95,97,99,103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "e0c706da968f6e2ef74609929f61334daa8e3cb7",
+  "prompts": {
+    "b8aa5a4800bb6848": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "6acb072c-c62f-435b-b5f4-805c75986557",
+        "model": "custom:gpt-5.3-codex(medium)-1"
+      },
+      "human_author": "Rafael Porto",
+      "messages": [],
+      "total_additions": 75,
+      "total_deletions": 179,
+      "accepted_lines": 70,
+      "overriden_lines": 1
+    }
+  }
+}
