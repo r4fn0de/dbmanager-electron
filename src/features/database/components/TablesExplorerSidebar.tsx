@@ -64,6 +64,10 @@ export interface TablesExplorerSidebarProps {
   isAiSearching: boolean;
   /** Set of table names matched by AI (not fuzzy) */
   aiMatchedNames: Set<string>;
+  /** Whether the sidebar is collapsed */
+  isCollapsed?: boolean;
+  /** Callback to expand the sidebar */
+  onExpand?: () => void;
 
   // ── Callbacks ──────────────────────────────────────────
   onSchemaChange: (schema: string) => void;
@@ -104,6 +108,8 @@ export function TablesExplorerSidebar({
   aiSearchEnabled,
   isAiSearching,
   aiMatchedNames,
+  isCollapsed,
+  onExpand,
   onSchemaChange,
   onTableSelect,
   onTableSearchChange,
@@ -128,6 +134,18 @@ export function TablesExplorerSidebar({
   onInsertTableUpdateTemplate,
 }: TablesExplorerSidebarProps) {
   const tableMenuClassName = "min-w-52";
+
+  if (isCollapsed) {
+    return (
+      <aside className="h-full min-h-0 flex flex-col items-center bg-sidebar cursor-pointer"
+        onClick={onExpand}
+      >
+        <div className="flex-1 flex items-center justify-center w-full">
+          <Icon name="chevron-right" className="size-4 text-muted-foreground/60 hover:text-foreground transition-colors" />
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="h-full min-h-0 flex flex-col bg-sidebar">

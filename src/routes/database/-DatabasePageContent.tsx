@@ -204,7 +204,7 @@ export function DatabasePageContent({
   // Width is only updated on layout change (after drag), not per-pixel
   const handleSidebarResize = useCallback(
     (panelSize: { asPercentage: number; inPixels: number }) => {
-      const visible = panelSize.asPercentage !== 0;
+      const visible = !sidebarPanelRef.current?.isCollapsed();
       tablesSidebarWidthRef.current = panelSize.inPixels;
       if (sidebarVisibleRef.current !== visible) {
         setIsSidebarVisible(visible);
@@ -1108,14 +1108,14 @@ export function DatabasePageContent({
                 }
               }}
             >
-              {/* Tables Sidebar — always mounted, collapses to 0 for smooth animation */}
+              {/* Tables Sidebar — always mounted, collapses to a thin strip for smooth animation */}
               <ResizablePanel
                 id="tables-sidebar"
                 defaultSize={isSidebarVisible ? 25 : 0}
                 minSize="15%"
                 maxSize="25%"
                 collapsible
-                collapsedSize={0}
+                collapsedSize={2}
                 panelRef={sidebarPanelRef}
                 onResize={handleSidebarResize}
                 className={`min-w-0 ${isSidebarAnimating ? 'transition-[flex-grow] duration-200 ease-out' : ''}`}
@@ -1132,6 +1132,8 @@ export function DatabasePageContent({
                   aiSearchEnabled={aiSearchEnabled}
                   isAiSearching={isAiSearching}
                   aiMatchedNames={aiMatchedNames}
+                  isCollapsed={!isSidebarVisible}
+                  onExpand={toggleSidebar}
                   onSchemaChange={changeSchema}
                   onTableSelect={changeTable}
                   onTableSearchChange={setTableSearch}
