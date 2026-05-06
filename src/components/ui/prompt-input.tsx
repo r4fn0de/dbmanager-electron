@@ -94,6 +94,7 @@ function PromptInput({
           tabIndex={disabled ? -1 : 0}
           onClick={focusTextareaFromContainer}
           onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault()
               if (!disabled) textareaRef.current?.focus()

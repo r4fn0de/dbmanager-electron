@@ -1713,43 +1713,43 @@ export function AiChatPanel({
           </div>
           <PromptInputActions className="justify-end gap-2 pl-2 pr-0.5 pb-1.5 pt-1">
             {isLoading ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={abort}
-                className="
-                  h-7 w-7 rounded-lg
-                  border border-border/30 bg-background/50 text-muted-foreground backdrop-blur-sm
-                  hover:bg-background/70 hover:text-foreground
-                  dark:border-border/20 dark:bg-background/40
-                  dark:hover:bg-background/60
-                  transition-[background,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
-                  active:scale-[0.96]
-                "
-              >
-                <UiIcon name="square" className="size-4" />
-              </Button>
+             <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={abort}
+                  className="
+                    h-7 w-7 rounded-full
+                    border border-border/30 bg-background/50 text-muted-foreground backdrop-blur-sm
+                    hover:bg-background/70 hover:text-foreground
+                    dark:border-border/20 dark:bg-background/40
+                    dark:hover:bg-background/60
+                    transition-[background,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
+                    active:scale-[0.96]
+                  "
+                >
+                  <UiIcon name="square" className="size-4" />
+                </Button>
             ) : (
-              <Button
-                type="button"
-                size="icon-sm"
-                onClick={handleSubmit}
-                disabled={!input.trim()}
-                className="
-                  h-7 w-7 rounded-lg
-                  bg-primary/85 text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)]
-                  hover:bg-primary
-                  disabled:bg-muted/50 disabled:text-muted-foreground/50 disabled:shadow-none
-                  dark:bg-primary/75 dark:hover:bg-primary
-                  dark:disabled:bg-muted/30 dark:disabled:text-muted-foreground/40
-                  transition-[background,color,transform,opacity,box-shadow]
-                  duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
-                  active:scale-[0.96]
-                "
-              >
-                <UiIcon name="send" className="size-4" />
-              </Button>
+             <Button
+                  type="button"
+                  size="icon-sm"
+                  onClick={handleSubmit}
+                  disabled={!input.trim()}
+                  className="
+                    h-7 w-7 rounded-full
+                    bg-primary/85 text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)]
+                    hover:bg-primary
+                    disabled:bg-muted/50 disabled:text-muted-foreground/50 disabled:shadow-none
+                    dark:bg-primary/75 dark:hover:bg-primary
+                    dark:disabled:bg-muted/30 dark:disabled:text-muted-foreground/40
+                    transition-[background,color,transform,opacity,box-shadow]
+                    duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
+                    active:scale-[0.96]
+                  "
+                >
+                  <UiIcon name="send" className="size-4" />
+                </Button>
             )}
           </PromptInputActions>
         </PromptInput>
