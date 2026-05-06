@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "6294b09c42e815889fccda7630422a58cd8c2d1d",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
