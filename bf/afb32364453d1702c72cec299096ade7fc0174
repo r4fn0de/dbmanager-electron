@@ -1,0 +1,23 @@
+src/features/connection/components/ConnectionList.tsx
+  34125d19c36a0701 162,369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "bfafb32364453d1702c72cec299096ade7fc0174",
+  "prompts": {
+    "34125d19c36a0701": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "cb3f4c02-b243-4e5b-b5bf-c9f6eec43f96",
+        "model": "custom:gpt-5.3-codex(medium)-1"
+      },
+      "human_author": "Rafael Porto",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 5,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
