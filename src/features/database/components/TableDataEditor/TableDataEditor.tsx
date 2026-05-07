@@ -1,10 +1,7 @@
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dbQueryKeys, dbQueryOptions } from "@/lib/query-options";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { IconArrowsDiagonal2 } from "@tabler/icons-react";
 import {
   useCallback,
   useDeferredValue,
@@ -12,20 +9,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import { setUnsavedChanges as setWindowUnsavedChanges } from "@/features/shell/actions/window";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import { CellExpandPopover } from "../CellExpandPopover";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -58,32 +46,22 @@ import {
 } from "@/components/ui/table";
 import type {
   FkLookupResponse,
-  ListRowsInput,
-  SaveChangesInput,
-  SaveChangesResponse,
   SchemaColumn,
   SchemaForeignKey,
-  SchemaTable,
   TableFilter,
   TableRef,
-  TableRowsResponse,
   TableSort,
 } from "@/ipc/db/types";
 import { cn } from "@/lib/utils";
 import type { TableDataEditorProps, RowRecord, RowUpdateDraft, DeleteDraft } from "./types";
 import { quoteIdentifier, quoteValue } from "./utils/sqlHelpers";
-import { normalizeDisplay, getCellTitle, compareSortValues, parseByType } from "./utils/valueParsers";
-
-
-function rowKeyFromPk(
-  pkColumns: string[],
-  row: RowRecord,
-  fallback: string,
-): string {
-  if (pkColumns.length === 0) return fallback;
-  const parts = pkColumns.map((column) => normalizeDisplay(row[column]));
-  return `pk:${parts.join("|")}`;
-}
+import { normalizeDisplay, getCellTitle, parseByType } from "./utils/valueParsers";
+import { buildEffectiveRows, getGridCellIndex } from "./utils/tableDataTransforms";
+import { createTableEditorPerfTracker } from "./utils/performance";
+import { TableEditorFooter } from "./components/TableEditorFooter";
+import { TableEditorDialogs } from "./components/TableEditorDialogs";
+import { TableEditorRowDetailsOverlay } from "./components/TableEditorRowDetailsOverlay";
+import { TableEditorGrid } from "./components/TableEditorGrid";
 
 function getDefaultColumnWidth(column: SchemaColumn): number {
   const name = column.name.toLowerCase();
@@ -140,6 +118,8 @@ export function TableDataEditor({
   );
 
   const tableKey = `${connectionId}::${table.schema}.${table.name}`;
+  const perfTrackerRef = useRef(createTableEditorPerfTracker());
+  const pendingEditPerfRowKeyRef = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -251,19 +231,29 @@ export function TableDataEditor({
     rowKey: string;
     column: string;
   } | null>(null);
-  const [hoveredRowAnchor, setHoveredRowAnchor] = useState<{
+  const hoveredRowAnchorRef = useRef<null | {
     rowKey: string;
     row: RowRecord;
     index: number;
     top: number;
     left: number;
-  } | null>(null);
+    width: number;
+    height: number;
+  }>(null);
+  const floatingRowButtonRef = useRef<HTMLButtonElement>(null);
   const hoverClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedRow, setExpandedRow] = useState<{
     rowKey: string;
     row: RowRecord;
     index: number;
   } | null>(null);
+  const [expandedRowOutline, setExpandedRowOutline] = useState<null | {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  }>(null);
+  const [isPanelPending, startPanelTransition] = useTransition();
 
   const liveViewStateRef = useRef({
     page,
@@ -285,6 +275,7 @@ export function TableDataEditor({
   };
 
   if (previousTableKeyRef.current !== tableKey) {
+    perfTrackerRef.current.start("table_switch_to_first_usable_frame");
     viewStateByTableRef.current.set(
       previousTableKeyRef.current,
       liveViewStateRef.current,
@@ -333,6 +324,7 @@ export function TableDataEditor({
   }, [filterColumn, deferredFilterValue]);
 
   useEffect(() => {
+    perfTrackerRef.current.start("sort_to_rows_settled");
     setPage((current) => (current === 0 ? current : 0));
   }, [sort, filterColumn, deferredFilterValue]);
 
@@ -372,57 +364,88 @@ export function TableDataEditor({
   }, [foreignKeys]);
 
   const rows = rowsResponse?.rows ?? [];
-  const displayedRows = useMemo(() => {
-    const activeSort = sort[0];
-    if (!activeSort?.column) return rows;
-
-    const next = [...rows];
-    next.sort((a, b) => {
-      const cmp = compareSortValues(a[activeSort.column], b[activeSort.column]);
-      return activeSort.direction === "asc" ? cmp : -cmp;
-    });
-    return next;
-  }, [rows, sort]);
   const isBlockingTableLoading = isLoading && !rowsResponse;
 
   const effectiveRows = useMemo(() => {
-    return displayedRows.reduce<Array<{ row: RowRecord; rowKey: string; index: number }>>((acc, row, index) => {
-      const key = rowKeyFromPk(primaryKey, row, `row:${index}`);
-      if (!draftDeletes[key]) {
-        acc.push({ row, rowKey: key, index });
-      }
-      return acc;
-    }, []);
-  }, [displayedRows, draftDeletes, primaryKey]);
+    return buildEffectiveRows(rows, primaryKey, draftDeletes);
+  }, [rows, draftDeletes, primaryKey]);
 
   const effectiveRowsRef = useRef(effectiveRows);
   effectiveRowsRef.current = effectiveRows;
 
   useEffect(() => {
+    if (isLoading) return;
+    perfTrackerRef.current.end("filter_to_rows_painted", {
+      rows: effectiveRows.length,
+      page,
+    });
+    perfTrackerRef.current.end("sort_to_rows_settled", {
+      rows: effectiveRows.length,
+      page,
+    });
+    if (!isBlockingTableLoading) {
+      requestAnimationFrame(() => {
+        perfTrackerRef.current.end("table_switch_to_first_usable_frame", {
+          rows: effectiveRows.length,
+        });
+      });
+    }
+  }, [isLoading, isBlockingTableLoading, effectiveRows.length, page]);
+
+  useEffect(() => {
     if (!expandedRow) return;
     const stillExists = effectiveRows.some((entry) => entry.rowKey === expandedRow.rowKey);
-    if (!stillExists) setExpandedRow(null);
+    if (!stillExists) {
+      setExpandedRow(null);
+      setExpandedRowOutline(null);
+    }
   }, [expandedRow, effectiveRows]);
 
   useEffect(() => {
     if (!expandedRow) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setExpandedRow(null);
+      if (event.key === "Escape") {
+        setExpandedRow(null);
+        setExpandedRowOutline(null);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [expandedRow]);
 
   useEffect(() => {
-    if (!hoveredRowAnchor) return;
-    const clearHoverAnchor = () => setHoveredRowAnchor(null);
+    const button = floatingRowButtonRef.current;
+    if (!button) return;
+    if (expandedRow) {
+      button.style.opacity = "0";
+      button.style.pointerEvents = "none";
+      return;
+    }
+    if (hoveredRowAnchorRef.current) {
+      button.style.opacity = "1";
+      button.style.pointerEvents = "auto";
+    }
+  }, [expandedRow]);
+
+  useEffect(() => {
+    const clearHoverAnchor = () => {
+      hoveredRowAnchorRef.current = null;
+      const button = floatingRowButtonRef.current;
+      if (button) {
+        button.style.opacity = "0";
+        button.style.pointerEvents = "none";
+      }
+    };
     window.addEventListener("resize", clearHoverAnchor);
-    window.addEventListener("scroll", clearHoverAnchor, true);
+    window.addEventListener("scroll", clearHoverAnchor, {
+      capture: true,
+      passive: true,
+    });
     return () => {
       window.removeEventListener("resize", clearHoverAnchor);
       window.removeEventListener("scroll", clearHoverAnchor, true);
     };
-  }, [hoveredRowAnchor]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -515,6 +538,14 @@ export function TableDataEditor({
 
   const hasDraftChanges =
     dirtyCounts.inserts + dirtyCounts.updates + dirtyCounts.deletes > 0;
+
+  useEffect(() => {
+    if (!pendingEditPerfRowKeyRef.current) return;
+    perfTrackerRef.current.end("edit_confirm_to_draft_updated", {
+      rowKey: pendingEditPerfRowKeyRef.current,
+    });
+    pendingEditPerfRowKeyRef.current = null;
+  }, [draftInserts, draftUpdates]);
 
   useEffect(() => {
     const scope = `table:${connectionId}:${table.schema}.${table.name}`;
@@ -707,6 +738,8 @@ export function TableDataEditor({
     const parsed = parseByType(editingValue, column);
 
     if (editingCell.source === "insert") {
+      pendingEditPerfRowKeyRef.current = editingCell.rowKey;
+      perfTrackerRef.current.start("edit_confirm_to_draft_updated");
       const insertIndex = editingCell.insertIndex ?? 0;
       setDraftInserts((current) => {
         const next = [...current];
@@ -724,6 +757,8 @@ export function TableDataEditor({
     const originalValue = baseRow[editingCell.column];
     const unchanged = JSON.stringify(originalValue) === JSON.stringify(parsed);
 
+    pendingEditPerfRowKeyRef.current = editingCell.rowKey;
+    perfTrackerRef.current.start("edit_confirm_to_draft_updated");
     setDraftUpdates((current) => {
       const next = { ...current };
       const existing = next[editingCell.rowKey] ?? {
@@ -774,6 +809,8 @@ export function TableDataEditor({
       const unchanged =
         JSON.stringify(originalValue) === JSON.stringify(parsed);
 
+      pendingEditPerfRowKeyRef.current = rowKey;
+      perfTrackerRef.current.start("edit_confirm_to_draft_updated");
       setDraftUpdates((current) => {
         const next = { ...current };
         const existing = next[rowKey] ?? {
@@ -809,6 +846,8 @@ export function TableDataEditor({
       if (!column) return;
       const parsed = parseByType(rawText, column);
 
+      pendingEditPerfRowKeyRef.current = `insert:${insertIndex}`;
+      perfTrackerRef.current.start("edit_confirm_to_draft_updated");
       setDraftInserts((current) => {
         const next = [...current];
         const row = { ...(next[insertIndex] ?? {}) };
@@ -894,6 +933,34 @@ export function TableDataEditor({
     const total = rowsResponse?.totalEstimate ?? 0;
     return Math.max(Math.ceil(total / pageSize), 1);
   }, [pageSize, rowsResponse?.totalEstimate]);
+
+  useEffect(() => {
+    if (!rowsResponse) return;
+    const nextPage = page + 1;
+    if (nextPage >= totalPages) return;
+    void queryClient.prefetchQuery(
+      dbQueryOptions.tableRows(
+        connectionId,
+        table.schema,
+        table.name,
+        nextPage,
+        pageSize,
+        sort,
+        serverFilters,
+      ),
+    );
+  }, [
+    rowsResponse,
+    page,
+    totalPages,
+    queryClient,
+    connectionId,
+    table.schema,
+    table.name,
+    pageSize,
+    sort,
+    serverFilters,
+  ]);
 
   // ── Row selection ──────────────────────────────────────────────
   const allVisibleRowKeys = useMemo(
@@ -996,13 +1063,31 @@ export function TableDataEditor({
     setSelectedRowKeys(new Set());
   }, [primaryKey, selectedRowKeys, effectiveRows, table.schema, table.name]);
 
-  const openRowDetails = useCallback((rowKey: string, row: RowRecord, index: number) => {
-    setExpandedRow({
-      rowKey,
-      row: { ...row },
-      index,
+  const toggleRowSelection = useCallback((rowKey: string) => {
+    setSelectedRowKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
     });
   }, []);
+
+  const openRowDetails = useCallback((rowKey: string, row: RowRecord, index: number) => {
+    startPanelTransition(() => {
+      setExpandedRow({
+        rowKey,
+        row: { ...row },
+        index,
+      });
+    });
+  }, [startPanelTransition]);
+
+  const closeRowDetails = useCallback(() => {
+    startPanelTransition(() => {
+      setExpandedRow(null);
+      setExpandedRowOutline(null);
+    });
+  }, [startPanelTransition]);
 
   const cancelPendingHoverClear = useCallback(() => {
     if (!hoverClearTimeoutRef.current) return;
@@ -1013,10 +1098,49 @@ export function TableDataEditor({
   const scheduleHoverClear = useCallback(() => {
     cancelPendingHoverClear();
     hoverClearTimeoutRef.current = setTimeout(() => {
-      setHoveredRowAnchor(null);
+      hoveredRowAnchorRef.current = null;
+      const button = floatingRowButtonRef.current;
+      if (button) {
+        button.style.opacity = "0";
+        button.style.pointerEvents = "none";
+      }
       hoverClearTimeoutRef.current = null;
     }, 180);
   }, [cancelPendingHoverClear]);
+
+  const expandedRowFields = useMemo(() => {
+    if (!expandedRow) return [];
+    return table.columns.map((column) => {
+      const value = expandedRow.row[column.name];
+      return {
+        name: column.name,
+        type: column.data_type,
+        value,
+        textValue: normalizeDisplay(value),
+      };
+    });
+  }, [expandedRow, table.columns]);
+
+  const showFloatingRowButton = useCallback(
+    (payload: {
+      rowKey: string;
+      row: RowRecord;
+      index: number;
+      top: number;
+      left: number;
+      width: number;
+      height: number;
+    }) => {
+      hoveredRowAnchorRef.current = payload;
+      const button = floatingRowButtonRef.current;
+      if (!button) return;
+      button.style.top = `${payload.top}px`;
+      button.style.left = `${payload.left}px`;
+      button.style.opacity = expandedRow ? "0" : "1";
+      button.style.pointerEvents = expandedRow ? "none" : "auto";
+    },
+    [expandedRow],
+  );
 
   // ── Column resizing ───────────────────────────────────────────
   const columnWidthsRef = useRef(columnWidths);
@@ -1089,56 +1213,56 @@ export function TableDataEditor({
   }, []);
 
   // ── Keyboard navigation ───────────────────────────────────────
-  const allNavigableCells = useMemo(() => {
-    const cells: Array<{ rowKey: string; column: string }> = [];
-    for (const { rowKey } of effectiveRows) {
-      for (const column of visibleColumns) {
-        cells.push({ rowKey, column });
-      }
+  const effectiveRowIndexByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [index, entry] of effectiveRows.entries()) {
+      map.set(entry.rowKey, index);
     }
-    return cells;
-  }, [effectiveRows, visibleColumns]);
+    return map;
+  }, [effectiveRows]);
 
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (editingCell) return; // let the Input handle its own keys
       if (!focusedCell) return;
-
-      const currentIdx = allNavigableCells.findIndex(
-        (c) =>
-          c.rowKey === focusedCell.rowKey && c.column === focusedCell.column,
+      const currentRowIndex = effectiveRowIndexByKey.get(focusedCell.rowKey);
+      const currentColumnIndex = visibleColumns.indexOf(focusedCell.column);
+      if (currentRowIndex === undefined || currentColumnIndex === -1) return;
+      const columnsCount = visibleColumns.length;
+      if (columnsCount === 0) return;
+      const rowsCount = effectiveRows.length;
+      const totalCells = rowsCount * columnsCount;
+      const currentCellIndex = getGridCellIndex(
+        currentRowIndex,
+        currentColumnIndex,
+        columnsCount,
       );
-      if (currentIdx === -1) return;
 
-      let nextIdx = currentIdx;
-      const colsCount = visibleColumns.length;
+      let nextIdx = currentCellIndex;
 
       switch (event.key) {
         case "ArrowRight":
           event.preventDefault();
-          nextIdx = Math.min(currentIdx + 1, allNavigableCells.length - 1);
+          nextIdx = Math.min(currentCellIndex + 1, totalCells - 1);
           break;
         case "ArrowLeft":
           event.preventDefault();
-          nextIdx = Math.max(currentIdx - 1, 0);
+          nextIdx = Math.max(currentCellIndex - 1, 0);
           break;
         case "ArrowDown":
           event.preventDefault();
-          nextIdx = Math.min(
-            currentIdx + colsCount,
-            allNavigableCells.length - 1,
-          );
+          nextIdx = Math.min(currentCellIndex + columnsCount, totalCells - 1);
           break;
         case "ArrowUp":
           event.preventDefault();
-          nextIdx = Math.max(currentIdx - colsCount, 0);
+          nextIdx = Math.max(currentCellIndex - columnsCount, 0);
           break;
         case "Tab":
           event.preventDefault();
           if (event.shiftKey) {
-            nextIdx = Math.max(currentIdx - 1, 0);
+            nextIdx = Math.max(currentCellIndex - 1, 0);
           } else {
-            nextIdx = Math.min(currentIdx + 1, allNavigableCells.length - 1);
+            nextIdx = Math.min(currentCellIndex + 1, totalCells - 1);
           }
           break;
         case "Enter": {
@@ -1164,14 +1288,20 @@ export function TableDataEditor({
           return;
       }
 
-      const next = allNavigableCells[nextIdx];
-      if (next) setFocusedCell(next);
+      const nextRowIndex = Math.floor(nextIdx / columnsCount);
+      const nextColumnIndex = nextIdx % columnsCount;
+      const nextRow = effectiveRows[nextRowIndex];
+      const nextColumn = visibleColumns[nextColumnIndex];
+      if (nextRow && nextColumn) {
+        setFocusedCell({ rowKey: nextRow.rowKey, column: nextColumn });
+      }
     },
     [
       editingCell,
       focusedCell,
-      allNavigableCells,
-      visibleColumns.length,
+      visibleColumns,
+      effectiveRows,
+      effectiveRowIndexByKey,
       beginEditExistingCell,
     ],
   );
@@ -1521,6 +1651,7 @@ export function TableDataEditor({
           <Input
             value={filterValue}
             onChange={(event) => {
+              perfTrackerRef.current.start("filter_to_rows_painted");
               setFilterValue(event.target.value);
               setPage(0);
             }}
@@ -1548,742 +1679,156 @@ export function TableDataEditor({
       )}
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        {isBlockingTableLoading ? (
-          <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <UiIcon name="loader" className="h-5 w-5 animate-spin" />
-            <span className="text-xs">Loading table data...</span>
-          </div>
-        ) : (
-          <div
-            ref={scrollRef}
-            className="h-full overflow-auto"
-            onScroll={() => {
-              if (hoveredRowAnchor) setHoveredRowAnchor(null);
-            }}
-          >
-            <table
-              className="w-max table-fixed caption-bottom text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
-              onKeyDown={handleTableKeyDown}
-              tabIndex={0}
-            >
-              <TableHeader className="sticky top-0 z-10 bg-muted/40 border-b-2 border-border">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="sticky left-0 z-[5] w-12 min-w-12 border-r border-border bg-background px-2 py-1 text-center h-8">
-                  <div className="flex items-center justify-center">
-                    {isAllSelected ? (
-                      <Checkbox checked onCheckedChange={toggleSelectAll} />
-                    ) : isSomeSelected ? (
-                      <button
-                        type="button"
-                        onClick={toggleSelectAll}
-                        className="flex size-4 items-center justify-center rounded-[4px] border border-input bg-primary"
-                      >
-                        <svg width="8" height="2">
-                          <rect width="8" height="2" fill="white" rx="1" />
-                        </svg>
-                      </button>
-                    ) : (
-                      <Checkbox
-                        checked={false}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                    )}
-                  </div>
-                </TableHead>
-                {visibleColumns.map((columnName) => {
-                  const sorted =
-                    sort[0]?.column === columnName ? sort[0].direction : null;
-                  const column = columnMap[columnName];
-                  const width = resolveColumnWidth(columnName);
-                  return (
-                    <TableHead
-                      key={columnName}
-                      className="border-r border-border last:border-r-0 select-none hover:bg-muted/60 transition-colors relative group h-8 py-1 px-2 bg-background"
-                      style={{ width, minWidth: width, maxWidth: width }}
-                    >
-                      <button
-                        type="button"
-                        className="w-full h-full text-left cursor-pointer pr-2 overflow-hidden"
-                        onClick={() => {
-                          setSort((current) => {
-                            if (current[0]?.column !== columnName) {
-                              return [{ column: columnName, direction: "asc" }];
-                            }
-                            if (current[0]?.direction === "asc") {
-                              return [
-                                { column: columnName, direction: "desc" },
-                              ];
-                            }
-                            return [];
-                          });
-                        }}
-                      >
-                        <div className="flex items-center min-w-0 gap-1">
-                          <span
-                            className="min-w-0 flex-1 basis-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground/90"
-                            title={
-                              column?.data_type
-                                ? `${columnName} (${column.data_type})`
-                                : columnName
-                            }
-                          >
-                            {columnName}
-                          </span>
-                          {column?.data_type ? (
-                            <span
-                              className="min-w-0 max-w-[42%] truncate whitespace-nowrap text-[10px] font-normal text-muted-foreground/70"
-                              title={column.data_type}
-                            >
-                              {column.data_type}
-                            </span>
-                          ) : null}
-                          {sorted && (
-                            <span className="shrink-0 text-[10px] font-medium text-slate-600 dark:text-slate-300">
-                              {sorted === "asc" ? "↑" : "↓"}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                      {/* Resize handle */}
-                      <button
-                        type="button"
-                        aria-label={`Resize column ${columnName}`}
-                        className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-20"
-                        onMouseDown={(e) =>
-                          handleResizeMouseDown(columnName, e)
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }
-                        }}
-                      />
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            </TableHeader>
-            <TableBody className="align-top">
-              {/* ── Virtualization: top spacer ────────────────────── */}
-              {topSpacerHeight > 0 && (
-                <tr aria-hidden="true" className="border-0">
-                  <td colSpan={visibleColumns.length + 1} className="border-0 p-0" style={{ height: topSpacerHeight }} />
-                </tr>
-              )}
-              {visibleDraftInserts.map(({ row, insertIndex }) => (
-                <TableRow
-                  key={`insert:${insertIndex}`}
-                  className="bg-emerald-500/5 hover:bg-emerald-500/10"
-                >
-                  <TableCell className="sticky left-0 z-[1] w-12 min-w-12 border-r border-border bg-background px-2 py-0.5 text-center text-muted-foreground h-7">
-                    N
-                  </TableCell>
-                  {visibleColumns.map((columnName) => {
-                    const isEditing =
-                      editingCell?.source === "insert" &&
-                      editingCell.insertIndex === insertIndex &&
-                      editingCell.column === columnName;
-                    const value = row[columnName];
-                    const isFocusedInsert =
-                      focusedCell?.rowKey === `insert:${insertIndex}` &&
-                      focusedCell?.column === columnName;
-                    const width = resolveColumnWidth(columnName);
-                    return (
-                      <TableCell
-                        key={`insert:${insertIndex}:${columnName}`}
-                        className={`group/cell relative truncate font-mono align-middle border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocusedInsert ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
-                        style={{ width, minWidth: width, maxWidth: width }}
-                        onDoubleClick={() =>
-                          beginEditInsertCell(insertIndex, columnName)
-                        }
-                        onClick={() =>
-                          setFocusedCell({
-                            rowKey: `insert:${insertIndex}`,
-                            column: columnName,
-                          })
-                        }
-                      >
-                        {isEditing ? (
-                          <div className="relative">
-                            <span className="invisible block whitespace-nowrap">
-                              {normalizeDisplay(value)}
-                            </span>
-                            <Input
-                              value={editingValue}
-                              onChange={(event) => {
-                                setEditingValue(event.target.value);
-                                loadFkOptionsDebounced(
-                                  columnName,
-                                  event.target.value,
-                                );
-                              }}
-                              onBlur={() => persistEditing()}
-                              onFocus={(event) => {
-                                if (!suppressInlineEditorMouseUpRef.current)
-                                  return;
-                                event.currentTarget.select();
-                              }}
-                              onMouseUp={(event) => {
-                                if (!suppressInlineEditorMouseUpRef.current)
-                                  return;
-                                event.preventDefault();
-                                suppressInlineEditorMouseUpRef.current = false;
-                              }}
-                              onKeyDown={(event) => {
-                                keepCaretNavigationInsideInlineInput(event);
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  persistEditing();
-                                  // Advance to next column in the same insert row
-                                  const colIdx =
-                                    visibleColumns.indexOf(columnName);
-                                  if (
-                                    colIdx >= 0 &&
-                                    colIdx < visibleColumns.length - 1
-                                  ) {
-                                    setFocusedCell({
-                                      rowKey: `insert:${insertIndex}`,
-                                      column: visibleColumns[colIdx + 1],
-                                    });
-                                  }
-                                }
-                                if (event.key === "Escape") cancelEditing();
-                              }}
-                              onMouseDown={(event) => event.stopPropagation()}
-                              className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono !text-xs leading-4 md:!text-xs shadow-none focus-visible:ring-0"
-                            />
-                          </div>
-                        ) : (
-                          <>
-                            <span
-                              className={`block truncate whitespace-nowrap ${
-                                value === null || value === undefined
-                                  ? "italic text-muted-foreground/60"
-                                  : ""
-                              }`}
-                            >
-                              {normalizeDisplay(value)}
-                            </span>
-                            <CellExpandPopover
-                              columnName={columnName}
-                              column={columnMap[columnName]}
-                              initialValue={value}
-                              onSave={(rawText) =>
-                                applyExpandedEditToInsert(
-                                  insertIndex,
-                                  columnName,
-                                  rawText,
-                                )
-                              }
-                              trigger={
-                                <button
-                                  type="button"
-                                  aria-label={`Expand ${columnName}`}
-                                  title="Expand (open editor)"
-                                  onClick={(event) => event.stopPropagation()}
-                                  onMouseDown={(event) =>
-                                    event.stopPropagation()
-                                  }
-                                  className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
-                                >
-                                  <UiIcon name="arrows-maximize" className="h-3 w-3" />
-                                </button>
-                              }
-                            />
-                          </>
-                        )}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))}
-
-              {visibleEffectiveRows.map(({ row, rowKey, index }) => {
-                const isSelected = selectedRowKeys.has(rowKey);
-                const isRowUpdated = !!draftUpdates[rowKey];
-                const isExpanded = expandedRow?.rowKey === rowKey;
-                const selectionCellBackground = isSelected
-                  ? "bg-muted"
-                  : isRowUpdated
-                    ? "bg-background"
-                    : index % 2 === 1
-                      ? "bg-background"
-                      : "bg-background";
-                return (
-                  <TableRow
-                    key={rowKey}
-                    data-row-selection-scope="row"
-                    className={`group/row ${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : index % 2 === 1 ? "bg-muted/30" : ""} ${isExpanded ? "ring-1 ring-primary/60 ring-inset" : ""}`}
-                    onClick={(e) => handleRowClick(rowKey, index, e)}
-                    onMouseEnter={(event) => {
-                      cancelPendingHoverClear();
-                      const rowRect = event.currentTarget.getBoundingClientRect();
-                      setHoveredRowAnchor({
-                        rowKey,
-                        row,
-                        index,
-                        top: rowRect.top + rowRect.height / 2,
-                        left: rowRect.left - 12,
-                      });
-                    }}
-                    onMouseLeave={() => {
-                      scheduleHoverClear();
-                    }}
-                  >
-                    <TableCell
-                      className={`sticky left-0 z-[1] w-12 min-w-12 border-r border-border px-2 relative ${selectionCellBackground}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="relative flex items-center justify-center">
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => {
-                            setSelectedRowKeys((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(rowKey)) next.delete(rowKey);
-                              else next.add(rowKey);
-                              return next;
-                            });
-                          }}
-                        />
-                      </div>
-                    </TableCell>
-                    {visibleColumns.map((columnName) => {
-                      const draftValue =
-                        draftUpdates[rowKey]?.changes[columnName];
-                      const effectiveValue = draftValue ?? row[columnName];
-                      const isEditing =
-                        editingCell?.source === "existing" &&
-                        editingCell.rowKey === rowKey &&
-                        editingCell.column === columnName;
-                      const isFocused =
-                        focusedCell?.rowKey === rowKey &&
-                        focusedCell?.column === columnName;
-                      const fk = findFkForColumn(columnName);
-                      const isNull =
-                        effectiveValue === null || effectiveValue === undefined;
-                      const width = resolveColumnWidth(columnName);
-
-                      return (
-                        <TableCell
-                          key={`${rowKey}:${columnName}`}
-                          className={`group/cell relative font-mono align-middle truncate border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocused ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
-                          style={{ width, minWidth: width, maxWidth: width }}
-                          title={getCellTitle(effectiveValue)}
-                          onDoubleClick={() =>
-                            beginEditExistingCell(rowKey, row, columnName)
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFocusedCell({ rowKey, column: columnName });
-                          }}
-                        >
-                          {isEditing ? (
-                            <div className="relative">
-                              <span className="invisible block whitespace-nowrap">
-                                {normalizeDisplay(effectiveValue)}
-                              </span>
-                              <Input
-                                value={editingValue}
-                                onChange={(event) => {
-                                  setEditingValue(event.target.value);
-                                  loadFkOptionsDebounced(
-                                    columnName,
-                                    event.target.value,
-                                  );
-                                }}
-                                onBlur={() => persistEditing(row)}
-                                onFocus={(event) => {
-                                  if (!suppressInlineEditorMouseUpRef.current)
-                                    return;
-                                  event.currentTarget.select();
-                                }}
-                                onMouseUp={(event) => {
-                                  if (!suppressInlineEditorMouseUpRef.current)
-                                    return;
-                                  event.preventDefault();
-                                  suppressInlineEditorMouseUpRef.current = false;
-                                }}
-                                onKeyDown={(event) => {
-                                  keepCaretNavigationInsideInlineInput(event);
-                                  if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    persistEditing(row);
-                                    // Advance focus to next cell after saving
-                                    const cellIdx = allNavigableCells.findIndex(
-                                      (c) =>
-                                        c.rowKey === rowKey &&
-                                        c.column === columnName,
-                                    );
-                                    const next =
-                                      cellIdx >= 0 &&
-                                      cellIdx < allNavigableCells.length - 1
-                                        ? allNavigableCells[cellIdx + 1]
-                                        : null;
-                                    if (
-                                      next &&
-                                      effectiveRowsRef.current.some(
-                                        (r) => r.rowKey === next.rowKey,
-                                      )
-                                    ) {
-                                      setFocusedCell(next);
-                                    }
-                                  }
-                                  if (event.key === "Escape") cancelEditing();
-                                }}
-                                onMouseDown={(event) => event.stopPropagation()}
-                                className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono !text-xs leading-4 md:!text-xs shadow-none focus-visible:ring-0"
-                              />
-                              {fk && (
-                                <div className="absolute left-0 top-full z-30 mt-1 max-h-24 min-w-[220px] overflow-auto rounded-md border bg-background shadow-lg">
-                                  {isLoadingFk && (
-                                    <div className="p-1 text-[10px] text-muted-foreground">
-                                      Loading...
-                                    </div>
-                                  )}
-                                  {!isLoadingFk &&
-                                    fkOptions?.options.map((option, idx) => (
-                                      <button
-                                        key={`${idx}:${option.label}`}
-                                        type="button"
-                                        className="w-full text-left px-2 py-1 text-[10px] hover:bg-muted"
-                                        onMouseDown={(event) => {
-                                          event.preventDefault();
-                                          setEditingValue(
-                                            normalizeDisplay(option.value),
-                                          );
-                                        }}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    ))}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <>
-                              <span
-                                className={`block truncate whitespace-nowrap ${
-                                  draftValue !== undefined
-                                    ? "text-amber-700 dark:text-amber-400"
-                                    : isNull
-                                      ? "italic text-muted-foreground/60"
-                                      : ""
-                                }`}
-                              >
-                                {normalizeDisplay(effectiveValue)}
-                                {fk ? (
-                                  <button
-                                    type="button"
-                                    className="ml-1 text-[10px] text-muted-foreground/60 underline-offset-2 hover:underline hover:text-muted-foreground"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      onOpenRelatedTable?.(
-                                        fk.referenced_schema ?? table.schema,
-                                        fk.referenced_table,
-                                      );
-                                    }}
-                                  >
-                                    ({fk.referenced_table}.
-                                    {fk.referenced_column})
-                                  </button>
-                                ) : null}
-                              </span>
-                              {/* Botão de expansão: aparece em hover ou com a célula focada. */}
-                              <CellExpandPopover
-                                columnName={columnName}
-                                column={columnMap[columnName]}
-                                initialValue={effectiveValue}
-                                readOnly={primaryKey.length === 0}
-                                onSave={(rawText) =>
-                                  applyExpandedEditToRow(
-                                    rowKey,
-                                    row,
-                                    columnName,
-                                    rawText,
-                                  )
-                                }
-                                trigger={
-                                  <button
-                                    type="button"
-                                    aria-label={`Expand ${columnName}`}
-                                    title="Expand (open editor)"
-                                    onClick={(event) => event.stopPropagation()}
-                                    onMouseDown={(event) =>
-                                      event.stopPropagation()
-                                    }
-                                    className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocused ? "opacity-100" : ""}`}
-                                  >
-                                    <UiIcon name="arrows-maximize" className="h-3 w-3" />
-                                  </button>
-                                }
-                              />
-                            </>
-                          )}
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
-                );
-              })}
-
-              {/* ── Virtualization: bottom spacer ─────────────────── */}
-              {bottomSpacerHeight > 0 && (
-                <tr aria-hidden="true" className="border-0">
-                  <td colSpan={visibleColumns.length + 1} className="border-0 p-0" style={{ height: bottomSpacerHeight }} />
-                </tr>
-              )}
-              {totalVirtualRows === 0 && (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell
-                    colSpan={Math.max(visibleColumns.length + 1, 1)}
-                    className="text-center py-8 text-muted-foreground/70 border-r-0"
-                  >
-                    No rows found on this page.
-                  </TableCell>
-                </TableRow>
-              )}
-              </TableBody>
-            </table>
-          </div>
-        )}
+        <TableEditorGrid
+          isBlockingTableLoading={isBlockingTableLoading}
+          scrollRef={scrollRef}
+          onGridScroll={() => {
+            hoveredRowAnchorRef.current = null;
+            const button = floatingRowButtonRef.current;
+            if (button) {
+              button.style.opacity = "0";
+              button.style.pointerEvents = "none";
+            }
+          }}
+          handleTableKeyDown={handleTableKeyDown}
+          isAllSelected={isAllSelected}
+          isSomeSelected={isSomeSelected}
+          toggleSelectAll={toggleSelectAll}
+          visibleColumns={visibleColumns}
+          sort={sort}
+          columnMap={columnMap}
+          resolveColumnWidth={resolveColumnWidth}
+          onSortColumn={(columnName) => {
+            perfTrackerRef.current.start("sort_to_rows_settled");
+            setSort((current) => {
+              if (current[0]?.column !== columnName) {
+                return [{ column: columnName, direction: "asc" }];
+              }
+              if (current[0]?.direction === "asc") {
+                return [{ column: columnName, direction: "desc" }];
+              }
+              return [];
+            });
+          }}
+          handleResizeMouseDown={handleResizeMouseDown}
+          topSpacerHeight={topSpacerHeight}
+          bottomSpacerHeight={bottomSpacerHeight}
+          visibleDraftInserts={visibleDraftInserts}
+          editingCell={editingCell}
+          focusedCell={focusedCell}
+          beginEditInsertCell={beginEditInsertCell}
+          setFocusedCell={setFocusedCell}
+          editingValue={editingValue}
+          setEditingValue={setEditingValue}
+          loadFkOptionsDebounced={loadFkOptionsDebounced}
+          persistEditing={persistEditing}
+          suppressInlineEditorMouseUpRef={suppressInlineEditorMouseUpRef}
+          keepCaretNavigationInsideInlineInput={keepCaretNavigationInsideInlineInput}
+          cancelEditing={cancelEditing}
+          applyExpandedEditToInsert={applyExpandedEditToInsert}
+          visibleEffectiveRows={visibleEffectiveRows}
+          selectedRowKeys={selectedRowKeys}
+          draftUpdates={draftUpdates}
+          handleRowClick={handleRowClick}
+          cancelPendingHoverClear={cancelPendingHoverClear}
+          showFloatingRowButton={showFloatingRowButton}
+          scheduleHoverClear={scheduleHoverClear}
+          onToggleRowSelection={toggleRowSelection}
+          findFkForColumn={findFkForColumn}
+          beginEditExistingCell={beginEditExistingCell}
+          effectiveRowIndexByKey={effectiveRowIndexByKey}
+          effectiveRowsRef={effectiveRowsRef}
+          isLoadingFk={isLoadingFk}
+          fkOptions={fkOptions}
+          onOpenRelatedTable={onOpenRelatedTable}
+          tableSchema={table.schema}
+          primaryKey={primaryKey}
+          applyExpandedEditToRow={applyExpandedEditToRow}
+          totalVirtualRows={totalVirtualRows}
+        />
       </div>
 
-      <div className="border-t px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            className={pressableClass}
-            onClick={() => setPage((current) => Math.max(current - 1, 0))}
-            disabled={page === 0 || isLoading}
-          >
-            <UiIcon name="chevron-left" className="h-3.5 w-3.5" />
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            Page {page + 1} / {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            className={pressableClass}
-            onClick={() => setPage((current) => current + 1)}
-            disabled={isLoading || page + 1 >= totalPages}
-          >
-            <UiIcon name="chevron-right" className="h-3.5 w-3.5" />
-          </Button>
-          <span className="text-xs text-muted-foreground ml-2">
-            Rows per page
-          </span>
-          {[25, 50, 100].map((size) => (
-            <Button
-              key={size}
-              variant={pageSize === size ? "secondary" : "outline"}
-              size="sm"
-              className={pressableClass}
-              onClick={() => {
-                setPageSize(size);
-                setPage(0);
-              }}
-            >
-              {size}
-            </Button>
-          ))}
-        </div>
+      <TableEditorFooter
+        page={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        isLoading={isLoading}
+        hasDraftChanges={hasDraftChanges}
+        isSaving={isSaving}
+        pressableClass={pressableClass}
+        onPrevPage={() => setPage((current) => Math.max(current - 1, 0))}
+        onNextPage={() => setPage((current) => current + 1)}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(0);
+        }}
+        onDiscardDrafts={discardDrafts}
+        onSaveChanges={() => void saveAllChanges()}
+      />
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className={pressableClass}
-            onClick={discardDrafts}
-            disabled={!hasDraftChanges || isSaving}
-          >
-            <UiIcon name="undo" className="h-3.5 w-3.5" />
-            Discard
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            className={pressableClass}
-            onClick={() => void saveAllChanges()}
-            disabled={!hasDraftChanges || isSaving}
-          >
-            {isSaving ? (
-              <UiIcon name="loader" className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <UiIcon name="device-floppy" className="h-3.5 w-3.5" />
-            )}
-            Save Changes
-          </Button>
-        </div>
-      </div>
+      <TableEditorDialogs
+        tableName={table.name}
+        selectedRowCount={selectedRowKeys.size}
+        pendingBatchDelete={pendingBatchDelete}
+        pendingTruncate={pendingTruncate}
+        confirmText={confirmText}
+        truncateSqlPreview={truncateSqlPreview}
+        isTruncating={isTruncating}
+        onConfirmTextChange={setConfirmText}
+        onBatchDeleteOpenChange={setPendingBatchDelete}
+        onTruncateOpenChange={setPendingTruncate}
+        onConfirmBatchDelete={() => {
+          batchDeleteSelected();
+          setPendingBatchDelete(false);
+          setConfirmText("");
+        }}
+        onConfirmTruncate={() => void runTruncate()}
+      />
 
-      <AlertDialog
-        open={pendingBatchDelete}
-        onOpenChange={setPendingBatchDelete}
+      <button
+        ref={floatingRowButtonRef}
+        type="button"
+        aria-label="Open row details"
+        title="Open row details"
+        onClick={(event) => {
+          event.stopPropagation();
+          const hovered = hoveredRowAnchorRef.current;
+          if (!hovered) return;
+          openRowDetails(hovered.rowKey, hovered.row, hovered.index);
+          setExpandedRowOutline({
+            top: hovered.top - hovered.height / 2,
+            left: hovered.left + 12,
+            width: hovered.width,
+            height: hovered.height,
+          });
+          hoveredRowAnchorRef.current = null;
+          const button = floatingRowButtonRef.current;
+          if (button) {
+            button.style.opacity = "0";
+            button.style.pointerEvents = "none";
+          }
+        }}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onMouseEnter={cancelPendingHoverClear}
+        onMouseLeave={scheduleHoverClear}
+        className="fixed z-[10000] flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm border border-border/70 bg-muted/95 text-muted-foreground opacity-0 pointer-events-none shadow-sm hover:text-foreground cursor-pointer"
       >
-        <AlertDialogContent className="t-resize">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm batch delete</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will stage deletion of{" "}
-              <strong>{selectedRowKeys.size} rows</strong>. Changes are
-              persisted only when you click <strong>Save Changes</strong>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2">
-            <Input
-              value={confirmText}
-              onChange={(event) => setConfirmText(event.target.value)}
-              placeholder={`Type ${table.name} to confirm`}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                batchDeleteSelected();
-                setPendingBatchDelete(false);
-                setConfirmText("");
-              }}
-              disabled={confirmText !== table.name}
-            >
-              Stage Delete ({selectedRowKeys.size})
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <IconArrowsDiagonal2 className="h-3 w-3" />
+      </button>
 
-      <AlertDialog open={pendingTruncate} onOpenChange={setPendingTruncate}>
-        <AlertDialogContent className="t-resize">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Truncate table</AlertDialogTitle>
-            <AlertDialogDescription>
-              This operation is immediate and removes all rows from the table.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">SQL preview</p>
-            <pre className="text-[11px] bg-muted rounded-md p-2 overflow-auto">
-              {truncateSqlPreview}
-            </pre>
-            <Input
-              value={confirmText}
-              onChange={(event) => setConfirmText(event.target.value)}
-              placeholder={`Type ${table.name} to confirm`}
-            />
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => void runTruncate()}
-              disabled={confirmText !== table.name || isTruncating}
-            >
-              {isTruncating ? (
-                <UiIcon name="loader" className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <UiIcon name="database" className="h-3.5 w-3.5" />
-              )}
-              Truncate
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {hoveredRowAnchor && !expandedRow && (
-        <div className="pointer-events-none fixed inset-0 z-[9999]">
-          <button
-            type="button"
-            aria-label="Open row details"
-            title="Open row details"
-            onClick={(event) => {
-              event.stopPropagation();
-              openRowDetails(
-                hoveredRowAnchor.rowKey,
-                hoveredRowAnchor.row,
-                hoveredRowAnchor.index,
-              );
-              setHoveredRowAnchor(null);
-            }}
-            onMouseEnter={cancelPendingHoverClear}
-            onMouseLeave={scheduleHoverClear}
-            className="pointer-events-auto fixed z-[10000] flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm border border-border/70 bg-muted/95 text-muted-foreground shadow-sm hover:text-foreground"
-            style={{
-              top: hoveredRowAnchor.top,
-              left: hoveredRowAnchor.left,
-            }}
-          >
-            <UiIcon name="arrows-left-right" className="h-3 w-3" />
-          </button>
-        </div>
-      )}
-
-      {expandedRow && (
-        <div className="absolute inset-0 z-40">
-          <button
-            type="button"
-            aria-label="Close row details"
-            className="absolute inset-0 bg-background/35"
-            onClick={() => setExpandedRow(null)}
-          />
-          <div className="absolute inset-y-0 right-0 w-[520px] max-w-[95%] border-l bg-background shadow-2xl">
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="border-b px-4 py-3">
-                <p className="text-left text-sm font-semibold">
-                  {table.schema}.{table.name}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {`Row #${expandedRow.index + 1}${
-                    primaryKey.length > 0
-                      ? ` · PK: ${primaryKey.map((column) => normalizeDisplay(expandedRow.row[column])).join(", ")}`
-                      : ""
-                  }`}
-                </p>
-              </div>
-
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-                {table.columns.map((column) => {
-                  const value = expandedRow.row[column.name];
-                  const textValue = normalizeDisplay(value);
-                  return (
-                    <div key={column.name} className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs font-medium">{column.name}</span>
-                        <span className="truncate text-[10px] text-muted-foreground">
-                          {column.data_type}
-                        </span>
-                      </div>
-                      <div
-                        className={`max-h-40 overflow-auto rounded border bg-background px-2 py-1.5 font-mono text-xs ${
-                          value === null || value === undefined ? "italic text-muted-foreground/70" : ""
-                        }`}
-                        title={getCellTitle(value)}
-                      >
-                        {textValue}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="border-t px-4 py-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setExpandedRow(null)}
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <TableEditorRowDetailsOverlay
+        tableSchema={table.schema}
+        tableName={table.name}
+        primaryKey={primaryKey}
+        expandedRow={expandedRow}
+        expandedRowFields={expandedRowFields}
+        expandedRowOutline={expandedRowOutline}
+        isPanelPending={isPanelPending}
+        onClose={closeRowDetails}
+      />
     </div>
   );
 }

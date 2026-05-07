@@ -246,6 +246,8 @@ export interface TableRowsResponse {
   foreignKeys: TableForeignKeyMeta[];
   pageInfo: TablePageInfo;
   totalEstimate: number;
+  sortAppliedOnServer?: boolean;
+  filtersAppliedOnServer?: boolean;
 }
 
 export interface TableUpdateChange {

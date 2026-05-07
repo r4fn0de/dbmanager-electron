@@ -400,7 +400,7 @@ export const tableListRows = os
     const driver = driverRegistry.get(resolveDbType(connection));
     // Clamp pageSize to prevent fetching too many rows at once
     const safePageSize = Math.min(input.pageSize, MAX_PAGE_SIZE);
-    return await driver.listRows(
+    const response = await driver.listRows(
       connStr,
       input.tableRef.schema,
       input.tableRef.table,
@@ -409,6 +409,11 @@ export const tableListRows = os
       input.sort,
       input.filters,
     );
+    return {
+      ...response,
+      sortAppliedOnServer: input.sort.length > 0,
+      filtersAppliedOnServer: input.filters.length > 0,
+    };
   });
 
 export const tableSaveChanges = os
