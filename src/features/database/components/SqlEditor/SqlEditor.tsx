@@ -1686,7 +1686,7 @@ export function SqlEditor({
                     key={tab.id}
                     type="button"
                     className={cn(
-                      "group/tab relative flex items-center gap-1.5 px-3 h-[30px] text-[12px] leading-none whitespace-nowrap select-none",
+                      "group/tab relative flex items-center gap-1.5 px-3 h-[30px] text-[12px] leading-none whitespace-nowrap",
                       tabs.length > 1 && "pr-7",
                       "transition-colors duration-150",
                       isActive
@@ -1706,7 +1706,7 @@ export function SqlEditor({
                         isActive ? "text-foreground/70" : "text-muted-foreground/60",
                       )}
                     />
-                    <span className="truncate max-w-[140px]">{tab.doc.title}</span>
+                    <span className="truncate max-w-[140px] select-text">{tab.doc.title}</span>
                     {isDirty && (
                       <span
                         className={cn(
@@ -1721,6 +1721,7 @@ export function SqlEditor({
                         tabIndex={0}
                         className={cn(
                           "absolute right-1 top-1/2 -translate-y-1/2 rounded-[3px] p-[2px]",
+                          "select-none",
                           "opacity-0 group-hover/tab:opacity-100 transition-opacity duration-100",
                           "hover:bg-muted-foreground/15 hover:text-destructive",
                         )}

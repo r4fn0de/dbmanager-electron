@@ -42,24 +42,24 @@ export function TableEditorGridHeader({
           return (
             <TableHead
               key={columnName}
-              className="border-r border-border last:border-r-0 select-none hover:bg-muted/60 transition-colors relative group h-8 py-1 px-2 bg-background"
+              className="border-r border-border last:border-r-0 hover:bg-muted/60 transition-colors relative group h-8 py-1 px-2 bg-background"
               style={{ width, minWidth: width, maxWidth: width }}
             >
               <button
                 type="button"
-                className="w-full h-full text-left cursor-pointer pr-2 overflow-hidden"
+                className="w-full h-full text-left cursor-pointer pr-2 overflow-hidden select-none"
                 onClick={() => onSortColumn(columnName)}
               >
                 <div className="flex items-center min-w-0 gap-1">
                   <span
-                    className="min-w-0 flex-1 basis-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground/90"
+                    className="min-w-0 flex-1 basis-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground/90 select-text"
                     title={column?.data_type ? `${columnName} (${column.data_type})` : columnName}
                   >
                     {columnName}
                   </span>
                   {column?.data_type ? (
                     <span
-                      className="min-w-0 max-w-[42%] truncate whitespace-nowrap text-[10px] font-normal text-muted-foreground/70"
+                      className="min-w-0 max-w-[42%] truncate whitespace-nowrap text-[10px] font-normal text-muted-foreground/70 select-text"
                       title={column.data_type}
                     >
                       {column.data_type}
@@ -75,7 +75,7 @@ export function TableEditorGridHeader({
               <button
                 type="button"
                 aria-label={`Resize column ${columnName}`}
-                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-20"
+                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-20 select-none"
                 onMouseDown={(e) => handleResizeMouseDown(columnName, e)}
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
@@ -92,4 +92,3 @@ export function TableEditorGridHeader({
     </TableHeader>
   );
 }
-

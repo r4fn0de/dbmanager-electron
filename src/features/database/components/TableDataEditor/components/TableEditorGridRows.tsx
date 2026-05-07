@@ -126,7 +126,7 @@ export function TableEditorGridRows({
                   </div>
                 ) : (
                   <>
-                    <span className={`block truncate whitespace-nowrap ${value === null || value === undefined ? "italic text-muted-foreground/60" : ""}`}>
+                    <span className={`block truncate whitespace-nowrap select-text ${value === null || value === undefined ? "italic text-muted-foreground/60" : ""}`}>
                       {normalizeDisplay(value)}
                     </span>
                     <CellExpandPopover
@@ -143,7 +143,7 @@ export function TableEditorGridRows({
                           title="Expand (open editor)"
                           onClick={(event) => event.stopPropagation()}
                           onMouseDown={(event) => event.stopPropagation()}
-                          className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
+                          className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocusedInsert ? "opacity-100" : ""}`}
                         >
                           <UiIcon name="arrows-maximize" className="h-3 w-3" />
                         </button>
@@ -286,7 +286,7 @@ export function TableEditorGridRows({
                               <button
                                 key={`${idx}:${option.label}`}
                                 type="button"
-                                className="w-full text-left px-2 py-1 text-[10px] hover:bg-muted"
+                                className="w-full text-left px-2 py-1 text-[10px] hover:bg-muted select-none"
                                 onMouseDown={(event) => {
                                   event.preventDefault();
                                   setEditingValue(normalizeDisplay(option.value));
@@ -307,13 +307,13 @@ export function TableEditorGridRows({
                             : isNull
                               ? "italic text-muted-foreground/60"
                               : ""
-                        }`}
+                        } select-text`}
                       >
                         {normalizeDisplay(effectiveValue)}
                         {fk ? (
                           <button
                             type="button"
-                            className="ml-1 text-[10px] text-muted-foreground/60 underline-offset-2 hover:underline hover:text-muted-foreground"
+                            className="ml-1 text-[10px] text-muted-foreground/60 underline-offset-2 hover:underline hover:text-muted-foreground select-none"
                             onClick={(event) => {
                               event.stopPropagation();
                               onOpenRelatedTable?.(
@@ -341,7 +341,7 @@ export function TableEditorGridRows({
                             title="Expand (open editor)"
                             onClick={(event) => event.stopPropagation()}
                             onMouseDown={(event) => event.stopPropagation()}
-                            className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 ${isFocused ? "opacity-100" : ""}`}
+                            className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocused ? "opacity-100" : ""}`}
                           >
                             <UiIcon name="arrows-maximize" className="h-3 w-3" />
                           </button>
@@ -373,4 +373,3 @@ export function TableEditorGridRows({
     </TableBody>
   );
 }
-

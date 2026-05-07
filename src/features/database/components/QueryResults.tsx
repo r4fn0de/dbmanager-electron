@@ -113,13 +113,13 @@ function CellExpandDialog({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={(
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 hover:text-foreground relative z-[2]"
-            title="Expand cell"
-          >
+          <PopoverTrigger
+            render={(
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 hover:text-foreground relative z-[2] select-none"
+                title="Expand cell"
+              >
             <Icon name="arrows-maximize" className="size-3" />
           </button>
         )}
@@ -160,7 +160,7 @@ function CellExpandDialog({
         <ScrollArea className="max-h-[320px]">
           <pre
             className={cn(
-              "p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-all",
+              "p-3 font-mono text-xs leading-5 whitespace-pre-wrap break-all select-text",
               isNull && "italic text-muted-foreground"
             )}
           >
@@ -217,7 +217,7 @@ export function QueryResults({
                   <code
                     key={`${line}-${idx}`}
                     className={cn(
-                      "block font-mono text-xs leading-5 break-all",
+                      "block font-mono text-xs leading-5 break-all select-text",
                       idx === 0 ? "text-destructive" : "text-destructive/85",
                     )}
                   >
@@ -226,7 +226,7 @@ export function QueryResults({
                 ))}
               </div>
             ) : (
-              <code className="block font-mono text-xs text-destructive/90 leading-5 break-all">
+              <code className="block font-mono text-xs text-destructive/90 leading-5 break-all select-text">
                 {error}
               </code>
             )}
@@ -274,18 +274,18 @@ export function QueryResults({
         <div className="rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2">
           <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
             <Icon name="circle-check" className="size-3.5 shrink-0" />
-            <span className="text-xs font-medium">
+            <span className="text-xs font-medium select-text">
               {result.row_count > 0
                 ? `${result.row_count.toLocaleString()} ${result.row_count === 1 ? "row" : "rows"} affected`
                 : "Statement executed successfully"}
             </span>
             {durationMs !== undefined && (
-              <span className="ml-auto text-[10px] font-mono text-emerald-700/70 dark:text-emerald-300/70">
+              <span className="ml-auto text-[10px] font-mono text-emerald-700/70 dark:text-emerald-300/70 select-text">
                 {formatDuration(durationMs)}
               </span>
             )}
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-[11px] text-muted-foreground select-text">
             This query did not return a result set.
           </p>
         </div>
@@ -300,18 +300,18 @@ export function QueryResults({
         <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
           <div className="flex items-center gap-2 text-muted-foreground/80">
             <Icon name="circle-check" className="size-3.5 text-emerald-500 shrink-0" />
-            <span className="text-xs font-medium">0 rows returned</span>
+            <span className="text-xs font-medium select-text">0 rows returned</span>
             <span className="text-[10px] text-muted-foreground/50">·</span>
-            <span className="text-xs text-muted-foreground/70">
+            <span className="text-xs text-muted-foreground/70 select-text">
               {result.columns.length} {result.columns.length === 1 ? "column" : "columns"}
             </span>
             {durationMs !== undefined && (
-              <span className="ml-auto text-[10px] font-mono text-muted-foreground/60">
+              <span className="ml-auto text-[10px] font-mono text-muted-foreground/60 select-text">
                 {formatDuration(durationMs)}
               </span>
             )}
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-[11px] text-muted-foreground select-text">
             Query executed successfully, but no records matched your filters.
           </p>
         </div>
@@ -328,7 +328,7 @@ export function QueryResults({
       {result.truncated && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-amber-500/30 bg-amber-500/5">
           <Icon name="triangle-alert" className="size-3.5 text-amber-500 shrink-0" />
-          <span className="text-xs text-amber-600 dark:text-amber-400">
+          <span className="text-xs text-amber-600 dark:text-amber-400 select-text">
             Results truncated to {result.row_count.toLocaleString()} rows (total: {result.totalRowCount?.toLocaleString()}). Add a LIMIT clause to reduce the result set.
           </span>
         </div>
@@ -338,7 +338,7 @@ export function QueryResults({
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50">
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-emerald-500">✓</span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground select-text">
             {result.row_count.toLocaleString()}{" "}
             {result.row_count === 1 ? "row" : "rows"}
           </span>
@@ -348,7 +348,7 @@ export function QueryResults({
           ·
         </span>
 
-        <span className="text-xs text-muted-foreground/70">
+        <span className="text-xs text-muted-foreground/70 select-text">
           {colCount} {colCount === 1 ? "column" : "columns"}
         </span>
 
@@ -357,7 +357,7 @@ export function QueryResults({
             <span className="text-[10px] text-muted-foreground/50">
               ·
             </span>
-            <span className="text-xs font-mono text-muted-foreground/70">
+            <span className="text-xs font-mono text-muted-foreground/70 select-text">
               {formatDuration(durationMs)}
             </span>
           </>
@@ -411,7 +411,7 @@ export function QueryResults({
                       </span>
                       <Badge
                         variant="secondary"
-                        className="h-4 rounded font-mono text-[9px] py-0 leading-none font-normal"
+                        className="h-4 rounded font-mono text-[9px] py-0 leading-none font-normal select-text"
                       >
                         {col.type_name}
                       </Badge>
@@ -457,7 +457,7 @@ export function QueryResults({
                         title={text}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="truncate">
+                          <span className="truncate select-text">
                             {isNull ? (
                               "NULL"
                             ) : isBool ? (
@@ -494,7 +494,7 @@ export function QueryResults({
                         {/* Click target for copying (below expand button via z-index) */}
                         <button
                           type="button"
-                          className="absolute inset-0 z-[1] cursor-default"
+                          className="absolute inset-0 z-[1] cursor-default select-none"
                           onDoubleClick={() =>
                             handleCopyCell(rowIdx, cellIdx, cell)
                           }
