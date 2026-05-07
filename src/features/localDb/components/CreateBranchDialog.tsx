@@ -214,7 +214,7 @@ export function CreateBranchDialog({
             <Icon name="plus" className="size-4 text-muted-foreground" />
             Create Branch
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="select-text">
             Create a new branch from{" "}
             <span className="font-medium text-foreground">{localDbName}</span>
           </DialogDescription>
@@ -238,7 +238,7 @@ export function CreateBranchDialog({
               }}
             />
             {nameError && (
-              <p className="text-xs text-destructive">{nameError}</p>
+              <p className="text-xs text-destructive select-text">{nameError}</p>
             )}
           </div>
 

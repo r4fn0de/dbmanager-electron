@@ -236,7 +236,7 @@ export function DatabaseOverview({
                 />
               )}
               <div className="min-w-0">
-                <h1 className="font-heading text-lg font-semibold tracking-tight truncate">
+                <h1 className="font-heading text-lg font-semibold tracking-tight truncate select-text">
                   {connection.name}
                 </h1>
                 <div className="mt-0.5 flex items-center gap-1.5">
@@ -256,34 +256,34 @@ export function DatabaseOverview({
               {/* DB type badge */}
               <Badge
                 variant="secondary"
-                className="font-mono text-[10px] h-5 px-1.5"
+                className="font-mono text-[10px] h-5 px-1.5 select-text"
               >
                 {dbTypeLabel}
               </Badge>
               {isLocal && (
                 <Badge
                   variant="outline"
-                  className="font-mono text-[10px] h-5 px-1.5"
+                  className="font-mono text-[10px] h-5 px-1.5 select-text"
                 >
                   LOCAL
                 </Badge>
               )}
               {connection.tag && (
-                <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                <Badge variant="secondary" className="text-[10px] h-5 px-1.5 select-text">
                   {connection.tag}
                 </Badge>
               )}
               {engineVersion && (
                 <Badge
                   variant="secondary"
-                  className="font-mono text-[10px] h-5 px-1.5"
+                  className="font-mono text-[10px] h-5 px-1.5 select-text"
                 >
                   v{engineVersion}
                 </Badge>
               )}
               <Badge
                 variant="outline"
-                className="font-mono text-[10px] h-5 px-1.5"
+                className="font-mono text-[10px] h-5 px-1.5 select-text"
               >
                 {connection.ssl_mode}
               </Badge>
@@ -300,7 +300,7 @@ export function DatabaseOverview({
                     onClick={() => void handleCopyDisplayInfo()}
                     onMouseEnter={() => setIsDisplayInfoHovered(true)}
                     onMouseLeave={() => setIsDisplayInfoHovered(false)}
-                    className="max-w-full truncate rounded-sm px-1 py-0.5 text-left font-mono text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    className="max-w-full truncate rounded-sm px-1 py-0.5 text-left font-mono text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background select-none"
                   />
                 }
               >
@@ -448,26 +448,26 @@ export function DatabaseOverview({
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Version</span>
-                    <span className="font-mono font-medium text-foreground">
+                    <span className="font-mono font-medium text-foreground select-text">
                       {shortVersion ?? databaseInfo.version}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Encoding</span>
-                    <span className="font-mono font-medium text-foreground">
+                    <span className="font-mono font-medium text-foreground select-text">
                       {databaseInfo.encoding}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Timezone</span>
-                    <span className="font-mono font-medium text-foreground">
+                    <span className="font-mono font-medium text-foreground select-text">
                       {databaseInfo.timezone}
                     </span>
                   </div>
                   {databaseInfo.databaseName && (
                     <div className="flex items-center gap-1.5">
                       <span className="text-muted-foreground/60">Database</span>
-                      <span className="font-mono font-medium text-foreground">
+                      <span className="font-mono font-medium text-foreground select-text">
                         {databaseInfo.databaseName}
                       </span>
                     </div>
@@ -547,7 +547,7 @@ export function DatabaseOverview({
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted-foreground/60">Engine</span>
-                  <Badge variant="secondary" className="font-mono text-[10px] h-4 px-1">
+                  <Badge variant="secondary" className="font-mono text-[10px] h-4 px-1 select-text">
                     {localDbStatus.engine === "sqlite" ? "SQLite" : "PostgreSQL"}
                   </Badge>
                 </div>
@@ -567,7 +567,7 @@ export function DatabaseOverview({
                 {localDbStatus.port != null && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Port</span>
-                    <span className="font-mono font-medium text-foreground">
+                    <span className="font-mono font-medium text-foreground select-text">
                       {localDbStatus.port}
                     </span>
                   </div>
@@ -609,7 +609,7 @@ export function DatabaseOverview({
                   }}
                   whileTap={{ scale: 0.995 }}
                 >
-                  <span className="flex-1 truncate font-medium">
+                  <span className="flex-1 truncate font-medium select-text">
                     {schema.name}
                   </span>
                   <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">

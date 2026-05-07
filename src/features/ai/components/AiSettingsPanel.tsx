@@ -305,7 +305,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   disabled={isSavingProvider}
                   onClick={() => handleProviderChange(provider.name)}
                   className={cn(
-                    "flex-1 flex items-center justify-between px-3.5 py-3 text-sm font-medium text-left active:scale-[0.97] transition-transform",
+                    "flex-1 flex items-center justify-between px-3.5 py-3 text-sm font-medium text-left active:scale-[0.97] transition-transform select-none",
                     isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -327,7 +327,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   <button
                     type="button"
                     onClick={() => setOpenConfigProvider(provider.name)}
-                    className="mr-2 flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-150 ease-out"
+                    className="mr-2 flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-150 ease-out select-none"
                     title="Provider settings"
                   >
                     <UiIcon name="settings" className="size-4" />
@@ -429,7 +429,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                             [provider.name]: !prev[provider.name],
                           }))
                         }
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors select-none"
                       >
                         {showApiKeys[provider.name] ? (
                           <UiIcon name="eye-off" className="size-3" />

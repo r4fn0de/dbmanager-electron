@@ -55,7 +55,7 @@ export function BranchSwitchConfirmDialog({
             <Icon name="git-branch" className="size-4 text-muted-foreground" />
             Switch Branch
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="select-text">
             You are about to switch the active database branch.
           </DialogDescription>
         </DialogHeader>
@@ -80,7 +80,7 @@ export function BranchSwitchConfirmDialog({
 
           {/* Description if present */}
           {targetBranch.description && (
-            <p className="text-xs text-muted-foreground text-center">
+            <p className="text-xs text-muted-foreground text-center select-text">
               {targetBranch.description}
             </p>
           )}
@@ -89,7 +89,7 @@ export function BranchSwitchConfirmDialog({
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
             <div className="flex items-start gap-2">
               <Icon name="triangle-alert" className="size-3.5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+              <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed select-text">
                 Switching branches will change the database that your connection points to.
                 Any open editors or queries will use the new branch's data.
               </p>
@@ -98,7 +98,7 @@ export function BranchSwitchConfirmDialog({
 
           {/* Error */}
           {error && (
-            <p className="text-xs text-destructive rounded-md bg-destructive/10 px-3 py-2">
+            <p className="text-xs text-destructive rounded-md bg-destructive/10 px-3 py-2 select-text">
               {error}
             </p>
           )}

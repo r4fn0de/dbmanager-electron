@@ -19,12 +19,29 @@ Status legend:
   - connection names/tags/branch badges selectable
   - click-to-copy affordance remains non-selectable (interaction-first)
 
+- `ConnectionForm`: `Adjusted`
+  - duplicate warning/status/help feedback now selectable
+  - action controls remain interaction-first
+
 - `AI Chat Panel`: `Adjusted`
   - code language label selectable
   - code action controls preserved as interaction-first
 
 - `Local DB dialogs`: `OK`
-  - form-heavy controls; textual content remains naturally copyable where relevant
+  - `CreateBranchDialog` / `BranchSwitchConfirmDialog` informational text adjusted to selectable
+  - form-heavy controls remain interaction-first
+
+- `DatabaseOverview`: `Adjusted`
+  - connection identity metadata (name/badges/server fields/schema names) now explicitly selectable
+  - copy-action target and action controls remain interaction-first
+
+- `SettingsDialog`: `Adjusted`
+  - sidebar category buttons explicitly interaction-first (`select-none`)
+  - informational panel content remains selectable where applicable
+
+- `AiSettingsPanel`: `Adjusted`
+  - provider/select/config toggle controls explicitly interaction-first
+  - informational/config text remains selectable for copy/reference
 
 - `Settings / Theme / Title bar`: `Preserved`
   - title bar and chrome affordances stay interaction-first
@@ -35,4 +52,3 @@ Status legend:
 - `src/components/ui/*` primitives
 - window drag/titlebar regions
 - menu/select/button control internals
-

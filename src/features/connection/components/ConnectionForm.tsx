@@ -810,7 +810,7 @@ export function ConnectionForm({
           {duplicateConnection && (
             <div className="mx-5 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
               <UiIcon name="alert-triangle" className="size-3.5 shrink-0" />
-              <span>
+              <span className="select-text">
                 Duplicate of <strong>{duplicateConnection.name}</strong> — same
                 host, port, database and user already registered.
               </span>
@@ -822,24 +822,24 @@ export function ConnectionForm({
             {/* Status */}
             <div className="text-xs">
               {duplicateConnection ? (
-                <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 select-text">
                   <UiIcon name="alert-triangle" className="size-3" />
                   Duplicate connection
                 </span>
               ) : isEditing ? (
-                <span className="text-muted-foreground">Save changes directly</span>
+                <span className="text-muted-foreground select-text">Save changes directly</span>
               ) : hasTestedCurrent ? (
-                <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400 select-text">
                   <UiIcon name="circle-check" className="size-3" />
                   Verified
                 </span>
               ) : testStatus && !testStatus.success ? (
-                <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400">
+                <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 select-text">
                   <UiIcon name="alert-circle" className="size-3" />
                   {testStatus.message}
                 </span>
               ) : (
-                <span className="text-muted-foreground">Test before saving</span>
+                <span className="text-muted-foreground select-text">Test before saving</span>
               )}
             </div>
 
