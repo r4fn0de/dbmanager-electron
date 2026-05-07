@@ -74,35 +74,48 @@ type TableNodeType = Node<TableNodeData, "tableNode">;
 
 type LayoutDirection = "LR" | "TB";
 
-// Toolbar clean e unificado - renderizado dentro do ReactFlow para ter acesso ao contexto
+// Legend panel with improved visual hierarchy
 function Legend() {
   const [isOpen, setIsOpen] = useState(false);
 
   const items = [
-    { icon: (props: { className?: string }) => <UiIcon name="key" {...props} />, label: "PK", color: "text-amber-500" },
-    { icon: (props: { className?: string }) => <UiIcon name="x" {...props} />, label: "Null", color: "text-slate-400" },
-    { icon: (props: { className?: string }) => <UiIcon name="fingerprint" {...props} />, label: "UQ", color: "text-emerald-500" },
-    { icon: (props: { className?: string }) => <UiIcon name="book" {...props} />, label: "Def", color: "text-blue-500" },
-    { icon: (props: { className?: string }) => <UiIcon name="link" {...props} />, label: "FK", color: "text-violet-500" },
+    { name: "key" as const, label: "Primary Key", shortLabel: "PK", color: "text-amber-500", bg: "bg-amber-500/10" },
+    { name: "x" as const, label: "Nullable", shortLabel: "Null", color: "text-slate-400", bg: "bg-slate-400/10" },
+    { name: "fingerprint" as const, label: "Unique", shortLabel: "UQ", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { name: "book" as const, label: "Default", shortLabel: "Def", color: "text-blue-500", bg: "bg-blue-500/10" },
+    { name: "link" as const, label: "Foreign Key", shortLabel: "FK", color: "text-violet-500", bg: "bg-violet-500/10" },
   ];
 
   return (
     <Panel position="bottom-right" className="m-3!">
-      <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-col items-end gap-1.5">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
-          title="Legend"
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-xl border transition-all shadow-sm",
+            isOpen
+              ? "bg-card/95 text-foreground border-border"
+              : "bg-card/80 backdrop-blur-md text-muted-foreground/50 border-transparent hover:text-foreground hover:border-border/60"
+          )}
+          title="Toggle Legend"
         >
-          <UiIcon name="layers" className="h-3 w-3" />
+          <UiIcon name="layers" className="h-3.5 w-3.5" />
         </button>
         {isOpen && (
-          <div className="rounded-md bg-card/80 backdrop-blur-sm border p-2">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <div className="rounded-xl bg-card/95 backdrop-blur-xl border shadow-xl p-3 min-w-[150px]">
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5 px-0.5">
+              Legend
+            </div>
+            <div className="grid grid-cols-1 gap-2">
               {items.map((item) => (
-                <div key={item.label} className="flex items-center gap-1 text-[9px]">
-                  <item.icon className={`h-2.5 w-2.5 ${item.color}`} />
-                  <span className="text-muted-foreground">{item.label}</span>
+                <div key={item.label} className="flex items-center gap-2.5">
+                  <div className={cn("flex h-6 w-6 items-center justify-center rounded-lg", item.bg)}>
+                    <UiIcon name={item.name} className={cn("h-3 w-3", item.color)} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-medium text-foreground">{item.label}</span>
+                    <span className="text-[9px] text-muted-foreground/60">{item.shortLabel}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -113,7 +126,7 @@ function Legend() {
   );
 }
 
-// Filtros como chips flutuantes
+// Floating filter panel with improved visual design
 function TableFilters({
   filter,
   onChange,
@@ -123,48 +136,44 @@ function TableFilters({
   onChange: (f: TableFilter) => void;
   totalCount: number;
 }) {
+  const filters = [
+    { key: "showIsolated" as const, label: "Isolated", desc: "Tables without relations", activeColor: "text-primary", activeBg: "bg-primary/10" },
+    { key: "showWithFk" as const, label: "FK", desc: "Tables with foreign keys", activeColor: "text-violet-500", activeBg: "bg-violet-500/10" },
+    { key: "showWithPk" as const, label: "PK", desc: "Tables with primary keys", activeColor: "text-amber-500", activeBg: "bg-amber-500/10" },
+  ];
+
   return (
     <Panel position="bottom-left" className="m-3!">
-      <div className="flex flex-wrap items-center gap-1">
-        <button
-          onClick={() => onChange({ ...filter, showIsolated: !filter.showIsolated })}
-          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-colors ${
-            filter.showIsolated
-              ? "text-primary/80"
-              : "text-muted-foreground/40 hover:text-muted-foreground"
-          }`}
-          title="Isolated (no relations)"
-        >
-          <span className="h-1 w-1 rounded-full bg-current" />
-          Isolated
-        </button>
-        <button
-          onClick={() => onChange({ ...filter, showWithFk: !filter.showWithFk })}
-          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-colors ${
-            filter.showWithFk
-              ? "text-violet-500"
-              : "text-muted-foreground/40 hover:text-muted-foreground"
-          }`}
-          title="With Foreign Keys"
-        >
-          <span className="h-1 w-1 rounded-full bg-current" />
-          FK
-        </button>
-        <button
-          onClick={() => onChange({ ...filter, showWithPk: !filter.showWithPk })}
-          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium transition-colors ${
-            filter.showWithPk
-              ? "text-amber-500"
-              : "text-muted-foreground/40 hover:text-muted-foreground"
-          }`}
-          title="With Primary Keys"
-        >
-          <span className="h-1 w-1 rounded-full bg-current" />
-          PK
-        </button>
-        <span className="px-1 text-[9px] text-muted-foreground/40">
-          {totalCount}
-        </span>
+      <div className="rounded-xl bg-card/95 backdrop-blur-xl border shadow-xl p-3 min-w-[180px]">
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            Filters
+          </span>
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted/80 text-[10px] font-semibold text-muted-foreground tabular-nums px-1.5">
+            {totalCount}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {filters.map((item) => {
+            const active = filter[item.key];
+            return (
+              <button
+                key={item.key}
+                onClick={() => onChange({ ...filter, [item.key]: !active })}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all border",
+                  active
+                    ? cn(item.activeColor, item.activeBg, "border-transparent")
+                    : "text-muted-foreground/50 border-border/40 hover:border-border hover:text-muted-foreground bg-transparent"
+                )}
+                title={item.desc}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full transition-colors", active ? "bg-current" : "bg-muted-foreground/30")} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </Panel>
   );
@@ -744,62 +753,78 @@ export function SchemaVisualizer({
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-background flex flex-col">
-      {/* Header flutuante clean */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground/50 tabular-nums">{schemaTableCount}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="flex items-center">
-            <UiIcon name="search" className="mr-1.5 h-3 w-3 text-muted-foreground/40" />
+      {/* Floating control bar */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-auto max-w-[90%]">
+        <div className="flex items-center gap-1.5 rounded-2xl bg-card/95 backdrop-blur-xl border shadow-xl px-2 py-1.5">
+          {/* Schema selector */}
+          <div className="flex items-center gap-2 pl-1 pr-2">
+            <div className="flex h-7 items-center gap-1.5 rounded-lg bg-muted/60 px-2.5">
+              <UiIcon name="database" className="h-3 w-3 text-muted-foreground/50" />
+              <Select value={currentSchema} onValueChange={(value) => value && onSchemaChange(value)}>
+                <SelectTrigger className="h-6 w-28 border-0 bg-transparent p-0 text-xs font-medium text-foreground shadow-none focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {schemas.map((s) => (
+                    <SelectItem key={s} value={s} className="text-xs">
+                      <div className="flex items-center justify-between gap-3 w-full">
+                        <span>{s}</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {tables.filter((t) => t.schema === s).length}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted/80 text-[10px] font-semibold text-muted-foreground tabular-nums px-1.5">
+              {schemaTableCount}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-border/60" />
+
+          {/* Search */}
+          <div className="flex items-center px-2">
+            <UiIcon name="search" className="h-3 w-3 text-muted-foreground/40 shrink-0" />
             <Input
               ref={searchRef}
-              placeholder="Search..."
+              placeholder="Search tables & columns..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-6 w-32 border-0 bg-transparent p-0 text-[11px] text-muted-foreground placeholder:text-muted-foreground/40 focus-visible:ring-0"
+              className="h-7 w-40 border-0 bg-transparent p-0 pl-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus-visible:ring-0"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="mr-1"
+                className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full hover:bg-muted transition-colors"
               >
-                <UiIcon name="x" className="h-2.5 w-2.5 text-muted-foreground/40 hover:text-foreground" />
+                <UiIcon name="x" className="h-2.5 w-2.5 text-muted-foreground/50" />
               </button>
             )}
           </div>
-          <Select value={currentSchema} onValueChange={(value) => value && onSchemaChange(value)}>
-            <SelectTrigger className="h-6 w-28 border-0 bg-transparent p-0 text-[11px] text-muted-foreground shadow-none">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {schemas.map((s) => (
-                <SelectItem key={s} value={s} className="text-xs">
-                  <div className="flex items-center justify-between gap-3 w-full">
-                    <span>{s}</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {tables.filter((t) => t.schema === s).length}
-                    </span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <button
-            onClick={() => setDirection(direction === "LR" ? "TB" : "LR")}
-            title={direction === "LR" ? "Vertical Layout" : "Horizontal Layout"}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground"
-          >
-            {direction === "LR" ? <UiIcon name="arrows-up-down" className="h-3 w-3" /> : <UiIcon name="arrows-left-right" className="h-3 w-3" />}
-          </button>
-          <button
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/40 transition-colors hover:text-foreground"
-          >
-            {isFullscreen ? <UiIcon name="minimize" className="h-3 w-3" /> : <UiIcon name="maximize" className="h-3 w-3" />}
-          </button>
+
+          <div className="h-4 w-px bg-border/60" />
+
+          {/* View controls */}
+          <div className="flex items-center gap-0.5 pr-0.5">
+            <button
+              onClick={() => setDirection(direction === "LR" ? "TB" : "LR")}
+              title={direction === "LR" ? "Switch to Vertical Layout" : "Switch to Horizontal Layout"}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 transition-all hover:bg-muted hover:text-foreground"
+            >
+              {direction === "LR" ? <UiIcon name="arrows-up-down" className="h-3.5 w-3.5" /> : <UiIcon name="arrows-left-right" className="h-3.5 w-3.5" />}
+            </button>
+            <button
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 transition-all hover:bg-muted hover:text-foreground"
+            >
+              {isFullscreen ? <UiIcon name="minimize" className="h-3.5 w-3.5" /> : <UiIcon name="maximize" className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
       </div>
 
