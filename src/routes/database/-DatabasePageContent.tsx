@@ -1067,7 +1067,7 @@ export function DatabasePageContent({
                 maxSize="25%"
                 panelRef={sidebarPanelRef}
                 onResize={handleSidebarResize}
-                className="min-w-0"
+                className="min-w-0 relative z-10"
               >
                 <TablesExplorerSidebar
                   tablesBySchema={tablesBySchema}
@@ -1120,7 +1120,7 @@ export function DatabasePageContent({
               <ResizableHandle withHandle />
 
               {/* Main Panel */}
-              <ResizablePanel id="tables-main" minSize={30} className="min-w-0">
+              <ResizablePanel id="tables-main" minSize={30} className="min-w-0 relative z-20 overflow-visible">
                 {(() => {
                   if (!selectedTable) {
                     return (

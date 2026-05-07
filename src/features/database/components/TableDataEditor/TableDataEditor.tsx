@@ -251,6 +251,19 @@ export function TableDataEditor({
     rowKey: string;
     column: string;
   } | null>(null);
+  const [hoveredRowAnchor, setHoveredRowAnchor] = useState<{
+    rowKey: string;
+    row: RowRecord;
+    index: number;
+    top: number;
+    left: number;
+  } | null>(null);
+  const hoverClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [expandedRow, setExpandedRow] = useState<{
+    rowKey: string;
+    row: RowRecord;
+    index: number;
+  } | null>(null);
 
   const liveViewStateRef = useRef({
     page,
@@ -384,6 +397,40 @@ export function TableDataEditor({
 
   const effectiveRowsRef = useRef(effectiveRows);
   effectiveRowsRef.current = effectiveRows;
+
+  useEffect(() => {
+    if (!expandedRow) return;
+    const stillExists = effectiveRows.some((entry) => entry.rowKey === expandedRow.rowKey);
+    if (!stillExists) setExpandedRow(null);
+  }, [expandedRow, effectiveRows]);
+
+  useEffect(() => {
+    if (!expandedRow) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpandedRow(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [expandedRow]);
+
+  useEffect(() => {
+    if (!hoveredRowAnchor) return;
+    const clearHoverAnchor = () => setHoveredRowAnchor(null);
+    window.addEventListener("resize", clearHoverAnchor);
+    window.addEventListener("scroll", clearHoverAnchor, true);
+    return () => {
+      window.removeEventListener("resize", clearHoverAnchor);
+      window.removeEventListener("scroll", clearHoverAnchor, true);
+    };
+  }, [hoveredRowAnchor]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverClearTimeoutRef.current) {
+        clearTimeout(hoverClearTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // ── Row virtualization ────────────────────────────────────────
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -949,6 +996,28 @@ export function TableDataEditor({
     setSelectedRowKeys(new Set());
   }, [primaryKey, selectedRowKeys, effectiveRows, table.schema, table.name]);
 
+  const openRowDetails = useCallback((rowKey: string, row: RowRecord, index: number) => {
+    setExpandedRow({
+      rowKey,
+      row: { ...row },
+      index,
+    });
+  }, []);
+
+  const cancelPendingHoverClear = useCallback(() => {
+    if (!hoverClearTimeoutRef.current) return;
+    clearTimeout(hoverClearTimeoutRef.current);
+    hoverClearTimeoutRef.current = null;
+  }, []);
+
+  const scheduleHoverClear = useCallback(() => {
+    cancelPendingHoverClear();
+    hoverClearTimeoutRef.current = setTimeout(() => {
+      setHoveredRowAnchor(null);
+      hoverClearTimeoutRef.current = null;
+    }, 180);
+  }, [cancelPendingHoverClear]);
+
   // ── Column resizing ───────────────────────────────────────────
   const columnWidthsRef = useRef(columnWidths);
   columnWidthsRef.current = columnWidths;
@@ -1156,7 +1225,7 @@ export function TableDataEditor({
 
   return (
     <div
-      className="h-full flex flex-col min-h-0"
+      className="relative h-full flex flex-col min-h-0 overflow-visible"
       onClickCapture={clearSelectionOnOutsideClick}
     >
       <div className="border-b px-3 py-1.5 flex items-center justify-between gap-2">
@@ -1485,7 +1554,13 @@ export function TableDataEditor({
             <span className="text-xs">Loading table data...</span>
           </div>
         ) : (
-          <div ref={scrollRef} className="h-full overflow-auto">
+          <div
+            ref={scrollRef}
+            className="h-full overflow-auto"
+            onScroll={() => {
+              if (hoveredRowAnchor) setHoveredRowAnchor(null);
+            }}
+          >
             <table
               className="w-max table-fixed caption-bottom text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
               onKeyDown={handleTableKeyDown}
@@ -1728,6 +1803,7 @@ export function TableDataEditor({
               {visibleEffectiveRows.map(({ row, rowKey, index }) => {
                 const isSelected = selectedRowKeys.has(rowKey);
                 const isRowUpdated = !!draftUpdates[rowKey];
+                const isExpanded = expandedRow?.rowKey === rowKey;
                 const selectionCellBackground = isSelected
                   ? "bg-muted"
                   : isRowUpdated
@@ -1739,14 +1815,28 @@ export function TableDataEditor({
                   <TableRow
                     key={rowKey}
                     data-row-selection-scope="row"
-                    className={`${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : index % 2 === 1 ? "bg-muted/30" : ""}`}
+                    className={`group/row ${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : index % 2 === 1 ? "bg-muted/30" : ""} ${isExpanded ? "ring-1 ring-primary/60 ring-inset" : ""}`}
                     onClick={(e) => handleRowClick(rowKey, index, e)}
+                    onMouseEnter={(event) => {
+                      cancelPendingHoverClear();
+                      const rowRect = event.currentTarget.getBoundingClientRect();
+                      setHoveredRowAnchor({
+                        rowKey,
+                        row,
+                        index,
+                        top: rowRect.top + rowRect.height / 2,
+                        left: rowRect.left - 12,
+                      });
+                    }}
+                    onMouseLeave={() => {
+                      scheduleHoverClear();
+                    }}
                   >
                     <TableCell
-                      className={`sticky left-0 z-[1] w-12 min-w-12 border-r border-border px-2 ${selectionCellBackground}`}
+                      className={`sticky left-0 z-[1] w-12 min-w-12 border-r border-border px-2 relative ${selectionCellBackground}`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="flex items-center justify-center">
+                      <div className="relative flex items-center justify-center">
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={() => {
@@ -2104,6 +2194,96 @@ export function TableDataEditor({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {hoveredRowAnchor && !expandedRow && (
+        <div className="pointer-events-none fixed inset-0 z-[9999]">
+          <button
+            type="button"
+            aria-label="Open row details"
+            title="Open row details"
+            onClick={(event) => {
+              event.stopPropagation();
+              openRowDetails(
+                hoveredRowAnchor.rowKey,
+                hoveredRowAnchor.row,
+                hoveredRowAnchor.index,
+              );
+              setHoveredRowAnchor(null);
+            }}
+            onMouseEnter={cancelPendingHoverClear}
+            onMouseLeave={scheduleHoverClear}
+            className="pointer-events-auto fixed z-[10000] flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm border border-border/70 bg-muted/95 text-muted-foreground shadow-sm hover:text-foreground"
+            style={{
+              top: hoveredRowAnchor.top,
+              left: hoveredRowAnchor.left,
+            }}
+          >
+            <UiIcon name="arrows-left-right" className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {expandedRow && (
+        <div className="absolute inset-0 z-40">
+          <button
+            type="button"
+            aria-label="Close row details"
+            className="absolute inset-0 bg-background/35"
+            onClick={() => setExpandedRow(null)}
+          />
+          <div className="absolute inset-y-0 right-0 w-[520px] max-w-[95%] border-l bg-background shadow-2xl">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="border-b px-4 py-3">
+                <p className="text-left text-sm font-semibold">
+                  {table.schema}.{table.name}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {`Row #${expandedRow.index + 1}${
+                    primaryKey.length > 0
+                      ? ` · PK: ${primaryKey.map((column) => normalizeDisplay(expandedRow.row[column])).join(", ")}`
+                      : ""
+                  }`}
+                </p>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                {table.columns.map((column) => {
+                  const value = expandedRow.row[column.name];
+                  const textValue = normalizeDisplay(value);
+                  return (
+                    <div key={column.name} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-medium">{column.name}</span>
+                        <span className="truncate text-[10px] text-muted-foreground">
+                          {column.data_type}
+                        </span>
+                      </div>
+                      <div
+                        className={`max-h-40 overflow-auto rounded border bg-background px-2 py-1.5 font-mono text-xs ${
+                          value === null || value === undefined ? "italic text-muted-foreground/70" : ""
+                        }`}
+                        title={getCellTitle(value)}
+                      >
+                        {textValue}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="border-t px-4 py-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExpandedRow(null)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
