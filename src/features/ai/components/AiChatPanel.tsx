@@ -226,7 +226,7 @@ function AssistantCodeBlock({
     <div className="group/code relative rounded-lg border border-border/40 bg-background/60 backdrop-blur-sm">
       {/* Header bar */}
       <div className="flex items-center justify-between border-b border-border/30 bg-muted/30 px-3 py-1">
-        <span className="text-[11px] font-medium text-muted-foreground/80">{displayLang}</span>
+        <span className="text-[11px] font-medium text-muted-foreground/80 select-text">{displayLang}</span>
         <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-hover/code:opacity-100 group-focus-within/code:opacity-100">
           <MessageAction
             tooltip={copied ? "Copied" : "Copy code"}

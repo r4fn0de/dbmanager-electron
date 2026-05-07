@@ -242,7 +242,7 @@ function ConnectionCard({
             ) : (
               <ProviderIcon provider={provider} />
             )}
-            <span className="font-medium text-sm truncate">
+            <span className="font-medium text-sm truncate select-text">
               {connection.name}
             </span>
             {connection.color && /^#[0-9a-fA-F]{6}$/.test(connection.color) && (
@@ -252,13 +252,13 @@ function ConnectionCard({
               />
             )}
             {connection.tag && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono">
+              <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono select-text">
                 {connection.tag}
               </Badge>
             )}
             {/* Branch badge */}
             {hasBranches && activeBranch && !activeBranch.isMain && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-0.5 font-mono border-primary/30 bg-primary/5 text-primary">
+              <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-0.5 font-mono border-primary/30 bg-primary/5 text-primary select-text">
                 <Icon name="git-branch" className="size-2.5" />
                 {activeBranch.name}
               </Badge>
@@ -289,7 +289,7 @@ function ConnectionCard({
                   role="button"
                   tabIndex={0}
                   className={cn(
-                    "inline-block w-fit max-w-full text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150",
+                    "inline-block w-fit max-w-full text-xs truncate font-mono mt-0.5 pl-6 cursor-pointer transition-all duration-150 select-none",
                     copied
                       ? "text-emerald-600 dark:text-emerald-400 scale-[1.02]"
                       : "text-muted-foreground hover:text-foreground active:scale-[0.97]",
