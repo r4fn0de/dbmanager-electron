@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ipc } from "@/ipc/manager";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -100,6 +102,43 @@ interface CreateLocalDbDialogProps {
   isUpdating?: boolean;
 }
 
+function Stepper({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      {Array.from({ length: totalSteps }, (_, i) => {
+        const step = i + 1;
+        const isActive = step === currentStep;
+        const isCompleted = step < currentStep;
+        return (
+          <div key={step} className="flex items-center gap-2">
+            <div
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold transition-all border",
+                isActive && "bg-primary text-primary-foreground border-primary shadow-sm",
+                isCompleted && "bg-primary/10 text-primary border-primary/30",
+                !isActive && !isCompleted && "bg-muted text-muted-foreground border-border",
+              )}
+            >
+              {isCompleted ? <Icon name="check" className="size-3" /> : step}
+            </div>
+            <span
+              className={cn(
+                "text-[11px] font-medium transition-colors",
+                isActive ? "text-foreground" : "text-muted-foreground/50",
+              )}
+            >
+              {step === 1 ? "Identity" : "Configuration"}
+            </span>
+            {step < totalSteps && (
+              <div className={cn("h-px w-6 transition-colors", isCompleted ? "bg-primary/30" : "bg-border")} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function CreateLocalDbDialog({
   isOpen,
   onClose,
@@ -111,13 +150,33 @@ export function CreateLocalDbDialog({
 }: CreateLocalDbDialogProps) {
   const isEditMode = !!editConnection;
   const isBusy = isCreating || isUpdating;
+  const TOTAL_STEPS = 2;
 
   const [formData, setFormData] = useState<CreateLocalDbInput>(DEFAULT_FORM_DATA);
   const [useCustomTag, setUseCustomTag] = useState(false);
+  const [step, setStep] = useState(1);
+
+  // ── Port availability check (only for PostgreSQL on step 2) ─────────
+  const { data: availablePort } = useQuery({
+    queryKey: ["findAvailablePort", step, formData.engine, editConnection?.id],
+    queryFn: async () => {
+      return await ipc.client.db.findAvailablePort();
+    },
+    enabled: step === 2 && formData.engine === "postgresql" && isOpen,
+    staleTime: 5_000,
+  });
+
+  const portConflict =
+    step === 2 &&
+    formData.engine === "postgresql" &&
+    availablePort !== undefined &&
+    availablePort !== formData.port;
 
   // Sync form when dialog opens or editConnection changes
   useEffect(() => {
     if (!isOpen) return;
+
+    setStep(1);
 
     if (editConnection) {
       setFormData({
@@ -174,11 +233,12 @@ export function CreateLocalDbDialog({
       <DialogContent className="t-resize sm:max-w-[460px] p-0 gap-0 flex flex-col max-h-[90vh]">
         {/* Header — fixed */}
         <div className="p-5 pb-0 shrink-0">
-          <DialogHeader className="gap-1">
+          <DialogHeader className="gap-3">
             <DialogTitle className="flex items-center gap-2">
               <Icon name="hard-drive" className="size-4 text-muted-foreground" />
               {isEditMode ? "Edit Local Database" : "New Local Database"}
             </DialogTitle>
+            <Stepper currentStep={step} totalSteps={TOTAL_STEPS} />
           </DialogHeader>
         </div>
 
@@ -186,305 +246,414 @@ export function CreateLocalDbDialog({
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto">
             <div className="flex flex-col gap-5 p-5">
-              {/* ── Identity ────────────────────────────────────── */}
-              <div className="flex flex-col gap-3.5">
-                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Identity
-                </span>
-
-                {/* Name + Random */}
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="local-name" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Name
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="local-name"
-                      placeholder="My Local DB"
-                      value={formData.name}
-                      onChange={(e) => updateField("name", e.target.value)}
-                      required
-                      className="h-7"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-xs"
-                      className="shrink-0"
-                      onClick={() => updateField("name", generateRandomName())}
-                      title="Generate random name"
-                    >
-                      <Icon name="shuffle" className="size-3" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Tag */}
-                <div className="flex flex-col gap-1.5">
-                  <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Tag <span className="normal-case tracking-normal text-muted-foreground/50">— optional</span>
-                  </Label>
-                  {!useCustomTag ? (
-                    <div className="flex flex-wrap gap-1">
-                      {TAG_OPTIONS.map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => updateField("tag", formData.tag === tag ? "" : tag)}
-                          className={cn(
-                            "rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
-                            formData.tag === tag
-                              ? "border-primary/30 bg-primary/5 text-primary"
-                              : "border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground",
-                          )}
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setUseCustomTag(true)}
-                        className="rounded-md border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground transition-colors"
-                      >
-                        + custom
-                      </button>
-                    </div>
-                  ) : (
+              {/* ── Step 1: Identity + Engine ─────────────────── */}
+              {step === 1 && (
+                <div className="flex flex-col gap-5">
+                  {/* Name + Random */}
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="local-name" className="text-xs font-medium text-muted-foreground">
+                      Name
+                    </Label>
                     <div className="flex items-center gap-2">
                       <Input
-                        placeholder="Custom tag"
-                        value={formData.tag ?? ""}
-                        onChange={(e) => updateField("tag", e.target.value)}
-                        className="h-7 text-xs"
+                        id="local-name"
+                        placeholder="My Local DB"
+                        value={formData.name}
+                        onChange={(e) => updateField("name", e.target.value)}
+                        required
+                        className="h-8"
                       />
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => { setUseCustomTag(false); updateField("tag", ""); }}
-                        className="h-7 shrink-0 px-2 text-xs text-muted-foreground"
+                        variant="outline"
+                        size="icon-xs"
+                        className="shrink-0 transition-transform duration-150 ease-out active:scale-[0.97]"
+                        onClick={() => updateField("name", generateRandomName())}
+                        title="Generate random name"
                       >
-                        <Icon name="x" className="size-3" />
+                        <Icon name="shuffle" className="size-3" />
                       </Button>
                     </div>
-                  )}
-                </div>
-
-                {/* Color */}
-                <div className="flex flex-col gap-1.5">
-                  <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Color <span className="normal-case tracking-normal text-muted-foreground/50">— optional</span>
-                  </Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {COLOR_OPTIONS.map((colorOption) => (
-                      <button
-                        key={colorOption}
-                        type="button"
-                        className={cn(
-                          "size-4 rounded-full transition-transform hover:scale-110",
-                          formData.color === colorOption && "ring-2 ring-offset-1 ring-offset-background ring-primary/40",
-                        )}
-                        style={{ backgroundColor: colorOption }}
-                        onClick={() =>
-                          updateField("color", formData.color === colorOption ? "" : colorOption)
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Configuration ─────────────────────────────── */}
-              <div className="flex flex-col gap-3.5">
-                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Configuration
-                </span>
-
-                {/* Engine selector */}
-                <div className="flex flex-col gap-1.5">
-                  <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Engine
-                  </Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ENGINE_OPTIONS.map((opt) => {
-                      const isActive = formData.engine === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => {
-                            const switchToSqlite = opt.value === "sqlite";
-                            updateField("engine", opt.value);
-                            if (switchToSqlite) {
-                              updateField("databaseName", "main");
-                              updateField("username", "");
-                              updateField("password", "");
-                              updateField("port", 0);
-                            } else {
-                              updateField("databaseName", "postgres");
-                              updateField("username", "postgres");
-                              updateField("password", "");
-                              updateField("port", 5432);
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-all active:scale-[0.97]",
-                            isActive
-                              ? "border-primary/30 bg-primary/5 text-primary"
-                              : "border-border bg-transparent text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground",
-                          )}
-                        >
-                          {opt.icon}
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* PostgreSQL-specific fields */}
-                {!isSqlite && (<>
-                  {/* Database + Port */}
-                  <div className="grid grid-cols-[1fr_80px] gap-2.5">
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="local-db" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                        Database
-                      </Label>
-                      <Input
-                        id="local-db"
-                        placeholder="postgres"
-                        value={formData.databaseName}
-                        onChange={(e) => updateField("databaseName", e.target.value)}
-                        required
-                        className="h-7 font-mono text-xs"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="local-port" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                        Port
-                      </Label>
-                      <Input
-                        id="local-port"
-                        type="number"
-                        min={1024}
-                        max={65535}
-                        value={formData.port}
-                        onChange={(e) =>
-                          updateField("port", Number.parseInt(e.target.value, 10) || 5432)
-                        }
-                        required
-                        className="h-7 font-mono text-xs"
-                      />
-                    </div>
                   </div>
 
-                  {/* Version */}
+                  {/* Tag */}
                   <div className="flex flex-col gap-1.5">
-                    <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                      Version
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Tag <span className="normal-case tracking-normal text-muted-foreground/50">— optional</span>
                     </Label>
-                    <Select
-                      value={formData.postgresVersion}
-                      onValueChange={(value) => updateField("postgresVersion", value || "16.13.0")}
-                    >
-                      <SelectTrigger className="h-7 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {POSTGRES_VERSIONS.map((v) => (
-                          <SelectItem key={v.value} value={v.value || "16.13.0"}>
-                            {v.label}
-                          </SelectItem>
+                    {!useCustomTag ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {TAG_OPTIONS.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => updateField("tag", formData.tag === tag ? "" : tag)}
+                            className={cn(
+                              "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150 active:scale-[0.97]",
+                              formData.tag === tag
+                                ? "border-primary/40 bg-primary/10 text-primary shadow-sm"
+                                : "border-border/60 text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground hover:bg-muted/30",
+                            )}
+                          >
+                            {tag}
+                          </button>
                         ))}
-                      </SelectContent>
-                    </Select>
+                        <button
+                          type="button"
+                          onClick={() => setUseCustomTag(true)}
+                          className="rounded-full border border-dashed border-border/60 px-3 py-1 text-[11px] text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground hover:bg-muted/30 transition-colors duration-150 active:scale-[0.97]"
+                        >
+                          + custom
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Custom tag"
+                          value={formData.tag ?? ""}
+                          onChange={(e) => updateField("tag", e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setUseCustomTag(false); updateField("tag", ""); }}
+                          className="h-8 shrink-0 px-2 text-xs text-muted-foreground"
+                        >
+                          <Icon name="x" className="size-3" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Username + Password */}
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="local-user" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                        Username
-                      </Label>
-                      <Input
-                        id="local-user"
-                        placeholder="postgres"
-                        value={formData.username}
-                        onChange={(e) => updateField("username", e.target.value)}
-                        required
-                        className="h-7 font-mono text-xs"
-                      />
+                  {/* Color */}
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Color <span className="normal-case tracking-normal text-muted-foreground/50">— optional</span>
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      {COLOR_OPTIONS.map((colorOption) => (
+                        <button
+                          key={colorOption}
+                          type="button"
+                          className={cn(
+                            "size-5 rounded-full transition-transform duration-200 ease-out hover:scale-110 hover:shadow-md",
+                            formData.color === colorOption && "ring-2 ring-offset-2 ring-offset-background ring-primary/50 scale-110",
+                          )}
+                          style={{ backgroundColor: colorOption }}
+                          onClick={() =>
+                            updateField("color", formData.color === colorOption ? "" : colorOption)
+                          }
+                          title={colorOption}
+                        />
+                      ))}
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <Label htmlFor="local-password" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                        Password
-                      </Label>
-                      <Input
-                        id="local-password"
-                        type="password"
-                        placeholder="Default: postgres"
-                        value={formData.password}
-                        onChange={(e) => updateField("password", e.target.value)}
-                        className="h-7 font-mono text-xs"
-                      />
+                  </div>
+
+                  {/* Engine selector */}
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Engine
+                    </Label>
+                    <div className="flex flex-col gap-2">
+                      {ENGINE_OPTIONS.map((opt) => {
+                        const isActive = formData.engine === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              const switchToSqlite = opt.value === "sqlite";
+                              updateField("engine", opt.value);
+                              if (switchToSqlite) {
+                                updateField("databaseName", "main");
+                                updateField("username", "");
+                                updateField("password", "");
+                                updateField("port", 0);
+                              } else {
+                                updateField("databaseName", "postgres");
+                                updateField("username", "postgres");
+                                updateField("password", "");
+                                updateField("port", 5432);
+                              }
+                            }}
+                            className={cn(
+                              "flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors duration-150 ease-out active:scale-[0.98]",
+                              isActive
+                                ? "border-primary/30 bg-primary/5 text-primary shadow-sm"
+                                : "border-border bg-transparent text-muted-foreground hover:border-muted-foreground/30 hover:bg-muted/20 hover:text-foreground",
+                            )}
+                          >
+                            <div className={cn(
+                              "flex h-9 w-9 items-center justify-center rounded-lg border transition-colors",
+                              isActive ? "border-primary/20 bg-primary/10" : "border-border bg-muted/40"
+                            )}>
+                              {opt.icon}
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-semibold">{opt.label}</span>
+                              <span className="text-[10px] text-muted-foreground/70">{opt.description}</span>
+                            </div>
+                            {isActive && (
+                              <Icon name="check" className="ml-auto size-4 text-primary shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                </>)}
-
-                {/* SQLite info message */}
-                {isSqlite && (
-                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-                    SQLite databases are file-based and stored locally. No server process or port configuration needed. The database file will be created automatically.
-                  </div>
-                )}
-
-                {/* Auto-start */}
-                <div className="flex items-center gap-2.5">
-                  <Switch
-                    id="local-auto"
-                    checked={formData.autoStart}
-                    onCheckedChange={(checked) => updateField("autoStart", checked)}
-                  />
-                  <Label htmlFor="local-auto" className="text-xs cursor-pointer">
-                    Auto-start {isEditMode ? "" : "on creation"}
-                  </Label>
                 </div>
-              </div>
+              )}
+
+              {/* ── Step 2: Configuration ─────────────────────── */}
+              {step === 2 && (
+                <div className="flex flex-col gap-4">
+                  {/* Engine summary */}
+                  <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-muted/30 px-4 py-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-card shadow-sm">
+                      {ENGINE_OPTIONS.find((o) => o.value === formData.engine)?.icon}
+                    </div>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-xs font-semibold text-foreground truncate">
+                        {ENGINE_OPTIONS.find((o) => o.value === formData.engine)?.label}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/60 truncate">
+                        {ENGINE_OPTIONS.find((o) => o.value === formData.engine)?.description}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="ml-auto flex h-7 items-center gap-1 rounded-lg border border-border/60 bg-card px-2.5 text-[10px] font-medium text-muted-foreground hover:border-primary/30 hover:text-primary transition-all active:scale-95 shrink-0"
+                    >
+                      <Icon name="arrow-left" className="size-3" />
+                      Change
+                    </button>
+                  </div>
+
+                  {/* PostgreSQL-specific fields */}
+                  {!isSqlite && (<>
+                    {/* ── Connection section ── */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2">
+                        <Icon name="plug" className="size-3 text-muted-foreground/40" />
+                        <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                          Connection
+                        </span>
+                      </div>
+
+                      {/* Database + Port */}
+                      <div className="grid grid-cols-[1fr_110px] gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="local-db" className="text-xs font-medium text-muted-foreground">
+                            Database
+                          </Label>
+                          <Input
+                            id="local-db"
+                            placeholder="postgres"
+                            value={formData.databaseName}
+                            onChange={(e) => updateField("databaseName", e.target.value)}
+                            required
+                            className="h-8 font-mono text-xs"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="local-port" className="text-xs font-medium text-muted-foreground">
+                            Port
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              id="local-port"
+                              type="number"
+                              min={1024}
+                              max={65535}
+                              value={formData.port}
+                              onChange={(e) =>
+                                updateField("port", Number.parseInt(e.target.value, 10) || 5432)
+                              }
+                              required
+                              className={cn(
+                                "h-8 font-mono text-xs",
+                                portConflict && "pr-7 border-destructive/60 text-destructive focus-visible:ring-destructive/30",
+                              )}
+                            />
+                            {portConflict && (
+                              <Icon
+                                name="alert-circle"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-destructive"
+                              />
+                            )}
+                          </div>
+                          {portConflict && availablePort !== undefined && (
+                            <div className="flex items-center gap-1 text-[10px]">
+                              <span className="text-destructive">In use.</span>
+                              <button
+                                type="button"
+                                onClick={() => updateField("port", availablePort)}
+                                className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
+                              >
+                                Use {availablePort}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Version */}
+                      <div className="flex flex-col gap-1.5">
+                        <Label className="text-xs font-medium text-muted-foreground">
+                          PostgreSQL Version
+                        </Label>
+                        <Select
+                          value={formData.postgresVersion}
+                          onValueChange={(value) => updateField("postgresVersion", value || "16.13.0")}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {POSTGRES_VERSIONS.map((v) => (
+                              <SelectItem key={v.value} value={v.value || "16.13.0"}>
+                                {v.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* ── Credentials section ── */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2">
+                        <Icon name="lock" className="size-3 text-muted-foreground/40" />
+                        <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                          Credentials
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="local-user" className="text-xs font-medium text-muted-foreground">
+                            Username
+                          </Label>
+                          <Input
+                            id="local-user"
+                            placeholder="postgres"
+                            value={formData.username}
+                            onChange={(e) => updateField("username", e.target.value)}
+                            required
+                            className="h-8 font-mono text-xs"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="local-password" className="text-xs font-medium text-muted-foreground">
+                            Password
+                          </Label>
+                          <Input
+                            id="local-password"
+                            type="password"
+                            placeholder="Default: postgres"
+                            value={formData.password}
+                            onChange={(e) => updateField("password", e.target.value)}
+                            className="h-8 font-mono text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>)}
+
+                  {/* SQLite info message */}
+                  {isSqlite && (
+                    <div className="rounded-xl border border-border/50 bg-blue-500/5 px-4 py-3 flex items-start gap-3">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
+                        <Icon name="info" className="size-3.5 text-blue-500/70" />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        SQLite databases are file-based and stored locally. No server process or port configuration needed. The database file will be created automatically.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Auto-start */}
+                  <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-muted/20 p-3.5">
+                    <Switch
+                      id="local-auto"
+                      checked={formData.autoStart}
+                      onCheckedChange={(checked) => updateField("autoStart", checked)}
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <Label htmlFor="local-auto" className="text-xs font-medium text-muted-foreground cursor-pointer">
+                        Auto-start {isEditMode ? "" : "on creation"}
+                      </Label>
+                      <span className="text-[10px] text-muted-foreground/50">Start automatically when the app opens</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Footer — fixed */}
-          <div className="flex items-center justify-end gap-2 border-t bg-muted/50 px-5 py-3 shrink-0">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              disabled={isBusy}
-              className="h-7 px-2 text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isBusy}
-              className="h-7 text-xs gap-1"
-            >
-              {isBusy ? (
-                <>
-                  <Icon name="loader" className="size-3 animate-spin" />
-                  {isEditMode ? "Saving…" : "Creating…"}
-                </>
-              ) : isEditMode ? (
-                <>
-                  <Icon name="pencil" className="size-3" />
-                  Save Changes
-                </>
-              ) : (
-                "Create Database"
-              )}
-            </Button>
+          <div className="flex items-center justify-between gap-2.5 border-t bg-muted/30 px-5 py-3.5 shrink-0">
+            {step > 1 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep(step - 1)}
+                disabled={isBusy}
+                className="h-8 px-3 text-xs gap-1.5"
+              >
+                <Icon name="arrow-left" className="size-3.5" />
+                Back
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                disabled={isBusy}
+                className="h-8 px-3 text-xs"
+              >
+                Cancel
+              </Button>
+            )}
+
+            {step < TOTAL_STEPS ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={isBusy || !formData.name.trim()}
+                onClick={() => setStep(step + 1)}
+                className="h-8 px-5 text-xs gap-1.5 shadow-sm"
+              >
+                Continue
+                <Icon name="arrow-right" className="size-3.5" />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isBusy || portConflict}
+                className="h-8 px-5 text-xs gap-1.5 shadow-sm"
+              >
+                {isBusy ? (
+                  <>
+                    <Icon name="loader" className="size-3.5 animate-spin" />
+                    {isEditMode ? "Saving…" : "Creating…"}
+                  </>
+                ) : isEditMode ? (
+                  <>
+                    <Icon name="pencil" className="size-3.5" />
+                    Save Changes
+                  </>
+                ) : (
+                  "Create Database"
+                )}
+              </Button>
+            )}
           </div>
         </form>
       </DialogContent>

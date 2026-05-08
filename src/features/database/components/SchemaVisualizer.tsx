@@ -92,7 +92,7 @@ function Legend() {
         <button
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-xl border transition-all shadow-sm",
+            "flex h-7 w-7 items-center justify-center rounded-xl border transition-colors duration-150 ease-out shadow-sm active:scale-[0.97]",
             isOpen
               ? "bg-card/95 text-foreground border-border"
               : "bg-card/80 backdrop-blur-md text-muted-foreground/50 border-transparent hover:text-foreground hover:border-border/60"
@@ -161,7 +161,7 @@ function TableFilters({
                 key={item.key}
                 onClick={() => onChange({ ...filter, [item.key]: !active })}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all border",
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-medium transition-colors duration-150 ease-out border active:scale-[0.97]",
                   active
                     ? cn(item.activeColor, item.activeBg, "border-transparent")
                     : "text-muted-foreground/50 border-border/40 hover:border-border hover:text-muted-foreground bg-transparent"

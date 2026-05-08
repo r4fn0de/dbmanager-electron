@@ -236,25 +236,25 @@ function DetailsFields({
     <div className="flex flex-col gap-3">
       {/* SQLite: file-based, no host/port/user/password needed */}
       {dbType === "sqlite" ? (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="conn-database" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Database File Path
-          </Label>
-          <Input
-            id="conn-database"
-            placeholder="/path/to/database.db"
-            value={formData.database}
-            onChange={(e) => onUpdateField("database", e.target.value)}
-            className="h-7 font-mono text-xs"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            SQLite is file-based — enter the path to the .db file or it will be created automatically.
-          </p>
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="conn-database" className="text-xs font-medium text-muted-foreground">
+          Database File Path
+        </Label>
+        <Input
+          id="conn-database"
+          placeholder="/path/to/database.db"
+          value={formData.database}
+          onChange={(e) => onUpdateField("database", e.target.value)}
+          className="h-8 font-mono text-xs"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          SQLite is file-based — enter the path to the .db file or it will be created automatically.
+        </p>
+      </div>
       ) : (<>
-        <div className="grid grid-cols-[1fr_76px] gap-2.5">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="conn-host" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+        <div className="grid grid-cols-[1fr_110px] gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="conn-host" className="text-xs font-medium text-muted-foreground">
               Host
             </Label>
             <Input
@@ -262,11 +262,11 @@ function DetailsFields({
               placeholder="localhost"
               value={formData.host}
               onChange={(e) => onUpdateField("host", e.target.value)}
-              className="h-7 font-mono text-xs"
+              className="h-8 font-mono text-xs"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="conn-port" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="conn-port" className="text-xs font-medium text-muted-foreground">
               Port
             </Label>
             <Input
@@ -278,13 +278,13 @@ function DetailsFields({
               onChange={(e) =>
                 onUpdateField("port", Number.parseInt(e.target.value, 10) || DB_DEFAULTS[dbType].port)
               }
-              className="h-7 font-mono text-xs"
+              className="h-8 font-mono text-xs"
             />
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="conn-database" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="conn-database" className="text-xs font-medium text-muted-foreground">
             Database
           </Label>
           <Input
@@ -292,13 +292,13 @@ function DetailsFields({
             placeholder={DB_DEFAULTS[dbType].database}
             value={formData.database}
             onChange={(e) => onUpdateField("database", e.target.value)}
-            className="h-7 font-mono text-xs"
+            className="h-8 font-mono text-xs"
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="conn-username" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="conn-username" className="text-xs font-medium text-muted-foreground">
               Username
             </Label>
             <Input
@@ -306,11 +306,11 @@ function DetailsFields({
               placeholder={DB_DEFAULTS[dbType].username}
               value={formData.username}
               onChange={(e) => onUpdateField("username", e.target.value)}
-              className="h-7 font-mono text-xs"
+              className="h-8 font-mono text-xs"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="conn-password" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="conn-password" className="text-xs font-medium text-muted-foreground">
               Password
             </Label>
             <div className="relative">
@@ -320,7 +320,7 @@ function DetailsFields({
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={(e) => onUpdateField("password", e.target.value)}
-                className="h-7 pr-8 font-mono text-xs"
+                className="h-8 pr-8 font-mono text-xs"
               />
               <button
                 type="button"
@@ -333,15 +333,15 @@ function DetailsFields({
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            SSL
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">
+            SSL Mode
           </Label>
           <Select
             value={formData.ssl_mode}
             onValueChange={(value) => handleSslModeChange(value as SslMode)}
           >
-            <SelectTrigger className="h-7 text-xs">
+            <SelectTrigger className="h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -375,9 +375,9 @@ function OrganizationFields({
   );
 
   return (
-    <div className="flex flex-col gap-3.5">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="conn-name" className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="conn-name" className="text-xs font-medium text-muted-foreground">
           Name
         </Label>
         <div className="flex items-center gap-2">
@@ -386,13 +386,13 @@ function OrganizationFields({
             placeholder="My database"
             value={formData.name}
             onChange={(e) => onUpdateField("name", e.target.value)}
-            className="h-7"
+            className="h-8"
           />
           <Button
             type="button"
             variant="outline"
             size="icon-xs"
-            className="shrink-0"
+            className="shrink-0 transition-transform duration-150 ease-out active:scale-[0.97]"
             onClick={() => onUpdateField("name", generateRandomName())}
             title="Generate random name"
           >
@@ -402,21 +402,21 @@ function OrganizationFields({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+        <Label className="text-xs font-medium text-muted-foreground">
           Tag <span className="normal-case tracking-normal text-muted-foreground/50">— optional</span>
         </Label>
         {!useCustomTag ? (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {TAG_OPTIONS.map((tag) => (
               <button
                 key={tag}
                 type="button"
                 onClick={() => onUpdateField("tag", formData.tag === tag ? "" : tag)}
                 className={cn(
-                  "rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  "rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150 active:scale-[0.97]",
                   formData.tag === tag
-                    ? "border-primary/30 bg-primary/5 text-primary"
-                    : "border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground",
+                    ? "border-primary/40 bg-primary/10 text-primary shadow-sm"
+                    : "border-border/60 text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground hover:bg-muted/30",
                 )}
               >
                 {tag}
@@ -425,7 +425,7 @@ function OrganizationFields({
             <button
               type="button"
               onClick={() => setUseCustomTag(true)}
-              className="rounded-md border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground transition-colors"
+              className="rounded-full border border-dashed border-border/60 px-3 py-1 text-[11px] text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground hover:bg-muted/30 transition-colors duration-150 active:scale-[0.97]"
             >
               + custom
             </button>
@@ -436,14 +436,14 @@ function OrganizationFields({
               placeholder="Custom tag"
               value={formData.tag ?? ""}
               onChange={(e) => onUpdateField("tag", e.target.value)}
-              className="h-7 text-xs"
+              className="h-8 text-xs"
             />
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => { setUseCustomTag(false); onUpdateField("tag", ""); }}
-              className="h-7 shrink-0 px-2 text-xs text-muted-foreground"
+              className="h-8 shrink-0 px-2 text-xs text-muted-foreground"
             >
               <UiIcon name="x" className="size-3" />
             </Button>
@@ -452,20 +452,21 @@ function OrganizationFields({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+        <Label className="text-xs font-medium text-muted-foreground">
           Color <span className="normal-case tracking-normal text-muted-foreground/50">— optional</span>
         </Label>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {COLOR_OPTIONS.map((colorOption) => (
             <button
               key={colorOption}
               type="button"
               className={cn(
-                "size-4 rounded-full transition-transform hover:scale-110",
-                formData.color === colorOption && "ring-2 ring-offset-1 ring-offset-background ring-primary/40",
+                "size-5 rounded-full transition-transform duration-200 ease-out hover:scale-110 hover:shadow-md",
+                formData.color === colorOption && "ring-2 ring-offset-2 ring-offset-background ring-primary/50 scale-110",
               )}
               style={{ backgroundColor: colorOption }}
               onClick={() => onUpdateField("color", formData.color === colorOption ? "" : colorOption)}
+              title={colorOption}
             />
           ))}
         </div>
@@ -693,14 +694,15 @@ export function ConnectionForm({
       <DialogContent className="t-resize sm:max-w-115 max-h-[90vh] overflow-y-auto p-0 gap-0">
         <div className="p-5 pb-0">
           <DialogHeader className="gap-1">
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <UiIcon name="hard-drive" className="size-4 text-muted-foreground" />
               {connection
                 ? "Edit Connection"
                 : formStep === "select_db"
                   ? "Select Database Type"
                   : configureStep === "connection"
-                    ? "New Connection · Connection"
-                    : "New Connection · Organization"}
+                    ? "New Connection"
+                    : "New Connection"}
             </DialogTitle>
           </DialogHeader>
         </div>
@@ -708,11 +710,11 @@ export function ConnectionForm({
         <form onSubmit={handleSubmit} className="flex flex-col">
           {formStep === "select_db" && !connection ? (
             <>
-              <div className="flex flex-col gap-3 p-5">
+              <div className="flex flex-col gap-4 p-5">
                 <p className="text-xs text-muted-foreground">
                   Choose the database engine first to preload the correct fields and connection guidance.
                 </p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-2">
                   {DB_TYPE_OPTIONS.filter((option) => option.value !== "redis").map((option) => {
                     const isActive = dbType === option.value;
                     return (
@@ -721,26 +723,39 @@ export function ConnectionForm({
                         type="button"
                         onClick={() => handleSelectDbType(option.value)}
                         className={cn(
-                          "flex items-center gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                          "flex items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors duration-150 ease-out active:scale-[0.98]",
                           isActive
-                            ? "border-primary/30 bg-primary/5 text-primary"
-                            : "border-border hover:border-muted-foreground/40",
+                            ? "border-primary/30 bg-primary/5 text-primary shadow-sm"
+                            : "border-border bg-transparent text-muted-foreground hover:border-muted-foreground/30 hover:bg-muted/20 hover:text-foreground",
                         )}
                       >
-                        {option.icon}
-                        {option.label}
+                        <div className={cn(
+                          "flex h-9 w-9 items-center justify-center rounded-lg border transition-colors",
+                          isActive ? "border-primary/20 bg-primary/10" : "border-border bg-muted/40"
+                        )}>
+                          {option.icon}
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs font-semibold">{option.label}</span>
+                          <span className="text-[10px] text-muted-foreground/70">
+                            {option.value === "sqlite" ? "File-based, no server" : `Default port ${DB_DEFAULTS[option.value].port}`}
+                          </span>
+                        </div>
+                        {isActive && (
+                          <UiIcon name="check" className="ml-auto size-4 text-primary shrink-0" />
+                        )}
                       </button>
                     );
                   })}
                 </div>
               </div>
-              <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
-                <Button type="button" variant="ghost" size="sm" onClick={onClose} className="h-7 px-2 text-xs">
+              <div className="flex items-center justify-end gap-2.5 border-t bg-muted/30 px-5 py-3.5">
+                <Button type="button" variant="ghost" size="sm" onClick={onClose} className="h-8 px-3 text-xs">
                   Cancel
                 </Button>
-                <Button type="button" size="sm" className="h-7 gap-1 text-xs" onClick={() => setFormStep("configure")}>
+                <Button type="button" size="sm" className="h-8 gap-1.5 px-5 text-xs shadow-sm" onClick={() => setFormStep("configure")}>
                   Continue
-                  <UiIcon name="arrow-right" className="size-3" />
+                  <UiIcon name="arrow-right" className="size-3.5" />
                 </Button>
               </div>
             </>
@@ -748,20 +763,23 @@ export function ConnectionForm({
           <>
           <div className="flex flex-col gap-5 p-5">
             {configureStep === "connection" ? (
-              <div className="flex flex-col gap-3.5">
+              <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Connection
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <UiIcon name="plug" className="size-3 text-muted-foreground/40" />
+                    <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                      Connection
+                    </span>
+                  </div>
                   {!connection && (
-                  <div className="flex max-w-full gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
+                  <div className="flex max-w-full gap-0.5 rounded-lg border border-border/60 bg-muted/30 p-0.5">
                     <button
                       type="button"
                       onClick={() => setInputMode("url")}
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
+                        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-out active:scale-[0.97]",
                         inputMode === "url"
-                          ? "bg-background text-foreground shadow-sm"
+                          ? "bg-card text-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground",
                       )}
                     >
@@ -772,9 +790,9 @@ export function ConnectionForm({
                       type="button"
                       onClick={() => setInputMode("details")}
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
+                        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors duration-150 ease-out active:scale-[0.97]",
                         inputMode === "details"
-                          ? "bg-background text-foreground shadow-sm"
+                          ? "bg-card text-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground",
                       )}
                     >
@@ -797,10 +815,13 @@ export function ConnectionForm({
                 )}
               </div>
             ) : (
-              <div className="flex flex-col gap-3.5">
-                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Organization
-                </span>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <UiIcon name="folder" className="size-3 text-muted-foreground/40" />
+                  <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
+                    Organization
+                  </span>
+                </div>
                 <OrganizationFields formData={formData} onUpdateField={updateField} />
               </div>
             )}
@@ -818,24 +839,24 @@ export function ConnectionForm({
           )}
 
           {/* Footer */}
-          <div className="flex items-center justify-between gap-3 border-t px-5 py-3">
+          <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-3.5">
             {/* Status */}
             <div className="text-xs">
               {duplicateConnection ? (
                 <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400 select-text">
-                  <UiIcon name="alert-triangle" className="size-3" />
+                  <UiIcon name="alert-triangle" className="size-3.5" />
                   Duplicate connection
                 </span>
               ) : isEditing ? (
                 <span className="text-muted-foreground select-text">Save changes directly</span>
               ) : hasTestedCurrent ? (
                 <span className="inline-flex items-center gap-1.5 text-green-600 dark:text-green-400 select-text">
-                  <UiIcon name="circle-check" className="size-3" />
+                  <UiIcon name="circle-check" className="size-3.5" />
                   Verified
                 </span>
               ) : testStatus && !testStatus.success ? (
                 <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400 select-text">
-                  <UiIcon name="alert-circle" className="size-3" />
+                  <UiIcon name="alert-circle" className="size-3.5" />
                   {testStatus.message}
                 </span>
               ) : (
@@ -851,9 +872,9 @@ export function ConnectionForm({
                   size="sm"
                   onClick={() => setFormStep("select_db")}
                   disabled={isSaving || isTesting}
-                  className="h-7 gap-1 px-2 text-xs"
+                  className="h-8 gap-1.5 px-3 text-xs"
                 >
-                  <UiIcon name="arrow-left" className="size-3" />
+                  <UiIcon name="arrow-left" className="size-3.5" />
                   Back
                 </Button>
               )}
@@ -864,9 +885,9 @@ export function ConnectionForm({
                   size="sm"
                   onClick={() => setConfigureStep("connection")}
                   disabled={isSaving || isTesting}
-                  className="h-7 gap-1 px-2 text-xs"
+                  className="h-8 gap-1.5 px-3 text-xs"
                 >
-                  <UiIcon name="arrow-left" className="size-3" />
+                  <UiIcon name="arrow-left" className="size-3.5" />
                   Back
                 </Button>
               )}
@@ -876,7 +897,7 @@ export function ConnectionForm({
                 size="sm"
                 onClick={onClose}
                 disabled={isSaving || isTesting}
-                className="h-7 px-2 text-xs"
+                className="h-8 px-3 text-xs"
               >
                 Cancel
               </Button>
@@ -889,16 +910,16 @@ export function ConnectionForm({
                       size="sm"
                       disabled={isTesting || !!duplicateConnection || (inputMode === "url" && !connectionStringValidation.isValid)}
                       onClick={handleTest}
-                      className="h-7 gap-1 text-xs"
+                      className="h-8 gap-1.5 px-4 text-xs shadow-sm"
                     >
                       {isTesting ? (
                         <>
-                          <UiIcon name="loader" className="size-3 animate-spin" />
+                          <UiIcon name="loader" className="size-3.5 animate-spin" />
                           Testing
                         </>
                       ) : (
                         <>
-                          <UiIcon name="wifi" className="size-3" />
+                          <UiIcon name="wifi" className="size-3.5" />
                           Test
                         </>
                       )}
@@ -909,10 +930,10 @@ export function ConnectionForm({
                       size="sm"
                       onClick={() => setConfigureStep("organization")}
                       disabled={!!duplicateConnection}
-                      className="h-7 gap-1 text-xs"
+                      className="h-8 gap-1.5 px-5 text-xs shadow-sm"
                     >
                       Next
-                      <UiIcon name="arrow-right" className="size-3" />
+                      <UiIcon name="arrow-right" className="size-3.5" />
                     </Button>
                   )}
                 </>
@@ -921,16 +942,16 @@ export function ConnectionForm({
                   type="submit"
                   size="sm"
                   disabled={isSaving || !formData.name.trim() || !!duplicateConnection}
-                  className="h-7 gap-1 text-xs"
+                  className="h-8 gap-1.5 px-5 text-xs shadow-sm"
                 >
                   {isSaving ? (
                     <>
-                      <UiIcon name="loader" className="size-3 animate-spin" />
+                      <UiIcon name="loader" className="size-3.5 animate-spin" />
                       Saving
                     </>
                   ) : (
                     <>
-                      <UiIcon name="device-floppy" className="size-3" />
+                      <UiIcon name="device-floppy" className="size-3.5" />
                       Save
                     </>
                   )}
