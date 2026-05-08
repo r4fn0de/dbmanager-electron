@@ -23,7 +23,7 @@ Unit tests live in `src/tests/unit/` (vitest + jsdom). E2E tests in `src/tests/e
 
 ## Architecture
 
-**TarsDB** — an Electron desktop database manager supporting PostgreSQL, MySQL/MariaDB, SQLite, ClickHouse, and Redis.
+**Tars** — an Electron desktop database manager supporting PostgreSQL, MySQL/MariaDB, SQLite, ClickHouse, and Redis.
 
 ### Process model
 

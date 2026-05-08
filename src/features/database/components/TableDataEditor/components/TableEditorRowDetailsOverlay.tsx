@@ -1,11 +1,15 @@
 import { Button } from "@/components/ui/button";
-import { getCellTitle, normalizeDisplay } from "../utils/valueParsers";
+import type { SchemaColumn } from "@/ipc/db/types";
 import type { RowRecord } from "../types";
+import { EditableField } from "./EditableField";
 
 interface TableEditorRowDetailsOverlayProps {
   tableSchema: string;
   tableName: string;
   primaryKey: string[];
+  columns: SchemaColumn[];
+  readOnly?: boolean;
+  hasDraftChanges?: boolean;
   expandedRow: {
     rowKey: string;
     row: RowRecord;
@@ -16,6 +20,7 @@ interface TableEditorRowDetailsOverlayProps {
     type: string;
     value: unknown;
     textValue: string;
+    hasPendingChange: boolean;
   }>;
   expandedRowOutline: {
     top: number;
@@ -23,6 +28,9 @@ interface TableEditorRowDetailsOverlayProps {
     width: number;
     height: number;
   } | null;
+  onFieldSave: (columnName: string, rawText: string) => void;
+  onSaveAll: () => void;
+  onDiscard: () => void;
   onClose: () => void;
 }
 
@@ -30,11 +38,19 @@ export function TableEditorRowDetailsOverlay({
   tableSchema,
   tableName,
   primaryKey,
+  columns,
+  readOnly = false,
+  hasDraftChanges = false,
   expandedRow,
   expandedRowFields,
   expandedRowOutline,
+  onFieldSave,
+  onSaveAll,
+  onDiscard,
   onClose,
 }: TableEditorRowDetailsOverlayProps) {
+  const columnMap = new Map(columns.map((column) => [column.name, column]));
+
   return (
     <>
       {expandedRowOutline && (
@@ -66,7 +82,7 @@ export function TableEditorRowDetailsOverlay({
                 <p className="text-xs text-muted-foreground">
                   {`Row #${expandedRow.index + 1}${
                     primaryKey.length > 0
-                      ? ` · PK: ${primaryKey.map((column) => normalizeDisplay(expandedRow.row[column])).join(", ")}`
+                      ? ` · PK: ${primaryKey.map((column) => String(expandedRow.row[column] ?? "NULL")).join(", ")}`
                       : ""
                   }`}
                 </p>
@@ -74,36 +90,45 @@ export function TableEditorRowDetailsOverlay({
 
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
                 {expandedRowFields.map((field) => {
-                  const value = field.value;
+                  const column = columnMap.get(field.name);
+                  if (!column) return null;
                   return (
-                    <div key={field.name} className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-xs font-medium">{field.name}</span>
-                        <span className="truncate text-[10px] text-muted-foreground">
-                          {field.type}
-                        </span>
-                      </div>
-                      <div
-                        className={`max-h-40 overflow-auto rounded border bg-background px-2 py-1.5 font-mono text-xs ${
-                          value === null || value === undefined ? "italic text-muted-foreground/70" : ""
-                        }`}
-                        title={getCellTitle(value)}
-                      >
-                        {field.textValue}
-                      </div>
-                    </div>
+                    <EditableField
+                      key={field.name}
+                      column={column}
+                      value={field.value}
+                      readOnly={readOnly}
+                      hasPendingChange={field.hasPendingChange}
+                      onSave={(rawText) => onFieldSave(field.name, rawText)}
+                    />
                   );
                 })}
               </div>
 
               <div className="border-t px-4 py-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onClose}
-                >
-                  Close
-                </Button>
+                <div className="flex items-center justify-between gap-2">
+                  {hasDraftChanges && !readOnly ? (
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={onSaveAll}>
+                        Save All Changes
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={onDiscard}>
+                        Discard
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      {readOnly ? "Read-only (no primary key)." : "No pending changes."}
+                    </span>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onClose}
+                  >
+                    Close
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

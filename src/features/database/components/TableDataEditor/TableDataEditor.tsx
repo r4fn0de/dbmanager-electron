@@ -1105,16 +1105,38 @@ export function TableDataEditor({
 
   const expandedRowFields = useMemo(() => {
     if (!expandedRow) return [];
+    const sourceRow = effectiveRows.find((entry) => entry.rowKey === expandedRow.rowKey)?.row
+      ?? expandedRow.row;
+    const isInsertRow = expandedRow.rowKey.startsWith("insert:");
+    const pendingChanges = draftUpdates[expandedRow.rowKey]?.changes ?? {};
     return table.columns.map((column) => {
-      const value = expandedRow.row[column.name];
+      const value = sourceRow[column.name];
       return {
         name: column.name,
         type: column.data_type,
         value,
         textValue: normalizeDisplay(value),
+        hasPendingChange: isInsertRow
+          ? value !== null && value !== undefined
+          : Object.prototype.hasOwnProperty.call(pendingChanges, column.name),
       };
     });
-  }, [expandedRow, table.columns]);
+  }, [draftUpdates, effectiveRows, expandedRow, table.columns]);
+
+  const handleFieldSaveInOverlay = useCallback((columnName: string, rawText: string) => {
+    if (!expandedRow) return;
+    if (expandedRow.rowKey.startsWith("insert:")) {
+      const insertIndex = Number(expandedRow.rowKey.slice(7));
+      if (!Number.isNaN(insertIndex)) {
+        applyExpandedEditToInsert(insertIndex, columnName, rawText);
+      }
+      return;
+    }
+
+    const entry = effectiveRows.find((rowEntry) => rowEntry.rowKey === expandedRow.rowKey);
+    if (!entry) return;
+    applyExpandedEditToRow(expandedRow.rowKey, entry.row, columnName, rawText);
+  }, [applyExpandedEditToInsert, applyExpandedEditToRow, effectiveRows, expandedRow]);
 
   const showFloatingRowButton = useCallback(
     (payload: {
@@ -1792,7 +1814,7 @@ export function TableDataEditor({
           openRowDetails(hovered.rowKey, hovered.row, hovered.index);
           setExpandedRowOutline({
             top: hovered.top - hovered.height / 2,
-            left: hovered.left + 12,
+            left: hovered.left,
             width: hovered.width,
             height: hovered.height,
           });
@@ -1818,9 +1840,15 @@ export function TableDataEditor({
         tableSchema={table.schema}
         tableName={table.name}
         primaryKey={primaryKey}
+        columns={table.columns}
+        readOnly={primaryKey.length === 0}
+        hasDraftChanges={hasDraftChanges}
         expandedRow={expandedRow}
         expandedRowFields={expandedRowFields}
         expandedRowOutline={expandedRowOutline}
+        onFieldSave={handleFieldSaveInOverlay}
+        onSaveAll={() => void saveAllChanges()}
+        onDiscard={discardDrafts}
         onClose={closeRowDetails}
       />
     </div>
