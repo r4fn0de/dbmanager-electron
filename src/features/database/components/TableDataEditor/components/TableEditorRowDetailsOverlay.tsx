@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { SchemaColumn } from "@/ipc/db/types";
 import type { RowRecord } from "../types";
 import { EditableField } from "./EditableField";
@@ -107,8 +108,15 @@ export function TableEditorRowDetailsOverlay({
 
               <div className="border-t px-4 py-3">
                 <div className="flex items-center justify-between gap-2">
-                  {hasDraftChanges && !readOnly ? (
-                    <div className="flex items-center gap-2">
+                  <div className="relative flex items-center min-w-0">
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 overflow-hidden transition-[opacity,transform,max-width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                        hasDraftChanges && !readOnly
+                          ? "opacity-100 scale-100 max-w-[400px]"
+                          : "opacity-0 scale-[0.95] max-w-0 pointer-events-none",
+                      )}
+                    >
                       <Button size="sm" onClick={onSaveAll}>
                         Save All Changes
                       </Button>
@@ -116,16 +124,18 @@ export function TableEditorRowDetailsOverlay({
                         Discard
                       </Button>
                     </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
+                    <span
+                      className={cn(
+                        "text-xs text-muted-foreground whitespace-nowrap transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                        !hasDraftChanges || readOnly
+                          ? "opacity-100 scale-100"
+                          : "opacity-0 scale-[0.95] absolute pointer-events-none",
+                      )}
+                    >
                       {readOnly ? "Read-only (no primary key)." : "No pending changes."}
                     </span>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onClose}
-                  >
+                  </div>
+                  <Button variant="outline" size="sm" onClick={onClose}>
                     Close
                   </Button>
                 </div>

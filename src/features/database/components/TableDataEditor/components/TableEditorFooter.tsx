@@ -1,5 +1,6 @@
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface TableEditorFooterProps {
   page: number;
@@ -68,13 +69,20 @@ export function TableEditorFooter({
         ))}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div
+        className={cn(
+          "flex items-center gap-2 overflow-hidden transition-[opacity,transform,max-width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+          hasDraftChanges
+            ? "opacity-100 scale-100 max-w-[400px]"
+            : "opacity-0 scale-[0.95] max-w-0 pointer-events-none",
+        )}
+      >
         <Button
           variant="outline"
           size="sm"
           className={pressableClass}
           onClick={onDiscardDrafts}
-          disabled={!hasDraftChanges || isSaving}
+          disabled={isSaving}
         >
           <UiIcon name="undo" className="h-3.5 w-3.5" />
           Discard
@@ -84,7 +92,7 @@ export function TableEditorFooter({
           size="sm"
           className={pressableClass}
           onClick={onSaveChanges}
-          disabled={!hasDraftChanges || isSaving}
+          disabled={isSaving}
         >
           {isSaving ? (
             <UiIcon name="loader" className="h-3.5 w-3.5 animate-spin" />
