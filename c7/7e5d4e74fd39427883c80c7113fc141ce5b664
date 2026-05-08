@@ -1,0 +1,14 @@
+CLAUDE.md
+  h_6400716131bbc6 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "c77e5d4e74fd39427883c80c7113fc141ce5b664",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
