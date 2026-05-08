@@ -68,7 +68,7 @@ function UpdatesPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border/60 bg-muted/[0.02] p-4 space-y-3">
+      <div className="rounded-xl border border-border/60 bg-muted/[0.02] p-4 space-y-3 transition-colors duration-150 ease-out hover:border-border/80">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium">Update</p>
           {manualInfo && (
@@ -90,16 +90,20 @@ function UpdatesPanel() {
         </div>
 
         <div className="flex items-center gap-2 pt-1">
-          <Button variant="outline" disabled={checkManualMutation.isPending} onClick={() => checkManualMutation.mutate()}>
+          <Button variant="outline" size="sm" disabled={checkManualMutation.isPending} onClick={() => checkManualMutation.mutate()} className="h-8 text-xs">
+            <Icon name="refresh-cw" className="size-3.5 mr-1.5" />
             Check updates
           </Button>
           <Button
+            size="sm"
             disabled={!manualInfo?.downloadUrl || !manualInfo?.hasUpdate}
             onClick={() => {
               if (!manualInfo?.downloadUrl || !manualInfo?.hasUpdate) return;
               void ipc.client.shell.openExternalLink({ url: manualInfo.downloadUrl });
             }}
+            className="h-8 text-xs gap-1.5 shadow-sm"
           >
+            <Icon name="download" className="size-3.5" />
             Download
           </Button>
         </div>
@@ -114,7 +118,7 @@ function AppearanceSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border">
+      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">
         <div className="space-y-0.5">
           <p className="text-sm font-medium">Theme</p>
           <p className="text-xs text-muted-foreground">
@@ -124,7 +128,7 @@ function AppearanceSettings() {
         <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors duration-150 ease-out active:scale-[0.97]" />
       </div>
 
-      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border">
+      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">
         <div className="space-y-0.5">
           <p className="text-sm font-medium">Solid background</p>
           <p className="text-xs text-muted-foreground">
@@ -220,7 +224,7 @@ function ShortcutsPanel() {
     <div className="space-y-6">
       {sections.map((section) => (
         <div key={section.title} className="space-y-2">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <h3 className="text-xs font-medium text-muted-foreground">
             {section.title}
           </h3>
           <div className="space-y-1.5">

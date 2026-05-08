@@ -42,6 +42,7 @@ import type { BranchInfo, TableRowCount } from "@/ipc/db/types";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
 import { ipc } from "@/ipc/manager";
+import { cn } from "@/lib/utils";
 import {
   buildConnectionTab,
   useConnectionTabsStore,
@@ -404,33 +405,28 @@ function Home() {
             <div className="flex items-baseline gap-2.5">
               <h1 className="text-base font-semibold">Databases</h1>
               {connections.length > 0 && (
-                <span className="text-[11px] text-muted-foreground/70">
-                  {[
-                    remoteCount > 0 && `${remoteCount} remote`,
-                    localCount > 0 && `${localCount} local`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
+                <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+                  {connections.length}
                 </span>
               )}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button size="sm" className="h-7 text-xs gap-1">
+                  <Button size="sm" className="h-8 text-xs gap-1.5 px-3 shadow-sm">
                     <Icon name="plus" className="size-3.5" />
                     Add
                   </Button>
                 }
               />
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleAdd}>
-                  <Icon name="database" className="mr-2 size-4" />
+              <DropdownMenuContent align="end" className="min-w-[180px]">
+                <DropdownMenuItem onClick={handleAdd} className="gap-2 text-xs">
+                  <Icon name="database" className="size-3.5" />
                   Remote Connection
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleAddLocalDb}>
-                  <Icon name="hard-drive" className="mr-2 size-4" />
+                <DropdownMenuItem onClick={handleAddLocalDb} className="gap-2 text-xs">
+                  <Icon name="hard-drive" className="size-3.5" />
                   New Local Database
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -439,37 +435,19 @@ function Home() {
 
           {/* Search + filter status */}
           {connections.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-1">
-                {[
-                  { label: "All", value: "all" },
-                  { label: "Local", value: "local" },
-                  { label: "Remote", value: "remote" },
-                ].map((chip) => (
-                  <Button
-                    key={chip.value}
-                    type="button"
-                    size="sm"
-                    variant={activeFilter === chip.value ? "secondary" : "ghost"}
-                    onClick={() => setActiveFilter(chip.value)}
-                    className="h-6 px-2 text-[11px]"
-                  >
-                    {chip.label}
-                  </Button>
-                ))}
-              </div>
+            <div className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Icon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                  <Icon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 pointer-events-none" />
                   <Input
                     placeholder="Search by name, host, or database…"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-8 pl-8 text-xs"
+                    className="h-8 pl-8 text-xs bg-muted/20"
                   />
                 </div>
                 <Select value={activeTagFilter} onValueChange={setActiveTagFilter}>
-                  <SelectTrigger size="default" className="h-8 w-[180px] text-xs">
+                  <SelectTrigger size="default" className="h-8 w-[160px] text-xs bg-muted/20">
                     <SelectValue placeholder="Tag" />
                   </SelectTrigger>
                   <SelectContent>
@@ -484,9 +462,33 @@ function Home() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {[
+                  { label: "All", value: "all", count: connections.length },
+                  { label: "Local", value: "local", count: localCount },
+                  { label: "Remote", value: "remote", count: remoteCount },
+                ].map((chip) => (
+                  <button
+                    key={chip.value}
+                    type="button"
+                    onClick={() => setActiveFilter(chip.value)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150 active:scale-[0.97]",
+                      activeFilter === chip.value
+                        ? "border-primary/40 bg-primary/10 text-primary shadow-sm"
+                        : "border-border/60 text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground hover:bg-muted/30",
+                    )}
+                  >
+                    {chip.label}
+                    <span className="text-[10px] tabular-nums text-muted-foreground/50">
+                      {chip.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
               {(searchQuery || activeFilter !== "all" || activeTagFilter !== "all-tags") &&
                 connections.length !== fullyFilteredConnections.length && (
-                <p className="text-[11px] text-muted-foreground/70">
+                <p className="text-[10px] text-muted-foreground/50 tabular-nums">
                   Showing {fullyFilteredConnections.length} of {connections.length}
                 </p>
                 )}
@@ -494,7 +496,7 @@ function Home() {
           )}
 
           {/* Divider */}
-          <div className="border-t" />
+          <div className="border-t border-border/40" />
 
           {/* Connection list */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
@@ -536,22 +538,33 @@ function Home() {
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
-        <AlertDialogContent className="t-resize">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete connection?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove <strong>{pendingDelete?.name}</strong> from your saved connections.
-              {pendingDelete?.is_local && " The local PostgreSQL database will also be deleted."}
+        <AlertDialogContent className="t-resize sm:max-w-[400px]">
+          <AlertDialogHeader className="gap-2">
+            <AlertDialogTitle className="flex items-center gap-2 text-sm">
+              <Icon name="alert-triangle" className="size-4 text-destructive/70" />
+              Delete connection?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs leading-relaxed">
+              This will remove <strong className="text-foreground">{pendingDelete?.name}</strong> from your saved connections.
+              {pendingDelete?.is_local && " The local database will also be deleted."}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="gap-2.5 border-t bg-muted/30 px-6 py-3.5">
+            <AlertDialogCancel className="h-8 px-3 text-xs">Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={handleDeleteConfirm}
               disabled={isDeleting}
+              className="h-8 px-5 text-xs gap-1.5 shadow-sm"
             >
-              {isDeleting ? "Deleting…" : "Delete"}
+              {isDeleting ? (
+                <>
+                  <Icon name="loader" className="size-3.5 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                "Delete"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

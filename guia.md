@@ -339,3 +339,103 @@ Isso apaga apenas `updates-archive/v*/...` antigos e mantém as 2 versões mais 
 ## 12) Resumo rápido do fluxo
 
 `bun run release:updates:r2` → dispatch do workflow CI `publish.yaml` → build/upload x64 + arm64 no R2 → publish de `updates/latest.json` → app consulta `latest.json` → usuário clica em **Download latest version** para atualizar manualmente.
+
+---
+
+## 13) Diretrizes de UI/UX (Design System)
+
+Convenções visuais adotadas no projeto para consistência entre componentes.
+
+### 13.1 Fontes
+
+- **Body/UI**: `Mona Sans Variable` (fonte principal da interface)
+- **Mono/Código**: `IBM Plex Mono` (SQL editor, connection strings, campos técnicos)
+- **Heading**: `Mona Sans Variable` (mesma do body, peso diferenciado)
+- Caracteres técnicos (0/O, l/1/I) bem diferenciados — ideal para database tools
+- Nunca usar `Geist`, `Inter`, `Manrope` ou `IBM Plex Sans` (fontes antigas removidas)
+
+### 13.2 Tipografia de labels
+
+- **Nunca** usar `uppercase tracking-wider` em labels de formulário
+- Labels padrão: `text-xs font-medium text-muted-foreground`
+- Seções com ícone: ícone `size-3 text-muted-foreground/40` + label `text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider`
+
+### 13.2 Inputs e grids
+
+- Altura padrão: `h-8` (32px)
+- Fonte mono em campos técnicos: `font-mono text-xs` (IBM Plex Mono)
+- Grid de host + port: `grid-cols-[1fr_110px] gap-3`
+- Grid de username + password: `grid-cols-2 gap-3`
+
+### 13.3 Tags e chips
+
+- Formato: pills arredondadas (`rounded-full`)
+- Padding: `px-3 py-1`
+- Tamanho do texto: `text-[11px] font-medium`
+- Estado ativo: `border-primary/40 bg-primary/10 text-primary shadow-sm`
+- Estado inativo: `border-border/60 text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground hover:bg-muted/30`
+- Transição: `transition-colors duration-150`
+- Press feedback: `active:scale-[0.97]`
+
+### 13.4 Seletor de cor
+
+- Tamanho: `size-5`
+- Bordas: `ring-2 ring-offset-2 ring-offset-background ring-primary/50`
+- Hover: `hover:scale-110 hover:shadow-md`
+- Transição: `transition-transform duration-200 ease-out`
+- Tooltip com hex: `title={colorOption}`
+
+### 13.5 Cards de engine/provider
+
+- Formato: cards verticais com ícone em container
+- Container do ícone: `h-9 w-9 rounded-lg border`
+- Ativo: `border-primary/20 bg-primary/10`
+- Inativo: `border-border bg-muted/40`
+- Card ativo: `border-primary/30 bg-primary/5 text-primary shadow-sm`
+- Card inativo: `border-border hover:border-muted-foreground/30 hover:bg-muted/20`
+- Transição: `transition-colors duration-150 ease-out`
+- Press: `active:scale-[0.98]`
+
+### 13.6 Botões
+
+- Padrão: `h-8 px-5 text-xs gap-1.5 shadow-sm`
+- Secundário/ghost: `h-8 px-3 text-xs`
+- Icon-only: `transition-transform duration-150 ease-out active:scale-[0.97]`
+- Loading: ícone `size-3.5 animate-spin`
+
+### 13.7 Dialogs e footers
+
+- Footer: `gap-2.5 border-t bg-muted/30 px-5 py-3.5`
+- Botão primário: `h-8 px-5 text-xs gap-1.5 shadow-sm`
+- Botão secundário (ghost): `h-8 px-3 text-xs`
+- Título do dialog: `flex items-center gap-2 text-sm` com ícone contextual
+
+### 13.8 Badges de status
+
+- Tag: pill arredondada `rounded-full border border-border/60 bg-muted/30`
+- Branch ativo: `rounded-full border border-primary/30 bg-primary/5 text-primary`
+- Running: `rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-600`
+- Stopped: `rounded-full border border-border/40 bg-muted/30 text-muted-foreground`
+
+### 13.9 Connection cards
+
+- Container: `rounded-xl px-3.5 py-2.5 border border-transparent hover:border-border/30`
+- Hover: `hover:bg-muted/50`
+- Ações: `opacity-0 group-hover:opacity-100 transition-opacity duration-150`
+
+### 13.10 Animações (princípios Emil Kowalski)
+
+- **Nunca** usar `transition: all` — especificar propriedades exatas
+- **Nunca** usar `ease-in` em UI — sempre `ease-out` ou curva customizada
+- Press feedback: `active:scale-[0.97]` (0.95-0.98 é o range aceitável)
+- Durações: 150ms para colors/borders, 200ms para transform, 180ms para modais
+- Easing padrão: `[0.23, 1, 0.32, 1]` (ease-out forte)
+- Ícones não animam de `scale(0)` — mínimo `scale(0.85)` com `opacity: 0`
+
+### 13.11 Stepper/wizard
+
+- Círculos: `h-6 w-6 rounded-full text-[10px] font-semibold`
+- Ativo: `bg-primary text-primary-foreground border-primary shadow-sm`
+- Completado: `bg-primary/10 text-primary border-primary/30` com checkmark
+- Pendente: `bg-muted text-muted-foreground border-border`
+- Linha conectora: `h-px w-6` que muda de cor conforme progresso

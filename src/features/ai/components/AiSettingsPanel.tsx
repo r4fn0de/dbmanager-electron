@@ -282,7 +282,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
 
       {/* Provider selection */}
       <div className="space-y-3">
-        <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+        <Label className="text-xs font-medium text-muted-foreground">
           Provider
         </Label>
         <div className="space-y-2">
@@ -291,10 +291,10 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
             const Icon = PROVIDER_ICONS[provider.name];
             const isSavingThis = isSavingProvider && isActive;
             return (
-              <div
+                <div
                 key={provider.name}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl border transition-all duration-150 ease-out",
+                  "flex items-center gap-2 rounded-xl border transition-colors duration-150 ease-out",
                   isActive
                     ? "border-primary/30 bg-primary/[0.08] ring-1 ring-primary/20 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
                     : "border-border/70 bg-transparent hover:border-muted-foreground/30 hover:bg-muted/[0.02]"
@@ -327,7 +327,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   <button
                     type="button"
                     onClick={() => setOpenConfigProvider(provider.name)}
-                    className="mr-2 flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-150 ease-out select-none"
+                    className="mr-2 flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150 ease-out active:scale-[0.97] select-none"
                     title="Provider settings"
                   >
                     <UiIcon name="settings" className="size-4" />
@@ -344,9 +344,11 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
             );
             if (!activeProvider?.hasApiKey) {
               return (
-                <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/6 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  <UiIcon name="x" className="size-3.5 shrink-0" />
-                  <span>
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/6 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 mt-0.5">
+                    <UiIcon name="alert-circle" className="size-3.5" />
+                  </div>
+                  <span className="leading-relaxed">
                     {settings.current.provider === "openai-compatible"
                       ? "Configure the Base URL and API key to use this provider"
                       : "Add an API key to enable this provider"}
@@ -397,7 +399,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                 <div className="space-y-4 pt-2">
                   {/* API Key */}
                   <div className="space-y-2">
-                    <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <Label className="text-xs font-medium text-muted-foreground">
                       API Key
                     </Label>
                     <div className="relative">
@@ -447,7 +449,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                         <Button
                           type="button"
                           variant="ghost"
-                          size="xs"
+                          size="sm"
                           onClick={async () => {
                             try {
                               await setAiApiKey(
@@ -467,7 +469,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                               );
                             }
                           }}
-                          className="text-xs text-muted-foreground hover:text-destructive"
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
                         >
                           Remove
                         </Button>
@@ -478,7 +480,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   {/* Base URL for OpenAI-compatible */}
                   {provider.name === "openai-compatible" && (
                     <div className="space-y-2">
-                      <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <Label className="text-xs font-medium text-muted-foreground">
                         Base URL
                       </Label>
                       <Input
@@ -505,7 +507,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   {/* OpenAI-compatible model by ID */}
                   {provider.name === "openai-compatible" && (
                     <div className="space-y-2">
-                      <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <Label className="text-xs font-medium text-muted-foreground">
                         Model ID
                       </Label>
                       <div className="flex gap-1.5">
@@ -526,11 +528,10 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                         />
                         <Button
                           type="button"
-                          variant="outline"
-                          size="xs"
+                          size="sm"
                           onClick={() => void handleModelChange(modelInput.trim())}
                           disabled={isSavingModel || !modelInput.trim()}
-                          className="h-8 px-2.5 text-[10px] shrink-0"
+                          className="h-8 px-3 text-xs gap-1.5 shadow-sm shrink-0"
                         >
                           {isSavingModel ? (
                             <UiIcon name="loader" className="size-3 animate-spin" />
@@ -547,7 +548,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                 </div>
               );
             })()}
-            <DialogFooter className="pt-4 gap-2">
+            <DialogFooter className="gap-2.5 border-t bg-muted/30 px-6 py-3.5">
               {openConfigProvider && (() => {
                 const provider = settings.providers.find(p => p.name === openConfigProvider);
                 const hasKeyInput = apiKeyInputs[openConfigProvider]?.trim();
@@ -557,16 +558,18 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                     {canSave && (
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setApiKeyInputs(prev => ({ ...prev, [openConfigProvider]: "" }))}
                         disabled={isSavingKey[openConfigProvider]}
-                        className="transition-transform duration-150 ease-out active:scale-[0.97]"
+                        className="h-8 px-3 text-xs"
                       >
                         Clear
                       </Button>
                     )}
                     <Button
                       type="button"
+                      size="sm"
                       onClick={async () => {
                         if (hasKeyInput) {
                           await handleSaveApiKey(openConfigProvider);
@@ -574,11 +577,11 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                         setOpenConfigProvider(null);
                       }}
                       disabled={isSavingKey[openConfigProvider]}
-                      className="transition-transform duration-150 ease-out active:scale-[0.97]"
+                      className="h-8 px-5 text-xs gap-1.5 shadow-sm"
                     >
                       {isSavingKey[openConfigProvider] ? (
                         <>
-                          <UiIcon name="loader" className="size-3 animate-spin mr-1.5" />
+                          <UiIcon name="loader" className="size-3.5 animate-spin" />
                           Saving...
                         </>
                       ) : (

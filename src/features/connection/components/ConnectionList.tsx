@@ -229,7 +229,7 @@ function ConnectionCard({
   return (
     <>
     <Collapsible open={branchesOpen} onOpenChange={setBranchesOpen}>
-      <div className="group relative flex items-stretch gap-2 rounded-lg px-3 py-2 transition-colors hover:bg-muted/60">
+      <div className="group relative flex items-stretch gap-2 rounded-xl px-3.5 py-2.5 transition-colors duration-150 hover:bg-muted/50 border border-transparent hover:border-border/30">
         {/* Click area — name, provider, info */}
         <button
           type="button"
@@ -252,24 +252,24 @@ function ConnectionCard({
               />
             )}
             {connection.tag && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono select-text">
+              <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/30 px-1.5 py-0 text-[10px] font-medium text-muted-foreground select-text">
                 {connection.tag}
-              </Badge>
+              </span>
             )}
             {/* Branch badge */}
             {hasBranches && activeBranch && !activeBranch.isMain && (
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-0.5 font-mono border-primary/30 bg-primary/5 text-primary select-text">
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-1.5 py-0 text-[10px] font-medium text-primary select-text">
                 <Icon name="git-branch" className="size-2.5" />
                 {activeBranch.name}
-              </Badge>
+              </span>
             )}
             {isLocal && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 text-[10px] font-medium",
+                  "inline-flex items-center gap-1 rounded-full text-[10px] font-medium px-1.5 py-0",
                   isRunning
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-muted-foreground"
+                    ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 border border-emerald-500/20"
+                    : "text-muted-foreground bg-muted/30 border border-border/40"
                 )}
               >
                 <span
@@ -315,7 +315,7 @@ function ConnectionCard({
         </button>
 
         {/* Action buttons — visible on hover */}
-        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 self-center">
+        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 self-center gap-0.5">
           {/* Branch toggle (only for local PG with branches) */}
           {hasBranches && (
             <CollapsibleTrigger
@@ -423,15 +423,15 @@ function ConnectionCard({
       {/* Branch list (expandable) */}
       {hasBranches && (
         <CollapsibleContent>
-          <div className="ml-9 mr-3 mb-1 space-y-0.5 border-l-2 border-border/40 pl-3">
+          <div className="ml-9 mr-3 mb-1 space-y-0.5 border-l-2 border-border/30 pl-3">
             {branches!.map((branch) => (
               <div
                 key={branch.id}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors",
+                  "flex items-center gap-2 rounded-lg px-2 py-1 text-xs transition-colors duration-150",
                   branch.isActive
-                    ? "bg-primary/10 text-primary"
-                    : "hover:bg-muted/50 text-muted-foreground",
+                    ? "bg-primary/8 text-primary"
+                    : "hover:bg-muted/40 text-muted-foreground",
                 )}
               >
                 <Icon name="git-branch" className="size-3 shrink-0" />
@@ -478,15 +478,18 @@ function ConnectionCard({
         open={!!pendingBranchDelete}
         onOpenChange={(open) => { if (!open) setPendingBranchDelete(null); }}
       >
-        <AlertDialogContent className="t-resize" size="sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete branch?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the <strong>{pendingBranchDelete?.branchName}</strong> branch and any child branches. This action cannot be undone.
+        <AlertDialogContent className="t-resize sm:max-w-[400px]">
+          <AlertDialogHeader className="gap-2">
+            <AlertDialogTitle className="flex items-center gap-2 text-sm">
+              <Icon name="alert-triangle" className="size-4 text-destructive/70" />
+              Delete branch?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs leading-relaxed">
+              This will permanently delete <strong className="text-foreground">{pendingBranchDelete?.branchName}</strong> and any child branches. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="gap-2.5 border-t bg-muted/30 px-6 py-3.5">
+            <AlertDialogCancel className="h-8 px-3 text-xs">Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
@@ -495,6 +498,7 @@ function ConnectionCard({
                   setPendingBranchDelete(null);
                 }
               }}
+              className="h-8 px-5 text-xs gap-1.5 shadow-sm"
             >
               Delete
             </AlertDialogAction>
@@ -507,11 +511,11 @@ function ConnectionCard({
 
 function ConnectionCardSkeleton() {
   return (
-    <div className="flex items-center gap-3 px-3 py-2">
+    <div className="flex items-center gap-3 px-3.5 py-2.5">
       <Skeleton className="size-4 rounded shrink-0" />
-      <div className="flex-1 min-w-0 space-y-1">
-        <Skeleton className="h-3.5 w-2/5" />
-        <Skeleton className="h-2.5 w-3/4" />
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <Skeleton className="h-3.5 w-2/5 rounded-md" />
+        <Skeleton className="h-2.5 w-3/4 rounded-md" />
       </div>
     </div>
   );
@@ -551,12 +555,12 @@ function ConnectionGroup({
   if (connections.length === 0) return null;
   return (
     <div className="space-y-0.5">
-      <div className="flex items-center gap-1.5 px-3 py-1">
-        <Icon className="size-3 text-muted-foreground/60" />
-        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <Icon className="size-3 text-muted-foreground/40" />
+        <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
-        <span className="text-[10px] text-muted-foreground/50">
+        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-muted/60 text-[10px] font-semibold text-muted-foreground tabular-nums px-1">
           {connections.length}
         </span>
       </div>
@@ -610,14 +614,16 @@ export function ConnectionList({
   if (connections.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Icon name="folder-open" className="size-5 text-muted-foreground/30 mb-3" />
-        <p className="text-sm text-muted-foreground">
+        <div className="rounded-2xl bg-muted/30 p-5 mb-4">
+          <Icon name="folder-open" className="size-10 text-muted-foreground/30" />
+        </div>
+        <p className="text-sm font-medium text-foreground">
           No connections yet
         </p>
-        <p className="text-xs text-muted-foreground/50 mt-0.5 mb-4 max-w-[240px]">
+        <p className="text-xs text-muted-foreground/60 mt-1 mb-5 max-w-[260px] leading-relaxed">
           Add a database connection or create a local instance to get started.
         </p>
-        <Button size="sm" className="h-7 text-xs gap-1" onClick={onAdd}>
+        <Button size="sm" className="h-8 text-xs gap-1.5 px-4 shadow-sm" onClick={onAdd}>
           <Icon name="plus" className="size-3.5" />
           Add Connection
         </Button>
