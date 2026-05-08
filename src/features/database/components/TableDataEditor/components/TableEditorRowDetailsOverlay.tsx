@@ -23,7 +23,6 @@ interface TableEditorRowDetailsOverlayProps {
     width: number;
     height: number;
   } | null;
-  isPanelPending: boolean;
   onClose: () => void;
 }
 
@@ -34,7 +33,6 @@ export function TableEditorRowDetailsOverlay({
   expandedRow,
   expandedRowFields,
   expandedRowOutline,
-  isPanelPending,
   onClose,
 }: TableEditorRowDetailsOverlayProps) {
   return (
@@ -103,7 +101,6 @@ export function TableEditorRowDetailsOverlay({
                   variant="outline"
                   size="sm"
                   onClick={onClose}
-                  disabled={isPanelPending}
                 >
                   Close
                 </Button>

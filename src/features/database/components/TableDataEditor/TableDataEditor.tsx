@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
 } from "react";
 import { setUnsavedChanges as setWindowUnsavedChanges } from "@/features/shell/actions/window";
 import { Icon as UiIcon } from "@/components/ui/Icon";
@@ -253,7 +252,7 @@ export function TableDataEditor({
     width: number;
     height: number;
   }>(null);
-  const [isPanelPending, startPanelTransition] = useTransition();
+
 
   const liveViewStateRef = useRef({
     page,
@@ -1073,21 +1072,17 @@ export function TableDataEditor({
   }, []);
 
   const openRowDetails = useCallback((rowKey: string, row: RowRecord, index: number) => {
-    startPanelTransition(() => {
-      setExpandedRow({
-        rowKey,
-        row: { ...row },
-        index,
-      });
+    setExpandedRow({
+      rowKey,
+      row: { ...row },
+      index,
     });
-  }, [startPanelTransition]);
+  }, []);
 
   const closeRowDetails = useCallback(() => {
-    startPanelTransition(() => {
-      setExpandedRow(null);
-      setExpandedRowOutline(null);
-    });
-  }, [startPanelTransition]);
+    setExpandedRow(null);
+    setExpandedRowOutline(null);
+  }, []);
 
   const cancelPendingHoverClear = useCallback(() => {
     if (!hoverClearTimeoutRef.current) return;
@@ -1826,7 +1821,6 @@ export function TableDataEditor({
         expandedRow={expandedRow}
         expandedRowFields={expandedRowFields}
         expandedRowOutline={expandedRowOutline}
-        isPanelPending={isPanelPending}
         onClose={closeRowDetails}
       />
     </div>
