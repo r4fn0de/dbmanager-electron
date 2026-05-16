@@ -1,0 +1,20 @@
+package.json
+  s_52d204cdca7f59::t_6d2251d6488744 9-14,18-24,26-27,32,127
+  s_52d204cdca7f59::t_ac0b7cdd091cac 30,33-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "bb851d403993601655a682b185b3e5c553cbecce",
+  "prompts": {},
+  "sessions": {
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
