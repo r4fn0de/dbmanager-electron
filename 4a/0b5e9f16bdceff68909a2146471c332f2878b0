@@ -1,0 +1,19 @@
+src/features/database/components/DatabaseNavSidebar.tsx
+  s_52d204cdca7f59::t_c0e929f3d4b3cb 96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "4a0b5e9f16bdceff68909a2146471c332f2878b0",
+  "prompts": {},
+  "sessions": {
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
