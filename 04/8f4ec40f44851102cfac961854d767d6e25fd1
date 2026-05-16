@@ -1,0 +1,21 @@
+src/features/connection/components/ConnectionTabs.tsx
+  s_52d204cdca7f59::t_65ebe8c41c8621 7,49,53,354,387
+src/styles/global.css
+  s_52d204cdca7f59::t_6dfd2226b6173e 110,196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "048f4ec40f44851102cfac961854d767d6e25fd1",
+  "prompts": {},
+  "sessions": {
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
