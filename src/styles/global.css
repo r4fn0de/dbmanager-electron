@@ -22,7 +22,7 @@
   --card-foreground: oklch(0.141 0.005 285.823);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.488 0.243 264.376);
+  --primary: oklch(0.5144 0.1605 267.44);
   --primary-foreground: oklch(0.97 0.014 254.604);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
@@ -33,7 +33,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --ring: oklch(0.5144 0.1605 267.44);
   --chart-1: oklch(0.785 0.115 274.713);
   --chart-2: oklch(0.585 0.233 277.117);
   --chart-3: oklch(0.511 0.262 276.966);
@@ -42,14 +42,14 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
+  --sidebar-primary: oklch(0.5144 0.1605 267.44);
   --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
   --sidebar-accent: oklch(0.967 0.001 286.375);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.705 0.015 286.067);
+  --sidebar-ring: oklch(0.5144 0.1605 267.44);
   --window-bg: color-mix(in oklch, var(--background) 25%, transparent);
-  --window-solid-bg: color-mix(in oklch, var(--background) 94%, var(--foreground));
+  --window-solid-bg: color-mix(in oklch, var(--background) 84%, var(--foreground));
 }
 
 :root.theme-neo {
@@ -108,7 +108,7 @@
     0.25px 8px 10px -1px hsl(236.5829 64.225% 21.4383% / 0.15);
   --shadow-2xl: 0.25px 1px 3px 0 hsl(236.5829 64.225% 21.4383% / 0.38);
   --window-bg: color-mix(in oklch, var(--background) 88%, white);
-  --window-solid-bg: color-mix(in oklch, var(--background) 98%, white);
+  --window-solid-bg: color-mix(in oklch, var(--background) 82%, var(--foreground));
 }
 
 /* Tema é controlado pela classe .dark adicionada pelo next-themes */
@@ -133,7 +133,7 @@ code {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.21 0.006 285.885);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.623 0.214 259.815);
+  --primary: oklch(0.5144 0.1605 267.44);
   --primary-foreground: oklch(0.97 0.014 254.604);
   --secondary: oklch(0.35 0.006 286.033);
   --secondary-foreground: oklch(0.985 0 0);
@@ -144,7 +144,7 @@ code {
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
+  --ring: oklch(0.5144 0.1605 267.44);
   --chart-1: oklch(0.785 0.115 274.713);
   --chart-2: oklch(0.585 0.233 277.117);
   --chart-3: oklch(0.511 0.262 276.966);
@@ -152,12 +152,12 @@ code {
   --chart-5: oklch(0.398 0.195 277.366);
   --sidebar: oklch(0.21 0.006 285.885);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
+  --sidebar-primary: oklch(0.5144 0.1605 267.44);
   --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
   --sidebar-accent: oklch(0.35 0.006 286.033);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.552 0.016 285.938);
+  --sidebar-ring: oklch(0.5144 0.1605 267.44);
 }
 
 .dark.theme-neo {
