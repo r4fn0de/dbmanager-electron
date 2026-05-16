@@ -111,6 +111,8 @@ export function TableDataEditor({
   const pressableClass =
     "transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97]";
 
+  const pressableTextClass = "transition-colors duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]";
+
   const tableRef = useMemo<TableRef>(
     () => ({ connectionId, schema: table.schema, table: table.name }),
     [connectionId, table.name, table.schema],
@@ -1375,8 +1377,8 @@ export function TableDataEditor({
       className="relative h-full flex flex-col min-h-0 overflow-visible"
       onClickCapture={clearSelectionOnOutsideClick}
     >
-      <div className="border-b px-3 py-1.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
+      <div className="border-b bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 px-3 py-2 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto pr-2">
           {onToggleSidebar && (
             <Tooltip>
               <TooltipTrigger
@@ -1407,7 +1409,7 @@ export function TableDataEditor({
           <Button
             variant="default"
             size="sm"
-            className={pressableClass}
+            className={cn("font-medium", pressableClass)}
             onClick={handleAddDraftRecord}
           >
             <UiIcon name="plus" className="h-3.5 w-3.5" />
@@ -1418,7 +1420,7 @@ export function TableDataEditor({
             <Button
               variant="outline"
               size="sm"
-              className={pressableClass}
+              className={cn("font-medium", pressableClass)}
               onClick={onRequestAddColumn}
             >
               <UiIcon name="plus" className="h-3.5 w-3.5" />
@@ -1429,7 +1431,7 @@ export function TableDataEditor({
           <Button
             variant={showFilters ? "secondary" : "outline"}
             size="sm"
-            className={pressableClass}
+            className={cn("font-medium", pressableClass)}
             onClick={() => setShowFilters((v) => !v)}
           >
             <UiIcon name="filter" className="h-3.5 w-3.5" />
@@ -1442,7 +1444,7 @@ export function TableDataEditor({
                 <Button
                   variant="outline"
                   size="sm"
-                  className={pressableClass}
+                  className={cn("font-medium", pressableClass)}
                 />
               }
             >
@@ -1484,7 +1486,7 @@ export function TableDataEditor({
                   if (value) setDdlColumnName(value);
                 }}
               >
-                <SelectTrigger size="sm" className="h-7 text-xs w-auto min-w-32">
+                <SelectTrigger size="sm" className="h-8 text-sm w-auto min-w-32">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1501,7 +1503,7 @@ export function TableDataEditor({
                     <Button
                       variant="outline"
                       size="sm"
-                      className={pressableClass}
+                      className={cn("font-medium", pressableClass)}
                     />
                   }
                 >
@@ -1560,7 +1562,7 @@ export function TableDataEditor({
             <Button
               variant="destructive"
               size="sm"
-              className={pressableClass}
+              className={cn("font-medium", pressableClass)}
               onClick={() => setPendingBatchDelete(true)}
               disabled={primaryKey.length === 0}
             >
@@ -1570,7 +1572,7 @@ export function TableDataEditor({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 pl-2 border-l">
           {(isLoading || isSwitchingTable) && rowsResponse && (
             <UiIcon name="loader" className="h-3 w-3 animate-spin" />
           )}
@@ -1644,7 +1646,7 @@ export function TableDataEditor({
       </div>
 
       {showFilters && (
-        <div className="border-b px-3 py-2 grid grid-cols-[220px_1fr] gap-2">
+        <div className="border-b px-3 py-2 grid grid-cols-[220px_1fr] gap-2 bg-muted/30">
           <Select
             value={filterColumn}
             onValueChange={(value) => {
@@ -1654,7 +1656,7 @@ export function TableDataEditor({
               }
             }}
           >
-            <SelectTrigger className="h-8 text-sm w-full">
+            <SelectTrigger className="h-8 text-sm w-full bg-background">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1673,12 +1675,13 @@ export function TableDataEditor({
               setPage(0);
             }}
             placeholder="Contains..."
+            className="bg-background h-8"
           />
         </div>
       )}
 
       {error && (
-        <div className="px-3 py-2 text-xs text-destructive border-b flex items-center justify-between gap-2">
+        <div className="px-3 py-2 text-xs text-destructive border-b bg-destructive/5 flex items-center justify-between gap-2">
           <span className="truncate">{error}</span>
           <Button
             variant="outline"
@@ -1831,7 +1834,7 @@ export function TableDataEditor({
         }}
         onMouseEnter={cancelPendingHoverClear}
         onMouseLeave={scheduleHoverClear}
-        className="fixed z-[10000] flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm border border-border/70 bg-muted/95 text-muted-foreground opacity-0 pointer-events-none shadow-sm hover:text-foreground cursor-pointer"
+        className="fixed z-[10000] flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm border border-border/70 bg-background text-muted-foreground opacity-0 pointer-events-none shadow-xs hover:text-foreground hover:bg-muted cursor-pointer transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
       >
         <IconArrowsDiagonal2 className="h-3 w-3" />
       </button>

@@ -32,7 +32,7 @@ export function TableEditorFooter({
   onSaveChanges,
 }: TableEditorFooterProps) {
   return (
-    <div className="border-t px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="border-t bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1">
         <Button
           variant="outline"
@@ -43,7 +43,7 @@ export function TableEditorFooter({
         >
           <UiIcon name="chevron-left" className="h-3.5 w-3.5" />
         </Button>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground px-1">
           Page {page + 1} / {totalPages}
         </span>
         <Button
