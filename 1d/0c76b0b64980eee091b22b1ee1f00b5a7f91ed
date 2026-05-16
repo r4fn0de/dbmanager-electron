@@ -1,0 +1,33 @@
+src/features/settings/components/SettingsDialog.tsx
+  s_52d204cdca7f59::t_3845eaf157cff6 95
+  s_52d204cdca7f59::t_db0295b7d91e75 142,144-146
+  s_52d204cdca7f59::t_4da8ffd0af91e6 30,119-120,135-141,143,147-160
+src/styles/global.css
+  s_52d204cdca7f59::t_4f427c6ca6e804 194-198
+  s_52d204cdca7f59::t_6aecde3d4dbf19 53-109,159-191
+src/components/TitleBar.tsx
+  s_52d204cdca7f59::t_f69e1b2496ad48 99,211-212
+src/features/connection/components/ConnectionTabs.tsx
+  s_52d204cdca7f59::t_af85ad7ed33a91 49,358-359,364-365,380-381,383-384
+  s_52d204cdca7f59::t_345d1bdafd2666 50,375,382,391-404
+src/lib/stores/appearance.ts
+  s_52d204cdca7f59::t_85847654fdfb1c 7-8,18-19,24,31
+src/routes/__root.tsx
+  s_52d204cdca7f59::t_5f7b8c5f063a5b 146,155-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "1d0c76b0b64980eee091b22b1ee1f00b5a7f91ed",
+  "prompts": {},
+  "sessions": {
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
