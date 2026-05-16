@@ -1,0 +1,22 @@
+src/styles/global.css
+  s_52d204cdca7f59::t_4a040d7332e715 51-52,110-111,196-197,254,257,331
+src/components/TitleBar.tsx
+  s_52d204cdca7f59::t_45847ac592aa66 213
+  s_52d204cdca7f59::t_3ce6d05929409c 211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "a256b89d9e01d59829374a78f30a1abebd224cb8",
+  "prompts": {},
+  "sessions": {
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
