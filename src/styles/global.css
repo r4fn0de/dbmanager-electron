@@ -48,6 +48,8 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.015 286.067);
+  --window-bg: color-mix(in oklch, var(--background) 25%, transparent);
+  --window-solid-bg: color-mix(in oklch, var(--background) 94%, var(--foreground));
 }
 
 :root.theme-neo {
@@ -105,6 +107,8 @@
     0.25px 1px 3px 0 hsl(236.5829 64.225% 21.4383% / 0.15),
     0.25px 8px 10px -1px hsl(236.5829 64.225% 21.4383% / 0.15);
   --shadow-2xl: 0.25px 1px 3px 0 hsl(236.5829 64.225% 21.4383% / 0.38);
+  --window-bg: color-mix(in oklch, var(--background) 88%, white);
+  --window-solid-bg: color-mix(in oklch, var(--background) 98%, white);
 }
 
 /* Tema é controlado pela classe .dark adicionada pelo next-themes */
@@ -189,6 +193,8 @@ code {
   --sidebar-border: oklch(0.26 0 0);
   --sidebar-ring: oklch(0.5144 0.1605 267.44);
   --radius: 0rem;
+  --window-bg: color-mix(in oklch, var(--background) 35%, white);
+  --window-solid-bg: color-mix(in oklch, var(--background) 70%, var(--foreground));
 }
 
 .theme-neo [data-slot="tabs-list"],
@@ -245,10 +251,10 @@ code {
     @apply border-border;
   }
   html, body {
-    background: color-mix(in oklch, var(--background) 25%, transparent) !important;
+    background: var(--window-bg) !important;
   }
   body {
-    background: color-mix(in oklch, var(--background) 25%, transparent);
+    background: var(--window-bg);
     @apply text-foreground;
   }
   html {
@@ -322,7 +328,7 @@ code {
 
 /* Solid background mode: only set the window/root background */
 [data-solid-bg] {
-  background: color-mix(in oklch, var(--background) 94%, var(--foreground)) !important;
+  background: var(--window-solid-bg) !important;
 }
 
 .t-resize {
