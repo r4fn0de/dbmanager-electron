@@ -46,6 +46,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const matchRoute = useMatchRoute();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
+  const themePreset = useAppearanceStore((s) => s.themePreset);
+  const isNeoTheme = themePreset === "neo";
 
   const dbMatch = matchRoute({ to: "/database/$connectionId", fuzzy: true });
   const currentConnectionId =
@@ -353,13 +355,14 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 : "text-muted-foreground hover:text-foreground",
               !isActive &&
                 cn(
-                  "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors",
+                  "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:bg-transparent after:transition-colors",
+                  themePreset === "neo" ? "after:rounded-none" : "after:rounded-md",
                   solidBackground ? "hover:after:bg-muted/85" : "hover:after:bg-muted/60",
                 ),
               gooeyFilterId &&
                 (isActive
-                  ? "rounded-t-[5px] rounded-b-[5px]"
-                  : "rounded-[5px]"),
+                  ? (themePreset === "neo" ? "rounded-none" : "rounded-t-[5px] rounded-b-[5px]")
+                  : (themePreset === "neo" ? "rounded-none" : "rounded-[5px]")),
             )}
             style={{
               overflow: "visible",
@@ -369,27 +372,36 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             {gooeyFilterId && isActive && (
               <div
                 className="absolute inset-0 pointer-events-none z-0"
-                style={{ filter: `url(#${gooeyFilterId})` }}
+                style={{ filter: isNeoTheme ? "none" : `url(#${gooeyFilterId})` }}
                 aria-hidden="true"
               >
                 <motion.div
                   layoutId="titlebar-gooey-active-tab"
-                  className={cn("absolute inset-0 rounded-t-[8px] rounded-b-[4px]", activeChromeClass)}
+                  className={cn(
+                    "absolute inset-0",
+                    isNeoTheme ? "rounded-none" : "rounded-t-[8px] rounded-b-[4px]",
+                    activeChromeClass,
+                  )}
                   transition={{
                     type: "spring",
                     bounce: 0,
                     duration: 0.35,
                   }}
                 />
-                <motion.div
-                  layoutId="titlebar-gooey-active-tab-bridge"
-                  className={cn("absolute -left-4 -right-4 -bottom-5 h-5 rounded-b-[22px]", activeChromeClass)}
-                  transition={{
-                    type: "spring",
-                    bounce: 0,
-                    duration: 0.35,
-                  }}
-                />
+                {!isNeoTheme && (
+                  <motion.div
+                    layoutId="titlebar-gooey-active-tab-bridge"
+                    className={cn(
+                      "absolute -left-4 -right-4 -bottom-5 h-5 rounded-b-[22px]",
+                      activeChromeClass,
+                    )}
+                    transition={{
+                      type: "spring",
+                      bounce: 0,
+                      duration: 0.35,
+                    }}
+                  />
+                )}
               </div>
             )}
 

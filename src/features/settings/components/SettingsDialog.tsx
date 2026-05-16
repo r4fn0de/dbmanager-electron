@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
@@ -91,7 +92,7 @@ function UpdatesPanel() {
 
         <div className="flex items-center gap-2 pt-1">
           <Button variant="outline" size="sm" disabled={checkManualMutation.isPending} onClick={() => checkManualMutation.mutate()} className="h-8 text-xs">
-            <Icon name="refresh-cw" className="size-3.5 mr-1.5" />
+            <Icon name="refresh" className="size-3.5 mr-1.5" />
             Check updates
           </Button>
           <Button
@@ -115,6 +116,8 @@ function UpdatesPanel() {
 function AppearanceSettings() {
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
   const setSolidBackground = useAppearanceStore((s) => s.setSolidBackground);
+  const themePreset = useAppearanceStore((s) => s.themePreset);
+  const setThemePreset = useAppearanceStore((s) => s.setThemePreset);
 
   return (
     <div className="space-y-4">
@@ -126,6 +129,35 @@ function AppearanceSettings() {
           </p>
         </div>
         <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors duration-150 ease-out active:scale-[0.97]" />
+      </div>
+
+      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Theme style</p>
+          <p className="text-xs text-muted-foreground">
+            Choose the visual palette used by the app
+          </p>
+        </div>
+        <ToggleGroup
+          value={[themePreset]}
+          onValueChange={(value) => {
+            const next = value[0];
+            if (next === "default" || next === "neo") {
+              setThemePreset(next);
+            }
+          }}
+          variant="outline"
+          size="sm"
+          spacing={1}
+          aria-label="Theme style"
+        >
+          <ToggleGroupItem value="default" aria-label="Default theme style">
+            Default
+          </ToggleGroupItem>
+          <ToggleGroupItem value="neo" aria-label="Neo theme style">
+            Neo
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">

@@ -96,6 +96,7 @@ export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isConnectionMenuOpen, setIsConnectionMenuOpen] = useState(false);
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
+  const themePreset = useAppearanceStore((s) => s.themePreset);
   const navigate = useNavigate();
 
   // Auto-add tabs when navigating to database pages
@@ -207,7 +208,8 @@ export function TitleBar() {
                         }
                       }}
                       className={cn(
-                        "shrink-0 h-[37px] px-3 rounded-md text-foreground/75 dark:text-muted-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:rounded-md after:bg-transparent after:transition-colors after:duration-150",
+                        "shrink-0 h-[37px] px-3 text-foreground/75 dark:text-muted-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:bg-transparent after:transition-colors after:duration-150",
+                        themePreset === "neo" ? "rounded-none after:rounded-none" : "rounded-md after:rounded-md",
                         solidBackground ? "hover:after:bg-muted/85" : "hover:after:bg-muted/60",
                       )}
                       aria-label="Open connections"
