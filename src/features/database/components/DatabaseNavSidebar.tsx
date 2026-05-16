@@ -93,14 +93,14 @@ export function DatabaseNavSidebar({
 
   return (
     <motion.aside
-      className="min-h-0 -ml-1 flex flex-col bg-transparent items-center py-2 shrink-0 text-foreground overflow-hidden w-12"
+      className="min-h-0 -ml-1 flex flex-col bg-transparent items-center pt-0 pb-2 shrink-0 text-foreground overflow-hidden w-12"
       initial={{ x: -48, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: -48, opacity: 0 }}
       transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
     >
       {/* ── Connection identity ────────────────────────────── */}
-      <div className="flex flex-col items-center gap-1 px-1.5 mb-1">
+      <div className="flex flex-col items-center gap-1 px-1.5">
         <Tooltip>
           <TooltipTrigger
             render={
