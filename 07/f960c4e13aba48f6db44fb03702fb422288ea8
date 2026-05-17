@@ -1,0 +1,24 @@
+src/features/database/components/SchemaExportDialog.tsx
+  s_52d204cdca7f59::t_b73f5699c18b65 260
+  s_52d204cdca7f59::t_808f91d3a60f8b 44,46-47,49-55,81-95,217-218
+  s_52d204cdca7f59::t_c93bc63bd11718 219,226-232,235-236,239-248,251-258,268-270,272-276,278,281-284
+src/components/ui/code-block.tsx
+  s_52d204cdca7f59::t_222fc27bb835c6 87-128,193-198,233-235
+  s_52d204cdca7f59::t_04378013731879 14,249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "07f960c4e13aba48f6db44fb03702fb422288ea8",
+  "prompts": {},
+  "sessions": {
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
