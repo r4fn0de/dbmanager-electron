@@ -51,6 +51,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const themePreset = useAppearanceStore((s) => s.themePreset);
   const isNeoTheme = themePreset === "neo";
   const isDarkMode = resolvedTheme === "dark";
+  const shouldShowNeoTabBorder = isNeoTheme;
 
   const dbMatch = matchRoute({ to: "/database/$connectionId", fuzzy: true });
   const currentConnectionId =
@@ -351,7 +352,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             className={cn(
               "group relative flex items-center justify-center gap-1.5 h-[39px] w-[128px] px-0 text-xs font-medium",
               "rounded-sm shrink-0 outline-none cursor-default",
-              isNeoTheme && isDarkMode && isActive && "border border-border/70 border-b-0",
+              shouldShowNeoTabBorder && isActive && "border border-border border-b-0",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
               "transition-colors duration-150",
               isActive
@@ -384,7 +385,6 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                   className={cn(
                     "absolute inset-0",
                     isNeoTheme ? "rounded-t-[3px] rounded-b-0" : "rounded-t-[8px] rounded-b-[4px]",
-                    isNeoTheme && isDarkMode && "border border-border/70 border-b-0",
                     activeChromeClass,
                   )}
                   transition={{

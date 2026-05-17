@@ -202,6 +202,10 @@ code {
   border-radius: 0 !important;
 }
 
+.theme-neo:not(.dark) .database-content-frame {
+  border-color: color-mix(in oklch, var(--border) 78%, transparent);
+}
+
 @theme inline {
   --font-sans: 'Mona Sans Variable', sans-serif;
   --font-heading: 'Mona Sans Variable', sans-serif;
