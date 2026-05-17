@@ -1,0 +1,19 @@
+src/ipc/ai/streaming.ts
+  s_52d204cdca7f59::t_df90eae326c4b5 44-46,963-965
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "b4c5b2fa86323eb6bc04f39ab91e30748e1d4b2c",
+  "prompts": {},
+  "sessions": {
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
