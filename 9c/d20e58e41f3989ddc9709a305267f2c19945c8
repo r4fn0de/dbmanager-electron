@@ -1,0 +1,54 @@
+src/styles/global.css
+  s_52d204cdca7f59::t_dbf5b2b2d0c9f6 87,195
+src/features/database/components/TablesExplorerSidebar.tsx
+  s_4a8751778a0f35::t_f1fbafbcea8f15 514
+  s_4a8751778a0f35::t_73c0219394e1de 235
+  s_4a8751778a0f35::t_ae349f1634a1b6 161
+src/features/connection/components/ConnectionTabs.tsx
+  s_52d204cdca7f59::t_53916ba59a4ac7 368
+src/ipc/db/handlers.ts
+  s_4a8751778a0f35::t_823d8e4ba6ecd4 289-299,301,305-309,318-322
+src/ipc/db/sqlite-driver.ts
+  s_4a8751778a0f35::t_faee97d5581bb2 58-83
+  s_4a8751778a0f35::t_bf5caca5ff175f 623
+  s_4a8751778a0f35::t_ec14bdf3cfbd82 710,713,721
+  s_4a8751778a0f35::t_a54f96097a6d82 595
+  s_4a8751778a0f35::t_00479ef5663df2 746,767,784
+  s_4a8751778a0f35::t_6641584069320a 925,933,942,954,963,972
+  s_4a8751778a0f35::t_4ae31cdd9c46f3 137-145,147-153,155-163,168-171
+  s_4a8751778a0f35::t_2edaf138ff0dc0 1032-1033,1035-1036
+  s_4a8751778a0f35::t_8c21514c0cc7f6 1109
+  s_4a8751778a0f35::t_15a45974fc999b 175-177,183-184
+  s_4a8751778a0f35::t_2a21dae1e6ad82 1006,1016
+  s_4a8751778a0f35::t_0bb058bf2d9458 305,333,399,430,484,511,582,593,619,659,706,814,923,931,940,952,961,970,1004,1014,1030,1077,1095,1134
+  s_4a8751778a0f35::t_f8ec0815344a82 9
+  s_4a8751778a0f35::t_e391be2cfc4a2b 260-265,267-287,289-291,293-299
+  s_4a8751778a0f35::t_b4b9c4bd9da46d 306
+  s_4a8751778a0f35::t_c3d205cd26d4aa 1078
+  s_4a8751778a0f35::t_9b1e11d303f8e9 339-340,403,410,417
+  s_4a8751778a0f35::t_335e2d3f1dc971 1066
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "9cd20e58e41f3989ddc9709a305267f2c19945c8",
+  "prompts": {},
+  "sessions": {
+    "s_4a8751778a0f35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c941c181ffeis1SdVPb2qn36g",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    },
+    "s_52d204cdca7f59": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e31c5-8890-71b3-be40-e81cc0bdfcdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
