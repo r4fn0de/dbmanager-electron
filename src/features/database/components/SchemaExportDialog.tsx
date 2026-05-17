@@ -9,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Icon } from "@/components/ui/Icon";
 import {
   Select,
@@ -42,6 +41,18 @@ interface SchemaExportDialogProps {
 
 const ALL_FORMATS: GeneratorFormat[] = ["sql", "ts", "zod", "kysely", "drizzle", "prisma"];
 
+// Injection keyframes for the copy feedback animation
+const copyFeedbackAnimationKeyframes = `@keyframes copyFeedbackPulse {
+  from {
+    opacity: 0;
+    transform: scale(0.93);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}`;
+
 function getAvailableFormats(dbType: DatabaseType): GeneratorFormat[] {
   return ALL_FORMATS.filter((f) => {
     const compatible = GENERATOR_COMPATIBILITY[f];
@@ -66,6 +77,21 @@ export function SchemaExportDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
+
+  // Inject keyframes for copy feedback animation
+  useEffect(() => {
+    const styleId = "copy-feedback-anim";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = copyFeedbackAnimationKeyframes;
+      document.head.appendChild(style);
+    }
+    return () => {
+      const style = document.getElementById(styleId);
+      if (style) style.remove();
+    };
+  }, []);
 
   // Fetch table details when dialog opens
   useEffect(() => {
@@ -188,30 +214,50 @@ export function SchemaExportDialog({
               {error}
             </div>
           ) : details ? (
-            <ScrollArea className="h-full max-h-[55vh]">
-              <CodeBlock className="border-0 bg-muted/30 rounded-lg">
-                <CodeBlockGroup className="px-4 py-2 border-b border-border/40">
+            <div className="h-[55vh] max-h-[55vh] min-h-0 overflow-hidden pr-1">
+              <CodeBlock className="border-0 bg-muted/30 rounded-lg h-full min-h-0 flex flex-col">
+                <CodeBlockGroup className="shrink-0 px-4 py-2 border-b border-border/40 bg-muted/30">
                   <span className="text-xs text-muted-foreground font-mono">
                     {FORMAT_LANGUAGES[selectedFormat]}
                   </span>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-xs gap-1.5"
+                    className={
+                      `h-6 px-2 text-xs gap-1.5 transition-[background-color,color] duration-200 ease-out ${
+                        copyFeedback
+                          ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
+                          : ""
+                      }`
+                    }
                     onClick={() => { void handleCopy(); }}
                   >
-                    <Icon name="copy" className="size-3" />
-                    {copyFeedback ? "Copied!" : "Copy"}
+                    {copyFeedback ? (
+                      <span
+                        className="flex items-center gap-1"
+                        style={{ animation: "copyFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)" }}
+                      >
+                        <Icon name="check" className="size-3" />
+                        Copied!
+                      </span>
+                    ) : (
+                      <>
+                        <Icon name="copy" className="size-3" />
+                        Copy
+                      </>
+                    )}
                   </Button>
                 </CodeBlockGroup>
-                <CodeBlockCode
-                  code={generatedCode}
-                  language={FORMAT_LANGUAGES[selectedFormat]}
-                  theme={codeTheme}
-                  className="[&>pre]:py-3"
-                />
+                <div className="min-h-0 flex-1 overflow-auto">
+                  <CodeBlockCode
+                    code={generatedCode}
+                    language={FORMAT_LANGUAGES[selectedFormat]}
+                    theme={codeTheme}
+                    className="[&>pre]:py-3"
+                  />
+                </div>
               </CodeBlock>
-            </ScrollArea>
+            </div>
           ) : null}
         </div>
 
@@ -219,9 +265,23 @@ export function SchemaExportDialog({
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          <Button onClick={() => { void handleCopy(); }} disabled={!generatedCode || isLoading}>
+          <Button
+            onClick={() => { void handleCopy(); }}
+            disabled={!generatedCode || isLoading}
+            className={`transition-[background-color,color,box-shadow] duration-200 ease-out ${
+              copyFeedback
+                ? "bg-emerald-500 text-white hover:bg-emerald-500/90 hover:text-white shadow-sm"
+                : ""
+            }`}
+          >
             {copyFeedback ? (
-              <span className="text-emerald-500">Copied!</span>
+              <span
+                className="flex items-center gap-1.5"
+                style={{ animation: "copyFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)" }}
+              >
+                <Icon name="check" className="size-3.5" />
+                Copied!
+              </span>
             ) : (
               <>
                 <Icon name="copy" className="size-3.5" />

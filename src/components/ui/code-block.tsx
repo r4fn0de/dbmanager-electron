@@ -11,7 +11,7 @@ function CodeBlock({ children, className, ...props }: CodeBlockProps) {
   return (
     <div
       className={cn(
-        "not-prose flex w-full flex-col overflow-clip border",
+        "not-prose flex w-full flex-col overflow-hidden border",
         "border-border bg-card text-card-foreground rounded-xl",
         className
       )}
@@ -84,6 +84,48 @@ function buildSqlFallbackHtml(code: string, theme: string): string {
   return `<pre class="shiki sql-fallback" style="color:${colors.text};background-color:transparent" tabindex="0"><code>${highlighted}</code></pre>`
 }
 
+function buildTsLikeFallbackHtml(code: string, theme: string): string {
+  const isDark = theme.toLowerCase().includes("dark")
+  const colors = {
+    text: isDark ? "#D4D4D4" : "#1F2328",
+    keyword: isDark ? "#C586C0" : "#8250DF",
+    string: isDark ? "#CE9178" : "#0A3069",
+    number: isDark ? "#B5CEA8" : "#116329",
+    comment: isDark ? "#6A9955" : "#1A7F37",
+    type: isDark ? "#4EC9B0" : "#0550AE",
+  }
+
+  const keywords = new Set([
+    "import", "export", "from", "as", "const", "let", "var", "function",
+    "return", "if", "else", "for", "while", "switch", "case", "break",
+    "continue", "new", "class", "extends", "implements", "interface",
+    "type", "enum", "namespace", "public", "private", "protected", "readonly",
+    "static", "async", "await", "try", "catch", "finally", "throw", "default",
+    "null", "undefined", "true", "false", "model",
+  ])
+
+  const highlightedLines = code.split("\n").map((rawLine) => {
+    const commentIdx = rawLine.indexOf("//")
+    const codePart = commentIdx >= 0 ? rawLine.slice(0, commentIdx) : rawLine
+    const commentPart = commentIdx >= 0 ? rawLine.slice(commentIdx) : ""
+
+    let line = escapeHtml(codePart)
+      .replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g, `<span style="color:${colors.string}">$1</span>`)
+      .replace(/\b(\d+(?:\.\d+)?)\b/g, `<span style="color:${colors.number}">$1</span>`)
+      .replace(/\b([A-Z][A-Za-z0-9_]*)\b/g, `<span style="color:${colors.type}">$1</span>`)
+      .replace(/\b([a-z_][a-z0-9_]*)\b/gi, (word) => (
+        keywords.has(word) ? `<span style="color:${colors.keyword}">${word}</span>` : word
+      ))
+
+    if (commentPart) {
+      line += `<span style="color:${colors.comment}">${escapeHtml(commentPart)}</span>`
+    }
+    return line
+  })
+
+  return `<pre class="shiki ts-fallback" style="color:${colors.text};background-color:transparent" tabindex="0"><code>${highlightedLines.join("\n")}</code></pre>`
+}
+
 function CodeBlockCode({
   code,
   language = "tsx",
@@ -148,6 +190,12 @@ function CodeBlockCode({
         normalizedLanguage === "sql"
         || normalizedLanguage === "plaintext"
         || normalizedLanguage === "text"
+      const useTsLikeFallback =
+        normalizedLanguage === "typescript"
+        || normalizedLanguage === "javascript"
+        || normalizedLanguage === "tsx"
+        || normalizedLanguage === "jsx"
+        || normalizedLanguage === "prisma"
 
       try {
         const html = await codeToHtml(code, {
@@ -182,7 +230,9 @@ function CodeBlockCode({
               setHighlightedHtml(
                 useSqlFallback
                   ? buildSqlFallbackHtml(code, theme)
-                  : buildPlainThemedHtml(code, theme),
+                  : useTsLikeFallback
+                    ? buildTsLikeFallbackHtml(code, theme)
+                    : buildPlainThemedHtml(code, theme),
               )
             }
           }
@@ -196,7 +246,7 @@ function CodeBlockCode({
   }, [code, language, theme])
 
   const classNames = cn(
-    "w-full overflow-x-auto text-[13px] [&>pre]:px-4 [&>pre]:py-4",
+    "w-full overflow-x-auto text-[13px] [&>pre]:m-0 [&>pre]:px-4 [&>pre]:py-4",
     className
   )
 
