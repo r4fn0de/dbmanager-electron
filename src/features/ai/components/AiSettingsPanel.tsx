@@ -33,6 +33,17 @@ import openAiLightSvg from "../../../../icons/OpenAI_light.svg";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
+const saveFeedbackAnimationKeyframes = `@keyframes saveFeedbackPulse {
+  from {
+    opacity: 0;
+    transform: scale(0.93);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}`;
+
 // Provider icons are imported from @/components/ProviderIcons
 
 type ProviderName = "openai" | "anthropic" | "google" | "openai-compatible";
@@ -66,6 +77,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   const [isSavingKey, setIsSavingKey] = useState<Record<string, boolean>>({});
   const [modelInput, setModelInput] = useState("");
   const [baseUrlInput, setBaseUrlInput] = useState("");
+  const [modelSaved, setModelSaved] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -83,6 +95,21 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  // Inject keyframes for save feedback animation
+  useEffect(() => {
+    const styleId = "ai-save-feedback-anim";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = saveFeedbackAnimationKeyframes;
+      document.head.appendChild(style);
+    }
+    return () => {
+      const style = document.getElementById(styleId);
+      if (style) style.remove();
+    };
+  }, []);
 
   useEffect(() => {
     setModelInput(settings?.current.model ?? "");
@@ -137,6 +164,8 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       try {
         await updateAiSettings({ model: value });
         await loadSettings();
+        setModelSaved(true);
+        setTimeout(() => setModelSaved(false), 2000);
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Failed to update model"
@@ -513,7 +542,10 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                       <div className="flex gap-1.5">
                         <Input
                           value={modelInput}
-                          onChange={(e) => setModelInput(e.target.value)}
+                          onChange={(e) => {
+                            setModelInput(e.target.value);
+                            if (modelSaved) setModelSaved(false);
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && modelInput.trim()) {
                               void handleModelChange(modelInput.trim());
@@ -530,11 +562,23 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                           type="button"
                           size="sm"
                           onClick={() => void handleModelChange(modelInput.trim())}
-                          disabled={isSavingModel || !modelInput.trim()}
-                          className="h-8 px-3 text-xs gap-1.5 shadow-sm shrink-0"
+                          disabled={isSavingModel || !modelInput.trim() || modelSaved}
+                          className={`h-8 px-3 text-xs gap-1.5 shadow-sm shrink-0 transition-[background-color,color,box-shadow] duration-200 ease-out ${
+                            modelSaved
+                              ? "bg-emerald-500 text-white hover:bg-emerald-500/90 hover:text-white"
+                              : ""
+                          }`}
                         >
                           {isSavingModel ? (
                             <UiIcon name="loader" className="size-3 animate-spin" />
+                          ) : modelSaved ? (
+                            <span
+                              className="flex items-center gap-1"
+                              style={{ animation: "saveFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)" }}
+                            >
+                              <UiIcon name="check" className="size-3" />
+                              Saved!
+                            </span>
                           ) : (
                             "Save"
                           )}

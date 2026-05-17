@@ -41,7 +41,9 @@ import {
   optimizeQueryForSearch,
 } from "./embedding-service";
 
-const MAX_TOOL_STEPS = 5;
+// Keep tool loops short to avoid repeated "ready" calls and excessive retries.
+// 3 steps still allows: plan -> tool execution -> final response.
+const MAX_TOOL_STEPS = 3;
 
 const CHAT_TIMEOUT = {
   totalMs: 120_000,
@@ -958,7 +960,9 @@ async function handleChatStart(
       ? createAiTools(effectiveConnectionId, approvalFn)
       : undefined;
 
-    const forceToolCall = Boolean(tools) && dbWriteIntent;
+    // Only force tool invocation when we have a resolved connection and clear write intent.
+    // This avoids unnecessary forced tool calls on ambiguous prompts.
+    const forceToolCall = Boolean(tools && effectiveConnectionId) && dbWriteIntent;
     const result = streamText({
       model,
       system: buildSystemPrompt(
