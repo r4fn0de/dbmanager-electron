@@ -286,16 +286,27 @@ export const testConnection = os
     const dbType: DatabaseType = input.db_type || "postgresql";
     const driver = driverRegistry.get(dbType);
 
+    // Resolve real credentials from store — the renderer sends redacted data
+    // (password blanked, url masked) so we must look up the actual connection.
+    let resolvedConfig = toDriverConfig(input);
+    if (input.id) {
+      const connections = await loadConnections();
+      const stored = connections.find((c) => c.id === input.id);
+      if (stored) {
+        resolvedConfig = toDriverConfig(stored);
+      }
+    }
+
     try {
-      const ok = await driver.testConnection(toDriverConfig(input));
+      const ok = await driver.testConnection(resolvedConfig);
       if (!ok) {
         console.warn("[db] testConnection returned false", {
           dbType,
-          host: input.host,
-          port: input.port,
-          database: input.database,
-          hasUrl: Boolean(input.url),
-          sslMode: input.ssl_mode,
+          host: resolvedConfig.host,
+          port: resolvedConfig.port,
+          database: resolvedConfig.database,
+          hasUrl: Boolean(resolvedConfig.url),
+          sslMode: resolvedConfig.ssl_mode,
           isLocal: Boolean(input.is_local),
         });
       }
@@ -304,11 +315,11 @@ export const testConnection = os
       const message = sanitizeErrorMessage(err, "Connection test failed");
       console.error("[db] testConnection threw", {
         dbType,
-        host: input.host,
-        port: input.port,
-        database: input.database,
-        hasUrl: Boolean(input.url),
-        sslMode: input.ssl_mode,
+        host: resolvedConfig.host,
+        port: resolvedConfig.port,
+        database: resolvedConfig.database,
+        hasUrl: Boolean(resolvedConfig.url),
+        sslMode: resolvedConfig.ssl_mode,
         isLocal: Boolean(input.is_local),
         message,
       });

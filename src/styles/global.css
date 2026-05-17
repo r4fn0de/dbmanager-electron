@@ -84,7 +84,7 @@
   --sidebar-accent-foreground: oklch(0.2571 0.1161 272.24);
   --sidebar-border: oklch(0.92 0 0);
   --sidebar-ring: oklch(0.5144 0.1605 267.44);
-  --radius: 0rem;
+  --radius: 0.1875rem;
   --font-sans: "Mona Sans Variable", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
   --font-body: "Mona Sans Variable", sans-serif;
@@ -192,7 +192,7 @@ code {
   --sidebar-accent-foreground: oklch(0.9214 0.0248 257.65);
   --sidebar-border: oklch(0.26 0 0);
   --sidebar-ring: oklch(0.5144 0.1605 267.44);
-  --radius: 0rem;
+  --radius: 0.1875rem;
   --window-bg: color-mix(in oklch, var(--background) 25%, transparent);
   --window-solid-bg: color-mix(in oklch, var(--background) 70%, var(--foreground));
 }

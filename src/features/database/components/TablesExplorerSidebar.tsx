@@ -158,7 +158,7 @@ export function TablesExplorerSidebar({
         {/* Title Row */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold tracking-tight text-foreground select-text">Explorer</span>
+            <span className="text-xs font-semibold tracking-tight text-foreground">Explorer</span>
             {isLoading ? (
               <Icon name="loader" className="size-3 animate-spin text-muted-foreground" />
             ) : !isLoading && filteredTables.length > 0 ? (
@@ -232,7 +232,7 @@ export function TablesExplorerSidebar({
                   <SelectItem key={s} value={s} className="text-xs">
                     <div className="flex items-center gap-2">
                       <Icon name="database" className="size-3 text-muted-foreground" />
-                      <span className="font-mono select-text">{s}</span>
+                      <span className="font-mono">{s}</span>
                       <Badge variant="secondary" className="ml-auto font-mono text-[10px] h-4 px-1">
                         {count}
                       </Badge>
@@ -511,7 +511,7 @@ export function TablesExplorerSidebar({
                                   : "text-muted-foreground group-hover:text-foreground/70"
                               )}
                             />
-                            <span className="flex-1 truncate text-[12px] font-medium leading-tight select-text">
+                            <span className="flex-1 truncate text-[12px] font-medium leading-tight">
                               {table.name}
                             </span>
                             {aiMatchedNames.has(table.name) && (

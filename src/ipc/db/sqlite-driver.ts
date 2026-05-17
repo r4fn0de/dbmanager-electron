@@ -6,6 +6,7 @@
  * Connection strings use the format: sqlite:///absolute/path/to/file.db
  */
 import path from "node:path";
+import os from "node:os";
 import { createRequire } from "node:module";
 import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
@@ -51,6 +52,33 @@ function getBetterSqlite3(): BetterSqlite3Ctor {
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Statement cache — prepared statements cached per connection
+// ---------------------------------------------------------------------------
+
+interface CachedDb {
+  db: any;
+  stmtCache: Map<string, any>;
+  ddlVersion: number;
+}
+
+function getCachedStmt(cached: CachedDb, sql: string): any {
+  const key = `${cached.ddlVersion}:${sql}`;
+  const existing = cached.stmtCache.get(key);
+  if (existing) return existing;
+  const stmt = cached.db.prepare(sql);
+  cached.stmtCache.set(key, stmt);
+  return stmt;
+}
+
+function isSqliteBusyError(err: unknown): boolean {
+  if (err && typeof err === "object" && "message" in err) {
+    const msg = (err as Error).message;
+    return msg.includes("SQLITE_BUSY") || msg.includes("database is locked");
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,36 +134,54 @@ function mapSqliteType(declType: string | undefined): string {
 // Database handle cache — one better-sqlite3 instance per file path
 // ---------------------------------------------------------------------------
 
-const dbCache = new Map<string, any>();
+const dbCache = new Map<string, CachedDb>();
 
-function getDb(connectionString: string): any {
+function configurePragmas(db: any): void {
+  db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("cache_size = -64000");
+  db.pragma("busy_timeout = 5000");
+  db.pragma("temp_store = MEMORY");
+  db.pragma("foreign_keys = ON");
+
+  // Memory-mapped I/O — not supported in WAL mode on Windows
+  if (os.platform() !== "win32") {
+    db.pragma("mmap_size = 268435456");
+  }
+}
+
+function getDb(connectionString: string): CachedDb {
   const existing = dbCache.get(connectionString);
-  if (existing) return existing;
+  if (existing) {
+    try {
+      existing.db.prepare("SELECT 1").get();
+      return existing;
+    } catch {
+      existing.db.close();
+      dbCache.delete(connectionString);
+    }
+  }
 
   const filePath = parseConnectionString(connectionString);
   const BetterSqlite3 = getBetterSqlite3();
   const db = new BetterSqlite3(filePath);
-  // Enable WAL mode for better concurrent read performance
-  db.pragma("journal_mode = WAL");
-  // Enable foreign keys
-  db.pragma("foreign_keys = ON");
-  dbCache.set(connectionString, db);
-  return db;
+  configurePragmas(db);
+  const cached: CachedDb = { db, stmtCache: new Map(), ddlVersion: 0 };
+  dbCache.set(connectionString, cached);
+  return cached;
 }
 
-/** Close and remove a cached database handle. */
 export function closeDb(connectionString: string): void {
-  const db = dbCache.get(connectionString);
-  if (db) {
-    db.close();
+  const cached = dbCache.get(connectionString);
+  if (cached) {
+    cached.db.close();
     dbCache.delete(connectionString);
   }
 }
 
-/** Close all cached database handles. */
 export function closeAllSqliteDbs(): void {
-  for (const db of dbCache.values()) {
-    db.close();
+  for (const cached of dbCache.values()) {
+    cached.db.close();
   }
   dbCache.clear();
 }
@@ -211,47 +257,53 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async executeQuery(connectionString, sql, _signal) {
-      const db = getDb(connectionString);
-      try {
-        const stmt = db.prepare(sql);
-        const isRead = stmt.reader;
+      const cachedDb = getDb(connectionString);
+      let attempts = 0;
+      while (true) {
+        try {
+          const stmt = getCachedStmt(cachedDb, sql);
+          const isRead = stmt.reader;
 
-        if (isRead) {
-          const rows = stmt.all() as Record<string, unknown>[];
-          const columns = Object.keys(rows[0] ?? {});
+          if (isRead) {
+            const rows = stmt.all() as Record<string, unknown>[];
+            const columns = Object.keys(rows[0] ?? {});
+            return {
+              columns: columns.map((name) => {
+                const val = rows[0]?.[name];
+                const type = typeof val;
+                return {
+                  name,
+                  type_name: type === "object" && val instanceof Date ? "datetime"
+                    : type === "number" ? "number"
+                    : type === "string" ? "string"
+                    : type === "boolean" ? "boolean"
+                    : "unknown",
+                };
+              }),
+              rows: rows.map((row) => Object.values(row)),
+              row_count: rows.length,
+            };
+          }
+          const info = stmt.run();
           return {
-            columns: columns.map((name) => {
-              // Try to infer type from the first row's value
-              const val = rows[0]?.[name];
-              const type = typeof val;
-              return {
-                name,
-                type_name: type === "object" && val instanceof Date ? "datetime"
-                  : type === "number" ? "number"
-                  : type === "string" ? "string"
-                  : type === "boolean" ? "boolean"
-                  : "unknown",
-              };
-            }),
-            rows: rows.map((row) => Object.values(row)),
-            row_count: rows.length,
+            columns: [],
+            rows: [],
+            row_count: info.changes,
           };
+        } catch (err) {
+          if (isSqliteBusyError(err) && attempts < 3) {
+            attempts++;
+            await new Promise((r) => setTimeout(r, 100 * attempts));
+            continue;
+          }
+          throw new Error(`SQLite query error: ${err instanceof Error ? err.message : String(err)}`);
         }
-        // Write statement
-        const info = stmt.run();
-        return {
-          columns: [],
-          rows: [],
-          row_count: info.changes,
-        };
-      } catch (err) {
-        throw new Error(`SQLite query error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
 
     async getDatabaseInfo(connectionString) {
-      const db = getDb(connectionString);
-      const version = (db.prepare("SELECT sqlite_version()").get() as Record<string, string>)?.["sqlite_version()"] ?? "unknown";
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
+      const version = (getCachedStmt(cachedDb, "SELECT sqlite_version()").get() as Record<string, string>)?.["sqlite_version()"] ?? "unknown";
       const filePath = parseConnectionString(connectionString);
 
       // Compute database file size
@@ -278,15 +330,14 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getSchema(connectionString) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
       // SQLite has a single "main" schema (plus temp)
       const schemas = ["main"];
 
       // Get all table names (excluding sqlite_ internal tables)
-      const tables = (db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as Array<{ name: string }>);
+      const tables = getCachedStmt(cachedDb, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .all() as Array<{ name: string }>;
 
       const schemaTables = tables.map((t) => {
         const tableName = t.name;
@@ -345,26 +396,25 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getSchemaSummary(connectionString) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
       // SQLite has a single "main" schema — no need for full introspection
       const schemas = ["main"];
-      const tableRows = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+      const tableRows = getCachedStmt(cachedDb, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         .all() as Array<{ name: string }>;
 
       // Get row counts for each table (SQLite requires per-table COUNT)
       const tablesWithCounts = tableRows.map((t) => {
         let rowCount = 0;
         try {
-          const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`).get() as Record<string, number>;
+          const countRow = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`).get() as Record<string, number>;
           rowCount = countRow?.cnt ?? 0;
         } catch {
           // Table may be a virtual table or otherwise unreadable
         }
         return {
-          name: t.name,
           schema: "main",
+          name: t.name,
           has_rls: false,
           estimated_row_count: rowCount,
         };
@@ -377,7 +427,7 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getTableDetails(connectionString, schema, table) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
       try {
         // 1. Columns for this specific table only
@@ -431,7 +481,7 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getIndexes(connectionString, schema, table) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
       try {
         const indexList = db.pragma(`index_list("${table}")`) as unknown as SqliteIndexInfo[];
@@ -458,7 +508,7 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getConstraints(connectionString, schema, table) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       const constraints: import("./types").ConstraintInfo[] = [];
 
       try {
@@ -529,7 +579,7 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getFunctions(connectionString, _schema): Promise<SchemaFunction[]> {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       try {
         // SQLite doesn't have user-defined functions accessible via SQL
         // Application-defined functions are not introspectable
@@ -540,10 +590,9 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getTriggers(connectionString, _schema): Promise<SchemaTrigger[]> {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       try {
-        const triggers = db
-          .prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, name")
+        const triggers = getCachedStmt(cachedDb, "SELECT name, tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, name")
           .all() as Array<{ name: string; tbl_name: string; sql: string | null }>;
 
         return triggers.map((t) => {
@@ -567,11 +616,11 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getTableStats(connectionString, schema, table) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
       try {
         // Get approximate row count via SELECT COUNT(*)
-        const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"`).get() as Record<string, number>;
+        const countRow = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"`).get() as Record<string, number>;
         const rowCount = countRow?.cnt ?? 0;
 
         // Get page count and size via pragma page_count and page_size
@@ -607,7 +656,7 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async explainQuery(connectionString, sql, analyze = false) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
       try {
         // SQLite uses EXPLAIN QUERY PLAN for the execution plan
@@ -654,15 +703,14 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async getTableSample(connectionString, schema, table, sampleSize = 100) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
       try {
         // Get total row count
-        const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"`);
-        const totalRows = countStmt.get() as { cnt: number };
+        const totalRows = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${table}"`).get() as { cnt: number };
 
         // Get sample rows using random ordering (SQLite uses RANDOM())
-        const sampleStmt = db.prepare(`
+        const sampleStmt = getCachedStmt(cachedDb, `
           SELECT * FROM "${table}"
           ORDER BY RANDOM()
           LIMIT ${sampleSize}
@@ -670,8 +718,7 @@ export function createSqliteDriver(): DatabaseDriver {
         const rows = sampleStmt.all() as Record<string, unknown>[];
 
         // Get column information from PRAGMA
-        const pragmaStmt = db.prepare(`PRAGMA table_info("${table}")`);
-        const columns = pragmaStmt.all() as Array<{ name: string; type: string; notnull: number }>;
+        const columns = getCachedStmt(cachedDb, `PRAGMA table_info("${table}")`).all() as Array<{ name: string; type: string; notnull: number }>;
 
         // Build column statistics
         const columnStats: import("./types").ColumnStat[] = [];
@@ -696,7 +743,7 @@ export function createSqliteDriver(): DatabaseDriver {
             dataType.toLowerCase().includes("decimal")
           ) {
             try {
-              const statsStmt = db.prepare(`
+              const statsStmt = getCachedStmt(cachedDb, `
                 SELECT
                   MIN("${colName}") as min_val,
                   MAX("${colName}") as max_val,
@@ -717,7 +764,7 @@ export function createSqliteDriver(): DatabaseDriver {
           } else {
             // For string/categorical columns, get top values
             try {
-              const topValuesStmt = db.prepare(`
+              const topValuesStmt = getCachedStmt(cachedDb, `
                 SELECT
                   "${colName}" as value,
                   COUNT(*) as count
@@ -734,7 +781,7 @@ export function createSqliteDriver(): DatabaseDriver {
               }));
 
               // Get unique count and null percentage
-              const uniqueStmt = db.prepare(`
+              const uniqueStmt = getCachedStmt(cachedDb, `
                 SELECT
                   COUNT(DISTINCT "${colName}") as unique_count,
                   COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM "${table}"), 0) as null_pct
@@ -764,7 +811,7 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       const offset = (page - 1) * pageSize;
 
       // Build WHERE clause
@@ -873,23 +920,26 @@ export function createSqliteDriver(): DatabaseDriver {
 
     async createTable(connectionString, schema, tableName, columns, primaryKeyColumns, ifNotExists) {
       const sql = buildCreateTableSql(DB_TYPE, schema, tableName, columns, primaryKeyColumns ?? [], ifNotExists ?? false);
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
     async dropTable(connectionString, schema, tableName, cascade, ifExists) {
       const sql = buildDropTableSql(DB_TYPE, schema, tableName, cascade ?? false, ifExists ?? false);
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
     async renameTable(connectionString, schema, oldName, newName) {
       // SQLite uses: ALTER TABLE ... RENAME TO ...
       const sql = `ALTER TABLE "${oldName.replace(/"/g, '""')}" RENAME TO "${newName.replace(/"/g, '""')}"`;
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
@@ -899,24 +949,27 @@ export function createSqliteDriver(): DatabaseDriver {
       if (!(isNullable ?? true)) def += " NOT NULL";
       if (defaultExpr) def += ` DEFAULT ${defaultExpr}`;
       const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" ADD COLUMN ${def}`;
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
     async dropColumn(connectionString, schema, table, columnName, _cascade, _ifExists) {
       // SQLite 3.35.0+ supports DROP COLUMN
       const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" DROP COLUMN "${columnName.replace(/"/g, '""')}"`;
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
     async renameColumn(connectionString, schema, table, oldName, newName) {
       // SQLite 3.25.0+ supports RENAME COLUMN
       const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" RENAME COLUMN "${oldName.replace(/"/g, '""')}" TO "${newName.replace(/"/g, '""')}"`;
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
@@ -948,8 +1001,9 @@ export function createSqliteDriver(): DatabaseDriver {
 
     async createIndex(connectionString, schema, table, indexName, columns, unique, ifNotExists) {
       const sql = buildCreateIndexSql(DB_TYPE, schema, table, indexName, columns, unique ?? false, ifNotExists ?? false);
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
@@ -957,8 +1011,9 @@ export function createSqliteDriver(): DatabaseDriver {
       // SQLite: DROP INDEX if_exists? index_name
       const ifExistsClause = ifExists ? "IF EXISTS " : "";
       const sql = `DROP INDEX ${ifExistsClause}"${indexName.replace(/"/g, '""')}"`;
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       db.exec(sql);
+      cachedDb.ddlVersion++;
       return sql;
     },
 
@@ -972,15 +1027,13 @@ export function createSqliteDriver(): DatabaseDriver {
     // ── Clone / Export ──────────────────────────────────────────────
 
     async exportSchemaDdl(connectionString) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
 
-      const tables = (db
-        .prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as Array<{ name: string; sql: string | null }>);
+      const tables = getCachedStmt(cachedDb, "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .all() as Array<{ name: string; sql: string | null }>;
 
-      const indexes = (db
-        .prepare("SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as Array<{ name: string; sql: string | null }>);
+      const indexes = getCachedStmt(cachedDb, "SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .all() as Array<{ name: string; sql: string | null }>;
 
       const scripts: Array<{ type: string; schema: string; name: string; sql: string; dependsOn?: string[] }> = [];
 
@@ -1010,7 +1063,7 @@ export function createSqliteDriver(): DatabaseDriver {
       const tableRowCounts: Array<{ schema: string; table: string; rowCount: number }> = [];
       for (const t of tables) {
         try {
-          const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`).get() as Record<string, number>;
+          const countRow = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`).get() as Record<string, number>;
           tableRowCounts.push({ schema: "main", table: t.name, rowCount: countRow.cnt });
         } catch {
           tableRowCounts.push({ schema: "main", table: t.name, rowCount: 0 });
@@ -1021,8 +1074,8 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async exportTableData(connectionString, _schema, table, batchSize, offset) {
-      const db = getDb(connectionString);
-      const rows = db.prepare(`SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT ? OFFSET ?`)
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
+      const rows = getCachedStmt(cachedDb, `SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT ? OFFSET ?`)
         .all(batchSize + 1, offset) as Record<string, unknown>[];
 
       const hasMore = rows.length > batchSize;
@@ -1039,7 +1092,7 @@ export function createSqliteDriver(): DatabaseDriver {
     },
 
     async executeBatchDdl(connectionString, statements, throwOnError) {
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       const errors: Array<{ sql: string; error: string }> = [];
 
       for (const sql of statements) {
@@ -1053,6 +1106,7 @@ export function createSqliteDriver(): DatabaseDriver {
           }
         }
       }
+      cachedDb.ddlVersion++;
 
       return { errors };
     },
@@ -1077,7 +1131,7 @@ export function createSqliteDriver(): DatabaseDriver {
     async importTableRows(connectionString, _schema, table, columns, rows) {
       if (rows.length === 0) return 0;
 
-      const db = getDb(connectionString);
+      const cachedDb = getDb(connectionString); const db = cachedDb.db;
       const quotedCols = columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(", ");
       const placeholders = columns.map(() => "?").join(", ");
       const insertSql = `INSERT INTO "${table.replace(/"/g, '""')}" (${quotedCols}) VALUES (${placeholders})`;

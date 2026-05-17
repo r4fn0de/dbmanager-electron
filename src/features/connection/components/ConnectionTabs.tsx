@@ -365,8 +365,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 ),
               gooeyFilterId &&
                 (isActive
-                  ? (themePreset === "neo" ? "rounded-none" : "rounded-t-[5px] rounded-b-[5px]")
-                  : (themePreset === "neo" ? "rounded-none" : "rounded-[5px]")),
+                  ? (themePreset === "neo" ? "rounded-t-[3px] rounded-b-0" : "rounded-t-[5px] rounded-b-[5px]")
+                  : (themePreset === "neo" ? "rounded-t-[3px] rounded-b-0" : "rounded-[5px]")),
             )}
             style={{
               overflow: "visible",
@@ -383,7 +383,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                   layoutId="titlebar-gooey-active-tab"
                   className={cn(
                     "absolute inset-0",
-                    isNeoTheme ? "rounded-none" : "rounded-t-[8px] rounded-b-[4px]",
+                    isNeoTheme ? "rounded-t-[3px] rounded-b-0" : "rounded-t-[8px] rounded-b-[4px]",
                     isNeoTheme && isDarkMode && "border border-border/70 border-b-0",
                     activeChromeClass,
                   )}
