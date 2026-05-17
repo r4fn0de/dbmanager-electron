@@ -14,6 +14,31 @@ import type { DatabaseType } from "@/ipc/db/types";
 type AiProvider = "openai" | "anthropic" | "google" | "openai-compatible";
 type AiDbType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite";
 
+function extractAiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message && error.message !== "Internal server error") {
+    return error.message;
+  }
+  if (typeof error === "object" && error !== null) {
+    const candidate = error as {
+      message?: unknown;
+      data?: { message?: unknown };
+      cause?: { message?: unknown; data?: { message?: unknown } };
+    };
+    const possibleMessages = [
+      candidate.data?.message,
+      candidate.cause?.data?.message,
+      candidate.cause?.message,
+      candidate.message,
+    ];
+    for (const message of possibleMessages) {
+      if (typeof message === "string" && message.trim() && message !== "Internal server error") {
+        return message;
+      }
+    }
+  }
+  return fallback;
+}
+
 export interface AiProvidersInfo {
   current: {
     provider: string;
@@ -78,9 +103,7 @@ export async function getAiSettings(): Promise<AiProvidersInfo> {
     }
     return result as AiProvidersInfo;
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to get AI settings",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to get AI settings"));
   }
 }
 
@@ -92,9 +115,7 @@ export async function updateAiSettings(input: {
   try {
     await ipc.client.ai.updateSettings(input);
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to update AI settings",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to update AI settings"));
   }
 }
 
@@ -105,9 +126,7 @@ export async function setAiApiKey(
   try {
     return await ipc.client.ai.setApiKey({ provider, key });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to set API key",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to set API key"));
   }
 }
 
@@ -117,9 +136,7 @@ export async function getAiApiKey(
   try {
     return await ipc.client.ai.getApiKey({ provider });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to get API key info",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to get API key info"));
   }
 }
 
@@ -139,9 +156,7 @@ export async function fixSql(
   try {
     return await ipc.client.ai.fixSql({ sql, error, dbType: toAiDbType(dbType) });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to fix SQL",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to fix SQL"));
   }
 }
 
@@ -159,9 +174,7 @@ export async function updateSql(
       context,
     });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to update SQL",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to update SQL"));
   }
 }
 
@@ -171,9 +184,7 @@ export async function enhancePrompt(
   try {
     return await ipc.client.ai.enhancePrompt({ prompt });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to enhance prompt",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to enhance prompt"));
   }
 }
 
@@ -183,9 +194,7 @@ export async function generateTitle(
   try {
     return await ipc.client.ai.generateTitle({ message });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to generate title",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to generate title"));
   }
 }
 
@@ -196,9 +205,7 @@ export async function getAiFilters(
   try {
     return await ipc.client.ai.filters({ prompt, context });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to generate filters",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to generate filters"));
   }
 }
 
@@ -215,7 +222,7 @@ export async function getAiTableSearchMatches(
     return await ipc.client.ai.tableSearch({ query, tables, schemaContext });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to search tables with AI",
+      extractAiErrorMessage(err, "Failed to search tables with AI"),
     );
   }
 }
@@ -227,9 +234,7 @@ export async function addCustomModel(
   try {
     return await ipc.client.ai.addCustomModel({ provider, modelId });
   } catch (err) {
-    throw new Error(
-      err instanceof Error ? err.message : "Failed to add custom model",
-    );
+    throw new Error(extractAiErrorMessage(err, "Failed to add custom model"));
   }
 }
 
@@ -241,8 +246,7 @@ export async function removeCustomModel(
     return await ipc.client.ai.removeCustomModel({ provider, modelId });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to remove custom model",
+      extractAiErrorMessage(err, "Failed to remove custom model"),
     );
   }
 }
-

@@ -135,8 +135,14 @@ function isModelAllowedForProvider(
   providerName: AiProviderName,
   modelId: string,
 ): boolean {
+  if (!modelId.trim()) return false;
   if (PROVIDERS[providerName].allowCustomModel) {
-    return modelId.trim().length > 0;
+    return true;
+  }
+  // Some providers don't expose a static model catalog in-app yet.
+  // In that case, accept non-empty model IDs to avoid blocking provider switches.
+  if (PROVIDERS[providerName].models.length === 0) {
+    return true;
   }
   const custom = getCustomModels(providerName);
   if (custom.includes(modelId)) return true;

@@ -4,7 +4,7 @@
  * Streaming chat is handled separately in streaming.ts via Electron IPC events,
  * since ORPC doesn't natively support streaming responses over MessagePort.
  */
-import { os } from "@orpc/server";
+import { ORPCError, os } from "@orpc/server";
 import { z } from "zod";
 import { generateText } from "ai";
 import {
@@ -38,7 +38,13 @@ export const aiUpdateSettings = os
     }),
   )
   .handler(async ({ input }) => {
-    return updateAiSettings(input);
+    try {
+      return updateAiSettings(input);
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to update AI settings",
+      });
+    }
   });
 
 export const aiSetApiKey = os
@@ -49,8 +55,14 @@ export const aiSetApiKey = os
     }),
   )
   .handler(async ({ input }) => {
-    setApiKey(input.provider as AiProviderName, input.key);
-    return { success: true };
+    try {
+      setApiKey(input.provider as AiProviderName, input.key);
+      return { success: true };
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to save AI API key",
+      });
+    }
   });
 
 export const aiGetApiKey = os
@@ -60,10 +72,16 @@ export const aiGetApiKey = os
     }),
   )
   .handler(async ({ input }) => {
-    const key = getApiKey(input.provider as AiProviderName);
-    // Return masked key for security — only show last 4 chars
-    const masked = key.length > 4 ? `••••${key.slice(-4)}` : key ? "••••" : "";
-    return { provider: input.provider, masked, hasKey: key.length > 0 };
+    try {
+      const key = getApiKey(input.provider as AiProviderName);
+      // Return masked key for security — only show last 4 chars
+      const masked = key.length > 4 ? `••••${key.slice(-4)}` : key ? "••••" : "";
+      return { provider: input.provider, masked, hasKey: key.length > 0 };
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to read AI API key",
+      });
+    }
   });
 
 export const aiIsConfigured = os.handler(async () => {
@@ -350,4 +368,3 @@ export const aiRemoveCustomModel = os
     removeCustomModel(input.provider as AiProviderName, input.modelId);
     return getProvidersInfo();
   });
-
