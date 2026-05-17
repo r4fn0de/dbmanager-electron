@@ -1,0 +1,23 @@
+src/ipc/ai/handlers.ts
+  s_49ce08e0a06096::t_442c205c952bf4 7,41-47,58-65,75-84
+src/features/ai/hooks/ai-actions.ts
+  s_49ce08e0a06096::t_c9fef2107380e4 17-41,106,118,129,139,159,177,187,197,208,225,237,249
+src/ipc/ai/config.ts
+  s_49ce08e0a06096::t_e2fc94fdaeb9dd 138,140-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "1bc07e26112dddfa07706b7e55238f9c74cf9576",
+  "prompts": {},
+  "sessions": {
+    "s_49ce08e0a06096": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e3775-ce7e-7622-b7c1-0ec05147cb24",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
