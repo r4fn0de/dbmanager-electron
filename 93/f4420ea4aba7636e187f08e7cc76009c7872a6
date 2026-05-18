@@ -1,0 +1,46 @@
+src/ipc/db/local-db-manager.ts
+  s_53f1c285af8477::t_42085d3c253a30 568-574,578
+  s_53f1c285af8477::t_7f082a1fb28e84 1150-1154,1164-1166
+  s_53f1c285af8477::t_e346bd07937adb 489-501
+  s_53f1c285af8477::t_f003c28ea1b315 1241-1250,1252-1260,1262-1265,1267-1268,1271-1273,1275-1276,1282-1296,1298-1299,1302-1303,1305-1308,1311-1319,1321-1324,1331-1335,1338-1343,1346,1349,1351,1354-1360,1362-1375,1380-1382,1390-1399,1401-1406,1408-1413,1423,1438
+  s_53f1c285af8477::t_2239f776458807 13-15,17-24,336-337,467-488,502-543
+  s_53f1c285af8477::t_1aa428e8abb0c2 1468-1541
+src/ipc/db/kysely-factory.ts
+  s_53f1c285af8477::t_f4289d8069e6ed 144-158
+src/tests/unit/branch-schemas.test.ts
+  s_53f1c285af8477::t_f5a4855331eb73 9-10,351-383
+src/features/connection/components/ConnectionList.tsx
+  s_53f1c285af8477::t_6811acc2719047 35,53,146,160,174-180,471-493,496,518,520-526
+  s_53f1c285af8477::t_b00e0c585612e3 575,591,620,642,690
+src/ipc/db/types.ts
+  s_53f1c285af8477::t_31ca41fef3bec7 43-53
+src/ipc/db/schemas.ts
+  s_53f1c285af8477::t_c0daf096b596fd 343-354
+src/tests/unit/branch-handlers.test.ts
+  s_53f1c285af8477::t_06065c3d550254 570-609
+  s_53f1c285af8477::t_a830827fc17831 19-20,72-73
+src/ipc/db/active-queries.ts
+  s_53f1c285af8477::t_ad7756a8362f5b 11,19,23,48-53
+src/ipc/db/handlers.ts
+  s_53f1c285af8477::t_7a48e7c5729934 3,23,59-60,206-213,363,934-959
+src/ipc/db/index.ts
+  s_53f1c285af8477::t_1f0cf749c2ba90 49-50,115-116
+src/routes/index.tsx
+  s_53f1c285af8477::t_4117fd565b8cc5 2,77,530-532,535-537
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "93f4420ea4aba7636e187f08e7cc76009c7872a6",
+  "prompts": {},
+  "sessions": {
+    "s_53f1c285af8477": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e3853-7b4c-7ef0-a427-3d982e9a2bf4",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
