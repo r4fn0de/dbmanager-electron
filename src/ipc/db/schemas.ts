@@ -340,3 +340,15 @@ export const getBranchInfoSchema = z.object({
   localDbId: z.string(),
   branchId: z.string(),
 });
+
+export const previewDeleteBranchSchema = z.object({
+  localDbId: z.string(),
+  branchId: z.string(),
+});
+
+export const mergeBranchSchemaSchema = z.object({
+  localDbId: z.string(),
+  sourceBranchId: z.string(),
+  targetBranchId: z.string(),
+  dryRun: z.boolean().optional(),
+});

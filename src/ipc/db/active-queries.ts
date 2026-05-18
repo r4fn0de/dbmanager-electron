@@ -8,6 +8,7 @@
 
 interface ActiveQuery {
   requestId: string;
+  connectionId?: string;
   abortController: AbortController;
   startedAt: number;
 }
@@ -15,10 +16,11 @@ interface ActiveQuery {
 const activeQueries = new Map<string, ActiveQuery>();
 
 /** Register a new query and return its AbortController. */
-export function registerQuery(requestId: string): AbortController {
+export function registerQuery(requestId: string, connectionId?: string): AbortController {
   const abortController = new AbortController();
   activeQueries.set(requestId, {
     requestId,
+    connectionId,
     abortController,
     startedAt: Date.now(),
   });
@@ -42,4 +44,11 @@ export function unregisterQuery(requestId: string): void {
 /** Get the number of active queries (for diagnostics). */
 export function getActiveQueryCount(): number {
   return activeQueries.size;
+}
+
+export function hasActiveQueryForConnection(connectionId: string): boolean {
+  for (const query of activeQueries.values()) {
+    if (query.connectionId === connectionId) return true;
+  }
+  return false;
 }

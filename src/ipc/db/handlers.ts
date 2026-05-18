@@ -1,5 +1,6 @@
 import { ORPCError, os } from "@orpc/server";
 import type {
+  BranchDeletePreview,
   BranchInfo,
   Connection,
   ConstraintInfo,
@@ -19,6 +20,7 @@ import type {
   DdlResult,
   ExportSchemaResult,
   ExportTableDataResult,
+  MergeBranchSchemaResult,
 } from "./types";
 import { registerQuery, unregisterQuery } from "./active-queries";
 import {
@@ -54,6 +56,8 @@ import {
   listBranchesSchema,
   renameBranchSchema,
   getBranchInfoSchema,
+  mergeBranchSchemaSchema,
+  previewDeleteBranchSchema,
 } from "./schemas";
 import {
   loadConnections,
@@ -199,8 +203,14 @@ async function resolveConnectionString(connectionId: string): Promise<{ connecti
   }
 
   const dbType = resolveDbType(connection);
-  const driver = driverRegistry.get(dbType);
-  const connStr = driver.buildConnectionString(toDriverConfig(connection));
+  let connStr: string;
+
+  if (connection.is_local && dbType === "postgresql") {
+    connStr = await localDbManager.getActiveBranchConnectionString(connection.id);
+  } else {
+    const driver = driverRegistry.get(dbType);
+    connStr = driver.buildConnectionString(toDriverConfig(connection));
+  }
   return { connection, connStr };
 }
 
@@ -350,7 +360,7 @@ export const executeQuery = os
     // If requestId is provided, register the query for cancellation support
     let signal: AbortSignal | undefined;
     if (input.requestId) {
-      const ac = registerQuery(input.requestId);
+      const ac = registerQuery(input.requestId, input.connectionId);
       signal = ac.signal;
     }
 
@@ -918,6 +928,35 @@ export const renameBranch = os
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
         message: sanitizeErrorMessage(err, "Failed to rename branch"),
+      });
+    }
+  });
+
+export const previewDeleteBranch = os
+  .input(previewDeleteBranchSchema)
+  .handler(async ({ input }): Promise<BranchDeletePreview> => {
+    try {
+      return await localDbManager.previewDeleteBranch(input.localDbId, input.branchId);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to preview branch delete"),
+      });
+    }
+  });
+
+export const mergeBranchSchema = os
+  .input(mergeBranchSchemaSchema)
+  .handler(async ({ input }): Promise<MergeBranchSchemaResult> => {
+    try {
+      return await localDbManager.mergeBranchSchema({
+        localDbId: input.localDbId,
+        sourceBranchId: input.sourceBranchId,
+        targetBranchId: input.targetBranchId,
+        dryRun: input.dryRun ?? false,
+      });
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to merge branch schema"),
       });
     }
   });

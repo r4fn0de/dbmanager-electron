@@ -6,6 +6,8 @@ import {
   listBranchesSchema,
   renameBranchSchema,
   getBranchInfoSchema,
+  previewDeleteBranchSchema,
+  mergeBranchSchemaSchema,
 } from "@/ipc/db/schemas";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -344,5 +346,40 @@ describe("renameBranchSchema", () => {
       extra: true,
     } as any);
     expect((result as any).extra).toBeUndefined();
+  });
+});
+
+describe("previewDeleteBranchSchema", () => {
+  test("accepts valid input", () => {
+    const result = expectValid(previewDeleteBranchSchema, {
+      localDbId: "db-001",
+      branchId: "branch-001",
+    });
+    expect(result.localDbId).toBe("db-001");
+    expect(result.branchId).toBe("branch-001");
+  });
+
+  test("rejects missing fields", () => {
+    expectInvalid(previewDeleteBranchSchema, { localDbId: "db-001" });
+    expectInvalid(previewDeleteBranchSchema, { branchId: "branch-001" });
+  });
+});
+
+describe("mergeBranchSchemaSchema", () => {
+  test("accepts valid input", () => {
+    const result = expectValid(mergeBranchSchemaSchema, {
+      localDbId: "db-001",
+      sourceBranchId: "branch-a",
+      targetBranchId: "branch-b",
+      dryRun: true,
+    });
+    expect(result.dryRun).toBe(true);
+  });
+
+  test("rejects missing required fields", () => {
+    expectInvalid(mergeBranchSchemaSchema, {
+      localDbId: "db-001",
+      sourceBranchId: "branch-a",
+    });
   });
 });

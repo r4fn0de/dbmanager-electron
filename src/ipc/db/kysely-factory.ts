@@ -141,6 +141,21 @@ export function getPgKysely(connectionString: string): Kysely<PgDatabase> {
   return db;
 }
 
+/** Close and evict cached PG resources for a single connection string. */
+export async function closePgResources(connectionString: string): Promise<void> {
+  const db = pgKyselyInstances.get(connectionString);
+  if (db) {
+    await db.destroy().catch(() => {});
+    pgKyselyInstances.delete(connectionString);
+  }
+
+  const pool = pgPools.get(connectionString);
+  if (pool) {
+    await pool.end().catch(() => {});
+    pgPools.delete(connectionString);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MySQL / MariaDB — raw pool + Kysely instance
 // ---------------------------------------------------------------------------

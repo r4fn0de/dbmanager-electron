@@ -40,6 +40,17 @@ export interface BranchInfo {
   connectionString: string;
 }
 
+export interface BranchDeletePreview {
+  branchesToDelete: BranchInfo[];
+  count: number;
+}
+
+export interface MergeBranchSchemaResult {
+  statements: string[];
+  applied: number;
+  errors: Array<{ sql: string; error: string }>;
+}
+
 export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite" | "redis";
 
 export type SslMode =

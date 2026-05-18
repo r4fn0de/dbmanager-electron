@@ -16,6 +16,8 @@ const mockLocalDbManager = vi.hoisted(() => ({
   switchBranch: vi.fn(),
   getBranchInfo: vi.fn(),
   renameBranch: vi.fn(),
+  previewDeleteBranch: vi.fn(),
+  mergeBranchSchema: vi.fn(),
 }));
 
 vi.mock("@/ipc/db/local-db-manager", () => ({
@@ -67,6 +69,8 @@ import {
   deleteBranch,
   switchBranch,
   getBranchInfo,
+  previewDeleteBranch,
+  mergeBranchSchema,
   renameBranch,
 } from "@/ipc/db/handlers";
 
@@ -560,6 +564,46 @@ describe("Branch oRPC handlers", () => {
           context: {},
         }),
       ).rejects.toThrow("Failed to rename branch");
+    });
+  });
+
+  describe("previewDeleteBranch", () => {
+    const handler = getHandler(previewDeleteBranch);
+
+    test("delegates to localDbManager.previewDeleteBranch", async () => {
+      const preview = {
+        branchesToDelete: [mockBranchInfo({ id: "branch-001", name: "feature-x", isMain: false, isActive: false })],
+        count: 1,
+      };
+      mockLocalDbManager.previewDeleteBranch.mockResolvedValue(preview);
+      const result = await handler({ input: { localDbId: "db-001", branchId: "branch-001" }, context: {} });
+      expect(mockLocalDbManager.previewDeleteBranch).toHaveBeenCalledWith("db-001", "branch-001");
+      expect(result).toEqual(preview);
+    });
+  });
+
+  describe("mergeBranchSchema", () => {
+    const handler = getHandler(mergeBranchSchema);
+
+    test("delegates to localDbManager.mergeBranchSchema", async () => {
+      const mergeResult = { statements: ["CREATE TABLE x(id int);"], applied: 1, errors: [] };
+      mockLocalDbManager.mergeBranchSchema.mockResolvedValue(mergeResult);
+      const result = await handler({
+        input: {
+          localDbId: "db-001",
+          sourceBranchId: "branch-a",
+          targetBranchId: "branch-b",
+          dryRun: false,
+        },
+        context: {},
+      });
+      expect(mockLocalDbManager.mergeBranchSchema).toHaveBeenCalledWith({
+        localDbId: "db-001",
+        sourceBranchId: "branch-a",
+        targetBranchId: "branch-b",
+        dryRun: false,
+      });
+      expect(result).toEqual(mergeResult);
     });
   });
 

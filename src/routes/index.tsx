@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -73,6 +74,7 @@ function Home() {
   const [isTesting, setIsTesting] = useState(false);
   const [isCreatingLocalDb, setIsCreatingLocalDb] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const {
     isLoading: isCloning,
@@ -525,8 +527,14 @@ function Home() {
                 const result = await ipc.client.db.switchBranch({ localDbId, branchId });
                 await loadBranchesForDb(localDbId);
                 invalidateLocalDbCache();
+                await queryClient.invalidateQueries({
+                  predicate: (query) => Array.isArray(query.queryKey) && query.queryKey.includes(localDbId),
+                });
                 return result;
               }}
+              onPreviewDeleteBranch={async (localDbId, branchId) =>
+                ipc.client.db.previewDeleteBranch({ localDbId, branchId })
+              }
               onDeleteBranch={async (localDbId, branchId) => {
                 await ipc.client.db.deleteBranch({ localDbId, branchId });
                 await loadBranchesForDb(localDbId);

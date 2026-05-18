@@ -46,6 +46,8 @@ import {
   deleteBranch,
   switchBranch,
   getBranchInfo,
+  previewDeleteBranch,
+  mergeBranchSchema,
   renameBranch,
 } from "./handlers";
 
@@ -110,5 +112,7 @@ export const db = {
   deleteBranch,
   switchBranch,
   getBranchInfo,
+  previewDeleteBranch,
+  mergeBranchSchema,
   renameBranch,
 };

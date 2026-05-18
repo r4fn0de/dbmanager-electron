@@ -32,7 +32,7 @@ import { Redis } from "@/components/icons/Redis";
 import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Sqlite } from "@/components/icons/Sqlite";
 import { cn } from "@/lib/utils";
-import type { BranchInfo, Connection, LocalDbInfo } from "@/ipc/db/types";
+import type { BranchDeletePreview, BranchInfo, Connection, LocalDbInfo } from "@/ipc/db/types";
 import { getClickhouseEffectivePort } from "@/ipc/db/types";
 import { ipc } from "@/ipc/manager";
 
@@ -50,6 +50,7 @@ interface ConnectionListProps {
   onCloneToLocal?: (connection: Connection) => void;
   onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string; dataTables?: Array<{ schema: string; table: string }> }) => Promise<BranchInfo>;
   onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
+  onPreviewDeleteBranch?: (localDbId: string, branchId: string) => Promise<BranchDeletePreview>;
   onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }
 
@@ -142,6 +143,7 @@ function ConnectionCard({
   onCloneToLocal,
   onCreateBranch,
   onSwitchBranch,
+  onPreviewDeleteBranch,
   onDeleteBranch,
 }: {
   connection: Connection;
@@ -155,6 +157,7 @@ function ConnectionCard({
   onCloneToLocal?: (connection: Connection) => void;
   onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string; dataTables?: Array<{ schema: string; table: string }> }) => Promise<BranchInfo>;
   onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
+  onPreviewDeleteBranch?: (localDbId: string, branchId: string) => Promise<BranchDeletePreview>;
   onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }) {
   const isUrl = !!connection.url;
@@ -168,7 +171,13 @@ function ConnectionCard({
   const [isTogglingState, setIsTogglingState] = useState(false);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [switchingBranchId, setSwitchingBranchId] = useState<string | null>(null);
-  const [pendingBranchDelete, setPendingBranchDelete] = useState<{ dbId: string; branchId: string; branchName: string } | null>(null);
+  const [pendingBranchDelete, setPendingBranchDelete] = useState<{
+    dbId: string;
+    branchId: string;
+    branchName: string;
+    branchesToDelete: BranchInfo[];
+  } | null>(null);
+  const [loadingDeletePreview, setLoadingDeletePreview] = useState(false);
 
   // Branches are only relevant for running PostgreSQL local DBs
   const isStatusKnown = Boolean(localDbInfo);
@@ -459,11 +468,32 @@ function ConnectionCard({
                     variant="ghost"
                     size="icon-xs"
                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      setPendingBranchDelete({ dbId: connection.id!, branchId: branch.id, branchName: branch.name });
+                    onClick={async () => {
+                      const dbId = connection.id!;
+                      if (!onPreviewDeleteBranch) {
+                        setPendingBranchDelete({
+                          dbId,
+                          branchId: branch.id,
+                          branchName: branch.name,
+                          branchesToDelete: [branch],
+                        });
+                        return;
+                      }
+                      setLoadingDeletePreview(true);
+                      try {
+                        const preview = await onPreviewDeleteBranch(dbId, branch.id);
+                        setPendingBranchDelete({
+                          dbId,
+                          branchId: branch.id,
+                          branchName: branch.name,
+                          branchesToDelete: preview.branchesToDelete,
+                        });
+                      } finally {
+                        setLoadingDeletePreview(false);
+                      }
                     }}
                   >
-                    <Icon name="trash" className="size-3" />
+                    {loadingDeletePreview ? <Icon name="loader" className="size-3 animate-spin" /> : <Icon name="trash" className="size-3" />}
                   </Button>
                 )}
               </div>
@@ -485,8 +515,15 @@ function ConnectionCard({
               Delete branch?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs leading-relaxed">
-              This will permanently delete <strong className="text-foreground">{pendingBranchDelete?.branchName}</strong> and any child branches. This action cannot be undone.
+              This will permanently delete <strong className="text-foreground">{pendingBranchDelete?.branchName}</strong> and {pendingBranchDelete?.branchesToDelete.length ?? 0} branch(es) total. This action cannot be undone.
             </AlertDialogDescription>
+            {pendingBranchDelete && pendingBranchDelete.branchesToDelete.length > 0 && (
+              <div className="mt-2 max-h-28 overflow-auto rounded border border-border/60 bg-muted/20 p-2 text-[11px]">
+                {pendingBranchDelete.branchesToDelete.map((b) => (
+                  <div key={b.id} className="truncate text-muted-foreground">{b.name}</div>
+                ))}
+              </div>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2.5 border-t bg-muted/30 px-6 py-3.5">
             <AlertDialogCancel className="h-8 px-3 text-xs">Cancel</AlertDialogCancel>
@@ -535,6 +572,7 @@ function ConnectionGroup({
   onCloneToLocal,
   onCreateBranch,
   onSwitchBranch,
+  onPreviewDeleteBranch,
   onDeleteBranch,
 }: {
   label: string;
@@ -550,6 +588,7 @@ function ConnectionGroup({
   onCloneToLocal?: (c: Connection) => void;
   onCreateBranch?: (localDbId: string, input: { name: string; description?: string; parentBranchId?: string; dataTables?: Array<{ schema: string; table: string }> }) => Promise<BranchInfo>;
   onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
+  onPreviewDeleteBranch?: (localDbId: string, branchId: string) => Promise<BranchDeletePreview>;
   onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }) {
   if (connections.length === 0) return null;
@@ -578,6 +617,7 @@ function ConnectionGroup({
           onCloneToLocal={onCloneToLocal}
           onCreateBranch={onCreateBranch}
           onSwitchBranch={onSwitchBranch}
+          onPreviewDeleteBranch={onPreviewDeleteBranch}
           onDeleteBranch={onDeleteBranch}
         />
       ))}
@@ -599,6 +639,7 @@ export function ConnectionList({
   onCloneToLocal,
   onCreateBranch,
   onSwitchBranch,
+  onPreviewDeleteBranch,
   onDeleteBranch,
 }: ConnectionListProps) {
   if (isLoading) {
@@ -646,6 +687,7 @@ export function ConnectionList({
     onCloneToLocal,
     onCreateBranch,
     onSwitchBranch,
+    onPreviewDeleteBranch,
     onDeleteBranch,
   };
 
