@@ -69,6 +69,7 @@ import {
   CreateIndexDialog,
   ImportCsvDialog,
   SeedDataDialog,
+  ExportDataDialog,
   RlsPoliciesDialog,
   ViewDdlDialog,
   SchemaExportDialog,
@@ -201,6 +202,7 @@ export function DatabasePageContent({
   const [isCreateIndexOpen, setIsCreateIndexOpen] = useState(false);
   const [isImportCsvOpen, setIsImportCsvOpen] = useState(false);
   const [isSeedDataOpen, setIsSeedDataOpen] = useState(false);
+  const [isExportDataOpen, setIsExportDataOpen] = useState(false);
   const [ddlDropTarget, setDdlDropTarget] = useState<{ schema: string; name: string } | null>(null);
   const [ddlRenameTarget, setDdlRenameTarget] = useState<{ schema: string; name: string } | null>(null);
   const [ddlAddColumnTarget, setDdlAddColumnTarget] = useState<{ schema: string; name: string } | null>(null);
@@ -1225,6 +1227,7 @@ export function DatabasePageContent({
                         })
                       }
                       onSeedData={() => setIsSeedDataOpen(true)}
+                      onExportData={() => setIsExportDataOpen(true)}
                     />
                   );
                 })()}
@@ -1241,6 +1244,15 @@ export function DatabasePageContent({
                     onSuccess={() => {
                       void handleDdlSuccess();
                     }}
+                  />
+                )}
+                {connection && selectedSchema && (
+                  <ExportDataDialog
+                    isOpen={isExportDataOpen}
+                    onClose={() => setIsExportDataOpen(false)}
+                    connectionId={connection.id}
+                    schema={selectedSchema}
+                    defaultTableName={selectedTableRef?.name ?? ""}
                   />
                 )}
               </ResizablePanel>
@@ -1540,13 +1552,21 @@ export function DatabasePageContent({
           }
         />
       )}
-      {schemaExportTarget && (
+      {schemaExportTarget && connection && (
         <SchemaExportDialog
           isOpen
           onClose={() => setSchemaExportTarget(null)}
           connectionId={connection.id}
           schema={schemaExportTarget.schema}
-          defaultTableName={schemaExportTarget.name}
+          tableName={schemaExportTarget.name}
+          dbType={connection.db_type || "postgresql"}
+          cachedDetails={
+            selectedTableDetails &&
+            selectedTableDetails.schema === schemaExportTarget.schema &&
+            selectedTableDetails.name === schemaExportTarget.name
+              ? selectedTableDetails
+              : null
+          }
         />
       )}
       </Suspense>

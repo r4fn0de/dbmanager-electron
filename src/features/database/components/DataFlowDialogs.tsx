@@ -321,12 +321,12 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[840px]">
+      <DialogContent className="sm:max-w-[840px] max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Export data bundle</DialogTitle>
           <DialogDescription>Export schema, data, and indexes in a single operation.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-3 overflow-y-auto flex-1 min-h-0">
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label>Scope</Label>
@@ -362,7 +362,7 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
             <label className="flex items-center gap-2"><Switch checked={includeIndexes} onCheckedChange={setIncludeIndexes} /> Indexes</label>
           </div>
 
-          {output && <pre className="max-h-64 overflow-auto rounded border bg-muted/50 p-2 text-xs">{output.slice(0, 10000)}</pre>}
+          {output && <pre className="max-h-48 overflow-auto rounded border bg-muted/50 p-2 text-xs">{output.slice(0, 10000)}</pre>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Close</Button>

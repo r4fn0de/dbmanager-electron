@@ -108,6 +108,7 @@ export function TableDataEditor({
   isSidebarVisible = true,
   onToggleSidebar,
   onSeedData,
+  onExportData,
 }: TableDataEditorProps) {
   const pressableClass =
     "transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97]";
@@ -1614,39 +1615,28 @@ export function TableDataEditor({
               Refresh rows
             </TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className={cn(
-                          "text-muted-foreground hover:text-foreground",
-                          pressableClass,
-                        )}
-                      />
-                    }
+          {onExportData && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn(
+                      "text-muted-foreground hover:text-foreground",
+                      pressableClass,
+                    )}
+                    onClick={onExportData}
                   >
                     <UiIcon name="download" className="h-3.5 w-3.5" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => exportData("csv")}>
-                      Export as CSV
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportData("json")}>
-                      Export as JSON
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              }
-            />
-            <TooltipContent side="bottom" sideOffset={4}>
-              Export data
-            </TooltipContent>
-          </Tooltip>
+                  </Button>
+                }
+              />
+              <TooltipContent side="bottom" sideOffset={4}>
+                Export data
+              </TooltipContent>
+            </Tooltip>
+          )}
           {onSeedData && (
             <Tooltip>
               <TooltipTrigger

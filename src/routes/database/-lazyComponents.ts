@@ -23,5 +23,6 @@ export const ImportCsvDialog = lazy(() => import("@/features/database/components
 export const SeedDataDialog = lazy(() => import("@/features/database/components/DataFlowDialogs").then((m) => ({ default: m.SeedDataDialog })));
 export const RlsPoliciesDialog = lazy(() => import("@/features/database/components/RlsPoliciesDialog").then((m) => ({ default: m.RlsPoliciesDialog })));
 export const ViewDdlDialog = lazy(() => import("@/features/database/components/TableDdlDialogs").then((m) => ({ default: m.ViewDdlDialog })));
-export const SchemaExportDialog = lazy(() => import("@/features/database/components/DataFlowDialogs").then((m) => ({ default: m.ExportDataDialog })));
+export const SchemaExportDialog = lazy(() => import("@/features/database/components/SchemaExportDialog").then((m) => ({ default: m.SchemaExportDialog })));
+export const ExportDataDialog = lazy(() => import("@/features/database/components/DataFlowDialogs").then((m) => ({ default: m.ExportDataDialog })));
 export const DefinitionsBrowserPanel = lazy(() => import("@/features/database/components/DefinitionsBrowserPanel").then((m) => ({ default: m.DefinitionsBrowserPanel })));

@@ -27,6 +27,7 @@ export interface TableDataEditorProps {
   isSidebarVisible?: boolean;
   onToggleSidebar?: () => void;
   onSeedData?: () => void;
+  onExportData?: () => void;
 }
 
 export type RowRecord = Record<string, unknown>;
