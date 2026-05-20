@@ -493,6 +493,63 @@ export interface ImportTableRowsInput {
   rows: Record<string, unknown>[];
 }
 
+export interface ImportColumnMeta {
+  name: string;
+  dataType: string;
+  isNullable: boolean;
+}
+
+export interface ImportTableColumnsInput {
+  connectionId: string;
+  schema: string;
+  table: string;
+}
+
+export interface ImportDryRunInput {
+  connectionId: string;
+  schema: string;
+  table: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  batchSize?: number;
+}
+
+export interface ImportDryRunIssue {
+  rowIndex: number;
+  message: string;
+}
+
+export interface ImportDryRunResult {
+  validRows: number;
+  invalidRows: number;
+  issues: ImportDryRunIssue[];
+}
+
+export interface CreateTableFromImportColumn {
+  name: string;
+  dataType: string;
+  isNullable: boolean;
+}
+
+export interface CreateTableFromImportInput {
+  connectionId: string;
+  schema: string;
+  table: string;
+  ifNotExists?: boolean;
+  columns: CreateTableFromImportColumn[];
+  primaryKeyColumns?: string[];
+}
+
+export interface ExportScopeInput {
+  connectionId: string;
+  schema: string;
+  table?: string;
+}
+
+export interface ExportSchemaIndexesResult {
+  scripts: DdlScript[];
+}
+
 export interface WaitForDatabaseInput {
   connectionString: string;
   maxRetries?: number;

@@ -107,6 +107,7 @@ export function TableDataEditor({
   onRequestSetColumnNullable,
   isSidebarVisible = true,
   onToggleSidebar,
+  onSeedData,
 }: TableDataEditorProps) {
   const pressableClass =
     "transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97]";
@@ -1584,28 +1585,8 @@ export function TableDataEditor({
               {dirtyCounts.deletes > 0 && <span className="text-red-600 dark:text-red-400">-{dirtyCounts.deletes}</span>}
             </span>
           )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={cn(
-              "text-muted-foreground hover:text-foreground",
-              pressableClass,
-            )}
-            onClick={() =>
-              queryClient.invalidateQueries({
-                queryKey: [
-                  "table-rows",
-                  connectionId,
-                  table.schema,
-                  table.name,
-                ],
-              })
-            }
-          >
-            <UiIcon name="refresh" className="h-3.5 w-3.5" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
+          <Tooltip>
+            <TooltipTrigger
               render={
                 <Button
                   variant="ghost"
@@ -1614,34 +1595,103 @@ export function TableDataEditor({
                     "text-muted-foreground hover:text-foreground",
                     pressableClass,
                   )}
-                />
+                  onClick={() =>
+                    queryClient.invalidateQueries({
+                      queryKey: [
+                        "table-rows",
+                        connectionId,
+                        table.schema,
+                        table.name,
+                      ],
+                    })
+                  }
+                >
+                  <UiIcon name="refresh" className="h-3.5 w-3.5" />
+                </Button>
               }
-            >
-              <UiIcon name="download" className="h-3.5 w-3.5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => exportData("csv")}>
-                Export as CSV
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportData("json")}>
-                Export as JSON
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={cn(
-              "text-muted-foreground hover:text-destructive",
-              pressableClass,
-            )}
-            onClick={() => {
-              setPendingTruncate(true);
-              setConfirmText("");
-            }}
-          >
-            <UiIcon name="trash" className="h-3.5 w-3.5" />
-          </Button>
+            />
+            <TooltipContent side="bottom" sideOffset={4}>
+              Refresh rows
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className={cn(
+                          "text-muted-foreground hover:text-foreground",
+                          pressableClass,
+                        )}
+                      />
+                    }
+                  >
+                    <UiIcon name="download" className="h-3.5 w-3.5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => exportData("csv")}>
+                      Export as CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => exportData("json")}>
+                      Export as JSON
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              }
+            />
+            <TooltipContent side="bottom" sideOffset={4}>
+              Export data
+            </TooltipContent>
+          </Tooltip>
+          {onSeedData && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn(
+                      "text-muted-foreground hover:text-foreground",
+                      pressableClass,
+                    )}
+                    onClick={onSeedData}
+                  >
+                    <UiIcon name="dice" className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent side="bottom" sideOffset={4}>
+                Seed data
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(
+                    "text-muted-foreground hover:text-destructive",
+                    pressableClass,
+                  )}
+                  onClick={() => {
+                    setPendingTruncate(true);
+                    setConfirmText("");
+                  }}
+                >
+                  <UiIcon name="trash" className="h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent side="bottom" sideOffset={4}>
+              Truncate table
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

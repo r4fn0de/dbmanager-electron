@@ -26,6 +26,7 @@ export interface TableDataEditorProps {
   onRequestSetColumnNullable?: (column: SchemaColumn) => void;
   isSidebarVisible?: boolean;
   onToggleSidebar?: () => void;
+  onSeedData?: () => void;
 }
 
 export type RowRecord = Record<string, unknown>;

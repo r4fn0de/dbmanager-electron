@@ -80,6 +80,7 @@ export interface TablesExplorerSidebarProps {
   onCreateTable: () => void;
   onCreateIndex: () => void;
   onImportCsv: () => void;
+  onSeedData: () => void;
   onRenameTable: (target: { schema: string; name: string }) => void;
   onDropTable: (target: { schema: string; name: string }) => void;
   onViewRlsPolicies: (target: { schema: string; name: string }) => void;
@@ -118,6 +119,7 @@ export function TablesExplorerSidebar({
   onCreateTable,
   onCreateIndex,
   onImportCsv,
+  onSeedData,
   onRenameTable,
   onDropTable,
   onViewRlsPolicies,
@@ -181,7 +183,7 @@ export function TablesExplorerSidebar({
               >
                 <Icon name="plus" className="size-3.5" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="bottom">
+              <DropdownMenuContent align="end" side="bottom" className="min-w-64">
                 <DropdownMenuItem onClick={onCreateSchema}>
                   <Icon name="database" className="size-3.5" />
                   Create schema
@@ -203,7 +205,14 @@ export function TablesExplorerSidebar({
                   disabled={!selectedTableRef}
                 >
                   <Icon name="terminal" className="size-3.5" />
-                  Import CSV
+                  Import data (CSV/JSON/Excel)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={onSeedData}
+                  disabled={!selectedTableRef}
+                >
+                  <Icon name="dice" className="size-3.5" />
+                  Seed data
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

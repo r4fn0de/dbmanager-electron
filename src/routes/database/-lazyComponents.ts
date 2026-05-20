@@ -19,8 +19,9 @@ export const SetColumnDefaultDialog = lazy(() => import("@/features/database/com
 export const SetColumnNullableDialog = lazy(() => import("@/features/database/components/TableDdlDialogs").then((m) => ({ default: m.SetColumnNullableDialog })));
 export const CreateSchemaDialog = lazy(() => import("@/features/database/components/TableDdlDialogs").then((m) => ({ default: m.CreateSchemaDialog })));
 export const CreateIndexDialog = lazy(() => import("@/features/database/components/TableDdlDialogs").then((m) => ({ default: m.CreateIndexDialog })));
-export const ImportCsvDialog = lazy(() => import("@/features/database/components/TableDdlDialogs").then((m) => ({ default: m.ImportCsvDialog })));
+export const ImportCsvDialog = lazy(() => import("@/features/database/components/DataFlowDialogs").then((m) => ({ default: m.ImportDataDialog })));
+export const SeedDataDialog = lazy(() => import("@/features/database/components/DataFlowDialogs").then((m) => ({ default: m.SeedDataDialog })));
 export const RlsPoliciesDialog = lazy(() => import("@/features/database/components/RlsPoliciesDialog").then((m) => ({ default: m.RlsPoliciesDialog })));
 export const ViewDdlDialog = lazy(() => import("@/features/database/components/TableDdlDialogs").then((m) => ({ default: m.ViewDdlDialog })));
-export const SchemaExportDialog = lazy(() => import("@/features/database/components/SchemaExportDialog").then((m) => ({ default: m.SchemaExportDialog })));
+export const SchemaExportDialog = lazy(() => import("@/features/database/components/DataFlowDialogs").then((m) => ({ default: m.ExportDataDialog })));
 export const DefinitionsBrowserPanel = lazy(() => import("@/features/database/components/DefinitionsBrowserPanel").then((m) => ({ default: m.DefinitionsBrowserPanel })));

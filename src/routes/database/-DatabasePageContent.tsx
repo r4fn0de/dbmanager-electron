@@ -68,6 +68,7 @@ import {
   CreateSchemaDialog,
   CreateIndexDialog,
   ImportCsvDialog,
+  SeedDataDialog,
   RlsPoliciesDialog,
   ViewDdlDialog,
   SchemaExportDialog,
@@ -199,6 +200,7 @@ export function DatabasePageContent({
   const [isCreateSchemaOpen, setIsCreateSchemaOpen] = useState(false);
   const [isCreateIndexOpen, setIsCreateIndexOpen] = useState(false);
   const [isImportCsvOpen, setIsImportCsvOpen] = useState(false);
+  const [isSeedDataOpen, setIsSeedDataOpen] = useState(false);
   const [ddlDropTarget, setDdlDropTarget] = useState<{ schema: string; name: string } | null>(null);
   const [ddlRenameTarget, setDdlRenameTarget] = useState<{ schema: string; name: string } | null>(null);
   const [ddlAddColumnTarget, setDdlAddColumnTarget] = useState<{ schema: string; name: string } | null>(null);
@@ -1090,6 +1092,7 @@ export function DatabasePageContent({
                   onCreateTable={() => setIsCreateTableOpen(true)}
                   onCreateIndex={() => setIsCreateIndexOpen(true)}
                   onImportCsv={() => setIsImportCsvOpen(true)}
+                  onSeedData={() => setIsSeedDataOpen(true)}
                   onRenameTable={setDdlRenameTarget}
                   onDropTable={setDdlDropTarget}
                   onViewRlsPolicies={setRlsPoliciesTarget}
@@ -1221,9 +1224,25 @@ export function DatabasePageContent({
                           isNullable: column.is_nullable,
                         })
                       }
+                      onSeedData={() => setIsSeedDataOpen(true)}
                     />
                   );
                 })()}
+                {connection && selectedSchema && (
+                  <SeedDataDialog
+                    isOpen={isSeedDataOpen}
+                    onClose={() => setIsSeedDataOpen(false)}
+                    connectionId={connection.id}
+                    schema={selectedSchema}
+                    defaultTableName={selectedTableRef?.name ?? ""}
+                    tableColumns={selectedTableDetails?.columns}
+                    tableForeignKeys={selectedTableDetails?.foreign_keys}
+                    tableIndexes={selectedTableDetails?.indexes}
+                    onSuccess={() => {
+                      void handleDdlSuccess();
+                    }}
+                  />
+                )}
               </ResizablePanel>
             </ResizablePanelGroup>
           </div>
@@ -1490,7 +1509,6 @@ export function DatabasePageContent({
           connectionId={connection.id}
           schema={selectedSchema}
           defaultTableName={selectedTableRef?.name ?? ""}
-          tableSaveChanges={tableSaveChanges}
           onSuccess={() => {
             void handleDdlSuccess();
           }}
@@ -1528,15 +1546,7 @@ export function DatabasePageContent({
           onClose={() => setSchemaExportTarget(null)}
           connectionId={connection.id}
           schema={schemaExportTarget.schema}
-          tableName={schemaExportTarget.name}
-          dbType={connection.db_type || "postgresql"}
-          cachedDetails={
-            selectedTableDetails &&
-            selectedTableDetails.schema === schemaExportTarget.schema &&
-            selectedTableDetails.name === schemaExportTarget.name
-              ? selectedTableDetails
-              : null
-          }
+          defaultTableName={schemaExportTarget.name}
         />
       )}
       </Suspense>

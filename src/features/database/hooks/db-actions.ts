@@ -44,6 +44,13 @@ import type {
   SetColumnNullableInput,
   TableRef,
   TableRowsResponse,
+  ImportDryRunInput,
+  ImportDryRunResult,
+  ImportTableColumnsInput,
+  ImportColumnMeta,
+  CreateTableFromImportInput,
+  ExportScopeInput,
+  ExportSchemaIndexesResult,
 } from "@/ipc/db/types";
 
 function extractErrorMessage(
@@ -231,6 +238,54 @@ export async function tableSaveChanges(
     );
   }
 }
+export async function importTableColumns(
+  input: ImportTableColumnsInput,
+): Promise<ImportColumnMeta[]> {
+  try {
+    return await ipc.client.db.importTableColumns({ ...input });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to load target table columns",
+    );
+  }
+}
+
+export async function importDryRun(
+  input: ImportDryRunInput,
+): Promise<ImportDryRunResult> {
+  try {
+    return await ipc.client.db.importDryRun({ ...input });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to validate import data",
+    );
+  }
+}
+
+export async function createTableFromImport(
+  input: CreateTableFromImportInput,
+): Promise<DdlResult> {
+  try {
+    return await ipc.client.db.createTableFromImport({ ...input });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to create table from import",
+    );
+  }
+}
+
+export async function exportSchemaIndexes(
+  input: ExportScopeInput,
+): Promise<ExportSchemaIndexesResult> {
+  try {
+    return await ipc.client.db.exportSchemaIndexes({ ...input });
+  } catch (err) {
+    throw new Error(
+      err instanceof Error ? err.message : "Failed to export schema indexes",
+    );
+  }
+}
+
 
 export async function tableTruncate(tableRef: TableRef): Promise<void> {
   try {

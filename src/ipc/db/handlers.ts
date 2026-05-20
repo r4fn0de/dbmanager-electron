@@ -21,6 +21,8 @@ import type {
   ExportSchemaResult,
   ExportTableDataResult,
   MergeBranchSchemaResult,
+  ImportDryRunResult,
+  ExportSchemaIndexesResult,
 } from "./types";
 import { registerQuery, unregisterQuery } from "./active-queries";
 import {
@@ -58,6 +60,10 @@ import {
   getBranchInfoSchema,
   mergeBranchSchemaSchema,
   previewDeleteBranchSchema,
+  importTableColumnsSchema,
+  importDryRunSchema,
+  createTableFromImportSchema,
+  exportSchemaIndexesSchema,
 } from "./schemas";
 import {
   loadConnections,
@@ -789,6 +795,104 @@ export const importTableRows = os
       input.columns,
       input.rows,
     );
+  });
+export const importTableColumns = os
+  .input(importTableColumnsSchema)
+  .handler(async ({ input }) => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const details = await driver.getTableDetails(connStr, input.schema, input.table);
+    return details.columns.map((column) => ({
+      name: column.name,
+      dataType: column.data_type,
+      isNullable: column.is_nullable,
+    }));
+  });
+
+export const importDryRun = os
+  .input(importDryRunSchema)
+  .handler(async ({ input }): Promise<ImportDryRunResult> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const tableDetails = await driver.getTableDetails(connStr, input.schema, input.table);
+    const tableColumns = new Map(tableDetails.columns.map((column) => [column.name, column]));
+    const issues: ImportDryRunResult["issues"] = [];
+    let validRows = 0;
+
+    for (const [rowIndex, row] of input.rows.entries()) {
+      let isValid = true;
+      for (const columnName of input.columns) {
+        const column = tableColumns.get(columnName);
+        if (!column) {
+          issues.push({ rowIndex, message: `Unknown target column: ${columnName}` });
+          isValid = false;
+          continue;
+        }
+        const value = row[columnName];
+        if (!column.is_nullable && (value === null || value === undefined || value === "")) {
+          issues.push({ rowIndex, message: `Column ${columnName} cannot be null` });
+          isValid = false;
+        }
+      }
+      if (isValid) validRows += 1;
+    }
+
+    return {
+      validRows,
+      invalidRows: input.rows.length - validRows,
+      issues,
+    };
+  });
+
+export const createTableFromImport = os
+  .input(createTableFromImportSchema)
+  .handler(async ({ input }): Promise<DdlResult> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const sql = await driver.createTable(
+      connStr,
+      input.schema,
+      input.table,
+      input.columns.map((column) => ({
+        ...column,
+        isPrimaryKey: input.primaryKeyColumns?.includes(column.name),
+      })),
+      input.primaryKeyColumns,
+      input.ifNotExists,
+    );
+    invalidateTableCache(input.connectionId, input.schema, input.table);
+    recordDdlOperation(input.connectionId, input.schema, input.table);
+    return { sql };
+  });
+
+export const exportSchemaIndexes = os
+  .input(exportSchemaIndexesSchema)
+  .handler(async ({ input }): Promise<ExportSchemaIndexesResult> => {
+    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const driver = driverRegistry.get(resolveDbType(connection));
+    const schemaSummary = await driver.getSchemaSummary(connStr);
+    const scopedTables = schemaSummary.tables.filter((table) => {
+      if (table.schema !== input.schema) return false;
+      return input.table ? table.name === input.table : true;
+    });
+
+    const scripts: ExportSchemaIndexesResult["scripts"] = [];
+    for (const table of scopedTables) {
+      const indexes = await driver.getIndexes(connStr, table.schema, table.name);
+      for (const index of indexes) {
+        const quotedColumns = index.columns.map((columnName) => `"${columnName}"`).join(", ");
+        const createPrefix = index.isUnique ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
+        const sql = `${createPrefix} "${index.name}" ON "${table.schema}"."${table.name}" (${quotedColumns});`;
+        scripts.push({
+          type: "index",
+          schema: table.schema,
+          name: index.name,
+          sql,
+        });
+      }
+    }
+
+    return { scripts };
   });
 
 // ---------------------------------------------------------------------------

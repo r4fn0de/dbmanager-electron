@@ -284,6 +284,40 @@ export const importTableRowsSchema = z.object({
   rows: z.array(z.record(z.string(), z.unknown())),
 });
 
+export const importTableColumnsSchema = z.object({
+  connectionId: z.string(),
+  schema: z.string(),
+  table: z.string(),
+});
+
+export const importDryRunSchema = z.object({
+  connectionId: z.string(),
+  schema: z.string(),
+  table: z.string(),
+  columns: z.array(z.string()),
+  rows: z.array(z.record(z.string(), z.unknown())),
+  batchSize: z.number().min(1).max(2000).default(250),
+});
+
+export const createTableFromImportSchema = z.object({
+  connectionId: z.string(),
+  schema: z.string(),
+  table: z.string(),
+  ifNotExists: z.boolean().optional().default(true),
+  columns: z.array(z.object({
+    name: z.string().min(1),
+    dataType: z.string().min(1),
+    isNullable: z.boolean(),
+  })).min(1),
+  primaryKeyColumns: z.array(z.string()).optional(),
+});
+
+export const exportSchemaIndexesSchema = z.object({
+  connectionId: z.string(),
+  schema: z.string(),
+  table: z.string().optional(),
+});
+
 export const waitForDatabaseSchema = z.object({
   connectionString: z.string(),
   maxRetries: z.number().optional(),
