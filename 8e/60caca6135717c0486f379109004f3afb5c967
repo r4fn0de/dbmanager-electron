@@ -1,0 +1,42 @@
+src/features/ai/components/PrivacySettingsSection.tsx
+  s_ac4c98fd12513c::t_718c1cd74c03d1 1-126
+src/components/ui/Icon.tsx
+  s_ac4c98fd12513c::t_d288e219059269 182
+  s_ac4c98fd12513c::t_af5e429034d871 98-99
+  s_ac4c98fd12513c::t_9272de48dae469 292
+  s_ac4c98fd12513c::t_43748c1564af10 116
+  s_ac4c98fd12513c::t_2f53fa93b5c0e7 231
+src/features/settings/components/AppearanceSettings.tsx
+  s_ac4c98fd12513c::t_3008db99abc5af 1-72
+src/features/ai/components/AiSettingsPanel.tsx
+  s_ac4c98fd12513c::t_c98862f25abf57 21-22,36,55,71-73,77-78,92-96,101,112,118,122-125,127,131-136,138,141-145,147-150,152-158,244,247,254,260,269-271,275,298-302,305-314,316-324,326-368,370-377,379,381-382,384,386-393,395-402,406-408,410-425
+src/features/ai/components/ProviderConfigDialog.tsx
+  s_ac4c98fd12513c::t_480a752e9007cc 173-175,178,183,188
+  s_ac4c98fd12513c::t_184eaaf22062b2 1-170,172,176-177,179-182,184-187,189-215,218-259,261-286,288-298,301-548
+  s_ac4c98fd12513c::t_b9bc09e24d4db0 260,299-300
+  s_ac4c98fd12513c::t_97bd4242dec4a8 287
+  s_ac4c98fd12513c::t_022471c5160bcb 171
+  s_ac4c98fd12513c::t_290dc83a8e2841 216-217
+src/features/settings/components/ShortcutsPanel.tsx
+  s_ac4c98fd12513c::t_12731c0111e802 1-106
+src/features/settings/components/SettingsDialog.tsx
+  s_ac4c98fd12513c::t_300c3db5c0f384 12-14,20,23-28,68,76
+src/features/settings/components/UpdatesPanel.tsx
+  s_ac4c98fd12513c::t_8d122937c0097e 1-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "8e60caca6135717c0486f379109004f3afb5c967",
+  "prompts": {},
+  "sessions": {
+    "s_ac4c98fd12513c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1b8b99993ffe64Hw57gU6t0b4K",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
