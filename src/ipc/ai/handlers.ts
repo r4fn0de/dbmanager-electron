@@ -17,6 +17,10 @@ import {
   getCurrentModel,
   addCustomModel,
   removeCustomModel,
+  detectOllama,
+  getPrivacySettings,
+  getPrivacyPreset,
+  updatePrivacySettings,
   type AiProviderName,
 } from "./config";
 import type { DatabaseType } from "@/ipc/db/types";
@@ -32,7 +36,7 @@ export const aiGetSettings = os.handler(async () => {
 export const aiUpdateSettings = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]).optional(),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]).optional(),
       model: z.string().optional(),
       openaiCompatibleBaseURL: z.string().optional(),
     }),
@@ -50,7 +54,7 @@ export const aiUpdateSettings = os
 export const aiSetApiKey = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
       key: z.string(),
     }),
   )
@@ -68,7 +72,7 @@ export const aiSetApiKey = os
 export const aiGetApiKey = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
     }),
   )
   .handler(async ({ input }) => {
@@ -348,7 +352,7 @@ ${input.tables.join(", ")}${contextSection}`,
 export const aiAddCustomModel = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
       modelId: z.string().min(1),
     }),
   )
@@ -360,11 +364,51 @@ export const aiAddCustomModel = os
 export const aiRemoveCustomModel = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible"]),
+      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
       modelId: z.string().min(1),
     }),
   )
   .handler(async ({ input }) => {
     removeCustomModel(input.provider as AiProviderName, input.modelId);
     return getProvidersInfo();
+  });
+
+// ---------------------------------------------------------------------------
+// Ollama detection
+// ---------------------------------------------------------------------------
+
+export const aiDetectOllama = os.handler(async () => {
+  return detectOllama();
+});
+
+// ---------------------------------------------------------------------------
+// Privacy settings
+// ---------------------------------------------------------------------------
+
+export const aiGetPrivacySettings = os.handler(async () => {
+  return {
+    settings: getPrivacySettings(),
+    preset: getPrivacyPreset(),
+  };
+});
+
+export const aiUpdatePrivacySettings = os
+  .input(
+    z.object({
+      settings: z
+        .object({
+          schema: z.boolean().optional(),
+          connectionInfo: z.boolean().optional(),
+          connectionsList: z.boolean().optional(),
+          memory: z.boolean().optional(),
+        })
+        .optional(),
+      preset: z.enum(["full", "minimal", "private"]).nullable().optional(),
+    }),
+  )
+  .handler(async ({ input }) => {
+    return updatePrivacySettings(
+      input.settings ?? {},
+      input.preset as "full" | "minimal" | "private" | null | undefined,
+    );
   });

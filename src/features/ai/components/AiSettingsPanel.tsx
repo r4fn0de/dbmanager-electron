@@ -25,9 +25,14 @@ import {
   getAiSettings,
   setAiApiKey,
   updateAiSettings,
+  detectOllama,
+  getPrivacySettings,
+  updatePrivacySettings,
   type AiProvidersInfo,
 } from "../hooks/ai-actions";
 import { cn } from "@/lib/utils";
+import type { PrivacySettings, PrivacyPreset } from "@/shared/ai/streaming-contracts";
+import { PRIVACY_PRESETS } from "@/shared/ai/streaming-contracts";
 import openAiDarkSvg from "../../../../icons/OpenAI_dark.svg";
 import openAiLightSvg from "../../../../icons/OpenAI_light.svg";
 
@@ -46,7 +51,7 @@ const saveFeedbackAnimationKeyframes = `@keyframes saveFeedbackPulse {
 
 // Provider icons are imported from @/components/ProviderIcons
 
-type ProviderName = "openai" | "anthropic" | "google" | "openai-compatible";
+type ProviderName = "openai" | "anthropic" | "google" | "openai-compatible" | "ollama";
 
 interface AiSettingsPanelProps {
   compact?: boolean;
@@ -79,6 +84,19 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   const [baseUrlInput, setBaseUrlInput] = useState("");
   const [modelSaved, setModelSaved] = useState(false);
 
+  // Ollama state
+  const [ollamaStatus, setOllamaStatus] = useState<{
+    detected: boolean;
+    models: string[];
+    checking: boolean;
+  }>({ detected: false, models: [], checking: true });
+
+  // Privacy state
+  const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(
+    PRIVACY_PRESETS.full,
+  );
+  const [privacyPreset, setPrivacyPreset] = useState<PrivacyPreset | null>("full");
+
   const loadSettings = useCallback(async () => {
     try {
       const s = await getAiSettings();
@@ -95,6 +113,23 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  // Detect Ollama on mount
+  useEffect(() => {
+    let mounted = true;
+    detectOllama().then((result) => {
+      if (mounted) setOllamaStatus({ ...result, checking: false });
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  // Load privacy settings on mount
+  useEffect(() => {
+    getPrivacySettings().then(({ settings, preset }) => {
+      setPrivacySettings(settings);
+      setPrivacyPreset(preset);
+    });
+  }, []);
 
   // Inject keyframes for save feedback animation
   useEffect(() => {
@@ -119,10 +154,11 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
 
   const configured = useMemo(
     () =>
+      (settings?.current.provider === "ollama" && ollamaStatus.detected) ||
       (settings?.providers.some((p) => p.hasApiKey) ?? false) ||
       (settings?.current.provider === "openai-compatible" &&
         (settings.current.openaiCompatibleBaseURL?.trim().length ?? 0) > 0),
-    [settings]
+    [settings, ollamaStatus.detected],
   );
 
 
@@ -138,11 +174,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       setIsSavingProvider(true);
       try {
         await updateAiSettings({
-          provider: providerName as
-            | "openai"
-            | "anthropic"
-            | "google"
-            | "openai-compatible",
+          provider: providerName as ProviderName,
           model: newProvider.defaultModel,
         });
         await loadSettings();
@@ -222,6 +254,47 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     }
   }, [baseUrlInput, loadSettings, normalizeCompatibleBaseUrl]);
 
+  // ------- Privacy Handlers -------
+
+  const handlePrivacyPreset = useCallback(
+    async (preset: PrivacyPreset) => {
+      try {
+        const result = await updatePrivacySettings({ preset });
+        setPrivacySettings(result);
+        setPrivacyPreset(preset);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to update privacy",
+        );
+      }
+    },
+    [],
+  );
+
+  const handlePrivacyToggle = useCallback(
+    async (key: keyof PrivacySettings, value: boolean) => {
+      try {
+        const result = await updatePrivacySettings({
+          settings: { [key]: value },
+        });
+        setPrivacySettings(result);
+        setPrivacyPreset(null);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to update privacy",
+        );
+      }
+    },
+    [],
+  );
+
+  const handleRefreshOllama = useCallback(async () => {
+    setOllamaStatus((prev) => ({ ...prev, checking: true }));
+    const result = await detectOllama();
+    setOllamaStatus({ ...result, checking: false });
+    await loadSettings();
+  }, [loadSettings]);
+
 
 
   // ------- Render -------
@@ -299,7 +372,9 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
               <>
                 <UiIcon name="x" className="size-4 shrink-0" />
                 <span className="font-medium">
-                  {settings.current.provider === "openai-compatible"
+                  {settings.current.provider === "ollama"
+                    ? "Start Ollama to use local models (run `ollama serve`)"
+                    : settings.current.provider === "openai-compatible"
                     ? "Set the Base URL to enable OpenAI-compatible provider"
                     : "Add an API key to enable AI features"}
                 </span>
@@ -371,7 +446,19 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
             const activeProvider = settings.providers.find(
               (p) => p.name === settings.current.provider
             );
-            if (!activeProvider?.hasApiKey) {
+            if (settings.current.provider === "ollama" && !ollamaStatus.detected) {
+              return (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/6 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 mt-0.5">
+                    <UiIcon name="alert-circle" className="size-3.5" />
+                  </div>
+                  <span className="leading-relaxed">
+                    Ollama is not running. Start it with <code className="font-mono">ollama serve</code> in your terminal.
+                  </span>
+                </div>
+              );
+            }
+            if (!activeProvider?.hasApiKey && settings.current.provider !== "ollama") {
               return (
                 <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/6 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 mt-0.5">
@@ -416,13 +503,79 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                 })()}
               </DialogTitle>
               <DialogDescription>
-                Configure API key, model and other settings for this provider.
+                {openConfigProvider === "ollama"
+                  ? "Configure local model settings."
+                  : "Configure API key, model and other settings for this provider."}
               </DialogDescription>
             </DialogHeader>
 
             {openConfigProvider && (() => {
               const provider = settings.providers.find(p => p.name === openConfigProvider);
               if (!provider) return null;
+
+              // Ollama-specific config: model selection from detected models
+              if (openConfigProvider === "ollama") {
+                return (
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center gap-2 text-xs">
+                      {ollamaStatus.detected ? (
+                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                          <UiIcon name="circle-check" className="size-3" />
+                          Ollama detected ({ollamaStatus.models.length} models)
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                          <UiIcon name="alert-circle" className="size-3" />
+                          Ollama not running
+                        </span>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRefreshOllama}
+                        disabled={ollamaStatus.checking}
+                        className="h-6 px-2 text-xs ml-auto"
+                      >
+                        {ollamaStatus.checking ? (
+                          <UiIcon name="loader" className="size-3 animate-spin" />
+                        ) : (
+                          <UiIcon name="refresh-cw" className="size-3" />
+                        )}
+                        Refresh
+                      </Button>
+                    </div>
+
+                    {ollamaStatus.models.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-muted-foreground">
+                          Model
+                        </Label>
+                        <select
+                          value={settings.current.model}
+                          onChange={(e) => handleModelChange(e.target.value)}
+                          className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs font-mono"
+                        >
+                          {ollamaStatus.models.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-muted-foreground">
+                          Models are pulled locally via <code className="text-foreground/60">ollama pull</code>
+                        </p>
+                      </div>
+                    )}
+
+                    {!ollamaStatus.detected && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Install Ollama from{" "}
+                        <code className="text-foreground/60">ollama.com</code>{" "}
+                        and run <code className="text-foreground/60">ollama serve</code> to get started.
+                      </p>
+                    )}
+                  </div>
+                );
+              }
 
               return (
                 <div className="space-y-4 pt-2">
@@ -594,6 +747,18 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
             })()}
             <DialogFooter className="gap-2.5 border-t bg-muted/30 px-6 py-3.5">
               {openConfigProvider && (() => {
+                if (openConfigProvider === "ollama") {
+                  return (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setOpenConfigProvider(null)}
+                      className="h-8 px-5 text-xs shadow-sm"
+                    >
+                      Done
+                    </Button>
+                  );
+                }
                 const provider = settings.providers.find(p => p.name === openConfigProvider);
                 const hasKeyInput = apiKeyInputs[openConfigProvider]?.trim();
                 const canSave = hasKeyInput && !isSavingKey[openConfigProvider];
@@ -638,7 +803,86 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* Privacy & Context Controls */}
+      <div className="space-y-3">
+        <Label className="text-xs font-medium text-muted-foreground">
+          Privacy & Context
+        </Label>
+
+        {/* Preset buttons */}
+        <div className="flex gap-1.5">
+          {(["full", "minimal", "private"] as const).map((preset) => (
+            <Button
+              key={preset}
+              variant={privacyPreset === preset ? "default" : "outline"}
+              size="sm"
+              onClick={() => handlePrivacyPreset(preset)}
+              className="text-xs capitalize h-7 px-2.5"
+            >
+              {preset === "full" && <UiIcon name="globe" className="size-3 mr-1" />}
+              {preset === "minimal" && <UiIcon name="shield" className="size-3 mr-1" />}
+              {preset === "private" && <UiIcon name="lock" className="size-3 mr-1" />}
+              {preset}
+            </Button>
+          ))}
         </div>
+
+        {/* Individual toggles */}
+        <div className="space-y-1.5 rounded-xl border p-3">
+          {([
+            { key: "schema" as const, label: "Schema", desc: "Table names, columns, types" },
+            { key: "connectionInfo" as const, label: "Connection Info", desc: "Host, port, database name" },
+            { key: "connectionsList" as const, label: "Connections List", desc: "All your saved connections" },
+            { key: "memory" as const, label: "Memory", desc: "Recent conversations & similar queries" },
+          ]).map((item) => (
+            <label
+              key={item.key}
+              className="flex items-center justify-between py-1.5 cursor-pointer select-none"
+            >
+              <div>
+                <p className="text-xs font-medium">{item.label}</p>
+                <p className="text-[11px] text-muted-foreground">{item.desc}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={privacySettings[item.key]}
+                onClick={() => handlePrivacyToggle(item.key, !privacySettings[item.key])}
+                className={cn(
+                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+                  privacySettings[item.key]
+                    ? "bg-primary"
+                    : "bg-input",
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block size-4 rounded-full bg-background shadow-sm transition-transform duration-200",
+                    privacySettings[item.key] ? "translate-x-4" : "translate-x-0",
+                  )}
+                />
+              </button>
+            </label>
+          ))}
+        </div>
+
+        {/* Data locality indicator */}
+        {settings.current.provider === "ollama" ? (
+          <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+            <UiIcon name="shield-check" className="size-4" />
+            <span>All data stays on your machine</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+            <UiIcon name="cloud" className="size-4" />
+            <span>
+              Data is sent to {settings.providers.find(p => p.name === settings.current.provider)?.label ?? "external"} servers
+            </span>
+          </div>
+        )}
+      </div>
       </div>
 
     </>

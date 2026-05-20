@@ -10,6 +10,7 @@ import type {
   AiChatChunkPayload,
   AiRendererApi,
   UserConnectionsContext,
+  PrivacySettings,
 } from "@/shared/ai/streaming-contracts";
 
 export interface AiChatContextTag {
@@ -106,6 +107,8 @@ interface UseAiChatOptions {
   };
   /** Optional global snapshot of user connections for cross-connection questions */
   userConnectionsContext?: UserConnectionsContext;
+  /** Privacy settings for context gating */
+  privacySettings?: PrivacySettings;
 }
 
 interface UseAiChatReturn {
@@ -498,6 +501,7 @@ export function useAiChat({
   schemaContext,
   connectionInfo,
   userConnectionsContext,
+  privacySettings,
 }: UseAiChatOptions): UseAiChatReturn {
   const [conversations, setConversations] = useState<AiChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -987,6 +991,7 @@ export function useAiChat({
         connectionInfo,
         userConnectionsContext,
         messages: coreMessages,
+        privacySettings,
       });
 
       if (!hadUserMessages && isUntitledConversation) {

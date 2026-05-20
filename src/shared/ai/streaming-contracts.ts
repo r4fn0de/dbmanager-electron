@@ -35,6 +35,8 @@ export interface ChatStartInput {
   };
   userConnectionsContext?: UserConnectionsContext;
   messages: ModelMessage[];
+  /** Privacy settings for context gating */
+  privacySettings?: PrivacySettings;
 }
 
 export interface InlineGenerateStartInput {
@@ -43,6 +45,37 @@ export interface InlineGenerateStartInput {
   prompt: string;
   sql?: string;
   schemaContext?: string;
+}
+
+/** Which context categories the user allows to send to the AI provider. */
+export interface PrivacySettings {
+  /** Include database schema (table names, columns, types). Default: true */
+  schema: boolean;
+  /** Include connection metadata (host, port, database name, local/remote). Default: true */
+  connectionInfo: boolean;
+  /** Include the full user connections inventory. Default: true */
+  connectionsList: boolean;
+  /** Include memory context (recent messages, similar queries). Default: true */
+  memory: boolean;
+}
+
+/** Predefined privacy presets. */
+export type PrivacyPreset = "full" | "minimal" | "private";
+
+export const PRIVACY_PRESETS: Record<PrivacyPreset, PrivacySettings> = {
+  full: { schema: true, connectionInfo: true, connectionsList: true, memory: true },
+  minimal: { schema: false, connectionInfo: true, connectionsList: false, memory: true },
+  private: { schema: false, connectionInfo: false, connectionsList: false, memory: false },
+};
+
+/** Snapshot of what context will be sent, for the preview UI. */
+export interface ContextPreview {
+  schema: { included: boolean; charCount: number; tables: string[] };
+  connectionInfo: { included: boolean; summary: string };
+  connectionsList: { included: boolean; count: number };
+  memory: { included: boolean };
+  /** Whether data will leave the local machine (false for Ollama) */
+  dataLeavesMachine: boolean;
 }
 
 export interface AiUsage {

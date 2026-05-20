@@ -190,6 +190,42 @@ export function OpenAICompatibleIcon({ className }: IconProps) {
   );
 }
 
+/**
+ * Ollama Icon — simple llama silhouette
+ */
+export function OllamaIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>Ollama</title>
+      <path
+        d="M4 18.5C4 16.567 5.567 15 7.5 15h0c.725 0 1.407.234 1.966.632A3.001 3.001 0 0 1 12 9.5c.725 0 1.407.234 1.966.632A3.001 3.001 0 0 1 16.5 8h0C18.433 8 20 9.567 20 11.5V18.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5Z"
+        fill="currentColor"
+        opacity="0.2"
+      />
+      <path
+        d="M4 18.5C4 16.567 5.567 15 7.5 15h0c.725 0 1.407.234 1.966.632A3.001 3.001 0 0 1 12 9.5c.725 0 1.407.234 1.966.632A3.001 3.001 0 0 1 16.5 8h0C18.433 8 20 9.567 20 11.5V18.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="9.5" cy="13" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="13" r="1" fill="currentColor" />
+      <path
+        d="M7.5 4V6M16.5 4V6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export const PROVIDER_ICONS: Record<
   string,
   React.ComponentType<{ className?: string }>
@@ -198,4 +234,5 @@ export const PROVIDER_ICONS: Record<
   anthropic: AnthropicIcon,
   google: GoogleAiIcon,
   "openai-compatible": OpenAICompatibleIcon,
+  ollama: OllamaIcon,
 };

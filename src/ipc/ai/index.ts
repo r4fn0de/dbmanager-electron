@@ -19,6 +19,9 @@ import {
   aiTableSearch,
   aiAddCustomModel,
   aiRemoveCustomModel,
+  aiDetectOllama,
+  aiGetPrivacySettings,
+  aiUpdatePrivacySettings,
 } from "./handlers";
 import {
   saveFeedbackHandler,
@@ -64,6 +67,11 @@ export const ai = {
   // Custom models
   addCustomModel: aiAddCustomModel,
   removeCustomModel: aiRemoveCustomModel,
+  // Ollama
+  detectOllama: aiDetectOllama,
+  // Privacy
+  getPrivacySettings: aiGetPrivacySettings,
+  updatePrivacySettings: aiUpdatePrivacySettings,
   // Feedback
   saveFeedback: saveFeedbackHandler,
   getFeedback: getFeedbackHandler,

@@ -10,8 +10,9 @@
  */
 import { ipc } from "@/ipc/manager";
 import type { DatabaseType } from "@/ipc/db/types";
+import type { PrivacySettings, PrivacyPreset } from "@/shared/ai/streaming-contracts";
 
-type AiProvider = "openai" | "anthropic" | "google" | "openai-compatible";
+type AiProvider = "openai" | "anthropic" | "google" | "openai-compatible" | "ollama";
 type AiDbType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite";
 
 function extractAiErrorMessage(error: unknown, fallback: string): string {
@@ -45,6 +46,9 @@ export interface AiProvidersInfo {
     model: string;
     openaiCompatibleBaseURL: string;
   };
+  encryptionAvailable: boolean;
+  ollamaDetected: boolean;
+  ollamaModels: string[];
   providers: {
     name: string;
     label: string;
@@ -248,5 +252,49 @@ export async function removeCustomModel(
     throw new Error(
       extractAiErrorMessage(err, "Failed to remove custom model"),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ollama detection
+// ---------------------------------------------------------------------------
+
+export async function detectOllama(): Promise<{
+  detected: boolean;
+  models: string[];
+}> {
+  try {
+    return await ipc.client.ai.detectOllama();
+  } catch {
+    return { detected: false, models: [] };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Privacy settings
+// ---------------------------------------------------------------------------
+
+export async function getPrivacySettings(): Promise<{
+  settings: PrivacySettings;
+  preset: PrivacyPreset | null;
+}> {
+  try {
+    return await ipc.client.ai.getPrivacySettings();
+  } catch {
+    return {
+      settings: { schema: true, connectionInfo: true, connectionsList: true, memory: true },
+      preset: "full",
+    };
+  }
+}
+
+export async function updatePrivacySettings(input: {
+  settings?: Partial<PrivacySettings>;
+  preset?: PrivacyPreset | null;
+}): Promise<PrivacySettings> {
+  try {
+    return await ipc.client.ai.updatePrivacySettings(input);
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to update privacy settings"));
   }
 }

@@ -70,7 +70,9 @@ import { ChatTable } from "./ai-elements/chat-table";
 import { cn } from "@/lib/utils";
 import { DotmSquare12 } from "@/components/ui/dotm-square-12";
 import type { DatabaseType } from "@/ipc/db/types";
-import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
+import type { UserConnectionsContext, PrivacySettings } from "@/shared/ai/streaming-contracts";
+import { PRIVACY_PRESETS } from "@/shared/ai/streaming-contracts";
+import { getPrivacySettings as loadPrivacySettings, getAiSettings } from "../hooks/ai-actions";
 
 function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
   if (provider) {
@@ -1011,6 +1013,21 @@ export function AiChatPanel({
   const { resolvedTheme } = useTheme();
   const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
 
+  const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(
+    PRIVACY_PRESETS.full,
+  );
+  const [providerIsLocal, setProviderIsLocal] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      loadPrivacySettings(),
+      getAiSettings(),
+    ]).then(([{ settings }, providersInfo]) => {
+      setPrivacySettings(settings);
+      setProviderIsLocal(providersInfo.current.provider === "ollama");
+    });
+  }, []);
+
   const {
     messages,
     conversations,
@@ -1033,6 +1050,7 @@ export function AiChatPanel({
     schemaContext,
     connectionInfo,
     userConnectionsContext,
+    privacySettings,
   });
 
   const [input, setInput] = useState("");
@@ -1753,6 +1771,20 @@ export function AiChatPanel({
             )}
           </PromptInputActions>
         </PromptInput>
+        {/* Data locality indicator */}
+        <div className="flex items-center justify-center gap-1.5 px-2 pt-1">
+          {providerIsLocal ? (
+            <span className="flex items-center gap-1 text-[10px] text-emerald-600/70 dark:text-emerald-400/50">
+              <UiIcon name="shield-check" className="size-3" />
+              Local model - data stays on device
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] text-amber-600/60 dark:text-amber-400/40">
+              <UiIcon name="cloud" className="size-3" />
+              Data sent to external provider
+            </span>
+          )}
+        </div>
         </div>
       </div>
     </motion.div>

@@ -11,6 +11,11 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
+import {
+  PRIVACY_PRESETS,
+  type PrivacySettings,
+  type PrivacyPreset,
+} from "@/shared/ai/streaming-contracts";
 
 // ---------------------------------------------------------------------------
 // Settings storage
@@ -27,6 +32,14 @@ export interface AiSettings {
   openaiCompatibleBaseURL: string;
   /** User-added custom model IDs per provider */
   customModels: Record<string, string[]>;
+  /** Per-context-type privacy toggles */
+  privacySettings: PrivacySettings;
+  /** Active privacy preset name (null means custom) */
+  privacyPreset: PrivacyPreset | null;
+  /** Cached Ollama model list (refreshed on detection) */
+  ollamaModels: string[];
+  /** Whether Ollama was detected on last check */
+  ollamaDetected: boolean;
 }
 
 const defaults: AiSettings = {
@@ -35,6 +48,10 @@ const defaults: AiSettings = {
   apiKeys: {},
   openaiCompatibleBaseURL: "http://localhost:1234/v1",
   customModels: {},
+  privacySettings: PRIVACY_PRESETS.full,
+  privacyPreset: "full",
+  ollamaModels: [],
+  ollamaDetected: false,
 };
 
 const store = new Store<AiSettings>({
@@ -64,7 +81,8 @@ export type AiProviderName =
   | "openai"
   | "anthropic"
   | "google"
-  | "openai-compatible";
+  | "openai-compatible"
+  | "ollama";
 
 interface ProviderEntry {
   label: string;
@@ -117,6 +135,21 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
       return provider.chatModel(modelId);
     },
     defaultModel: "",
+    allowCustomModel: true,
+    requiresApiKey: false,
+    models: [],
+  },
+  ollama: {
+    label: "Ollama",
+    modelFactory: ({ modelId }) => {
+      const provider = createOpenAICompatible({
+        name: "ollama",
+        baseURL: "http://localhost:11434/v1",
+        apiKey: "ollama",
+      });
+      return provider.chatModel(modelId);
+    },
+    defaultModel: "qwen2.5-coder:7b",
     allowCustomModel: true,
     requiresApiKey: false,
     models: [],
@@ -291,6 +324,9 @@ export function getCurrentModel(): LanguageModel {
 /** Check if AI is configured (has at least one API key) */
 export function isAiConfigured(): boolean {
   const settings = getAiSettings();
+  if (settings.provider === "ollama" && settings.ollamaDetected) {
+    return true;
+  }
   const apiKeys = store.get("apiKeys", {});
   if (
     settings.provider === "openai-compatible" &&
@@ -311,6 +347,8 @@ export function getProvidersInfo() {
       openaiCompatibleBaseURL: settings.openaiCompatibleBaseURL,
     },
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
+    ollamaDetected: settings.ollamaDetected,
+    ollamaModels: settings.ollamaModels,
     providers: Object.entries(PROVIDERS).map(([name, entry]) => {
       const custom = settings.customModels[name] ?? [];
       const customModelEntries = custom.map((id) => ({
@@ -327,4 +365,82 @@ export function getProvidersInfo() {
       };
     }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Ollama detection
+// ---------------------------------------------------------------------------
+
+const OLLAMA_BASE_URL = "http://localhost:11434";
+
+export async function detectOllama(): Promise<{
+  detected: boolean;
+  models: string[];
+}> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      store.set("ollamaDetected", false);
+      store.set("ollamaModels", []);
+      return { detected: false, models: [] };
+    }
+
+    const data = (await response.json()) as {
+      models?: Array<{ name: string }>;
+    };
+    const models = (data.models ?? []).map((m) => m.name);
+
+    store.set("ollamaDetected", true);
+    store.set("ollamaModels", models);
+
+    return { detected: true, models };
+  } catch {
+    store.set("ollamaDetected", false);
+    store.set("ollamaModels", []);
+    return { detected: false, models: [] };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Privacy settings
+// ---------------------------------------------------------------------------
+
+/** Get the current privacy settings */
+export function getPrivacySettings(): PrivacySettings {
+  const preset = store.get("privacyPreset", null);
+  if (preset && preset in PRIVACY_PRESETS) {
+    return PRIVACY_PRESETS[preset];
+  }
+  return store.get("privacySettings", PRIVACY_PRESETS.full);
+}
+
+/** Get the active privacy preset name (null if custom) */
+export function getPrivacyPreset(): PrivacyPreset | null {
+  return store.get("privacyPreset", null);
+}
+
+/** Update privacy settings */
+export function updatePrivacySettings(
+  settings: Partial<PrivacySettings>,
+  preset?: PrivacyPreset | null,
+): PrivacySettings {
+  if (preset !== undefined) {
+    store.set("privacyPreset", preset);
+    if (preset && preset in PRIVACY_PRESETS) {
+      store.set("privacySettings", PRIVACY_PRESETS[preset]);
+      return PRIVACY_PRESETS[preset];
+    }
+  }
+  const current = getPrivacySettings();
+  const next = { ...current, ...settings };
+  store.set("privacySettings", next);
+  store.set("privacyPreset", null);
+  return next;
 }
