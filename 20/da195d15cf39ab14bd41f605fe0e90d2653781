@@ -1,0 +1,39 @@
+src/routes/database/-DatabasePageContent.tsx
+  s_ac4c98fd12513c::t_186cb665786b1c 128-129,298-300,302-311,1094-1096
+src/ipc/db/mysql-client.ts
+  s_ac4c98fd12513c::t_80de3550628a6f 606
+  s_ac4c98fd12513c::t_cc5756188ea526 193
+  s_ac4c98fd12513c::t_8ef7e69bebf199 185,194
+  s_ac4c98fd12513c::t_6b4b03d53048d1 162-167,174-184,186-192,195-202,254-261,607-634,637-643
+  s_ac4c98fd12513c::t_dd3724c61fd753 636
+src/features/database/hooks/db-actions.ts
+  s_ac4c98fd12513c::t_8e36cbda350803 200
+  s_ac4c98fd12513c::t_179277013587f6 202
+  s_ac4c98fd12513c::t_4bc404f4591210 97-114,201,203-204
+src/ipc/db/kysely-factory.ts
+  s_ac4c98fd12513c::t_8dce0b2a85c130 210
+  s_ac4c98fd12513c::t_f5db7071aa4519 93,170-172,174-209,211-212,283
+  s_ac4c98fd12513c::t_f1171af5ceb041 173
+src/ipc/db/handlers.ts
+  s_ac4c98fd12513c::t_5827582eec413c 413
+  s_ac4c98fd12513c::t_812f3ed99c5682 410,414-418
+  s_ac4c98fd12513c::t_e425cbab5b4429 411-412
+src/features/database/components/TablesExplorerSidebar.tsx
+  s_ac4c98fd12513c::t_e5550ef38f8145 61-66,115-117,318-328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "20da195d15cf39ab14bd41f605fe0e90d2653781",
+  "prompts": {},
+  "sessions": {
+    "s_ac4c98fd12513c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1b8b99993ffe64Hw57gU6t0b4K",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
