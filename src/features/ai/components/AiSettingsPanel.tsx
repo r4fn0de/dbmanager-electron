@@ -1,26 +1,11 @@
-/**
- * AiSettingsPanel — settings page for configuring the AI assistant.
- *
- * Lets users pick a provider (OpenAI, Anthropic, Google), enter an API key,
- * and select a model. Uses the ai-actions module for IPC calls.
- */
 import { PROVIDER_ICONS } from "@/components/ProviderIcons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Icon as UiIcon } from "@/components/ui/Icon";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   getAiSettings,
   setAiApiKey,
@@ -33,23 +18,10 @@ import {
 import { cn } from "@/lib/utils";
 import type { PrivacySettings, PrivacyPreset } from "@/shared/ai/streaming-contracts";
 import { PRIVACY_PRESETS } from "@/shared/ai/streaming-contracts";
-import openAiDarkSvg from "../../../../icons/OpenAI_dark.svg";
-import openAiLightSvg from "../../../../icons/OpenAI_light.svg";
+import { PrivacySettingsSection } from "./PrivacySettingsSection";
+import { ProviderConfigDialog } from "./ProviderConfigDialog";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
-
-const saveFeedbackAnimationKeyframes = `@keyframes saveFeedbackPulse {
-  from {
-    opacity: 0;
-    transform: scale(0.93);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}`;
-
-// Provider icons are imported from @/components/ProviderIcons
 
 type ProviderName = "openai" | "anthropic" | "google" | "openai-compatible" | "ollama";
 
@@ -57,41 +29,18 @@ interface AiSettingsPanelProps {
   compact?: boolean;
 }
 
-function OpenAiThemeIcon({ className }: { className?: string }) {
-  return (
-    <>
-      <img src={openAiLightSvg} alt="OpenAI" className={cn(className, "dark:hidden")} />
-      <img src={openAiDarkSvg} alt="OpenAI" className={cn("hidden", className, "dark:block")} />
-    </>
-  );
-}
-
 export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   const [settings, setSettings] = useState<AiProvidersInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProvider, setIsSavingProvider] = useState(false);
-  const [isSavingModel, setIsSavingModel] = useState(false);
-  const [isSavingBaseUrl, setIsSavingBaseUrl] = useState(false);
-  const [openConfigProvider, setOpenConfigProvider] = useState<string | null>(
-    null
-  );
+  const [openConfigProvider, setOpenConfigProvider] = useState<string | null>(null);
 
-  // API key state per provider
-  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
-  const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
-  const [isSavingKey, setIsSavingKey] = useState<Record<string, boolean>>({});
-  const [modelInput, setModelInput] = useState("");
-  const [baseUrlInput, setBaseUrlInput] = useState("");
-  const [modelSaved, setModelSaved] = useState(false);
-
-  // Ollama state
   const [ollamaStatus, setOllamaStatus] = useState<{
     detected: boolean;
     models: string[];
     checking: boolean;
   }>({ detected: false, models: [], checking: true });
 
-  // Privacy state
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(
     PRIVACY_PRESETS.full,
   );
@@ -103,7 +52,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
       setSettings(s);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to load AI settings"
+        err instanceof Error ? err.message : "Failed to load AI settings",
       );
     } finally {
       setIsLoading(false);
@@ -114,43 +63,22 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     loadSettings();
   }, [loadSettings]);
 
-  // Detect Ollama on mount
   useEffect(() => {
     let mounted = true;
     detectOllama().then((result) => {
       if (mounted) setOllamaStatus({ ...result, checking: false });
     });
-    return () => { mounted = false; };
-  }, []);
-
-  // Load privacy settings on mount
-  useEffect(() => {
-    getPrivacySettings().then(({ settings, preset }) => {
-      setPrivacySettings(settings);
-      setPrivacyPreset(preset);
-    });
-  }, []);
-
-  // Inject keyframes for save feedback animation
-  useEffect(() => {
-    const styleId = "ai-save-feedback-anim";
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement("style");
-      style.id = styleId;
-      style.textContent = saveFeedbackAnimationKeyframes;
-      document.head.appendChild(style);
-    }
     return () => {
-      const style = document.getElementById(styleId);
-      if (style) style.remove();
+      mounted = false;
     };
   }, []);
 
   useEffect(() => {
-    setModelInput(settings?.current.model ?? "");
-    setBaseUrlInput(settings?.current.openaiCompatibleBaseURL ?? "");
-  }, [settings?.current.model, settings?.current.openaiCompatibleBaseURL]);
-
+    getPrivacySettings().then(({ settings: s, preset }) => {
+      setPrivacySettings(s);
+      setPrivacyPreset(preset);
+    });
+  }, []);
 
   const configured = useMemo(
     () =>
@@ -161,15 +89,16 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     [settings, ollamaStatus.detected],
   );
 
-
-  // ------- Handlers -------
+  const currentProviderLabel = useMemo(
+    () =>
+      settings?.providers.find((p) => p.name === settings.current.provider)?.label,
+    [settings],
+  );
 
   const handleProviderChange = useCallback(
     async (providerName: string) => {
       if (!settings) return;
-      const newProvider = settings.providers.find(
-        (p) => p.name === providerName
-      );
+      const newProvider = settings.providers.find((p) => p.name === providerName);
       if (!newProvider) return;
       setIsSavingProvider(true);
       try {
@@ -180,81 +109,53 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
         await loadSettings();
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "Failed to update provider"
+          err instanceof Error ? err.message : "Failed to update provider",
         );
       } finally {
         setIsSavingProvider(false);
       }
     },
-    [settings, loadSettings]
+    [settings, loadSettings],
   );
 
   const handleModelChange = useCallback(
-    async (value: string | null) => {
-      if (!settings || !value) return;
-      setIsSavingModel(true);
-      try {
-        await updateAiSettings({ model: value });
-        await loadSettings();
-        setModelSaved(true);
-        setTimeout(() => setModelSaved(false), 2000);
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Failed to update model"
-        );
-      } finally {
-        setIsSavingModel(false);
-      }
+    async (model: string) => {
+      if (!settings) return;
+      await updateAiSettings({ model });
+      await loadSettings();
     },
-    [settings, loadSettings]
+    [settings, loadSettings],
   );
 
   const handleSaveApiKey = useCallback(
-    async (provider: string) => {
-      const key = apiKeyInputs[provider]?.trim();
-      if (!key) return;
-      setIsSavingKey((prev) => ({ ...prev, [provider]: true }));
-      try {
-        await setAiApiKey(
-          provider as "openai" | "anthropic" | "google" | "openai-compatible",
-          key
-        );
-        setApiKeyInputs((prev) => ({ ...prev, [provider]: "" }));
-        await loadSettings();
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Failed to save API key"
-        );
-      } finally {
-        setIsSavingKey((prev) => ({ ...prev, [provider]: false }));
-      }
+    async (provider: string, key: string) => {
+      await setAiApiKey(
+        provider as "openai" | "anthropic" | "google" | "openai-compatible",
+        key,
+      );
+      await loadSettings();
     },
-    [apiKeyInputs, loadSettings]
+    [loadSettings],
   );
 
-  const normalizeCompatibleBaseUrl = useCallback((value: string): string => {
-    const trimmed = value.trim().replace(/\/$/, "");
-    return trimmed.replace(/\/models$/i, "");
-  }, []);
-
-  const handleSaveBaseUrl = useCallback(async () => {
-    if (!baseUrlInput.trim()) return;
-    setIsSavingBaseUrl(true);
-    try {
-      const normalized = normalizeCompatibleBaseUrl(baseUrlInput);
-      await updateAiSettings({ openaiCompatibleBaseURL: normalized });
-      setBaseUrlInput(normalized);
-      await loadSettings();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to update Base URL"
+  const handleRemoveApiKey = useCallback(
+    async (provider: string) => {
+      await setAiApiKey(
+        provider as "openai" | "anthropic" | "google" | "openai-compatible",
+        "",
       );
-    } finally {
-      setIsSavingBaseUrl(false);
-    }
-  }, [baseUrlInput, loadSettings, normalizeCompatibleBaseUrl]);
+      await loadSettings();
+    },
+    [loadSettings],
+  );
 
-  // ------- Privacy Handlers -------
+  const handleSaveBaseUrl = useCallback(
+    async (url: string) => {
+      await updateAiSettings({ openaiCompatibleBaseURL: url });
+      await loadSettings();
+    },
+    [loadSettings],
+  );
 
   const handlePrivacyPreset = useCallback(
     async (preset: PrivacyPreset) => {
@@ -295,10 +196,6 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     await loadSettings();
   }, [loadSettings]);
 
-
-
-  // ------- Render -------
-
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -328,7 +225,6 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
 
   const innerContent = (
     <>
-      {/* Header — only in full mode */}
       {!compact && (
         <div className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-xl bg-primary/[0.12] ring-1 ring-primary/20">
@@ -345,63 +241,23 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
         </div>
       )}
 
-      {/* Status indicator — only in full mode */}
-      {!compact && (
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={configured ? "ready" : "missing"}
-            initial={{ opacity: 0, y: 2 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -2 }}
-            transition={{ duration: 0.15, ease: EASE_OUT }}
-            className={cn(
-              "flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs transition-colors duration-200 ease-out",
-              configured
-                ? "border-emerald-500/15 bg-emerald-500/[0.04] text-emerald-700 dark:text-emerald-400"
-                : "border-amber-500/15 bg-amber-500/[0.04] text-amber-700 dark:text-amber-400"
-            )}
-          >
-            {configured ? (
-              <>
-                <UiIcon name="circle-check" className="size-4 shrink-0" />
-                <span className="font-medium">
-                  AI is configured and ready to use
-                </span>
-              </>
-            ) : (
-              <>
-                <UiIcon name="x" className="size-4 shrink-0" />
-                <span className="font-medium">
-                  {settings.current.provider === "ollama"
-                    ? "Start Ollama to use local models (run `ollama serve`)"
-                    : settings.current.provider === "openai-compatible"
-                    ? "Set the Base URL to enable OpenAI-compatible provider"
-                    : "Add an API key to enable AI features"}
-                </span>
-              </>
-            )}
-          </motion.div>
-        </AnimatePresence>
-      )}
+      {!compact && <AiSettingsStatus configured={configured} settings={settings} />}
 
-      {/* Provider selection */}
       <div className="space-y-3">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Provider
-        </Label>
+        <Label className="text-xs font-medium text-muted-foreground">Provider</Label>
         <div className="space-y-2">
           {settings.providers.map((provider) => {
             const isActive = settings.current.provider === provider.name;
             const Icon = PROVIDER_ICONS[provider.name];
             const isSavingThis = isSavingProvider && isActive;
             return (
-                <div
+              <div
                 key={provider.name}
                 className={cn(
                   "flex items-center gap-2 rounded-xl border transition-colors duration-150 ease-out",
                   isActive
                     ? "border-primary/30 bg-primary/[0.08] ring-1 ring-primary/20 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-                    : "border-border/70 bg-transparent hover:border-muted-foreground/30 hover:bg-muted/[0.02]"
+                    : "border-border/70 bg-transparent hover:border-muted-foreground/30 hover:bg-muted/[0.02]",
                 )}
               >
                 <button
@@ -410,15 +266,13 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
                   onClick={() => handleProviderChange(provider.name)}
                   className={cn(
                     "flex-1 flex items-center justify-between px-3.5 py-3 text-sm font-medium text-left active:scale-[0.97] transition-transform select-none",
-                    isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                    isActive
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    {provider.name === "openai" ? (
-                      <OpenAiThemeIcon className="size-5 shrink-0" />
-                    ) : (
-                      Icon && <Icon className="size-5 shrink-0" />
-                    )}
+                    {Icon && <Icon className="size-5 shrink-0" />}
                     <span>{provider.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -441,465 +295,132 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
             );
           })}
 
-          {/* Missing config warning for active provider */}
-          {(() => {
-            const activeProvider = settings.providers.find(
-              (p) => p.name === settings.current.provider
-            );
-            if (settings.current.provider === "ollama" && !ollamaStatus.detected) {
-              return (
-                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/6 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 mt-0.5">
-                    <UiIcon name="alert-circle" className="size-3.5" />
-                  </div>
-                  <span className="leading-relaxed">
-                    Ollama is not running. Start it with <code className="font-mono">ollama serve</code> in your terminal.
-                  </span>
-                </div>
-              );
-            }
-            if (!activeProvider?.hasApiKey && settings.current.provider !== "ollama") {
-              return (
-                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/6 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 mt-0.5">
-                    <UiIcon name="alert-circle" className="size-3.5" />
-                  </div>
-                  <span className="leading-relaxed">
-                    {settings.current.provider === "openai-compatible"
-                      ? "Configure the Base URL and API key to use this provider"
-                      : "Add an API key to enable this provider"}
-                  </span>
-                </div>
-              );
-            }
-            return null;
-          })()}
-
-        {/* Provider Config Dialog */}
-        <Dialog
-          open={!!openConfigProvider}
-          onOpenChange={(open) => !open && setOpenConfigProvider(null)}
-        >
-          <DialogContent className="t-resize sm:max-w-md">
-            <DialogHeader className="text-center">
-              <div className="mx-auto mb-3">
-                {openConfigProvider && (() => {
-                  const Icon = PROVIDER_ICONS[openConfigProvider];
-                  return openConfigProvider === "openai" ? (
-                    <div className="flex size-16 items-center justify-center rounded-2xl bg-muted ring-1 ring-border">
-                      <OpenAiThemeIcon className="size-8" />
-                    </div>
-                  ) : Icon ? (
-                    <div className="flex size-16 items-center justify-center rounded-2xl bg-muted ring-1 ring-border">
-                      <Icon className="size-8" />
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-              <DialogTitle>
-                {openConfigProvider && (() => {
-                  const provider = settings.providers.find(p => p.name === openConfigProvider);
-                  return provider?.label ?? openConfigProvider;
-                })()}
-              </DialogTitle>
-              <DialogDescription>
-                {openConfigProvider === "ollama"
-                  ? "Configure local model settings."
-                  : "Configure API key, model and other settings for this provider."}
-              </DialogDescription>
-            </DialogHeader>
-
-            {openConfigProvider && (() => {
-              const provider = settings.providers.find(p => p.name === openConfigProvider);
-              if (!provider) return null;
-
-              // Ollama-specific config: model selection from detected models
-              if (openConfigProvider === "ollama") {
-                return (
-                  <div className="space-y-4 pt-2">
-                    <div className="flex items-center gap-2 text-xs">
-                      {ollamaStatus.detected ? (
-                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                          <UiIcon name="circle-check" className="size-3" />
-                          Ollama detected ({ollamaStatus.models.length} models)
-                        </span>
-                      ) : (
-                        <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                          <UiIcon name="alert-circle" className="size-3" />
-                          Ollama not running
-                        </span>
-                      )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRefreshOllama}
-                        disabled={ollamaStatus.checking}
-                        className="h-6 px-2 text-xs ml-auto"
-                      >
-                        {ollamaStatus.checking ? (
-                          <UiIcon name="loader" className="size-3 animate-spin" />
-                        ) : (
-                          <UiIcon name="refresh-cw" className="size-3" />
-                        )}
-                        Refresh
-                      </Button>
-                    </div>
-
-                    {ollamaStatus.models.length > 0 && (
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium text-muted-foreground">
-                          Model
-                        </Label>
-                        <select
-                          value={settings.current.model}
-                          onChange={(e) => handleModelChange(e.target.value)}
-                          className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs font-mono"
-                        >
-                          {ollamaStatus.models.map((m) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                        <p className="text-[11px] text-muted-foreground">
-                          Models are pulled locally via <code className="text-foreground/60">ollama pull</code>
-                        </p>
-                      </div>
-                    )}
-
-                    {!ollamaStatus.detected && (
-                      <p className="text-[11px] text-muted-foreground">
-                        Install Ollama from{" "}
-                        <code className="text-foreground/60">ollama.com</code>{" "}
-                        and run <code className="text-foreground/60">ollama serve</code> to get started.
-                      </p>
-                    )}
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-4 pt-2">
-                  {/* API Key */}
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium text-muted-foreground">
-                      API Key
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        type={showApiKeys[provider.name] ? "text" : "password"}
-                        placeholder={
-                          provider.hasApiKey
-                            ? "Key saved — enter new to replace"
-                            : "sk-... or API key"
-                        }
-                        value={apiKeyInputs[provider.name] ?? ""}
-                        onChange={(e) =>
-                          setApiKeyInputs((prev) => ({
-                            ...prev,
-                            [provider.name]: e.target.value,
-                          }))
-                        }
-                        className="h-8 pr-8 font-mono text-xs bg-background"
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        spellCheck="false"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowApiKeys((prev) => ({
-                            ...prev,
-                            [provider.name]: !prev[provider.name],
-                          }))
-                        }
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors select-none"
-                      >
-                        {showApiKeys[provider.name] ? (
-                          <UiIcon name="eye-off" className="size-3" />
-                        ) : (
-                          <UiIcon name="eye" className="size-3" />
-                        )}
-                      </button>
-                    </div>
-                    {provider.hasApiKey && (
-                      <div className="flex items-center gap-3">
-                        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                          <UiIcon name="circle-check" className="size-3" />
-                          API key is set
-                        </p>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              await setAiApiKey(
-                                provider.name as
-                                  | "openai"
-                                  | "anthropic"
-                                  | "google"
-                                  | "openai-compatible",
-                                ""
-                              );
-                              await loadSettings();
-                            } catch (err) {
-                              toast.error(
-                                err instanceof Error
-                                  ? err.message
-                                  : "Failed to remove API key"
-                              );
-                            }
-                          }}
-                          className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Base URL for OpenAI-compatible */}
-                  {provider.name === "openai-compatible" && (
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-muted-foreground">
-                        Base URL
-                      </Label>
-                      <Input
-                        type="url"
-                        placeholder="http://localhost:1234/v1"
-                        value={baseUrlInput}
-                        onChange={(e) => setBaseUrlInput(e.target.value)}
-                        onBlur={() => {
-                          if (baseUrlInput.trim()) {
-                            handleSaveBaseUrl();
-                          }
-                        }}
-                        className="h-8 font-mono text-xs bg-background"
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        Ex:{" "}
-                        <code className="text-foreground/60">
-                          http://localhost:1234/v1
-                        </code>
-                      </p>
-                    </div>
-                  )}
-
-                  {/* OpenAI-compatible model by ID */}
-                  {provider.name === "openai-compatible" && (
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-muted-foreground">
-                        Model ID
-                      </Label>
-                      <div className="flex gap-1.5">
-                        <Input
-                          value={modelInput}
-                          onChange={(e) => {
-                            setModelInput(e.target.value);
-                            if (modelSaved) setModelSaved(false);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && modelInput.trim()) {
-                              void handleModelChange(modelInput.trim());
-                            }
-                          }}
-                          placeholder="anthropic/claude-sonnet-4.5"
-                          className="h-8 flex-1 font-mono text-xs bg-background"
-                          autoComplete="off"
-                          autoCorrect="off"
-                          autoCapitalize="off"
-                          spellCheck="false"
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => void handleModelChange(modelInput.trim())}
-                          disabled={isSavingModel || !modelInput.trim() || modelSaved}
-                          className={`h-8 px-3 text-xs gap-1.5 shadow-sm shrink-0 transition-[background-color,color,box-shadow] duration-200 ease-out ${
-                            modelSaved
-                              ? "bg-emerald-500 text-white hover:bg-emerald-500/90 hover:text-white"
-                              : ""
-                          }`}
-                        >
-                          {isSavingModel ? (
-                            <UiIcon name="loader" className="size-3 animate-spin" />
-                          ) : modelSaved ? (
-                            <span
-                              className="flex items-center gap-1"
-                              style={{ animation: "saveFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)" }}
-                            >
-                              <UiIcon name="check" className="size-3" />
-                              Saved!
-                            </span>
-                          ) : (
-                            "Save"
-                          )}
-                        </Button>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        Enter the exact model ID exposed by your provider.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            <DialogFooter className="gap-2.5 border-t bg-muted/30 px-6 py-3.5">
-              {openConfigProvider && (() => {
-                if (openConfigProvider === "ollama") {
-                  return (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => setOpenConfigProvider(null)}
-                      className="h-8 px-5 text-xs shadow-sm"
-                    >
-                      Done
-                    </Button>
-                  );
-                }
-                const provider = settings.providers.find(p => p.name === openConfigProvider);
-                const hasKeyInput = apiKeyInputs[openConfigProvider]?.trim();
-                const canSave = hasKeyInput && !isSavingKey[openConfigProvider];
-                return (
-                  <>
-                    {canSave && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setApiKeyInputs(prev => ({ ...prev, [openConfigProvider]: "" }))}
-                        disabled={isSavingKey[openConfigProvider]}
-                        className="h-8 px-3 text-xs"
-                      >
-                        Clear
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={async () => {
-                        if (hasKeyInput) {
-                          await handleSaveApiKey(openConfigProvider);
-                        }
-                        setOpenConfigProvider(null);
-                      }}
-                      disabled={isSavingKey[openConfigProvider]}
-                      className="h-8 px-5 text-xs gap-1.5 shadow-sm"
-                    >
-                      {isSavingKey[openConfigProvider] ? (
-                        <>
-                          <UiIcon name="loader" className="size-3.5 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        "Done"
-                      )}
-                    </Button>
-                  </>
-                );
-              })()}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Privacy & Context Controls */}
-      <div className="space-y-3">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Privacy & Context
-        </Label>
-
-        {/* Preset buttons */}
-        <div className="flex gap-1.5">
-          {(["full", "minimal", "private"] as const).map((preset) => (
-            <Button
-              key={preset}
-              variant={privacyPreset === preset ? "default" : "outline"}
-              size="sm"
-              onClick={() => handlePrivacyPreset(preset)}
-              className="text-xs capitalize h-7 px-2.5"
-            >
-              {preset === "full" && <UiIcon name="globe" className="size-3 mr-1" />}
-              {preset === "minimal" && <UiIcon name="shield" className="size-3 mr-1" />}
-              {preset === "private" && <UiIcon name="lock" className="size-3 mr-1" />}
-              {preset}
-            </Button>
-          ))}
+          <MissingConfigWarning
+            settings={settings}
+            ollamaDetected={ollamaStatus.detected}
+          />
         </div>
-
-        {/* Individual toggles */}
-        <div className="space-y-1.5 rounded-xl border p-3">
-          {([
-            { key: "schema" as const, label: "Schema", desc: "Table names, columns, types" },
-            { key: "connectionInfo" as const, label: "Connection Info", desc: "Host, port, database name" },
-            { key: "connectionsList" as const, label: "Connections List", desc: "All your saved connections" },
-            { key: "memory" as const, label: "Memory", desc: "Recent conversations & similar queries" },
-          ]).map((item) => (
-            <label
-              key={item.key}
-              className="flex items-center justify-between py-1.5 cursor-pointer select-none"
-            >
-              <div>
-                <p className="text-xs font-medium">{item.label}</p>
-                <p className="text-[11px] text-muted-foreground">{item.desc}</p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={privacySettings[item.key]}
-                onClick={() => handlePrivacyToggle(item.key, !privacySettings[item.key])}
-                className={cn(
-                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
-                  privacySettings[item.key]
-                    ? "bg-primary"
-                    : "bg-input",
-                )}
-              >
-                <span
-                  className={cn(
-                    "pointer-events-none inline-block size-4 rounded-full bg-background shadow-sm transition-transform duration-200",
-                    privacySettings[item.key] ? "translate-x-4" : "translate-x-0",
-                  )}
-                />
-              </button>
-            </label>
-          ))}
-        </div>
-
-        {/* Data locality indicator */}
-        {settings.current.provider === "ollama" ? (
-          <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
-            <UiIcon name="shield-check" className="size-4" />
-            <span>All data stays on your machine</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-            <UiIcon name="cloud" className="size-4" />
-            <span>
-              Data is sent to {settings.providers.find(p => p.name === settings.current.provider)?.label ?? "external"} servers
-            </span>
-          </div>
-        )}
-      </div>
       </div>
 
+      <PrivacySettingsSection
+        privacyPreset={privacyPreset}
+        privacySettings={privacySettings}
+        currentProvider={settings.current.provider}
+        providerLabel={currentProviderLabel}
+        onPresetChange={handlePrivacyPreset}
+        onToggle={handlePrivacyToggle}
+      />
     </>
   );
 
-  if (compact) {
+  return (
+    <>
+      {compact ? (
+        <div className="space-y-6 max-w-xl">{innerContent}</div>
+      ) : (
+        <ScrollArea className="h-full">
+          <div className="mx-auto max-w-xl px-6 py-8 space-y-8">{innerContent}</div>
+        </ScrollArea>
+      )}
+
+      <ProviderConfigDialog
+        open={!!openConfigProvider}
+        onOpenChange={(o) => !o && setOpenConfigProvider(null)}
+        providerName={openConfigProvider}
+        settings={settings}
+        ollamaStatus={ollamaStatus}
+        onRefreshOllama={handleRefreshOllama}
+        onSaveApiKey={handleSaveApiKey}
+        onRemoveApiKey={handleRemoveApiKey}
+        onModelChange={handleModelChange}
+        onSaveBaseUrl={handleSaveBaseUrl}
+      />
+    </>
+  );
+}
+
+function AiSettingsStatus({
+  configured,
+  settings,
+}: {
+  configured: boolean;
+  settings: AiProvidersInfo;
+}) {
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={configured ? "ready" : "missing"}
+        initial={{ opacity: 0, y: 2 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -2 }}
+        transition={{ duration: 0.15, ease: EASE_OUT }}
+        className={cn(
+          "flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-xs transition-colors duration-200 ease-out",
+          configured
+            ? "border-emerald-500/15 bg-emerald-500/[0.04] text-emerald-700 dark:text-emerald-400"
+            : "border-amber-500/15 bg-amber-500/[0.04] text-amber-700 dark:text-amber-400",
+        )}
+      >
+        {configured ? (
+          <>
+            <UiIcon name="circle-check" className="size-4 shrink-0" />
+            <span className="font-medium">AI is configured and ready to use</span>
+          </>
+        ) : (
+          <>
+            <UiIcon name="x" className="size-4 shrink-0" />
+            <span className="font-medium">
+              {settings.current.provider === "ollama"
+                ? "Start Ollama to use local models (run `ollama serve`)"
+                : settings.current.provider === "openai-compatible"
+                  ? "Set the Base URL to enable OpenAI-compatible provider"
+                  : "Add an API key to enable AI features"}
+            </span>
+          </>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function MissingConfigWarning({
+  settings,
+  ollamaDetected,
+}: {
+  settings: AiProvidersInfo;
+  ollamaDetected: boolean;
+}) {
+  if (settings.current.provider === "ollama" && !ollamaDetected) {
     return (
-      <div className="space-y-6 max-w-xl">
-        {innerContent}
+      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/6 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 mt-0.5">
+          <UiIcon name="alert-circle" className="size-3.5" />
+        </div>
+        <span className="leading-relaxed">
+          Ollama is not running. Start it with{" "}
+          <code className="font-mono">ollama serve</code> in your terminal.
+        </span>
       </div>
     );
   }
-  return (
-    <ScrollArea className="h-full">
-      <div className="mx-auto max-w-xl px-6 py-8 space-y-8">
-        {innerContent}
-      </div>
-    </ScrollArea>
+
+  const activeProvider = settings.providers.find(
+    (p) => p.name === settings.current.provider,
   );
+  if (!activeProvider?.hasApiKey && settings.current.provider !== "ollama") {
+    return (
+      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/6 px-3.5 py-3 text-xs text-amber-700 dark:text-amber-400">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 mt-0.5">
+          <UiIcon name="alert-circle" className="size-3.5" />
+        </div>
+        <span className="leading-relaxed">
+          {settings.current.provider === "openai-compatible"
+            ? "Configure the Base URL and API key to use this provider"
+            : "Add an API key to enable this provider"}
+        </span>
+      </div>
+    );
+  }
+
+  return null;
 }

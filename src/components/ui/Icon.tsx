@@ -95,6 +95,8 @@ import {
   IconArrowBackUp,
   IconGitBranch,
   IconArrowRight,
+  IconCloud,
+  IconShieldCheck,
   IconAlertTriangle as IconTriangleAlert,
 } from "@tabler/icons-react";
 
@@ -111,6 +113,7 @@ export type IconName =
   | "bulb"
   | "calendar"
   | "braces"
+  | "cloud"
   | "chevron-down"
   | "chevron-up"
   | "chevron-left"
@@ -176,6 +179,7 @@ export type IconName =
   | "send"
   | "server"
   | "shield"
+  | "shield-check"
   | "square"
   | "star"
   | "thumbs-down"
@@ -224,6 +228,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   "chevron-right": IconChevronRight,
   check: IconCheck,
   "circle-check": IconCircleCheck,
+  cloud: IconCloud,
   clock: IconClock,
   code: IconCode,
   "columns-3": IconColumns3,
@@ -284,6 +289,7 @@ const ICON_MAP: Record<IconName, IconComponent> = {
   send: IconSend,
   server: IconServer,
   shield: IconShield,
+  "shield-check": IconShieldCheck,
   square: IconSquare,
   star: IconStar,
   "thumbs-down": IconThumbDown,
