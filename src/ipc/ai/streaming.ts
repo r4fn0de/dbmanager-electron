@@ -1168,14 +1168,15 @@ async function handleChatStart(
     }
   } catch (err) {
     if (abortController.signal.aborted || isAbortError(err)) {
-      // If the stream itself reported an error before abort, use that instead.
-      if (streamError) {
-        const message = buildEnhancedErrorMessage(streamError, providerName, modelId);
-        safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
-          chatId,
-          message,
-        });
-      }
+      const message = buildEnhancedErrorMessage(
+        streamError ?? err ?? "AI stream aborted before completion.",
+        providerName,
+        modelId,
+      );
+      safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
+        chatId,
+        message,
+      });
       return;
     }
 
@@ -1278,13 +1279,15 @@ ${instruction}`
     });
   } catch (err) {
     if (abortController.signal.aborted || isAbortError(err)) {
-      if (inlineStreamError) {
-        const message = buildEnhancedErrorMessage(inlineStreamError, inlineProviderName, inlineModelId);
-        safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
-          requestId,
-          message,
-        });
-      }
+      const message = buildEnhancedErrorMessage(
+        inlineStreamError ?? err ?? "Inline stream aborted before completion.",
+        inlineProviderName,
+        inlineModelId,
+      );
+      safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
+        requestId,
+        message,
+      });
       return;
     }
 

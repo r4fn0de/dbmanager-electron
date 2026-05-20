@@ -70,9 +70,8 @@ import { ChatTable } from "./ai-elements/chat-table";
 import { cn } from "@/lib/utils";
 import { DotmSquare12 } from "@/components/ui/dotm-square-12";
 import type { DatabaseType } from "@/ipc/db/types";
-import type { UserConnectionsContext, PrivacySettings } from "@/shared/ai/streaming-contracts";
-import { PRIVACY_PRESETS } from "@/shared/ai/streaming-contracts";
-import { getPrivacySettings as loadPrivacySettings, getAiSettings } from "../hooks/ai-actions";
+import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
+import { getAiSettings } from "../hooks/ai-actions";
 
 function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
   if (provider) {
@@ -1013,17 +1012,10 @@ export function AiChatPanel({
   const { resolvedTheme } = useTheme();
   const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
 
-  const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(
-    PRIVACY_PRESETS.full,
-  );
   const [providerIsLocal, setProviderIsLocal] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      loadPrivacySettings(),
-      getAiSettings(),
-    ]).then(([{ settings }, providersInfo]) => {
-      setPrivacySettings(settings);
+    getAiSettings().then((providersInfo) => {
       setProviderIsLocal(providersInfo.current.provider === "ollama");
     });
   }, []);
@@ -1051,7 +1043,6 @@ export function AiChatPanel({
     schemaContext,
     connectionInfo,
     userConnectionsContext,
-    privacySettings,
   });
 
   const [input, setInput] = useState("");
@@ -1656,7 +1647,7 @@ export function AiChatPanel({
               "focus-within:border-border/50 focus-within:bg-background/70",
               "dark:focus-within:bg-background/60",
               "transition-[background,border-color,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-              hasChips ? "pt-2.5 pb-1" : "py-1",
+              hasChips ? "pt-3 pb-1" : "py-1",
             )}
           >
           <AnimatePresence>
@@ -1668,7 +1659,7 @@ export function AiChatPanel({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
                   transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1.5 dark:bg-muted/30"
+                  className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1.5 dark:bg-muted/30 mb-1"
                 >
                   <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/15 text-[10px] font-semibold text-foreground dark:bg-foreground/10">
                     AI
@@ -1697,7 +1688,7 @@ export function AiChatPanel({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
                   transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2 py-1 dark:border-amber-400/35 dark:bg-amber-400/20"
+                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2 py-1 dark:border-amber-400/35 dark:bg-amber-400/20 mb-1"
                 >
                   <UiIcon name="code" className="size-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
                   <div className="min-w-0">
@@ -1724,7 +1715,7 @@ export function AiChatPanel({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
                   transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1 dark:bg-muted/30"
+                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1 dark:bg-muted/30 mb-1"
                 >
                   <UiIcon name="table" className="size-3.5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0">
@@ -1744,7 +1735,10 @@ export function AiChatPanel({
                 </motion.div>
               )}
           </AnimatePresence>
-          <div className="flex flex-wrap items-center gap-1 px-1.5 py-0">
+          <div className={cn(
+            "flex flex-wrap items-center gap-1 px-1.5 py-0",
+            hasChips && "mt-2",
+          )}>
             {Array.from(selectedMentions.entries()).map(([id, connection]) => (
               <MentionChip
                 key={id}
@@ -1759,11 +1753,12 @@ export function AiChatPanel({
                   ? "Ask about your database…"
                   : "Ask anything about SQL, modeling, or debugging…"
               }
-              className="
-                w-auto! max-h-62.5 min-h-10 min-w-32 flex-1 basis-32 overflow-y-auto px-0 py-0 text-sm leading-5
-                placeholder:text-muted-foreground/50
-                dark:bg-transparent
-              "
+              className={cn(
+                "w-auto! max-h-62.5 min-h-10 min-w-32 flex-1 basis-32 overflow-y-auto py-0 text-sm leading-5",
+                "placeholder:text-muted-foreground/50",
+                "dark:bg-transparent",
+                selectedMentions.size > 0 ? "pl-1.5 pr-0" : "px-0",
+              )}
             />
           </div>
           <PromptInputActions className="justify-end gap-2 pl-2 pr-0.5 pb-1.5 pt-1">

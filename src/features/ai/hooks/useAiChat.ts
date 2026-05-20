@@ -10,7 +10,6 @@ import type {
   AiChatChunkPayload,
   AiRendererApi,
   UserConnectionsContext,
-  PrivacySettings,
 } from "@/shared/ai/streaming-contracts";
 
 export interface AiChatContextTag {
@@ -60,6 +59,39 @@ export interface ToolInvocationPart {
 /** Union of all part types that can appear in an assistant message. */
 export type AiChatMessagePart = TextPart | ReasoningPart | SourcePart | ToolInvocationPart;
 
+function isToolInvocationOpen(part: AiChatMessagePart): boolean {
+  return part.type === "tool-invocation" && part.toolInvocation.state !== "result";
+}
+
+function findToolInvocationIndex(
+  parts: AiChatMessagePart[],
+  toolCallId: string | undefined,
+  toolName: string | undefined,
+): number {
+  if (toolCallId) {
+    return parts.findIndex(
+      (part) =>
+        part.type === "tool-invocation"
+        && part.toolInvocation.toolCallId === toolCallId,
+    );
+  }
+
+  if (!toolName) return -1;
+
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const part = parts[i];
+    if (
+      part?.type === "tool-invocation"
+      && part.toolInvocation.toolName === toolName
+      && part.toolInvocation.state !== "result"
+    ) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 export interface AiChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -107,8 +139,6 @@ interface UseAiChatOptions {
   };
   /** Optional global snapshot of user connections for cross-connection questions */
   userConnectionsContext?: UserConnectionsContext;
-  /** Privacy settings for context gating */
-  privacySettings?: PrivacySettings;
 }
 
 interface UseAiChatReturn {
@@ -158,6 +188,24 @@ function normalizeChatErrorMessage(message: string): string {
   }
 
   return trimmed;
+}
+
+function settleStreamingMessages(messages: AiChatMessage[]): AiChatMessage[] {
+  const settled: AiChatMessage[] = [];
+  for (const msg of messages) {
+    const wasStreaming = Boolean(msg.isStreaming);
+    const normalized = wasStreaming ? { ...msg, isStreaming: false } : msg;
+    const isEmptyAssistantPlaceholder =
+      normalized.role === "assistant"
+      && wasStreaming
+      && !normalized.content.trim()
+      && (normalized.parts?.length ?? 0) === 0;
+
+    if (!isEmptyAssistantPlaceholder) {
+      settled.push(normalized);
+    }
+  }
+  return settled;
 }
 
 interface AiChatStorageV1 {
@@ -513,7 +561,6 @@ export function useAiChat({
   schemaContext,
   connectionInfo,
   userConnectionsContext,
-  privacySettings,
 }: UseAiChatOptions): UseAiChatReturn {
   const [conversations, setConversations] = useState<AiChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -762,6 +809,34 @@ export function useAiChat({
             messages: conversation.messages.map((msg) => {
               if (msg.id !== id) return msg;
               const parts = [...(msg.parts ?? [])];
+              const existingIndex = findToolInvocationIndex(parts, chunk.toolCallId, chunk.toolName);
+
+              if (existingIndex >= 0) {
+                const existing = parts[existingIndex];
+                if (existing?.type === "tool-invocation") {
+                  parts[existingIndex] = {
+                    ...existing,
+                    toolInvocation: {
+                      ...existing.toolInvocation,
+                      toolCallId: existing.toolInvocation.toolCallId || toolCallId,
+                      toolName: chunk.toolName ?? existing.toolInvocation.toolName,
+                      args: chunk.input ?? existing.toolInvocation.args,
+                      state: initialState,
+                      ...(pendingApproval
+                        ? {
+                            approvalRequest: {
+                              description: pendingApproval.description,
+                              preview: pendingApproval.preview,
+                              warnings: pendingApproval.warnings,
+                            },
+                          }
+                        : {}),
+                    },
+                  };
+                }
+                return { ...msg, parts };
+              }
+
               parts.push({
                 type: "tool-invocation",
                 toolInvocation: {
@@ -790,11 +865,7 @@ export function useAiChat({
               if (msg.id !== id) return msg;
 
               const parts = [...(msg.parts ?? [])];
-              const existingToolIndex = parts.findIndex(
-                (part) =>
-                  part.type === "tool-invocation"
-                  && part.toolInvocation.toolCallId === chunk.toolCallId,
-              );
+              const existingToolIndex = findToolInvocationIndex(parts, chunk.toolCallId, chunk.toolName);
 
               if (existingToolIndex >= 0) {
                 const existing = parts[existingToolIndex];
@@ -803,6 +874,7 @@ export function useAiChat({
                     ...existing,
                     toolInvocation: {
                       ...existing.toolInvocation,
+                      toolName: chunk.toolName ?? existing.toolInvocation.toolName,
                       state: "partial-call",
                       args:
                         chunk.type === "tool-call-delta" && chunk.argsTextDelta
@@ -845,23 +917,37 @@ export function useAiChat({
             updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
               if (msg.id !== id) return msg;
-              const parts = (msg.parts ?? []).map((part) => {
-                if (
-                  part.type === "tool-invocation"
-                  && part.toolInvocation.toolCallId === chunk.toolCallId
-                ) {
-                  return {
-                    ...part,
+              const parts = [...(msg.parts ?? [])];
+              const resultIndex = findToolInvocationIndex(parts, chunk.toolCallId, chunk.toolName);
+              if (resultIndex >= 0) {
+                const current = parts[resultIndex];
+                if (current?.type === "tool-invocation") {
+                  parts[resultIndex] = {
+                    ...current,
                     toolInvocation: {
-                      ...part.toolInvocation,
+                      ...current.toolInvocation,
                       result: chunk.result,
                       state: "result" as const,
                     },
                   };
                 }
-                return part;
-              });
-              return { ...msg, parts };
+              }
+
+              // Safety net: keep only one open invocation per tool name.
+              const seenOpenByTool = new Set<string>();
+              const deduped: AiChatMessagePart[] = [];
+              for (const part of parts) {
+                if (!isToolInvocationOpen(part)) {
+                  deduped.push(part);
+                  continue;
+                }
+
+                const key = part.toolInvocation.toolName;
+                if (seenOpenByTool.has(key)) continue;
+                seenOpenByTool.add(key);
+                deduped.push(part);
+              }
+              return { ...msg, parts: deduped };
             }),
           };
         });
@@ -874,14 +960,10 @@ export function useAiChat({
 
       if (streamConversationId) {
         updateConversationById(streamConversationId, (conversation) => {
-          const id = assistantIdRef.current;
-          if (!id) return conversation;
           return {
             ...conversation,
             updatedAt: toIsoNow(),
-            messages: conversation.messages.map((msg) =>
-              msg.id === id ? { ...msg, isStreaming: false } : msg,
-            ),
+            messages: settleStreamingMessages(conversation.messages),
           };
         });
       }
@@ -899,13 +981,11 @@ export function useAiChat({
         setIsLoading(false);
         if (streamConversationId) {
           updateConversationById(streamConversationId, (conversation) => {
-            const id = assistantIdRef.current;
-            if (!id) return conversation;
             assistantIdRef.current = null;
             return {
               ...conversation,
               updatedAt: toIsoNow(),
-              messages: conversation.messages.filter((msg) => msg.id !== id),
+              messages: settleStreamingMessages(conversation.messages),
             };
           });
         } else {
@@ -1003,7 +1083,6 @@ export function useAiChat({
         connectionInfo,
         userConnectionsContext,
         messages: coreMessages,
-        privacySettings,
       });
 
       if (!hadUserMessages && isUntitledConversation) {
