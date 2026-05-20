@@ -1034,6 +1034,7 @@ export function AiChatPanel({
     activeConversationId,
     isLoading,
     error,
+    clearError,
     sendMessage,
     abort,
     clearMessages,
@@ -1054,6 +1055,7 @@ export function AiChatPanel({
   });
 
   const [input, setInput] = useState("");
+  const [lastSubmittedPrompt, setLastSubmittedPrompt] = useState("");
   const [dismissedContext, setDismissedContext] = useState<{
     selection: boolean;
     error: boolean;
@@ -1273,13 +1275,15 @@ export function AiChatPanel({
       : undefined;
     const mentionedConnection = selectedMentionConnection ?? typedMentionConnection;
 
-    sendMessage(input.trim(), {
+    const prompt = input.trim();
+    sendMessage(prompt, {
       contextSnapshot:
         contextSnapshot.selectionPreview || contextSnapshot.errorPreview || contextSnapshot.tablePreview
           ? contextSnapshot
           : undefined,
       mentionedConnectionId: mentionedConnection?.id ?? null,
     });
+    setLastSubmittedPrompt(prompt);
     setInput("");
     clearMentions();
   }, [
@@ -1296,6 +1300,12 @@ export function AiChatPanel({
     selectedMentions,
     clearMentions,
   ]);
+
+  const handleRetryLastPrompt = useCallback(() => {
+    if (!lastSubmittedPrompt || isLoading) return;
+    clearError();
+    sendMessage(lastSubmittedPrompt);
+  }, [clearError, isLoading, lastSubmittedPrompt, sendMessage]);
 
   const handleDismissContextChip = useCallback((kind: "selection" | "error" | "table") => {
     setExitingContext((prev) => ({ ...prev, [kind]: true }));
@@ -1584,8 +1594,35 @@ export function AiChatPanel({
       {/* Input */}
       <div className="z-30 shrink-0 pl-4 pr-3 py-2">
         {error && (
-          <div className="relative z-10 mb-2 rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
-            {error}
+          <div className="relative z-10 mb-2 rounded-md border border-red-500/30 bg-red-500/8 px-2.5 py-2 text-xs text-red-700 dark:text-red-300 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
+            <div className="flex items-start gap-2">
+              <UiIcon name="alert-triangle" className="mt-0.5 size-3.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">Streaming failed</p>
+                <p className="mt-0.5 break-words text-red-700/90 dark:text-red-300/90">{error}</p>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 border-red-500/30 bg-transparent px-2 text-[11px] text-red-700 hover:bg-red-500/10 dark:text-red-300"
+                    onClick={handleRetryLastPrompt}
+                    disabled={!lastSubmittedPrompt || isLoading}
+                  >
+                    Retry
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[11px] text-red-700/80 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300/80 dark:hover:text-red-300"
+                    onClick={clearError}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         <div className="relative">

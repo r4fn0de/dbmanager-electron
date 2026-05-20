@@ -336,6 +336,55 @@ function createMessageId(scopeId: string, role: "user" | "assistant"): string {
     .slice(2, 10)}`;
 }
 
+function buildEnhancedErrorMessage(
+  err: unknown,
+  providerName: string,
+  modelId: string | undefined,
+): string {
+  const rawMessage = err instanceof Error ? err.message : String(err);
+  const errorName = err instanceof Error ? err.name : "UnknownError";
+
+  const prefix = modelId ? `[${providerName}/${modelId}]` : `[${providerName}]`;
+
+  if (rawMessage.includes("401") || rawMessage.toLowerCase().includes("unauthorized") || rawMessage.toLowerCase().includes("invalid api key")) {
+    return `${prefix} Authentication failed. Check that your ${providerName} API key is correct and has not expired.`;
+  }
+
+  if (rawMessage.includes("429") || rawMessage.toLowerCase().includes("rate limit") || rawMessage.toLowerCase().includes("too many requests")) {
+    return `${prefix} Rate limit exceeded. Wait a moment and try again, or check your ${providerName} plan limits.`;
+  }
+
+  if (rawMessage.includes("402") || rawMessage.toLowerCase().includes("insufficient") || rawMessage.toLowerCase().includes("quota") || rawMessage.toLowerCase().includes("billing")) {
+    return `${prefix} Billing or quota issue. Check your ${providerName} account has sufficient credits.`;
+  }
+
+  if (rawMessage.includes("503") || rawMessage.includes("502") || rawMessage.includes("504") || rawMessage.toLowerCase().includes("service unavailable") || rawMessage.toLowerCase().includes("overloaded")) {
+    return `${prefix} The AI provider is temporarily unavailable. Try again in a few moments.`;
+  }
+
+  if (rawMessage.toLowerCase().includes("not found") || rawMessage.toLowerCase().includes("does not exist") || rawMessage.toLowerCase().includes("unknown model") || rawMessage.toLowerCase().includes("model_not_found")) {
+    return `${prefix} Model "${modelId ?? "unknown"}" is not available or does not exist. Update the model in AI Settings.`;
+  }
+
+  if (rawMessage.toLowerCase().includes("timeout") || rawMessage.toLowerCase().includes("timed out")) {
+    return `${prefix} The request timed out. The model took too long to respond. Try a simpler query or switch to a faster model.`;
+  }
+
+  if (rawMessage.toLowerCase().includes("content filter") || rawMessage.toLowerCase().includes("safety") || rawMessage.toLowerCase().includes("moderation")) {
+    return `${prefix} The response was blocked by content moderation. Rephrase your question.`;
+  }
+
+  if (rawMessage.toLowerCase().includes("context length") || rawMessage.toLowerCase().includes("context_length") || rawMessage.toLowerCase().includes("maximum context") || rawMessage.toLowerCase().includes("token limit")) {
+    return `${prefix} Context limit exceeded. The conversation is too long for this model. Start a new conversation.`;
+  }
+
+  if (errorName === "TypeError" && rawMessage.includes("fetch")) {
+    return `${prefix} Network error. Check your internet connection and ensure the API endpoint is reachable.`;
+  }
+
+  return `${prefix} ${rawMessage}`;
+}
+
 function findLastUserMessage(messages: ModelMessage[]): ModelMessage | undefined {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i]?.role === "user") {
@@ -969,9 +1018,16 @@ async function handleChatStart(
     return;
   }
 
+  let streamError: unknown = undefined;
+  let model: ReturnType<typeof getCurrentModel> | undefined;
+  let providerName = "";
+  let modelId: string | undefined;
+
   try {
-    const model = getCurrentModel();
-    const providerName = getAiSettings().provider;
+    model = getCurrentModel();
+    const settings = getAiSettings();
+    providerName = settings.provider;
+    modelId = settings.model;
     const isLocal = isLocalProvider(providerName);
     const privacy = input.privacySettings ?? getPrivacySettings();
 
@@ -1033,6 +1089,8 @@ async function handleChatStart(
       },
       onError(event) {
         console.warn("[ai] Chat streaming onError:", event.error);
+        streamError = event.error;
+        abortController.abort();
       },
     });
 
@@ -1110,13 +1168,18 @@ async function handleChatStart(
     }
   } catch (err) {
     if (abortController.signal.aborted || isAbortError(err)) {
+      // If the stream itself reported an error before abort, use that instead.
+      if (streamError) {
+        const message = buildEnhancedErrorMessage(streamError, providerName, modelId);
+        safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
+          chatId,
+          message,
+        });
+      }
       return;
     }
 
-    const message =
-      err instanceof Error
-        ? err.message
-        : "An unexpected error occurred during AI chat.";
+    const message = buildEnhancedErrorMessage(err, providerName, modelId);
 
     safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
       chatId,
@@ -1140,8 +1203,16 @@ async function handleInlineGenerateStart(
   const abortController = new AbortController();
   activeInlineAbortControllers.set(requestId, abortController);
 
+  let inlineStreamError: unknown = undefined;
+  let inlineModel: ReturnType<typeof getCurrentModel> | undefined;
+  let inlineProviderName = "";
+  let inlineModelId: string | undefined;
+
   try {
-    const model = getCurrentModel();
+    inlineModel = getCurrentModel();
+    const settings = getAiSettings();
+    inlineProviderName = settings.provider;
+    inlineModelId = settings.model;
     const sourceSql = sql?.trim() ?? "";
     const instruction = prompt.trim();
     let inlineResponse = "";
@@ -1155,7 +1226,7 @@ ${instruction}`
       : instruction;
 
     const result = streamText({
-      model,
+      model: inlineModel,
       system: buildInlineSystemPrompt(dbType, schemaContext),
       prompt: finalPrompt,
       abortSignal: abortController.signal,
@@ -1176,6 +1247,8 @@ ${instruction}`
       },
       onError(event) {
         console.warn("[ai] Inline streaming onError:", event.error);
+        inlineStreamError = event.error;
+        abortController.abort();
       },
     });
 
@@ -1205,13 +1278,17 @@ ${instruction}`
     });
   } catch (err) {
     if (abortController.signal.aborted || isAbortError(err)) {
+      if (inlineStreamError) {
+        const message = buildEnhancedErrorMessage(inlineStreamError, inlineProviderName, inlineModelId);
+        safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
+          requestId,
+          message,
+        });
+      }
       return;
     }
 
-    const message =
-      err instanceof Error
-        ? err.message
-        : "An unexpected error occurred during inline generation.";
+    const message = buildEnhancedErrorMessage(err, inlineProviderName, inlineModelId);
 
     safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
       requestId,
@@ -1241,12 +1318,10 @@ function onChatStart(event: IpcMainEvent, input: ChatStartInput): void {
 
   handleChatStart(contents, input).catch((err) => {
     console.error("[ai] Chat stream error:", err);
+    const settings = getAiSettings();
     safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
       chatId: input.chatId,
-      message:
-        err instanceof Error
-          ? err.message
-          : "Unexpected failure while starting AI chat.",
+      message: buildEnhancedErrorMessage(err, settings.provider, settings.model),
     });
   });
 }
@@ -1273,12 +1348,10 @@ function onInlineStart(event: IpcMainEvent, input: InlineGenerateStartInput): vo
 
   handleInlineGenerateStart(contents, input).catch((err) => {
     console.error("[ai] Inline generation stream error:", err);
+    const settings = getAiSettings();
     safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
       requestId: input.requestId,
-      message:
-        err instanceof Error
-          ? err.message
-          : "Unexpected failure while starting inline generation.",
+      message: buildEnhancedErrorMessage(err, settings.provider, settings.model),
     });
   });
 }

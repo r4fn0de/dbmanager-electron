@@ -117,6 +117,7 @@ interface UseAiChatReturn {
   activeConversationId: string | null;
   isLoading: boolean;
   error: string | null;
+  clearError: () => void;
   sendMessage: (
     content: string,
     options?: {
@@ -147,6 +148,17 @@ const MAX_MESSAGES_PER_CONVERSATION = 120;
 const DEFAULT_CONVERSATION_TITLE = "New Chat";
 const MAX_MODEL_MESSAGES = 32;
 const MAX_MODEL_CHARS = 24_000;
+
+function normalizeChatErrorMessage(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) return "AI stream failed before returning a response.";
+
+  if (/no output generated/i.test(trimmed)) {
+    return "AI stream failed before returning output. Check provider/model settings and try again.";
+  }
+
+  return trimmed;
+}
 
 interface AiChatStorageV1 {
   version: 1;
@@ -883,7 +895,7 @@ export function useAiChat({
         if (chatId !== chatIdRef.current) return;
         const streamConversationId = streamConversationIdRef.current;
 
-        setError(message);
+        setError(normalizeChatErrorMessage(message));
         setIsLoading(false);
         if (streamConversationId) {
           updateConversationById(streamConversationId, (conversation) => {
@@ -1216,6 +1228,10 @@ export function useAiChat({
     clearCurrentConversation();
   }, [clearCurrentConversation]);
 
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
   useEffect(() => {
     if (!activeConversationId) return;
     const exists = conversations.some((conversation) => conversation.id === activeConversationId);
@@ -1230,6 +1246,7 @@ export function useAiChat({
     activeConversationId,
     isLoading,
     error,
+    clearError,
     sendMessage,
     abort,
     clearMessages,
