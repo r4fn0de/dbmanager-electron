@@ -58,6 +58,12 @@ export interface TablesExplorerSidebarProps {
   tableSearch: string;
   /** Whether the schema is currently loading */
   isLoading: boolean;
+  /** Whether schema loading failed */
+  isError?: boolean;
+  /** Error message for schema loading */
+  errorMessage?: string;
+  /** Retry callback for schema loading */
+  onRetry?: () => void;
   /** Whether AI-powered search is enabled */
   aiSearchEnabled: boolean;
   /** Whether AI search is currently in progress */
@@ -106,6 +112,9 @@ export function TablesExplorerSidebar({
   selectedTableRef,
   tableSearch,
   isLoading,
+  isError,
+  errorMessage,
+  onRetry,
   aiSearchEnabled,
   isAiSearching,
   aiMatchedNames,
@@ -305,6 +314,18 @@ export function TablesExplorerSidebar({
                   <Skeleton className="h-2.5 w-20" />
                 </div>
               ))}
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-10 px-4 text-center">
+              <Icon name="alert-circle" className="size-4 text-destructive/70" />
+              <p className="text-xs text-muted-foreground">
+                {errorMessage || "Failed to load tables"}
+              </p>
+              {onRetry && (
+                <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={onRetry}>
+                  Retry
+                </Button>
+              )}
             </div>
           ) : filteredTables.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 px-4 text-center">

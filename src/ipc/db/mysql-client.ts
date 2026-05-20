@@ -159,13 +159,47 @@ export function mapMySqlType(columnType: string): string {
 /**
  * Run a function with a single connection from the memoized pool.
  * Replaces the old `withConnection` that created a new connection each time.
+ *
+ * NOTE: mysql2's `connectTimeout` only covers the TCP handshake phase.
+ * SSL negotiation and authentication (e.g. caching_sha2_password RSA key
+ * exchange on MySQL 8.0+) are NOT bounded by `connectTimeout`. We wrap
+ * `pool.getConnection()` with an explicit timeout to prevent the sidebar
+ * from hanging indefinitely when the auth or SSL phase stalls.
  */
 async function withConnection<T>(
   connectionString: string,
   fn: (conn: mysql.PoolConnection) => Promise<T>,
 ): Promise<T> {
   const pool = await getMysqlPool(connectionString);
-  const conn = await pool.getConnection();
+
+  // Explicit timeout for getConnection() — covers auth/SSL phases that
+  // mysql2's `connectTimeout` does NOT protect against.
+  const ACQUIRE_TIMEOUT_MS = 7_000;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+
+  const conn = await Promise.race([
+    pool.getConnection().then((connection) => {
+      if (timedOut) {
+        connection.release();
+        throw new Error("MySQL connection acquisition timed out (cancelled after timeout)");
+      }
+      return connection;
+    }),
+    new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        reject(new Error(
+          `MySQL connection acquisition timed out after ${ACQUIRE_TIMEOUT_MS}ms. ` +
+          "If you are using MySQL 8.0+, try setting the user to use " +
+          "mysql_native_password: ALTER USER '...'@'%' IDENTIFIED WITH mysql_native_password BY '...'",
+        ));
+      }, ACQUIRE_TIMEOUT_MS);
+    }),
+  ]);
+
+  clearTimeout(timeoutHandle);
+
   try {
     return await fn(conn);
   } finally {
@@ -217,7 +251,14 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
       if (config.url) return config.url;
       const sslMode = config.ssl_mode || "prefer";
       const base = `mysql://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${config.database}`;
-      return `${base}?ssl=${sslMode === "disable" ? "false" : "true"}`;
+
+      // Do not force TLS for "prefer". For some MySQL servers, forcing ssl=true
+      // can stall handshake and leave schema introspection pending.
+      if (sslMode === "disable") return `${base}?ssl=false`;
+      if (sslMode === "require" || sslMode === "verify_ca" || sslMode === "verify_full") {
+        return `${base}?ssl=true`;
+      }
+      return base;
     },
 
     async testConnection(config) {
@@ -562,38 +603,44 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
     },
 
     async getSchemaSummary(connectionString) {
-      const db = await getMysqlKysely(connectionString);
-      const excludedSchemas = ["mysql", "information_schema", "performance_schema", "sys"];
+      return await withConnection(connectionString, async (conn) => {
+        // Fast path: avoid broad information_schema introspection that can stall
+        // on some managed MySQL/MariaDB deployments.
+        const [dbRows] = await conn.query("SELECT DATABASE() AS db_name");
+        const currentSchema = (dbRows as Array<{ db_name: string | null }>)[0]?.db_name;
 
-      const schemaRows = await db
-        .selectFrom("schemata")
-        .select("SCHEMA_NAME")
-        .where("SCHEMA_NAME", "not in", excludedSchemas)
-        .orderBy("SCHEMA_NAME")
-        .execute();
+        if (!currentSchema) {
+          return { schemas: [], tables: [] };
+        }
 
-      const tableRows = await db
-        .selectFrom("tables")
-        .select(["TABLE_SCHEMA", "TABLE_NAME", "TABLE_ROWS", "TABLE_TYPE"])
-        .where("TABLE_SCHEMA", "not in", excludedSchemas)
-        .orderBy("TABLE_SCHEMA")
-        .orderBy("TABLE_NAME")
-        .execute();
+        const safeSchema = escId(currentSchema);
+        const [rawTables] = await conn.query(
+          `SHOW FULL TABLES FROM ${safeSchema}`,
+        );
 
-      return {
-        schemas: schemaRows.map((r) => r.SCHEMA_NAME),
-        tables: tableRows
-          .filter((t) => t.TABLE_TYPE === "BASE TABLE")
-          .map((t) => ({
-            name: t.TABLE_NAME,
-            schema: t.TABLE_SCHEMA,
+        const parsed = (rawTables as Array<Record<string, unknown>>)
+          .map((row) => {
+            const entries = Object.entries(row);
+            const nameEntry = entries.find(([key]) => key.startsWith("Tables_in_"));
+            const typeEntry = entries.find(([key]) => key.toLowerCase() === "table_type");
+            return {
+              name: typeof nameEntry?.[1] === "string" ? nameEntry[1] : null,
+              type: typeof typeEntry?.[1] === "string" ? typeEntry[1] : null,
+            };
+          })
+          .filter((row) => row.name && row.type && row.type.toUpperCase() === "BASE TABLE")
+          .map((row) => ({
+            name: row.name!,
+            schema: currentSchema,
             has_rls: false,
-            // TABLE_ROWS can be NULL for InnoDB tables not yet analyzed.
-            // Use nullish coalescing — 0 is a valid value (empty table),
-            // only NULL should fall back to 0.
-            estimated_row_count: t.TABLE_ROWS != null ? Number(t.TABLE_ROWS) : 0,
-          })),
-      };
+            estimated_row_count: 0,
+          }));
+
+        return {
+          schemas: [currentSchema],
+          tables: parsed,
+        };
+      });
     },
 
     async getTableDetails(connectionString, schema, table) {

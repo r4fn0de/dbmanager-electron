@@ -90,6 +90,7 @@ function loadPgPoolCtor(): PgPoolCtor {
 
 const pgPools = new Map<string, any>();
 const mysqlPools = new Map<string, MysqlPool>();
+const mysqlPoolCreating = new Map<string, Promise<MysqlPool>>();
 const clickhouseClients = new Map<string, ClickHouseClient>();
 
 // ---------------------------------------------------------------------------
@@ -166,15 +167,49 @@ export async function getMysqlPool(
   const existing = mysqlPools.get(connectionString);
   if (existing) return existing;
 
-  const mysql = await import("mysql2/promise");
-  const pool = mysql.createPool({
-    uri: connectionString,
-    connectionLimit: 10,
-    queueLimit: 0,
-    dateStrings: true,
-  });
-  mysqlPools.set(connectionString, pool);
-  return pool;
+  // Coalesce concurrent calls for the same connection string to avoid
+  // creating duplicate pools (race condition between cache-check and cache-set).
+  const pending = mysqlPoolCreating.get(connectionString);
+  if (pending) return pending;
+
+  const creation = (async (): Promise<MysqlPool> => {
+    const mysql = await import("mysql2/promise");
+
+    // Determine whether SSL should be active based on the connection string.
+    // mysql2's `connectTimeout` only limits the TCP handshake — NOT the SSL
+    // handshake or authentication exchange (e.g. caching_sha2_password RSA
+    // round-trip on MySQL 8.0+). Explicitly disabling SSL for non-SSL URIs
+    // avoids unintended TLS negotiation that can stall the connection.
+    const sslEnabled = /[?&]ssl=(true|1|require)/i.test(connectionString);
+    const sslOption: mysql.PoolOptions["ssl"] = sslEnabled
+      ? { rejectUnauthorized: false }
+      : false;
+
+    const pool = mysql.createPool({
+      uri: connectionString,
+      ssl: sslOption,
+      connectionLimit: 10,
+      queueLimit: 0,
+      waitForConnections: true,
+      // connectTimeout covers the TCP connect phase only.
+      // Auth/SSL timeouts are handled in withConnection via Promise.race.
+      connectTimeout: 5_000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 5_000,
+      dateStrings: true,
+    });
+
+    mysqlPools.set(connectionString, pool);
+    mysqlPoolCreating.delete(connectionString);
+    return pool;
+  })();
+
+  mysqlPoolCreating.set(connectionString, creation);
+
+  // On error, remove from pending so next call can retry
+  creation.catch(() => mysqlPoolCreating.delete(connectionString));
+
+  return creation;
 }
 
 /** Get a memoized Kysely instance for MySQL/MariaDB schema introspection queries. */
@@ -245,6 +280,7 @@ export async function closeAllPools(): Promise<void> {
     await db.destroy().catch(() => {});
   }
   mysqlKyselyInstances.clear();
+  mysqlPoolCreating.clear();
 
   // Close any raw MySQL pools that weren't wrapped by a Kysely instance
   for (const [key, pool] of mysqlPools.entries()) {

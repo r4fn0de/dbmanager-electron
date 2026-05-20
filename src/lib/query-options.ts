@@ -31,7 +31,11 @@ export const dbQueryKeys = {
 export const dbQueryOptions = {
   schemaSummary: (c: string, enabled = true) => queryOptions({
     queryKey: dbQueryKeys.schemaSummary(c), queryFn: () => getSchemaSummary(c),
-    enabled, staleTime: 5 * 60_000, gcTime: 30 * 60_000,
+    enabled,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
   }),
   databaseInfo: (c: string) => queryOptions({
     queryKey: dbQueryKeys.databaseInfo(c), queryFn: () => getDatabaseInfo(c),

@@ -407,9 +407,15 @@ export const getSchema = os
 export const getSchemaSummary = os
   .input(idSchema)
   .handler(async ({ input }): Promise<SchemaSummary> => {
-    const { connStr, connection } = await resolveConnectionString(input.id);
-    const driver = driverRegistry.get(resolveDbType(connection));
-    return await driver.getSchemaSummary(connStr);
+    try {
+      const { connStr, connection } = await resolveConnectionString(input.id);
+      const driver = driverRegistry.get(resolveDbType(connection));
+      return await driver.getSchemaSummary(connStr);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: sanitizeErrorMessage(err, "Failed to fetch schema summary"),
+      });
+    }
   });
 
 export const getTableDetails = os

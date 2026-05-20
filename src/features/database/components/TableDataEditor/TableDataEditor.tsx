@@ -277,7 +277,9 @@ export function TableDataEditor({
     columnWidths,
   };
 
-  if (previousTableKeyRef.current !== tableKey) {
+  useEffect(() => {
+    if (previousTableKeyRef.current === tableKey) return;
+
     perfTrackerRef.current.start("table_switch_to_first_usable_frame");
     viewStateByTableRef.current.set(
       previousTableKeyRef.current,
@@ -311,7 +313,7 @@ export function TableDataEditor({
     setFocusedCell(null);
 
     previousTableKeyRef.current = tableKey;
-  }
+  }, [tableKey, defaultFilterColumn, defaultVisibleColumns]);
 
   const deferredFilterValue = useDeferredValue(filterValue);
 

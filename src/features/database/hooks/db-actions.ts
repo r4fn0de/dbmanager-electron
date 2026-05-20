@@ -94,6 +94,24 @@ function extractErrorMessage(
   return fallback;
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+
 // ── Connection operations ────────────────────────────────────────────
 
 export async function testConnection(
@@ -179,7 +197,11 @@ export async function getSchemaSummary(
   connectionId: string,
 ): Promise<SchemaSummary> {
   try {
-    return await ipc.client.db.getSchemaSummary({ id: connectionId });
+    return await withTimeout(
+      ipc.client.db.getSchemaSummary({ id: connectionId }),
+      15_000,
+      "Schema summary request timed out",
+    );
   } catch (err) {
     throw new Error(
       err instanceof Error ? err.message : "Failed to fetch schema summary",

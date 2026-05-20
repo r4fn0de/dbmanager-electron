@@ -125,6 +125,8 @@ export function DatabasePageContent({
   const {
     data: schemaSummaryData,
     isLoading: isLoadingSchema,
+    isError: isSchemaError,
+    error: schemaError,
     refetch: refetchSchema,
   } = useQuery(dbQueryOptions.schemaSummary(connectionId, isActive));
 
@@ -293,13 +295,20 @@ export function DatabasePageContent({
     }
   }, [connection, connectionId]);
 
-  // Auto-select first schema when schemas load and none is selected
+  // Auto-select first schema when schemas load and none is selected,
+  // or when the stored/default schema doesn't exist in the current connection
+  // (e.g. stored "public" but MySQL returns ["mydb"]).
   useEffect(() => {
-    if (schemas.length > 0 && !storedTab?.lastSchema && selectedSchema === (storedTab?.lastSchema ?? "public")) {
-      const defaultSchema = schemas.includes("public") ? "public" : schemas[0];
-      if (selectedSchema !== defaultSchema) {
-        setSelectedSchema(defaultSchema);
-      }
+    if (schemas.length === 0) return;
+    const storedSchema = storedTab?.lastSchema;
+    const isStoredSchemaValid = storedSchema && schemas.includes(storedSchema);
+    const defaultSchema = storedSchema && isStoredSchemaValid
+      ? storedSchema
+      : schemas.includes("public")
+        ? "public"
+        : schemas[0];
+    if (selectedSchema !== defaultSchema) {
+      setSelectedSchema(defaultSchema);
     }
   }, [schemas, storedTab?.lastSchema, selectedSchema]);
 
@@ -1082,6 +1091,9 @@ export function DatabasePageContent({
                   selectedTableRef={selectedTableRef}
                   tableSearch={tableSearch}
                   isLoading={isLoading}
+                  isError={isSchemaError}
+                  errorMessage={schemaError instanceof Error ? schemaError.message : "Failed to load schema"}
+                  onRetry={refetchSchema}
                   aiSearchEnabled={aiSearchEnabled}
                   isAiSearching={isAiSearching}
                   aiMatchedNames={aiMatchedNames}

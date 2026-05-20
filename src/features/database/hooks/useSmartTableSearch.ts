@@ -37,12 +37,20 @@ export function useSmartTableSearch(
   const [isAiSearching, setIsAiSearching] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tableNamesRef = useRef<string[]>([]);
+
+  const clearAiState = useCallback(() => {
+    setAiMatches((prev) => (prev.size === 0 ? prev : new Set()));
+    setIsAiSearching((prev) => (prev ? false : prev));
+  }, []);
 
   // Table names for the current schema
   const tableNames = useMemo(
     () => allTables.map((t) => t.name),
     [allTables],
   );
+  const tableNamesKey = useMemo(() => tableNames.join("\u0001"), [tableNames]);
+  tableNamesRef.current = tableNames;
 
   // ── Fuzzy matching (instant, every keystroke) ──
   const fuzzyMatches = useMemo(() => {
@@ -64,16 +72,15 @@ export function useSmartTableSearch(
       }
 
       if (!searchQuery.trim() || !aiEnabled) {
-        setAiMatches(new Set());
-        setIsAiSearching(false);
+        clearAiState();
         return;
       }
 
       // Only call AI for descriptive queries
-      if (!isDescriptiveQuery(searchQuery, tableNames)) {
+      const tableNamesSnapshot = tableNamesRef.current;
+      if (!isDescriptiveQuery(searchQuery, tableNamesSnapshot)) {
         // Clear AI matches if query is no longer descriptive
-        setAiMatches(new Set());
-        setIsAiSearching(false);
+        clearAiState();
         return;
       }
 
@@ -85,7 +92,7 @@ export function useSmartTableSearch(
         controller.abort();
       }, AI_TIMEOUT_MS);
 
-      getAiTableSearchMatches(searchQuery, tableNames, schemaContext)
+      getAiTableSearchMatches(searchQuery, tableNamesSnapshot, schemaContext)
         .then((result) => {
           if (!controller.signal.aborted) {
             setAiMatches(new Set(result.matches));
@@ -94,7 +101,7 @@ export function useSmartTableSearch(
         .catch(() => {
           if (!controller.signal.aborted) {
             // On error, just keep fuzzy results — no AI matches
-            setAiMatches(new Set());
+            setAiMatches((prev) => (prev.size === 0 ? prev : new Set()));
           }
         })
         .finally(() => {
@@ -104,7 +111,7 @@ export function useSmartTableSearch(
           }
         });
     },
-    [aiEnabled, tableNames, schemaContext],
+    [aiEnabled, schemaContext, clearAiState, tableNamesKey],
   );
 
   // Debounce AI search on query change
@@ -115,15 +122,13 @@ export function useSmartTableSearch(
     }
 
     if (!query.trim() || !aiEnabled) {
-      setAiMatches(new Set());
-      setIsAiSearching(false);
+      clearAiState();
       return;
     }
 
     // Don't call AI if query isn't descriptive
-    if (!isDescriptiveQuery(query, tableNames)) {
-      setAiMatches(new Set());
-      setIsAiSearching(false);
+    if (!isDescriptiveQuery(query, tableNamesRef.current)) {
+      clearAiState();
       return;
     }
 
@@ -136,7 +141,7 @@ export function useSmartTableSearch(
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [query, aiEnabled, tableNames, triggerAiSearch]);
+  }, [query, aiEnabled, tableNamesKey, triggerAiSearch, clearAiState]);
 
   // Cleanup on unmount
   useEffect(() => {
