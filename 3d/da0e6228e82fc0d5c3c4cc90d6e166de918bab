@@ -1,0 +1,19 @@
+src/features/ai/components/AiSettingsPanel.tsx
+  s_e6b549f9f3db52::t_b89aeeb1558eac 28-30,34-35,54,87-99,117-133,157,161,177,257-297,375-377,449-461,506-508,516-579,750-761,806-829,831-884
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "3dda0e6228e82fc0d5c3c4cc90d6e166de918bab",
+  "prompts": {},
+  "sessions": {
+    "s_e6b549f9f3db52": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1c77b0241ffeudDu9xscrgeFDG",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
