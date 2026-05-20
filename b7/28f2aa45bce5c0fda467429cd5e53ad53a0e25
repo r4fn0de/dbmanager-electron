@@ -1,0 +1,19 @@
+src/features/ai/components/AiChatPanel.tsx
+  s_ac4c98fd12513c::t_6e0e5f921c5719 73-74,1018,1650,1662,1691,1718,1738-1741,1756-1761
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.10",
+  "base_commit_sha": "b728f2aa45bce5c0fda467429cd5e53ad53a0e25",
+  "prompts": {},
+  "sessions": {
+    "s_ac4c98fd12513c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1b8b99993ffe64Hw57gU6t0b4K",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
