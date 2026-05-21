@@ -60,9 +60,25 @@ export type SslMode =
   | "verify_ca"
   | "verify_full";
 
-/** Get the effective port for ClickHouse — switches 8123→8443 when SSL is required. */
+/** Get the effective port for ClickHouse.
+ *
+ * `@clickhouse/client` uses HTTP protocol, so it needs the HTTP(S) port
+ * (8123 or 8443), not the native protocol port (9000 or 9440).
+ *
+ * Conversions:
+ *   - Port 9000 (native) → 8123 (HTTP) or 8443 (HTTPS)
+ *   - Port 9440 (native TLS) → 8443 (HTTPS)
+ *   - Port 8123 with SSL require → 8443 (HTTPS)
+ *   - Any other port → returned as-is
+ */
 export function getClickhouseEffectivePort(sslMode: SslMode, configuredPort: number): number {
-  return sslMode === "require" && configuredPort === 8123 ? 8443 : configuredPort;
+  // SSL require with default HTTP port → HTTPS port
+  if (sslMode === "require" && configuredPort === 8123) return 8443;
+  // Native protocol port (9000) → HTTP (8123) or HTTPS (8443)
+  if (configuredPort === 9000) return sslMode === "require" ? 8443 : 8123;
+  // Native TLS protocol port (9440) → HTTPS (8443)
+  if (configuredPort === 9440) return 8443;
+  return configuredPort;
 }
 
 export interface Connection {

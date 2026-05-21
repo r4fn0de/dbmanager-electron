@@ -12,7 +12,7 @@
 import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
 import { getClickhouseEffectivePort } from "./types";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
-import { getClickhouseClient } from "./kysely-factory";
+import { closeClickhouseClient, getClickhouseClient } from "./kysely-factory";
 import { formatUptime } from "@/constants";
 
 // ---------------------------------------------------------------------------
@@ -106,23 +106,40 @@ export function createClickhouseDriver(): DatabaseDriver {
     sslModes: ["disable", "require"] as SslMode[],
 
     buildConnectionString(config: DriverConnectionConfig): string {
-      if (config.url) return config.url;
       const ssl = config.ssl_mode === "require";
       const protocol = ssl ? "clickhouses" : "clickhouse";
-      // When SSL is enabled, use port 8443 (HTTPS) unless a non-default port is specified
-      const port = getClickhouseEffectivePort(config.ssl_mode, config.port);
-      return `${protocol}://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${port}/${config.database}`;
+      // When SSL is enabled, use port 8443 (HTTPS) unless a non-default port is specified.
+      const effectivePort = getClickhouseEffectivePort(config.ssl_mode, config.port);
+
+      if (config.url) {
+        try {
+          const parsed = new URL(config.url);
+          const currentProtocol = parsed.protocol.toLowerCase();
+          if (currentProtocol === "clickhouse:" || currentProtocol === "clickhouses:") {
+            parsed.protocol = `${protocol}:`;
+            // Force HTTP(S) endpoint port for @clickhouse/client.
+            parsed.port = String(effectivePort);
+            // Keep database path from URL when present, otherwise use structured database.
+            if (!parsed.pathname || parsed.pathname === "/") {
+              parsed.pathname = `/${encodeURIComponent(config.database)}`;
+            }
+            return parsed.toString();
+          }
+        } catch {
+          // Fall back to structured fields below when URL cannot be parsed.
+        }
+      }
+
+      return `${protocol}://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${effectivePort}/${config.database}`;
     },
 
     async testConnection(config) {
-      try {
-        const connStr = this.buildConnectionString(config);
-        const client = await getClickhouseClient(connStr);
-        await client.query({ query: "SELECT 1" });
-        return true;
-      } catch {
-        return false;
-      }
+      const connStr = this.buildConnectionString(config);
+      // Close any cached client so a fresh one is created with the latest URL fix
+      await closeClickhouseClient(connStr);
+      const client = await getClickhouseClient(connStr);
+      await client.query({ query: "SELECT 1" });
+      return true;
     },
 
     async executeQuery(connectionString, sql, _signal) {

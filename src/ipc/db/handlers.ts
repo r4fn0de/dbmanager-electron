@@ -302,14 +302,31 @@ export const testConnection = os
     const dbType: DatabaseType = input.db_type || "postgresql";
     const driver = driverRegistry.get(dbType);
 
-    // Resolve real credentials from store — the renderer sends redacted data
-    // (password blanked, url masked) so we must look up the actual connection.
+    // Resolve real credentials from store when renderer sends redacted fields
+    // (password blanked, url masked), but keep current form values for host/port/ssl.
     let resolvedConfig = toDriverConfig(input);
     if (input.id) {
       const connections = await loadConnections();
       const stored = connections.find((c) => c.id === input.id);
       if (stored) {
-        resolvedConfig = toDriverConfig(stored);
+        const providedPassword = input.password?.trim();
+        const password = providedPassword && providedPassword.length > 0
+          ? input.password
+          : stored.password;
+
+        // Only use URL when the current payload explicitly provides a valid,
+        // non-masked URL. Otherwise, test the structured host/port fields.
+        const providedUrl = typeof input.url === "string" ? input.url.trim() : "";
+        const url = providedUrl.length > 0 && !isMaskedSecretUrl(providedUrl)
+          ? providedUrl
+          : undefined;
+
+        resolvedConfig = toDriverConfig({
+          ...stored,
+          ...input,
+          password,
+          url,
+        });
       }
     }
 
@@ -325,9 +342,25 @@ export const testConnection = os
           sslMode: resolvedConfig.ssl_mode,
           isLocal: Boolean(input.is_local),
         });
+        if (dbType === "clickhouse") {
+          const sslMode = resolvedConfig.ssl_mode;
+          const port = Number(resolvedConfig.port) || 0;
+          const hint = sslMode === "disable"
+            ? "ClickHouse test failed. If your server uses TLS, set SSL Mode to 'Require' and use HTTPS port (usually 8443 or provider-specific)."
+            : "ClickHouse test failed with SSL required. Verify host, port and credentials, and confirm the server accepts HTTPS/native HTTP endpoint.";
+
+          throw new ORPCError("BAD_REQUEST", {
+            message: `${hint} Current config: ssl_mode=${sslMode}, port=${port}.`,
+          });
+        }
+
+        throw new ORPCError("BAD_REQUEST", {
+          message: "Connection test failed",
+        });
       }
-      return ok;
+      return true;
     } catch (err) {
+      if (err instanceof ORPCError) throw err;
       const message = sanitizeErrorMessage(err, "Connection test failed");
       console.error("[db] testConnection threw", {
         dbType,

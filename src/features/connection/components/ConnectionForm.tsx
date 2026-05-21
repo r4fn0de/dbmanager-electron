@@ -107,7 +107,12 @@ function extractFromUrl(connectionUrl: string): {
     if (!dbType) return { dbType: null, host: null, port: null, database: null, username: null, password: null, sslMode: null };
 
     const host = url.hostname || null;
-    const port = url.port ? Number.parseInt(url.port, 10) : null;
+    let port = url.port ? Number.parseInt(url.port, 10) : null;
+    // Auto-correct ClickHouse native protocol ports to HTTP(S) ports
+    if (dbType === "clickhouse") {
+      if (port === 9000) port = 8123;
+      else if (port === 9440) port = 8443;
+    }
     const database = decodeURIComponent(url.pathname).replace(/^\/+/, "") || null;
     const username = url.username || null;
     const password = url.password || null;

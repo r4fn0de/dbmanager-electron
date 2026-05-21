@@ -6,7 +6,7 @@
  *   - Kysely instance cached by connection string (for type-safe schema introspection + listRows)
  *
  * PostgreSQL and MySQL use Kysely's built-in dialects.
- * ClickHouse keeps raw @clickhouse/client (no built-in Kysely dialect —
+ * ClickHouse keeps raw @clickhouse/client-web (no built-in Kysely dialect —
  * all ClickHouse queries stay raw since Kysely doesn't support it natively).
  */
 import { Kysely, PostgresDialect, MysqlDialect } from "kysely";
@@ -15,7 +15,7 @@ import { createRequire } from "node:module";
 import Module from "node:module";
 import { join } from "node:path";
 import type { Pool as MysqlPool } from "mysql2/promise";
-import type { ClickHouseClient } from "@clickhouse/client";
+
 import type { PgDatabase } from "./kysely-types";
 import type { MysqlDatabase } from "./kysely-types";
 import { closeAllSqliteDbs } from "./sqlite-driver";
@@ -223,14 +223,158 @@ export async function getMysqlKysely(connectionString: string): Promise<Kysely<M
   });
   mysqlKyselyInstances.set(connectionString, db);
   return db;
+}// ---------------------------------------------------------------------------
+// ClickHouse — raw client only (no Kysely dialect)
+// Uses pure HTTP via native fetch (Node.js 22+) instead of @clickhouse/client
+// because @clickhouse/client uses native TCP protocol (port 9000) which many
+// ClickHouse servers don't expose. HTTP works on port 8123.
+// ---------------------------------------------------------------------------
+
+/** Minimal interface matching what clickhouse-client.ts expects from a ClickHouse client. */
+interface ClickHouseClient {
+  query(params: { query: string; format?: string }): Promise<{
+    json<T>(): Promise<T[]>;
+    text(): Promise<string>;
+  }>;
+  exec(params: { query: string }): Promise<void>;
+  insert(params: { table: string; values: Record<string, unknown>[]; columns: string[] }): Promise<void>;
+  close(): Promise<void>;
+  ping(): Promise<boolean>;
 }
 
-// ---------------------------------------------------------------------------
-// ClickHouse — raw client only (no Kysely dialect)
-// ClickHouse uses HTTP-based protocol. We use the raw client for all
-// queries. Kysely doesn't have a built-in ClickHouse dialect, and the
-// HTTP-based protocol doesn't fit Kysely's streaming/connection model.
-// ---------------------------------------------------------------------------
+/**
+ * Minimal ClickHouse HTTP client using native fetch.
+ * No external dependencies — pure HTTP via Node.js 22+ fetch.
+ */
+function createHttpClickHouseClient(url: string): ClickHouseClient {
+  // Parse the URL to extract components
+  const parsedUrl = new URL(url);
+  const baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
+  const username = decodeURIComponent(parsedUrl.username || "default");
+  const password = decodeURIComponent(parsedUrl.password || "");
+  const database = parsedUrl.pathname.replace(/^\//, "") || "default";
+
+  const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+
+  return {
+    async query(params: { query: string; format?: string }) {
+      const format = params.format || "JSONEachRow";
+      const queryParams = new URLSearchParams({
+        query: params.query,
+        default_format: format,
+        database,
+      });
+
+      const response = await fetch(`${baseUrl}/?${queryParams.toString()}`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "User-Agent": "TarsDB/1.0",
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`ClickHouse HTTP error (${response.status}): ${text || "Unknown error"}`);
+      }
+
+      return {
+        async json<T = Record<string, unknown>>(): Promise<T[]> {
+          const text = await response.text();
+          if (!text.trim()) return [] as unknown as T[];
+          try {
+            return text.split("\n").filter(Boolean).map((line) => JSON.parse(line)) as T;
+          } catch {
+            return [] as unknown as T[];
+          }
+        },
+        async text(): Promise<string> {
+          return response.text();
+        },
+      };
+    },
+
+    async exec(params: { query: string }) {
+      const queryParams = new URLSearchParams({
+        query: params.query,
+        database,
+      });
+
+      const response = await fetch(`${baseUrl}/?${queryParams.toString()}`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "User-Agent": "TarsDB/1.0",
+        },
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`ClickHouse HTTP error (${response.status}): ${text || "Unknown error"}`);
+      }
+
+      // Drain response body
+      await response.text().catch(() => {});
+    },
+
+    async insert(params: { table: string; values: Record<string, unknown>[]; columns: string[] }) {
+      // Build INSERT query
+      const cols = params.columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(", ");
+      const rowsSql = params.values
+        .map((row) => {
+          const vals = params.columns.map((col) => {
+            const v = row[col];
+            if (v == null) return "NULL";
+            if (typeof v === "number") return String(v);
+            return `'${String(v).replace(/'/g, "''")}'`;
+          });
+          return `(${vals.join(", ")})`;
+        })
+        .join(", ");
+
+      const sql = `INSERT INTO ${params.table} (${cols}) VALUES ${rowsSql}`;
+
+      const queryParams = new URLSearchParams({
+        query: sql,
+        database,
+      });
+
+      const response = await fetch(`${baseUrl}/?${queryParams.toString()}`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "User-Agent": "TarsDB/1.0",
+        },
+        signal: AbortSignal.timeout(60_000),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`ClickHouse insert error (${response.status}): ${text || "Unknown error"}`);
+      }
+
+      await response.text().catch(() => {});
+    },
+
+    async close() {
+      // HTTP client has no persistent connections to close
+    },
+
+    async ping() {
+      const response = await fetch(`${baseUrl}/?query=SELECT+1`, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "User-Agent": "TarsDB/1.0",
+        },
+        signal: AbortSignal.timeout(5_000),
+      });
+      return response.ok;
+    },
+  };
+}
 
 export async function getClickhouseClient(
   connectionString: string,
@@ -238,21 +382,28 @@ export async function getClickhouseClient(
   const existing = clickhouseClients.get(connectionString);
   if (existing) return existing;
 
-  const ch = await import("@clickhouse/client");
+  // Normalise protocol: clickhouse:// → http://, clickhouses:// → https://
   let url = connectionString;
   if (url.startsWith("clickhouses://")) {
     url = url.replace("clickhouses", "https");
   } else if (url.startsWith("clickhouse://")) {
     url = url.replace("clickhouse", "http");
   }
-  const client = ch.createClient({
-    url,
-    clickhouse_settings: {
-      date_time_output_format: "iso",
-    },
-  });
+
+  // Create pure HTTP client (no @clickhouse/client dependency)
+  const client = createHttpClickHouseClient(url) as unknown as ClickHouseClient;
   clickhouseClients.set(connectionString, client);
   return client;
+}
+
+export async function closeClickhouseClient(
+  connectionString: string,
+): Promise<void> {
+  const existing = clickhouseClients.get(connectionString);
+  if (existing) {
+    clickhouseClients.delete(connectionString);
+    await existing.close().catch(() => {});
+  }
 }
 
 // ---------------------------------------------------------------------------
