@@ -1,8 +1,8 @@
 import { type SVGProps } from "react";
 
-export const MySql = (props: SVGProps<SVGSVGElement>) => {
+export const MySql = ({ className, ...props }: SVGProps<SVGSVGElement>) => {
   return (
-    <svg {...props} viewBox="0 0 256 252" preserveAspectRatio="xMidYMid" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg {...props} className={`${className ?? ""} db-icon`} viewBox="0 0 256 252" preserveAspectRatio="xMidYMid" fill="none" xmlns="http://www.w3.org/2000/svg">
       <title>MySQL</title>
       <path
         fill="#00546B"

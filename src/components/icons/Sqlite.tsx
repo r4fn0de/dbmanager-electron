@@ -7,7 +7,7 @@ export function Sqlite({ className }: { className?: string }) {
     <svg
       preserveAspectRatio="xMidYMid"
       viewBox="0 0 196 228"
-      className={className}
+      className={`${className ?? ""} db-icon`}
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>

@@ -197,6 +197,12 @@ code {
   --window-solid-bg: color-mix(in oklch, var(--background) 70%, var(--foreground));
 }
 
+/* Improve dark-mode contrast for database brand SVG icons (brand fills are too dark) */
+.dark .db-icon,
+:is(.dark) .db-icon {
+  filter: brightness(1.4) saturate(1.1);
+}
+
 .theme-neo [data-slot="tabs-list"],
 .theme-neo [data-slot="tabs-trigger"] {
   border-radius: 0 !important;
