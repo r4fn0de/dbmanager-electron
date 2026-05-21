@@ -1,0 +1,33 @@
+src/components/icons/Sqlite.tsx
+  s_0cd9f57510d393::t_6e1b757043f8bd 10
+src/styles/global.css
+  s_0cd9f57510d393::t_515e6b9553f3ac 200-205
+src/components/icons/Redis.tsx
+  s_0cd9f57510d393::t_e1caf530c20588 3-4
+src/components/icons/ClickHouse.tsx
+  s_0cd9f57510d393::t_0506dc7624ef84 3,5
+  s_0cd9f57510d393::t_c498cd7afaec85 8,12-13,16
+  s_0cd9f57510d393::t_bb9ccbb2e37d03 14-15
+src/components/icons/PostgreSql.tsx
+  s_0cd9f57510d393::t_ff2e929625817b 3,5
+src/components/icons/MariaDb.tsx
+  s_0cd9f57510d393::t_f344fc41923f25 3,5
+src/components/icons/MySql.tsx
+  s_0cd9f57510d393::t_22592189ddf439 3,5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "17e1125ddc211716295b067f3fe5b5fc900267b9",
+  "prompts": {},
+  "sessions": {
+    "s_0cd9f57510d393": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1b4912eb4ffeNZv3oaak0TBw6x",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
