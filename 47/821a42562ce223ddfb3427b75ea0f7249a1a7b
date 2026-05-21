@@ -1,0 +1,36 @@
+src/ipc/db/handlers.ts
+  s_ef70eb5a220e6f::t_02a97424a047a8 305-306,312-316,323-329
+  s_ef70eb5a220e6f::t_16b389f4ab2605 317-322
+src/ipc/db/clickhouse-client.ts
+  s_ef70eb5a220e6f::t_624158cf13a829 111-133
+  s_ac4c98fd12513c::t_ae472a85ce0f21 137,140-142
+  s_ac4c98fd12513c::t_80b76e8e85cb60 138-139
+  s_ac4c98fd12513c::t_85bb0853886f3e 15
+src/ipc/db/kysely-factory.ts
+  s_ac4c98fd12513c::t_4326a940789ff0 385,392
+  s_ac4c98fd12513c::t_f6b614770cdff5 399-408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "47821a42562ce223ddfb3427b75ea0f7249a1a7b",
+  "prompts": {},
+  "sessions": {
+    "s_ac4c98fd12513c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1b8b99993ffe64Hw57gU6t0b4K",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    },
+    "s_ef70eb5a220e6f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e47db-dd6a-7eb2-863b-44f9d3e00c79",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
