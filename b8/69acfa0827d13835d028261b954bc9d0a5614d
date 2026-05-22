@@ -1,0 +1,27 @@
+src/features/localDb/hooks/useCloneToLocal.ts
+  s_8ccdbbf2898a7f::t_fc371a668a89b0 98-102,155
+src/ipc/db/schemas.ts
+  s_8ccdbbf2898a7f::t_66ffcfa240ba19 254
+src/ipc/db/handlers.ts
+  s_8ccdbbf2898a7f::t_28f8742eb7d780 704,709
+src/ipc/db/local-db-manager.ts
+  s_8ccdbbf2898a7f::t_c580840af9cb7b 789-790,818,907,918
+src/routes/index.tsx
+  s_8ccdbbf2898a7f::t_c3b01994999d7a 178-181,184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "b869acfa0827d13835d028261b954bc9d0a5614d",
+  "prompts": {},
+  "sessions": {
+    "s_8ccdbbf2898a7f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e500f-d461-7a70-8105-e74a5579ab25",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
