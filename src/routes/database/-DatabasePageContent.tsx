@@ -3,9 +3,20 @@ import { AnimatePresence } from "motion/react";
 import { Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSmartTableSearch } from "@/features/database/hooks/useSmartTableSearch";
 import { isAiConfigured } from "@/features/ai/hooks/ai-actions";
+import { setUnsavedChanges as setWindowUnsavedChanges } from "@/features/shell/actions/window";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dbQueryKeys, dbQueryOptions } from "@/lib/query-options";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import {
@@ -82,6 +93,12 @@ import {
   makeTableUpdateTemplateSql,
 } from "@/features/database/components/SqlEditor/utils/itemsUtils";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
+import { cn } from "@/lib/utils";
+import {
+  buildTableEditorTab,
+  useTableEditorTabsStore,
+} from "@/lib/stores/table-editor-tabs";
+import type { TableDataEditorHandle } from "@/features/database/components/TableDataEditor/types";
 
 const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
   "1": "overview",
@@ -117,9 +134,27 @@ export function DatabasePageContent({
   const [selectedSchema, setSelectedSchema] = useState<string>(
     storedTab?.lastSchema ?? "public"
   );
-  const [selectedTableKey, setSelectedTableKey] = useState<string | null>(
-    storedTab?.lastTable ?? null
-  );
+  const {
+    openTab,
+    activateTab,
+    closeTab,
+    closeOthers,
+    closeAll,
+    replaceTabKey,
+    removeMissingTabs,
+    byConnectionId: tableTabsByConnectionId,
+  } = useTableEditorTabsStore();
+  const tableTabsState = tableTabsByConnectionId[connectionId] ?? {
+    openTabs: [],
+    activeTabKey: null,
+  };
+  const openTableTabs = tableTabsState.openTabs;
+  const selectedTableKey = tableTabsState.activeTabKey;
+  const [tabDirtyState, setTabDirtyState] = useState<Record<string, boolean>>({});
+  const [pendingCloseTabKey, setPendingCloseTabKey] = useState<string | null>(null);
+  const [isClosingTabWithSave, setIsClosingTabWithSave] = useState(false);
+  const [isSavingAllTabs, setIsSavingAllTabs] = useState(false);
+  const editorRef = useRef<TableDataEditorHandle | null>(null);
 
   // Schema data via React Query — centralized queryOptions factory.
   const {
@@ -136,6 +171,20 @@ export function DatabasePageContent({
   const [sqlInsertRequest, setSqlInsertRequest] = useState<null | { key: string; text: string }>(null);
   const [tableSearch, setTableSearch] = useState("");
   const [aiSearchEnabled, setAiSearchEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!isActive || tables.length === 0) return;
+    const existingKeys = new Set(tables.map((t) => `${t.schema}.${t.name}`));
+    const removed = removeMissingTabs(connectionId, existingKeys);
+    if (removed.length > 0) {
+      setTabDirtyState((prev) => {
+        const next = { ...prev };
+        for (const key of removed) delete next[key];
+        return next;
+      });
+      toast.info("Some table tabs were closed because the tables no longer exist.");
+    }
+  }, [connectionId, isActive, removeMissingTabs, tables]);
 
   // Check if AI is configured on mount
   useEffect(() => {
@@ -392,18 +441,59 @@ export function DatabasePageContent({
   }, [connectionId, activeSection, selectedTableKey, setTabNavState]);
 
   const changeTable = useCallback((tableKey: string | null) => {
-    // Mark the (potentially expensive) table switch as a non-urgent transition
-    // so React can prioritize the click feedback (highlight, focus) and
-    // interrupt if the user quickly clicks another table.
+    if (!tableKey) {
+      activateTab(connectionId, null);
+      setTabNavState(connectionId, {
+        section: activeSection,
+        schema: selectedSchema,
+        table: undefined,
+      });
+      return;
+    }
+
+    const dotIdx = tableKey.indexOf(".");
+    if (dotIdx <= 0 || dotIdx === tableKey.length - 1) return;
+    const schema = tableKey.slice(0, dotIdx);
+    const table = tableKey.slice(dotIdx + 1);
+
+    // Mark table switch as non-urgent so click feedback is immediate.
     startTransition(() => {
-      setSelectedTableKey(tableKey);
+      openTab(connectionId, buildTableEditorTab(schema, table));
     });
     setTabNavState(connectionId, {
       section: activeSection,
       schema: selectedSchema,
       table: tableKey ?? undefined,
     });
-  }, [connectionId, activeSection, selectedSchema, setTabNavState]);
+  }, [
+    connectionId,
+    activeSection,
+    selectedSchema,
+    setTabNavState,
+    activateTab,
+    openTab,
+  ]);
+
+  useEffect(() => {
+    if (!storedTab?.lastTable) return;
+    if (openTableTabs.length > 0) return;
+    const tableKey = storedTab.lastTable;
+    const dotIdx = tableKey.indexOf(".");
+    if (dotIdx <= 0 || dotIdx === tableKey.length - 1) return;
+    openTab(
+      connectionId,
+      buildTableEditorTab(tableKey.slice(0, dotIdx), tableKey.slice(dotIdx + 1)),
+    );
+  }, [connectionId, openTableTabs.length, openTab, storedTab?.lastTable]);
+
+  useEffect(() => {
+    const hasAnyDraft = Object.values(tabDirtyState).some(Boolean);
+    const scope = `table-tabs:${connectionId}`;
+    void setWindowUnsavedChanges(scope, hasAnyDraft);
+    return () => {
+      void setWindowUnsavedChanges(scope, false);
+    };
+  }, [connectionId, tabDirtyState]);
 
   const requestSqlInsert = useCallback((text: string) => {
     setSqlInsertRequest({
@@ -769,7 +859,96 @@ export function DatabasePageContent({
     };
   }, [selectedTableKey]);
 
+  useEffect(() => {
+    setTabNavState(connectionId, {
+      section: activeSection,
+      schema: selectedSchema,
+      table: selectedTableKey ?? undefined,
+    });
+  }, [activeSection, connectionId, selectedSchema, selectedTableKey, setTabNavState]);
+
   const selectedTable = selectedTableRef?.name ?? null;
+
+  const closeTableTabNow = useCallback((tabKey: string) => {
+    closeTab(connectionId, tabKey);
+    setTabDirtyState((prev) => {
+      const next = { ...prev };
+      delete next[tabKey];
+      return next;
+    });
+    if (selectedTableKey === tabKey) {
+      const nextActive =
+        (openTableTabs.find((t) => t.key !== tabKey)?.key ?? null);
+      setTabNavState(connectionId, {
+        section: activeSection,
+        schema: selectedSchema,
+        table: nextActive ?? undefined,
+      });
+    }
+  }, [
+    closeTab,
+    connectionId,
+    selectedTableKey,
+    openTableTabs,
+    setTabNavState,
+    activeSection,
+    selectedSchema,
+  ]);
+
+  const requestCloseTableTab = useCallback((tabKey: string) => {
+    if (tabDirtyState[tabKey]) {
+      setPendingCloseTabKey(tabKey);
+      return;
+    }
+    closeTableTabNow(tabKey);
+  }, [closeTableTabNow, tabDirtyState]);
+
+  const handleSaveAllTabs = useCallback(async () => {
+    if (isSavingAllTabs) return;
+    if (!Object.values(tabDirtyState).some(Boolean)) return;
+    setIsSavingAllTabs(true);
+    try {
+      await editorRef.current?.saveAllDraftsAcrossTabs();
+      setTabDirtyState((prev) => {
+        const next: Record<string, boolean> = {};
+        for (const key of Object.keys(prev)) next[key] = false;
+        return next;
+      });
+      toast.success("All pending table changes were saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save all table changes");
+    } finally {
+      setIsSavingAllTabs(false);
+    }
+  }, [isSavingAllTabs, tabDirtyState]);
+
+  const handleDiscardAndCloseTab = useCallback(() => {
+    if (!pendingCloseTabKey) return;
+    if (pendingCloseTabKey === selectedTableKey) {
+      editorRef.current?.discardAllChanges();
+    }
+    closeTableTabNow(pendingCloseTabKey);
+    setPendingCloseTabKey(null);
+  }, [closeTableTabNow, pendingCloseTabKey, selectedTableKey]);
+
+  const handleSaveAndCloseTab = useCallback(async () => {
+    if (!pendingCloseTabKey) return;
+    setIsClosingTabWithSave(true);
+    try {
+      if (pendingCloseTabKey === selectedTableKey) {
+        await editorRef.current?.saveAllChanges();
+      } else {
+        await editorRef.current?.saveAllDraftsAcrossTabs();
+      }
+      setTabDirtyState((prev) => ({ ...prev, [pendingCloseTabKey]: false }));
+      closeTableTabNow(pendingCloseTabKey);
+      setPendingCloseTabKey(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save tab changes");
+    } finally {
+      setIsClosingTabWithSave(false);
+    }
+  }, [closeTableTabNow, pendingCloseTabKey, selectedTableKey]);
 
   // React Query for table details — gives us cache, keepPreviousData for smooth
   // transitions, and automatic revalidation. Trocar para uma tabela já visitada
@@ -948,21 +1127,42 @@ export function DatabasePageContent({
   const handleDropTableSuccess = useCallback(
     async (droppedKey: string) => {
       await handleDdlSuccess();
+      closeTab(connectionId, droppedKey);
+      setTabDirtyState((prev) => {
+        const next = { ...prev };
+        delete next[droppedKey];
+        return next;
+      });
       if (selectedTableKey === droppedKey) {
         changeTable(null);
       }
     },
-    [handleDdlSuccess, selectedTableKey, changeTable],
+    [handleDdlSuccess, selectedTableKey, changeTable, closeTab, connectionId],
   );
 
   const handleRenameTableSuccess = useCallback(
     async (oldKey: string, newKey: string) => {
       await handleDdlSuccess();
+      const dotIdx = newKey.indexOf(".");
+      if (dotIdx > 0 && dotIdx < newKey.length - 1) {
+        replaceTabKey(
+          connectionId,
+          oldKey,
+          buildTableEditorTab(newKey.slice(0, dotIdx), newKey.slice(dotIdx + 1)),
+        );
+      }
+      setTabDirtyState((prev) => {
+        if (!prev[oldKey]) return prev;
+        const next = { ...prev };
+        delete next[oldKey];
+        next[newKey] = false;
+        return next;
+      });
       if (selectedTableKey === oldKey) {
         changeTable(newKey);
       }
     },
-    [handleDdlSuccess, selectedTableKey, changeTable],
+    [handleDdlSuccess, selectedTableKey, changeTable, replaceTabKey, connectionId],
   );
 
   // Load table details when selected table changes
@@ -1138,8 +1338,101 @@ export function DatabasePageContent({
 
               {/* Main Panel */}
               <ResizablePanel id="tables-main" minSize={30} className="min-w-0 relative z-20 overflow-visible">
+                <div className="border-b px-2 py-1.5 flex items-center gap-1 overflow-x-auto">
+                  {openTableTabs.map((tab) => {
+                    const isActiveTab = tab.key === selectedTableKey;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => changeTable(tab.key)}
+                        className={cn(
+                          "group inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs shrink-0",
+                          isActiveTab
+                            ? "bg-muted border-border text-foreground"
+                            : "bg-background border-transparent text-muted-foreground hover:text-foreground hover:border-border/70",
+                        )}
+                      >
+                        <span>{tab.label}</span>
+                        {tabDirtyState[tab.key] ? <span className="text-orange-500">•</span> : null}
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            requestCloseTableTab(tab.key);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              requestCloseTableTab(tab.key);
+                            }
+                          }}
+                          className="rounded p-0.5 opacity-60 hover:opacity-100"
+                        >
+                          <Icon name="x" className="h-3 w-3" />
+                        </span>
+                      </button>
+                    );
+                  })}
+                  <div className="ml-auto flex items-center gap-1 shrink-0">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={!Object.values(tabDirtyState).some(Boolean) || isSavingAllTabs}
+                      onClick={() => void handleSaveAllTabs()}
+                    >
+                      {isSavingAllTabs ? (
+                        <>
+                          <Icon name="loader" className="h-3 w-3 mr-1 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        "Save all"
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={!selectedTableKey}
+                      onClick={() => {
+                        if (!selectedTableKey) return;
+                        closeOthers(connectionId, selectedTableKey);
+                        setTabDirtyState((prev) => {
+                          const keepDirty = prev[selectedTableKey] ?? false;
+                          return { [selectedTableKey]: keepDirty };
+                        });
+                      }}
+                    >
+                      Close others
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      disabled={openTableTabs.length === 0}
+                      onClick={() => {
+                        closeAll(connectionId);
+                        setTabDirtyState({});
+                        setTabNavState(connectionId, {
+                          section: activeSection,
+                          schema: selectedSchema,
+                          table: undefined,
+                        });
+                      }}
+                    >
+                      Close all
+                    </Button>
+                  </div>
+                </div>
                 {(() => {
-                  if (!selectedTable) {
+                  if (!selectedTable || openTableTabs.length === 0) {
                     return (
                       <div className="h-full flex items-center justify-center p-8">
                         <div className="text-center space-y-3">
@@ -1187,11 +1480,19 @@ export function DatabasePageContent({
 
                   return (
                     <TableDataEditor
+                      ref={editorRef}
                       connectionId={connectionId}
                       table={td}
                       tableSaveChanges={tableSaveChanges}
                       tableTruncate={tableTruncate}
                       tableFkLookup={tableFkLookup}
+                      tableKey={selectedTableKey ?? `${td.schema}.${td.name}`}
+                      onDirtyChange={(key, dirty) => {
+                        setTabDirtyState((prev) => (
+                          prev[key] === dirty ? prev : { ...prev, [key]: dirty }
+                        ));
+                      }}
+                      disableWindowUnsavedTracking
                       isSwitchingTable={isSwitching}
                       isSidebarVisible
                       onRequestAddColumn={() =>
@@ -1386,6 +1687,29 @@ export function DatabasePageContent({
           }}
         />
       )}
+      <AlertDialog open={!!pendingCloseTabKey} onOpenChange={(open) => { if (!open) setPendingCloseTabKey(null); }}>
+        <AlertDialogContent className="t-resize sm:max-w-[420px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes in tab</AlertDialogTitle>
+            <AlertDialogDescription>
+              This table tab has unsaved changes. Save before closing?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDiscardAndCloseTab}>
+              Discard
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => void handleSaveAndCloseTab()}
+              disabled={isClosingTabWithSave}
+            >
+              {isClosingTabWithSave ? "Saving..." : "Save and close"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {connection && ddlDropTarget && (
         <DropTableDialog
           isOpen

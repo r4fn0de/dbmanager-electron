@@ -288,9 +288,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
       aria-label="Connection tabs"
       onWheel={handleWheel}
       className={cn(
-        "flex items-center h-full gap-1 overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
-        gooeyFilterId &&
-          "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]",
+        "flex items-center h-full overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
+        gooeyFilterId
+          ? "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]"
+          : "gap-[5px]",
       )}
     >
       {tabs.map((tab) => {
@@ -319,18 +320,25 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             dragMomentum={false}
             dragElastic={0.1}
             dragConstraints={containerRef}
-            whileDrag={{ zIndex: 40, scale: 1.03 }}
-            initial={isNewTab ? { opacity: 0, scale: 0.9 } : false}
+            whileDrag={{
+              zIndex: 40,
+              scale: 1.04,
+              boxShadow:
+                "0 8px 24px hsl(var(--foreground) / 0.08), 0 2px 8px hsl(var(--foreground) / 0.06)",
+              cursor: "grabbing",
+            }}
+            initial={isNewTab ? { opacity: 0, scale: 0.92, y: -4 } : false}
             animate={
               isClosing
-                ? { opacity: 0, scale: 0.9 }
-                : { opacity: 1, scale: 1 }
+                ? { opacity: 0, scale: 0.88, y: -2 }
+                : { opacity: 1, scale: 1, y: 0 }
             }
             transition={{
               type: "spring",
-              stiffness: 550,
-              damping: 28,
-              bounce: 0.1,
+              stiffness: 500,
+              damping: 30,
+              mass: 0.8,
+              bounce: 0.08,
             }}
             ref={(el: HTMLLIElement | null) => {
               tabRefs.current[tab.id] = el;
@@ -354,13 +362,14 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               "rounded-sm shrink-0 outline-none cursor-default",
               shouldShowNeoTabBorder && isActive && "border border-border border-b-0",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-              "transition-colors duration-150",
+              "transition-[background-color,color,opacity,transform] duration-150 ease-out",
               isActive
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
+              "active:scale-[0.98] active:transition-transform active:duration-75",
               !isActive &&
                 cn(
-                  "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:bg-transparent after:transition-colors",
+                  "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:bg-transparent after:transition-[background-color,opacity] after:duration-150 after:ease-out",
                   themePreset === "neo" ? "after:rounded-none" : "after:rounded-md",
                   solidBackground ? "hover:after:bg-muted/85" : "hover:after:bg-muted/60",
                 ),
@@ -389,8 +398,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                   )}
                   transition={{
                     type: "spring",
+                    stiffness: 400,
+                    damping: 35,
+                    mass: 0.9,
                     bounce: 0,
-                    duration: 0.35,
                   }}
                 />
                 {!isNeoTheme && (
@@ -402,15 +413,17 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                     )}
                     transition={{
                       type: "spring",
+                      stiffness: 400,
+                      damping: 35,
+                      mass: 0.9,
                       bounce: 0,
-                      duration: 0.35,
                     }}
                   />
                 )}
               </div>
             )}
 
-            <div className="relative z-10 flex w-full min-w-0 -translate-y-[2px] items-center justify-start gap-1.5 pl-3 pr-3">
+            <div className="relative z-10 flex w-full min-w-0 items-center justify-start gap-1.5 pl-3 pr-3">
               {tab.provider === "neon" ? (
                 <Neon className="size-3.5 shrink-0" />
               ) : tab.provider === "supabase" ? (
@@ -425,8 +438,11 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 <LocalDbTypeIcon className="size-3.5 shrink-0" />
               ) : colorDot ? (
                 <span
-                  className="size-2 rounded-full shrink-0"
-                  style={{ backgroundColor: colorDot }}
+                  className="relative size-2 rounded-full shrink-0"
+                  style={{
+                    backgroundColor: colorDot,
+                    boxShadow: `inset 0 0 0 0.5px ${colorDot}80, 0 0 3px ${colorDot}40`,
+                  }}
                 />
               ) : tab.provider === "url" ? (
                 <Icon name="globe" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
@@ -434,14 +450,14 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 <Icon name="server" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
               )}
 
-              <div className="relative min-w-0 flex-1 pr-1 transition-[padding-right] duration-150 group-hover:pr-5">
+              <div className="relative min-w-0 flex-1 pr-1 transition-[padding-right] duration-150 ease-out group-hover:pr-5">
                 <span
                   className="block truncate"
                   style={{
                     WebkitMaskImage:
-                      "linear-gradient(to right, black 0%, black 78%, transparent 100%)",
+                      "linear-gradient(to right, black 0%, black 82%, transparent 94%)",
                     maskImage:
-                      "linear-gradient(to right, black 0%, black 78%, transparent 100%)",
+                      "linear-gradient(to right, black 0%, black 82%, transparent 94%)",
                   }}
                 >
                   {tab.name}
@@ -454,12 +470,13 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               onClick={(e) => handleClose(e, tab.id)}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                "absolute right-1.5 top-[calc(50%-2px)] -translate-y-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 transition-opacity outline-none",
+                "absolute right-2 top-1/2 -translate-y-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 outline-none",
+                "transition-[opacity,transform,background-color] duration-150 ease-out",
                 "focus-visible:ring-2 focus-visible:ring-ring",
                 solidBackground
                   ? "text-muted-foreground hover:bg-muted/85 hover:text-foreground"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                "opacity-0 group-hover:opacity-80 hover:!opacity-100 focus-visible:opacity-100",
+                "opacity-0 scale-75 group-hover:opacity-80 group-hover:scale-100 hover:!opacity-100 hover:!scale-105 focus-visible:opacity-100 focus-visible:scale-100",
               )}
               aria-label={`Close ${tab.name}`}
             >

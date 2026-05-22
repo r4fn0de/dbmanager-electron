@@ -28,6 +28,16 @@ export interface TableDataEditorProps {
   onToggleSidebar?: () => void;
   onSeedData?: () => void;
   onExportData?: () => void;
+  tableKey?: string;
+  onDirtyChange?: (tableKey: string, dirty: boolean) => void;
+  disableWindowUnsavedTracking?: boolean;
+}
+
+export interface TableDataEditorHandle {
+  saveAllChanges: () => Promise<void>;
+  saveAllDraftsAcrossTabs: () => Promise<void>;
+  discardAllChanges: () => void;
+  hasDraftChanges: () => boolean;
 }
 
 export type RowRecord = Record<string, unknown>;

@@ -3,9 +3,12 @@ import { dbQueryKeys, dbQueryOptions } from "@/lib/query-options";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconArrowsDiagonal2 } from "@tabler/icons-react";
 import {
+  forwardRef,
+  type ForwardedRef,
   useCallback,
   useDeferredValue,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -52,7 +55,13 @@ import type {
   TableSort,
 } from "@/ipc/db/types";
 import { cn } from "@/lib/utils";
-import type { TableDataEditorProps, RowRecord, RowUpdateDraft, DeleteDraft } from "./types";
+import type {
+  TableDataEditorProps,
+  RowRecord,
+  RowUpdateDraft,
+  DeleteDraft,
+  TableDataEditorHandle,
+} from "./types";
 import { quoteIdentifier, quoteValue } from "./utils/sqlHelpers";
 import { normalizeDisplay, getCellTitle, parseByType } from "./utils/valueParsers";
 import { buildEffectiveRows, getGridCellIndex } from "./utils/tableDataTransforms";
@@ -91,7 +100,7 @@ function getDefaultColumnWidth(column: SchemaColumn): number {
   return 120;
 }
 
-export function TableDataEditor({
+function TableDataEditorInner({
   connectionId,
   table,
   tableSaveChanges,
@@ -109,7 +118,10 @@ export function TableDataEditor({
   onToggleSidebar,
   onSeedData,
   onExportData,
-}: TableDataEditorProps) {
+  tableKey: externalTableKey,
+  onDirtyChange,
+  disableWindowUnsavedTracking = false,
+}: TableDataEditorProps, ref: ForwardedRef<TableDataEditorHandle>) {
   const pressableClass =
     "transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97]";
 
@@ -189,6 +201,16 @@ export function TableDataEditor({
   const [draftDeletes, setDraftDeletes] = useState<Record<string, DeleteDraft>>(
     {},
   );
+  const draftsByTableRef = useRef<
+    Map<
+      string,
+      {
+        inserts: RowRecord[];
+        updates: Record<string, RowUpdateDraft>;
+        deletes: Record<string, DeleteDraft>;
+      }
+    >
+  >(new Map());
 
   const [editingCell, setEditingCell] = useState<{
     rowKey: string;
@@ -276,6 +298,16 @@ export function TableDataEditor({
     visibleColumns,
     columnWidths,
   };
+  const liveDraftStateRef = useRef({
+    inserts: draftInserts,
+    updates: draftUpdates,
+    deletes: draftDeletes,
+  });
+  liveDraftStateRef.current = {
+    inserts: draftInserts,
+    updates: draftUpdates,
+    deletes: draftDeletes,
+  };
 
   useEffect(() => {
     if (previousTableKeyRef.current === tableKey) return;
@@ -284,6 +316,10 @@ export function TableDataEditor({
     viewStateByTableRef.current.set(
       previousTableKeyRef.current,
       liveViewStateRef.current,
+    );
+    draftsByTableRef.current.set(
+      previousTableKeyRef.current,
+      liveDraftStateRef.current,
     );
 
     const saved = viewStateByTableRef.current.get(tableKey);
@@ -305,9 +341,10 @@ export function TableDataEditor({
       setColumnWidths({});
     }
 
-    setDraftInserts([]);
-    setDraftUpdates({});
-    setDraftDeletes({});
+    const savedDrafts = draftsByTableRef.current.get(tableKey);
+    setDraftInserts(savedDrafts?.inserts ?? []);
+    setDraftUpdates(savedDrafts?.updates ?? {});
+    setDraftDeletes(savedDrafts?.deletes ?? {});
     setError(null);
     setSelectedRowKeys(new Set());
     setFocusedCell(null);
@@ -553,12 +590,24 @@ export function TableDataEditor({
   }, [draftInserts, draftUpdates]);
 
   useEffect(() => {
+    if (!externalTableKey || !onDirtyChange) return;
+    onDirtyChange(externalTableKey, hasDraftChanges);
+  }, [hasDraftChanges, onDirtyChange, externalTableKey]);
+
+  useEffect(() => {
+    if (disableWindowUnsavedTracking) return;
     const scope = `table:${connectionId}:${table.schema}.${table.name}`;
     void setWindowUnsavedChanges(scope, hasDraftChanges);
     return () => {
       void setWindowUnsavedChanges(scope, false);
     };
-  }, [connectionId, table.schema, table.name, hasDraftChanges]);
+  }, [
+    connectionId,
+    table.schema,
+    table.name,
+    hasDraftChanges,
+    disableWindowUnsavedTracking,
+  ]);
 
   const columnMap = useMemo(() => {
     const map: Record<string, SchemaColumn> = {};
@@ -913,6 +962,75 @@ export function TableDataEditor({
       setIsSaving(false);
     }
   };
+
+  const saveAllDraftsAcrossTabs = useCallback(async () => {
+    const draftsSnapshot = new Map(draftsByTableRef.current);
+    draftsSnapshot.set(tableKey, {
+      inserts: draftInserts,
+      updates: draftUpdates,
+      deletes: draftDeletes,
+    });
+
+    for (const [key, draftState] of draftsSnapshot.entries()) {
+      const inserts = draftState.inserts.map((row) => {
+        const clean: RowRecord = {};
+        for (const [k, value] of Object.entries(row)) {
+          if (value !== undefined) clean[k] = value;
+        }
+        return clean;
+      });
+      const updates = Object.values(draftState.updates).map((entry) => ({
+        primaryKey: entry.primaryKey,
+        changes: entry.changes,
+      }));
+      const deletes = Object.values(draftState.deletes).map((entry) => ({
+        primaryKey: entry.primaryKey,
+      }));
+      if (inserts.length + updates.length + deletes.length === 0) continue;
+
+      const scopedKey = key.includes("::") ? key.slice(key.indexOf("::") + 2) : key;
+      const dotIdx = scopedKey.indexOf(".");
+      if (dotIdx <= 0 || dotIdx === scopedKey.length - 1) continue;
+      const schema = scopedKey.slice(0, dotIdx);
+      const tableName = scopedKey.slice(dotIdx + 1);
+
+      await tableSaveChanges({
+        tableRef: { connectionId, schema, table: tableName },
+        inserts,
+        updates,
+        deletes,
+      });
+      draftsByTableRef.current.set(key, { inserts: [], updates: {}, deletes: {} });
+      await queryClient.invalidateQueries({
+        queryKey: dbQueryKeys.tableRowsPrefix(connectionId, schema, tableName),
+      });
+    }
+
+    if (draftsByTableRef.current.get(tableKey)) {
+      setDraftInserts([]);
+      setDraftUpdates({});
+      setDraftDeletes({});
+    }
+  }, [
+    connectionId,
+    draftDeletes,
+    draftInserts,
+    draftUpdates,
+    queryClient,
+    tableKey,
+    tableSaveChanges,
+  ]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      saveAllChanges,
+      saveAllDraftsAcrossTabs,
+      discardAllChanges: discardDrafts,
+      hasDraftChanges: () => hasDraftChanges,
+    }),
+    [discardDrafts, hasDraftChanges, saveAllDraftsAcrossTabs],
+  );
 
   const truncateSqlPreview = `TRUNCATE TABLE ${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)};`;
 
@@ -1899,3 +2017,5 @@ export function TableDataEditor({
     </div>
   );
 }
+
+export const TableDataEditor = forwardRef(TableDataEditorInner);
