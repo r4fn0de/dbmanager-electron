@@ -95,6 +95,11 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
       selectedTables: CloneToLocalTableSelection[],
       postgresVersion?: string,
     ): Promise<Connection | null> => {
+      const normalizedTargetName = targetName.trim();
+      if (!normalizedTargetName) {
+        throw new Error("Local database name is required");
+      }
+
       cancelRef.current = false;
       setIsLoading(true);
       setError(null);
@@ -147,7 +152,7 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           const port = PORT_START + i;
           try {
             localDb = await ipc.client.db.createLocalDatabase({
-              name: targetName,
+              name: normalizedTargetName,
               databaseName: "postgres",
               username: "postgres",
               password,

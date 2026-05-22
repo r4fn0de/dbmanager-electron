@@ -251,7 +251,7 @@ export const tableTruncateSchema = z.object({
 export const localDbEngineSchema = z.enum(["postgresql", "sqlite"]) as z.ZodType<import("./types").LocalDbEngine>;
 
 export const createLocalDatabaseSchema = z.object({
-  name: z.string(),
+  name: z.string().trim().min(1, "Local database name is required"),
   databaseName: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),

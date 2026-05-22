@@ -701,11 +701,12 @@ export const createLocalDatabase = os
   .input(createLocalDatabaseSchema)
   .handler(async ({ input }): Promise<LocalDbInfo> => {
     try {
+      const normalizedName = input.name.trim();
       const engine = input.engine ?? "postgresql";
       const isSqlite = engine === "sqlite";
       const password = isSqlite ? "" : (input.password?.trim() || LOCAL_DB_DEFAULT_PASSWORD);
       const info = await localDbManager.create({
-        name: input.name,
+        name: normalizedName,
         databaseName: input.databaseName || (isSqlite ? "main" : "postgres"),
         username: isSqlite ? "" : (input.username || "postgres"),
         password,

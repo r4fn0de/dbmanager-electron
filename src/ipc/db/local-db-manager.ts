@@ -786,6 +786,8 @@ export class LocalDbManager {
     postgresVersion: string;
     autoStart: boolean;
   }): Promise<LocalDbInfo> {
+    const normalizedName = input.name.trim();
+
     // Check that embedded-postgres binaries are available before attempting creation
     this.checkBinariesAvailable();
 
@@ -813,7 +815,7 @@ export class LocalDbManager {
 
     const meta: LocalDbMeta = {
       id,
-      name: input.name,
+      name: normalizedName,
       database_name: input.databaseName,
       username: input.username || "postgres",
       password: input.password.trim() || LOCAL_DB_DEFAULT_PASSWORD,
@@ -902,6 +904,7 @@ export class LocalDbManager {
     postgresVersion: string;
     autoStart: boolean;
   }): Promise<LocalDbInfo> {
+    const normalizedName = input.name.trim();
     const id = randomUUID();
 
     // Ensure the SQLite data directory exists
@@ -912,7 +915,7 @@ export class LocalDbManager {
 
     const meta: LocalDbMeta = {
       id,
-      name: input.name,
+      name: normalizedName,
       database_name: input.databaseName || "main",
       username: "", // SQLite has no username
       password: "", // SQLite has no password

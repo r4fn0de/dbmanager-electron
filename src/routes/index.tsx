@@ -175,9 +175,13 @@ function Home() {
   const handleCreateLocalDb = async (input: CreateLocalDbInput) => {
     setIsCreatingLocalDb(true);
     try {
+      const normalizedName = input.name.trim();
+      if (!normalizedName) {
+        throw new Error("Local database name is required");
+      }
       const password = input.password.trim() || LOCAL_DB_DEFAULT_PASSWORD;
       const db = await createLocalDb({
-        name: input.name,
+        name: normalizedName,
         databaseName: input.databaseName,
         username: input.username,
         password,
