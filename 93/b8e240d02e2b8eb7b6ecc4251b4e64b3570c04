@@ -1,39 +1,39 @@
-src/tests/unit/table-editor-tabs-store.test.ts
-  s_8ccdbbf2898a7f::t_da9976040fcc72 1-58
-src/features/database/components/TableDataEditor/TableDataEditor.tsx
-  s_8ccdbbf2898a7f::t_cae97368a5a62b 7,124
-  s_8ccdbbf2898a7f::t_e3e4becaf87854 121,593-595
-  s_8ccdbbf2898a7f::t_7d11671d013fb1 991-992,994-995
-  s_8ccdbbf2898a7f::t_1094e3b8e17fbc 103,2020-2021
-  s_8ccdbbf2898a7f::t_ed20ff1a61b455 204-213,301-310,320-323,344-347
-  s_8ccdbbf2898a7f::t_5c03ab34677646 993
-  s_8ccdbbf2898a7f::t_a49ccfd2e702eb 966-990,996-1023,1028,1032
-  s_8ccdbbf2898a7f::t_3496d9a36cc35d 6,11,58-64,122-123,598,604-610,1024-1027,1029-1031,1033
-src/routes/database/-DatabasePageContent.tsx
-  s_8ccdbbf2898a7f::t_5815612327bf62 1700
-  s_8ccdbbf2898a7f::t_5dca79b4b82a8d 1690-1699,1701-1712
-  s_8ccdbbf2898a7f::t_412e99b02c00ac 912-916
-  s_8ccdbbf2898a7f::t_208ee564a6e5df 175-188
-  s_8ccdbbf2898a7f::t_70276e1597259a 444-459,461,468-475
-  s_8ccdbbf2898a7f::t_c794a286d2c80e 1341-1404,1410-1433,1435,1483,1489-1495
-  s_8ccdbbf2898a7f::t_1566736c5c9700 925-952
-  s_8ccdbbf2898a7f::t_17607484ba9d70 477-496
-  s_8ccdbbf2898a7f::t_48d27ab2a9eada 1130-1135,1140,1146-1160,1165
-  s_8ccdbbf2898a7f::t_fa9436b5334748 1405-1409
-  s_8ccdbbf2898a7f::t_74847a3d634e73 6
-  s_8ccdbbf2898a7f::t_651734c487cf89 862-869
-  s_8ccdbbf2898a7f::t_68e4e150f84730 10-19,97-101
-  s_8ccdbbf2898a7f::t_f8622826c76a2e 96
-  s_8ccdbbf2898a7f::t_8b1f75d6361f85 911
-  s_8ccdbbf2898a7f::t_9c3a4ea9bc4972 137-157
-  s_8ccdbbf2898a7f::t_9f5a9e5bb1d88a 872-910,917-924
 docs/specs/table-data-editor-multi-tabs.md
   s_8ccdbbf2898a7f::t_7e47d0fda75bf7 1-152
-src/features/database/components/TableDataEditor/types.ts
-  s_8ccdbbf2898a7f::t_e1f7012147c8b7 31-37,39-40
-  s_8ccdbbf2898a7f::t_ac605e6fb912c4 38
 src/lib/stores/table-editor-tabs.ts
   s_8ccdbbf2898a7f::t_f521f9cbff5e7c 1-234
+src/features/database/components/TableDataEditor/TableDataEditor.tsx
+  s_8ccdbbf2898a7f::t_ed20ff1a61b455 204-213,301-310,320-323,344-347
+  s_8ccdbbf2898a7f::t_e3e4becaf87854 121,593-595
+  s_8ccdbbf2898a7f::t_a49ccfd2e702eb 966-990,996-1023,1028,1032
+  s_8ccdbbf2898a7f::t_5c03ab34677646 993
+  s_8ccdbbf2898a7f::t_1094e3b8e17fbc 103,2020-2021
+  s_8ccdbbf2898a7f::t_cae97368a5a62b 7,124
+  s_8ccdbbf2898a7f::t_7d11671d013fb1 991-992,994-995
+  s_8ccdbbf2898a7f::t_3496d9a36cc35d 6,11,58-64,122-123,598,604-610,1024-1027,1029-1031,1033
+src/routes/database/-DatabasePageContent.tsx
+  s_8ccdbbf2898a7f::t_17607484ba9d70 477-496
+  s_8ccdbbf2898a7f::t_f8622826c76a2e 96
+  s_8ccdbbf2898a7f::t_5815612327bf62 1700
+  s_8ccdbbf2898a7f::t_48d27ab2a9eada 1130-1135,1140,1146-1160,1165
+  s_8ccdbbf2898a7f::t_70276e1597259a 444-459,461,468-475
+  s_8ccdbbf2898a7f::t_8b1f75d6361f85 911
+  s_8ccdbbf2898a7f::t_412e99b02c00ac 912-916
+  s_8ccdbbf2898a7f::t_1566736c5c9700 925-952
+  s_8ccdbbf2898a7f::t_c794a286d2c80e 1341-1404,1410-1433,1435,1483,1489-1495
+  s_8ccdbbf2898a7f::t_9c3a4ea9bc4972 137-157
+  s_8ccdbbf2898a7f::t_74847a3d634e73 6
+  s_8ccdbbf2898a7f::t_208ee564a6e5df 175-188
+  s_8ccdbbf2898a7f::t_5dca79b4b82a8d 1690-1699,1701-1712
+  s_8ccdbbf2898a7f::t_68e4e150f84730 10-19,97-101
+  s_8ccdbbf2898a7f::t_fa9436b5334748 1405-1409
+  s_8ccdbbf2898a7f::t_651734c487cf89 862-869
+  s_8ccdbbf2898a7f::t_9f5a9e5bb1d88a 872-910,917-924
+src/features/database/components/TableDataEditor/types.ts
+  s_8ccdbbf2898a7f::t_ac605e6fb912c4 38
+  s_8ccdbbf2898a7f::t_e1f7012147c8b7 31-37,39-40
+src/tests/unit/table-editor-tabs-store.test.ts
+  s_8ccdbbf2898a7f::t_da9976040fcc72 1-58
 ---
 {
   "schema_version": "authorship/3.0.0",
