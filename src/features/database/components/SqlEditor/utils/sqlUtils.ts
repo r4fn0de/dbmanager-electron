@@ -5,6 +5,8 @@ const MAX_HISTORY_RESULT_ROWS = 50;
 const MAX_HISTORY_RESULT_COLUMNS = 30;
 const DANGEROUS_SQL_KEYWORDS = ["DELETE", "UPDATE", "DROP", "RENAME", "TRUNCATE", "ALTER"] as const;
 
+const READ_ONLY_SQL_KEYWORDS = ["SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "TABLE"] as const;
+
 export function previewSql(sql: string): string {
   const normalized = sql.replace(/\s+/g, " ").trim();
   if (normalized.length <= MAX_HISTORY_PREVIEW) return normalized;
@@ -20,6 +22,10 @@ export function hasDangerousSqlKeywords(sql: string): boolean {
     .map((keyword) => `\\b${keyword}\\b`)
     .join("|");
   return new RegExp(dangerousKeywordsPattern, "gi").test(uncommentedLines);
+}
+
+export function isReadOnlySql(sql: string): boolean {
+  return !hasDangerousSqlKeywords(sql);
 }
 
 export function truncateForContext(value: string, max: number): string {

@@ -15,7 +15,7 @@
 - **Autocomplete schema-aware** ✅ — `src/lib/monaco-sql-setup.ts` com completions de tabelas, colunas (dot-triggered), schemas, +90 keywords SQL, 14 snippets
 - **Query History** ✅ — `useSqlWorkspace.ts` com persistência localStorage, busca full-text, filtro por conexão, re-execução (atalho Cmd+Y)
 - **SQL Favorites (Saved SQL)** ✅ — `useSqlWorkspace.ts` + `SqlEditor.tsx`: queries salvas por conexão com CRUD, sidebar com abas Saved/History/Items, atalho Cmd+S
-- **Vim Mode** — Monaco já suporta via `vimMode`, não implementado
+- **Vim Mode** ✅ — `src/lib/stores/editor-preferences.ts` + integração `monaco-vim` no `SqlEditor.tsx` com toggle na toolbar e status bar
 
 ### Data Grid
 - Inline editing, change tracking, sorting, filtering, paginação, FK lookup
@@ -61,7 +61,7 @@
 | # | Feature | Status | O que fazer |
 |---|---|---|---|
 | 1 | **Server Dashboard UI** | Dados existem via IPC | Criar painel com sessões ativas, métricas (conexões, cache hit ratio, tamanho DB, slow queries), kill/cancel query |
-| 2 | **Safe Mode completo** | `readOnly` flag existe | Implementar níveis: Silent → Alert → Read-only. Confirmação para DROP/TRUNCATE/DELETE. Store por conexão |
+| 2 | **Safe Mode completo** | ✅ **Implementado** | Níveis: Off → Silent → Alert → Read-only. Store por conexão (`safe-mode.ts`), seletor na toolbar do SQL Editor, bloqueio de queries destrutivas em modo Read-only |
 | 3 | **JSON Tree Viewer** | ✅ **Implementado** | Componente tree collapsible para células JSON com toggle Tree/Text |
 | 4 | **Type-specific cell editors** | ✅ **Implementado** | Color picker, boolean checkbox, date picker melhorado |
 
@@ -69,7 +69,7 @@
 
 | # | Feature | Descrição |
 |---|---|---|
-| 5 | **Vim Mode** | Habilitar `vimMode` no Monaco (`useVimMode()` hook) |
+| 5 | **Vim Mode** | ✅ **Implementado** | Toggle na toolbar do SQL Editor, `monaco-vim` com status bar, store persistente (`editor-preferences.ts`) |
 | 6 | **Import XLSX** | Adicionar suporte a `.xlsx` (SheetJS) |
 | 7 | **Export XLSX** | Exportar resultados/consultas para `.xlsx` |
 | 8 | **Copy TSV/JSON** | Opções no menu de contexto da grid: "Copy as TSV", "Copy as JSON" |
@@ -101,12 +101,12 @@
 
 | Categoria | Total | Existentes | Novos |
 |-----------|-------|------------|-------|
-| Features listadas | 25 | 8 (parcial/total) | 17 |
+| Features listadas | 25 | 10 (parcial/total) | 15 |
 
 **Top 5 recomendados para implementar:**
 
 1. ~~**Server Dashboard UI** — Dados já existem no IPC, só falta UI~~
-2. ~~**Safe Mode completo** — Já tem flag read-only, faltam níveis e confirmações~~
+2. ✅ **Safe Mode completo** — Implementado com níveis Off → Silent → Alert → Read-only
 3. ✅ **JSON Tree Viewer** — Implementado
 4. ~~**SQL Favorites** — Já existe como Saved SQL ✅~~
 5. ✅ **Type-specific cell editors** — Implementado

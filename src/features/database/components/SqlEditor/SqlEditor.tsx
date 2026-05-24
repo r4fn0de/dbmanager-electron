@@ -21,6 +21,13 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useSqlWorkspace,
   type SqlHistoryEntry,
   type SqlSavedQuery,
@@ -38,6 +45,11 @@ import {
 } from "@/lib/monaco-sql-setup";
 import { cn } from "@/lib/utils";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
+import { useEditorPreferencesStore } from "@/lib/stores/editor-preferences";
+import { useSafeModeStore } from "@/lib/stores/safe-mode";
+import type { SafeModeLevel } from "@/lib/stores/safe-mode-types";
+import { SAFE_MODE_LABELS, SAFE_MODE_DESCRIPTIONS } from "@/lib/stores/safe-mode-types";
+import { initVimMode } from "monaco-vim";
 import * as monaco from "monaco-editor";
 import "@/lib/monaco-loader";
 import type { QueryResult } from "@/ipc/db/types";
@@ -45,6 +57,7 @@ import type { SqlEditorProps, SqlDocument, SqlRunResult, SqlTab } from "./types"
 import {
   previewSql,
   hasDangerousSqlKeywords,
+  isReadOnlySql,
   truncateForContext,
   splitSqlStatements,
   nowIso,
@@ -218,6 +231,7 @@ export function SqlEditor({
   const monacoResizeObserverRef = useRef<ResizeObserver | null>(null);
   const monacoSelectionListenerRef = useRef<monaco.IDisposable | null>(null);
   const monacoContentListenerRef = useRef<monaco.IDisposable | null>(null);
+  const vimModeRef = useRef<{ dispose: () => void } | null>(null);
   const inlineStreamRequestIdRef = useRef<string | null>(null);
   const inlineStreamTextRef = useRef("");
   const inlinePreviousSqlRef = useRef("");
@@ -238,6 +252,9 @@ export function SqlEditor({
 
   const setSqlContext = useAiChatGlobalStore((state) => state.setSqlContext);
   const clearSqlContext = useAiChatGlobalStore((state) => state.clearSqlContext);
+  const vimMode = useEditorPreferencesStore((state) => state.vimMode);
+  const safeModeLevel = useSafeModeStore((state) => state.getLevel(selectedConnection ?? ""));
+  const isReadOnlySafeMode = safeModeLevel === "readonly";
   const sqlContextSourceIdRef = useRef<string>(
     `sql-editor-${selectedConnection ?? "none"}-${Math.random().toString(36).slice(2)}`,
   );
@@ -1032,7 +1049,17 @@ export function SqlEditor({
     const hasDangerous = statements.some((statement) =>
       hasDangerousSqlKeywords(statement)
     );
-    if (hasDangerous) {
+
+    // Safe mode: block destructive queries in read-only mode
+    if (isReadOnlySafeMode && hasDangerous) {
+      toast.error("Read-only mode is active. Destructive queries (DELETE, UPDATE, DROP, TRUNCATE, ALTER) are blocked.", {
+        duration: 5000,
+      });
+      return;
+    }
+
+    // Safe mode: show confirmation in alert mode (default)
+    if (hasDangerous && safeModeLevel !== "silent") {
       const confirmed = window.confirm(
         "This SQL contains potentially destructive operations (DELETE/UPDATE/DROP/etc). Do you want to continue?"
       );
@@ -1236,7 +1263,19 @@ export function SqlEditor({
         },
       });
     }
-  }, [dbType]);
+
+    // Vim mode — initialized here so it re-applies when editor re-mounts (e.g. tab switch)
+    vimModeRef.current?.dispose();
+    vimModeRef.current = null;
+    if (vimMode) {
+      try {
+        const statusEl = document.getElementById("vim-status-bar");
+        vimModeRef.current = initVimMode(mounted, statusEl ?? undefined);
+      } catch {
+        // Vim mode init can fail in some environments — silently ignore
+      }
+    }
+  }, [dbType, vimMode]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -1815,6 +1854,80 @@ export function SqlEditor({
 
             <Separator orientation="vertical" className="h-4" />
 
+            {/* Vim mode toggle */}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    pressed={vimMode}
+                    onPressedChange={(pressed) => useEditorPreferencesStore.getState().setVimMode(pressed)}
+                    aria-label="Toggle Vim mode"
+                    className="h-6 px-1.5 text-[10px]"
+                  />
+                }
+              />
+              <TooltipContent>Toggle Vim mode</TooltipContent>
+            </Tooltip>
+
+            {/* Safe mode selector */}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          className={cn(
+                            "h-6 gap-1 px-1.5 text-[10px] font-medium",
+                            isReadOnlySafeMode && "text-red-500",
+                            safeModeLevel === "alert" && "text-amber-500",
+                            safeModeLevel === "silent" && "text-muted-foreground",
+                          )}
+                        >
+                          <UiIcon
+                            name={isReadOnlySafeMode ? "alert-triangle" : safeModeLevel === "alert" ? "shield-check" : "shield"}
+                            className="size-3"
+                          />
+                          {SAFE_MODE_LABELS[safeModeLevel]}
+                        </Button>
+                      }
+                    />
+                  }
+                />
+                <TooltipContent>{SAFE_MODE_DESCRIPTIONS[safeModeLevel]}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="start" className="w-56">
+                {(["off", "silent", "alert", "readonly"] as SafeModeLevel[]).map((level) => (
+                  <DropdownMenuItem
+                    key={level}
+                    onClick={() => useSafeModeStore.getState().setLevel(selectedConnection ?? "", level)}
+                    className={cn(
+                      "flex items-center gap-2 text-xs",
+                      safeModeLevel === level && "bg-accent",
+                    )}
+                  >
+                    <UiIcon
+                      name={level === "readonly" ? "alert-triangle" : level === "alert" ? "shield-check" : "shield"}
+                      className={cn(
+                        "size-3.5",
+                        level === "readonly" && "text-red-500",
+                        level === "alert" && "text-amber-500",
+                        level === "silent" && "text-muted-foreground",
+                      )}
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-medium">{SAFE_MODE_LABELS[level]}</span>
+                      <span className="text-[10px] text-muted-foreground">{SAFE_MODE_DESCRIPTIONS[level]}</span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Separator orientation="vertical" className="h-4" />
+
             {/* Run button */}
             <div className="ml-auto flex items-center gap-2 shrink-0">
               {isExecuting && (
@@ -1964,6 +2077,12 @@ export function SqlEditor({
                 theme={monacoTheme}
                 options={MONACO_OPTIONS}
               />
+              {vimMode && (
+                <div
+                  id="vim-status-bar"
+                  className="absolute bottom-0 left-0 right-0 z-10 flex h-5 items-center bg-muted/90 px-2 font-mono text-[10px] text-muted-foreground"
+                />
+              )}
 
               <AnimatePresence>
               {isEditorEmpty && !isInlineAiPromptOpen && (

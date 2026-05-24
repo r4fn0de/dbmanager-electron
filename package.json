@@ -91,6 +91,7 @@
     "lucide-react": "^1.9.0",
     "marked": "^18.0.2",
     "media-chrome": "^4.19.0",
+    "monaco-vim": "^0.4.4",
     "motion": "^12.38.0",
     "mysql2": "^3.22.2",
     "nanoid": "^5.1.9",
