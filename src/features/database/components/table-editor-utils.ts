@@ -17,6 +17,7 @@ export type ColumnKind =
   | "macaddr"
   | "interval"
   | "enum"
+  | "color"
   | "text";
 
 export function classifyColumnKind(column: SchemaColumn | undefined): ColumnKind {

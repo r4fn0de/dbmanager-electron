@@ -1337,8 +1337,8 @@ export function DatabasePageContent({
               <ResizableHandle withHandle />
 
               {/* Main Panel */}
-              <ResizablePanel id="tables-main" minSize={30} className="min-w-0 relative z-20 overflow-visible">
-                <div className="border-b px-2 py-1.5 flex items-center gap-1 overflow-x-auto">
+              <ResizablePanel id="tables-main" minSize={30} className="min-w-0 min-h-0 relative z-20 overflow-hidden flex flex-col">
+                <div className="border-b px-2 py-1.5 flex items-center gap-1 overflow-x-auto shrink-0">
                   {openTableTabs.map((tab) => {
                     const isActiveTab = tab.key === selectedTableKey;
                     return (
@@ -1431,6 +1431,7 @@ export function DatabasePageContent({
                     </Button>
                   </div>
                 </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
                 {(() => {
                   if (!selectedTable || openTableTabs.length === 0) {
                     return (
@@ -1544,6 +1545,7 @@ export function DatabasePageContent({
                     />
                   );
                 })()}
+                </div>
                 {connection && selectedSchema && (
                   <SeedDataDialog
                     isOpen={isSeedDataOpen}

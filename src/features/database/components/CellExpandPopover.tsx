@@ -2,6 +2,7 @@ import type * as monaco from "monaco-editor";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
+import { JsonTreeViewer } from "@/components/ui/json-tree-viewer";
 import { Kbd } from "@/components/ui/kbd";
 import { LazyMonacoEditor } from "./LazyMonacoEditor";
 import {
@@ -163,7 +164,68 @@ export function CellExpandPopover({
     }
 
     switch (kind) {
-      case "json":
+      case "json": {
+        // Tente parsear para mostrar como tree
+        let parsed: unknown;
+        let isJsonValid = false;
+        try {
+          parsed = JSON.parse(draft);
+          isJsonValid = typeof parsed === "object" && parsed !== null;
+        } catch {
+          isJsonValid = false;
+        }
+
+        if (isJsonValid && (readOnly || !readOnly)) {
+          // Mostra tree view com toggle Tree/Text + editor Monaco abaixo para edição
+          return (
+            <div className="flex flex-col gap-2">
+              <JsonTreeViewer
+                value={draft}
+                maxHeight="200px"
+                showViewToggle
+                readOnly={readOnly}
+              />
+              {!readOnly && (
+                <div className="overflow-hidden rounded-md border">
+                  <LazyMonacoEditor
+                    height="120px"
+                    defaultLanguage="json"
+                    value={draft}
+                    onChange={(value: string | undefined) => updateDraft(value ?? "")}
+                    onMount={(editor) => {
+                      editor.onKeyDown((event: monaco.IKeyboardEvent) => {
+                        const isCmdEnter =
+                          (event.metaKey || event.ctrlKey) && event.keyCode === 3;
+                        const isEsc = event.keyCode === 9;
+                        if (isCmdEnter) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          commit();
+                        } else if (isEsc) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          cancel();
+                        }
+                      });
+                    }}
+                    options={{
+                      readOnly,
+                      minimap: { enabled: false },
+                      lineNumbers: "on",
+                      scrollBeyondLastLine: false,
+                      fontSize: 12,
+                      tabSize: 2,
+                      wordWrap: "on",
+                      automaticLayout: true,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // JSON inválido ou primitivo — fallback pro Monaco
         return (
           <div className="overflow-hidden rounded-md border">
             <LazyMonacoEditor
@@ -200,6 +262,7 @@ export function CellExpandPopover({
             />
           </div>
         );
+      }
 
       case "array":
         return (
@@ -321,37 +384,42 @@ export function CellExpandPopover({
 
       case "bool": {
         const current = isNullDraft ? "null" : initialBool(draft);
-        const options: Array<{ label: string; value: "true" | "false" }> = [
-          { label: "TRUE", value: "true" },
-          { label: "FALSE", value: "false" },
-        ];
+        const isTrue = current === "true";
+        const isFalse = current === "false";
         return (
-          <div
-            role="radiogroup"
-            aria-label={columnName}
-            className="flex gap-2"
-            onKeyDown={handleKeyDown}
-          >
-            {options.map((option) => {
-              const selected = current === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={readOnly}
-                  onClick={() => updateDraft(option.value)}
-                  className={`flex-1 rounded-md border px-3 py-2 font-mono text-xs transition-colors ${
-                    selected
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "bg-background text-muted-foreground hover:bg-muted"
+          <div className="flex items-center gap-3" onKeyDown={handleKeyDown}>
+            {/* Checkbox estilizado */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isTrue}
+                disabled={readOnly}
+                onClick={() => updateDraft(isTrue ? "false" : "true")}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isTrue
+                    ? "border-primary bg-primary"
+                    : "border-input bg-muted"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-background shadow-sm ring-0 transition-transform ${
+                    isTrue ? "translate-x-[18px]" : "translate-x-[2px]"
                   }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
+                />
+              </button>
+              <span className={`font-mono text-xs ${isTrue ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                {isTrue ? "TRUE" : "FALSE"}
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => updateDraft(isTrue ? "false" : "true")}
+              disabled={readOnly}
+              className="rounded-md border border-dashed px-2 py-1 font-mono text-[10px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              Toggle
+            </button>
           </div>
         );
       }
@@ -518,19 +586,40 @@ export function CellExpandPopover({
         );
 
       case "text":
-      default:
+      default: {
+        // Detecta se parece uma cor hex para mostrar color picker
+        const isHexColor = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(draft.trim());
         return (
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(event) => updateDraft(event.target.value)}
-            onKeyDown={handleKeyDown}
-            readOnly={readOnly}
-            spellCheck={false}
-            className="h-[260px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
-            placeholder="empty string"
-          />
+          <div className="flex flex-col gap-2">
+            {isHexColor && (
+              <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5">
+                <input
+                  type="color"
+                  value={draft.trim()}
+                  onChange={(event) => updateDraft(event.target.value)}
+                  disabled={readOnly}
+                  className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
+                />
+                <span
+                  className="h-5 w-5 rounded-full border shadow-xs"
+                  style={{ backgroundColor: draft.trim() }}
+                />
+                <span className="font-mono text-xs text-muted-foreground">{draft.trim()}</span>
+              </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(event) => updateDraft(event.target.value)}
+              onKeyDown={handleKeyDown}
+              readOnly={readOnly}
+              spellCheck={false}
+              className="h-[260px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              placeholder="empty string"
+            />
+          </div>
         );
+      }
     }
   })();
 
