@@ -1,0 +1,43 @@
+docs/reports/tarsdb-vs-tablepro-gap-analysis.md
+  s_e9fed139fe658e::t_8bff7579bb1798 64
+  s_e9fed139fe658e::t_0b70e423681339 104,109
+  s_e9fed139fe658e::t_1e547317c9ea56 18
+  s_e9fed139fe658e::t_150b8eaff647d0 72
+src/lib/stores/safe-mode-types.ts
+  s_e9fed139fe658e::t_a6273394301a9a 1-19
+src/lib/stores/safe-mode.ts
+  s_e9fed139fe658e::t_1ae07410739709 1-38
+src/features/database/components/SqlEditor/utils/sqlUtils.ts
+  s_e9fed139fe658e::t_627be4bc40c5f6 8-9
+  s_e9fed139fe658e::t_df21a760e64ffc 27-30
+src/features/database/components/SqlEditor/SqlEditor.tsx
+  s_e9fed139fe658e::t_c749f105bf220e 24-30
+  s_e9fed139fe658e::t_92d52193c98c58 234
+  s_e9fed139fe658e::t_f82ab31869507c 1266-1278
+  s_e9fed139fe658e::t_8f040417685acb 1912
+  s_e9fed139fe658e::t_249f008f9f177e 255-257
+  s_e9fed139fe658e::t_8c723930c3a678 2080-2085
+  s_e9fed139fe658e::t_0180a404b3baf9 48-52
+  s_e9fed139fe658e::t_8e2d7ab27d3b00 60
+  s_e9fed139fe658e::t_eed22660eb3f23 1877-1896
+  s_e9fed139fe658e::t_d4a2abef81c5f8 1052-1062
+  s_e9fed139fe658e::t_090910681aeb9e 1857-1876,1897-1911,1913-1930
+src/lib/stores/editor-preferences.ts
+  s_e9fed139fe658e::t_ef88b41f6085ea 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "a79cc98bb733f4c65ded0fe542a241233ccfa656",
+  "prompts": {},
+  "sessions": {
+    "s_e9fed139fe658e": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "2de6de27-80b6-41f0-9e78-ed8a0cc878d4",
+        "model": "custom:deepseek-v4-pro-0"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
