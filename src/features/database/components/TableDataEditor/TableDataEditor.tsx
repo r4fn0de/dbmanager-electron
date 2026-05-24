@@ -39,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   TableBody,
   TableCell,
@@ -55,6 +56,7 @@ import type {
   TableSort,
 } from "@/ipc/db/types";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import type {
   TableDataEditorProps,
   RowRecord,
@@ -230,6 +232,10 @@ function TableDataEditorInner({
   const [pendingTruncate, setPendingTruncate] = useState(false);
   const [pendingBatchDelete, setPendingBatchDelete] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+
+  // View mode: Data | Structure | JSON
+  type ViewMode = "data" | "structure" | "json";
+  const [viewMode, setViewMode] = useState<ViewMode>("data");
 
   // Row selection
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(
@@ -1494,6 +1500,44 @@ function TableDataEditorInner({
     [effectiveRows, visibleColumns, table.schema, table.name],
   );
 
+  // ── Copy TSV / JSON ────────────────────────────────────────────
+  const copyAsTsv = useCallback(async () => {
+    const dataRows = effectiveRows.map(({ row }) => {
+      const obj: Record<string, unknown> = {};
+      for (const col of visibleColumns) {
+        obj[col] = row[col] ?? null;
+      }
+      return obj;
+    });
+    const tsvEscape = (v: unknown): string => {
+      const s = normalizeDisplay(v);
+      if (s.includes("\t") || s.includes("\n")) {
+        return s.replaceAll("\t", " ").replaceAll("\n", " ");
+      }
+      return s;
+    };
+    const header = visibleColumns.join("\t");
+    const rows = dataRows.map((row) =>
+      visibleColumns.map((col) => tsvEscape(row[col])).join("\t"),
+    );
+    const tsv = [header, ...rows].join("\n");
+    await navigator.clipboard.writeText(tsv);
+    toast.success(`Copied ${dataRows.length} rows as TSV`);
+  }, [effectiveRows, visibleColumns]);
+
+  const copyAsJson = useCallback(async () => {
+    const dataRows = effectiveRows.map(({ row }) => {
+      const obj: Record<string, unknown> = {};
+      for (const col of visibleColumns) {
+        obj[col] = row[col] ?? null;
+      }
+      return obj;
+    });
+    const json = JSON.stringify(dataRows, null, 2);
+    await navigator.clipboard.writeText(json);
+    toast.success(`Copied ${dataRows.length} rows as JSON`);
+  }, [effectiveRows, visibleColumns]);
+
   return (
     <div
       className="relative h-full flex flex-col min-h-0 overflow-visible"
@@ -1559,6 +1603,37 @@ function TableDataEditorInner({
             <UiIcon name="filter" className="h-3.5 w-3.5" />
             Filter
           </Button>
+
+          <ToggleGroup
+            value={[viewMode]}
+            onValueChange={(groupValue) => {
+              const value = groupValue[0];
+              if (value) setViewMode(value as ViewMode);
+            }}
+            className="ml-1"
+          >
+            <ToggleGroupItem
+              value="data"
+              aria-label="Data view"
+              className="h-7 px-2 text-[11px]"
+            >
+              Data
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="structure"
+              aria-label="Structure view"
+              className="h-7 px-2 text-[11px]"
+            >
+              Structure
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="json"
+              aria-label="JSON view"
+              className="h-7 px-2 text-[11px]"
+            >
+              JSON
+            </ToggleGroupItem>
+          </ToggleGroup>
 
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -1735,6 +1810,41 @@ function TableDataEditorInner({
               Refresh rows
             </TooltipContent>
           </Tooltip>
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className={cn(
+                          "text-muted-foreground hover:text-foreground",
+                          pressableClass,
+                        )}
+                      >
+                        <UiIcon name="copy" className="h-3.5 w-3.5" />
+                      </Button>
+                    }
+                  />
+                }
+              />
+              <TooltipContent side="bottom" sideOffset={4}>
+                Copy data
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => void copyAsTsv()}>
+                <UiIcon name="copy" className="size-3.5" />
+                Copy as TSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void copyAsJson()}>
+                <UiIcon name="copy" className="size-3.5" />
+                Copy as JSON
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {onExportData && (
             <Tooltip>
               <TooltipTrigger
@@ -1858,7 +1968,8 @@ function TableDataEditorInner({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {viewMode === "data" ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
         <TableEditorGrid
           isBlockingTableLoading={isBlockingTableLoading}
           scrollRef={scrollRef}
@@ -1927,6 +2038,48 @@ function TableDataEditorInner({
           totalVirtualRows={totalVirtualRows}
         />
       </div>
+      ) : viewMode === "structure" ? (
+        <div className="flex-1 min-h-0 overflow-auto">
+          <table className="w-full border-collapse text-xs">
+            <thead className="sticky top-0 z-10 bg-background">
+              <tr className="border-b border-border/50 bg-background">
+                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">#</th>
+                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">Column</th>
+                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">Type</th>
+                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">Nullable</th>
+                <th className="h-8 px-3 text-left font-medium whitespace-nowrap" scope="col">Default</th>
+              </tr>
+            </thead>
+            <tbody>
+              {table.columns.map((col, i) => (
+                <tr key={col.name} className="border-b border-border/30 hover:bg-muted/30">
+                  <td className="h-7 px-3 font-mono text-muted-foreground border-r border-border/30">{i + 1}</td>
+                  <td className="h-7 px-3 font-mono font-medium border-r border-border/30">{col.name}</td>
+                  <td className="h-7 px-3 font-mono text-muted-foreground border-r border-border/30">{col.udt_name ?? col.data_type}</td>
+                  <td className="h-7 px-3 border-r border-border/30">{col.is_nullable ? "Yes" : "No"}</td>
+                  <td className="h-7 px-3 font-mono text-muted-foreground">{col.column_default ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-auto">
+          <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-all select-text">
+            {JSON.stringify(
+              effectiveRows.map(({ row }) => {
+                const obj: Record<string, unknown> = {};
+                for (const col of visibleColumns) {
+                  obj[col] = row[col] ?? null;
+                }
+                return obj;
+              }),
+              null,
+              2,
+            )}
+          </pre>
+        </div>
+      )}
 
       <TableEditorFooter
         page={page}

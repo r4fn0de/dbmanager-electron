@@ -72,8 +72,8 @@
 | 5 | **Vim Mode** | ✅ **Implementado** | Toggle na toolbar do SQL Editor, `monaco-vim` com status bar, store persistente (`editor-preferences.ts`) |
 | 6 | **Import XLSX** | ✅ **Implementado** | `data-import.ts` com `parseExcelBuffer()`, suporte a `.xlsx,.xls` no `ImportDataDialog` |
 | 7 | **Export XLSX** | ✅ **Implementado** | `serializeExportToXlsx()` no `data-export.ts`, botão XLSX no `ExportDataDialog` e `QueryResults` |
-| 8 | **Copy TSV/JSON** | Opções no menu de contexto da grid: "Copy as TSV", "Copy as JSON" |
-| 9 | **View modes (Data/Structure/JSON)** | Adicionar toggle "JSON View" nas abas de visualização |
+| 8 | **Copy TSV/JSON** | ✅ **Implementado** | Dropdown "Copy" na toolbar do `TableDataEditor` com opções "Copy as TSV" e "Copy as JSON" |
+| 9 | **View modes (Data/Structure/JSON)** | ✅ **Implementado** | ToggleGroup Data/Structure/JSON na toolbar do `TableDataEditor`. Structure mostra colunas/tipos/nullable/default |
 
 ### 🧠 Prioridade Média-Alta (AI)
 
@@ -101,7 +101,7 @@
 
 | Categoria | Total | Existentes | Novos |
 |-----------|-------|------------|-------|
-| Features listadas | 25 | 12 (parcial/total) | 13 |
+| Features listadas | 25 | 14 (parcial/total) | 11 |
 
 **Top 5 recomendados para implementar:**
 
