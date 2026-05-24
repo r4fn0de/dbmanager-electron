@@ -24,7 +24,7 @@ import {
   tableSaveChanges,
 } from "@/features/database/hooks/db-actions";
 import { applyColumnMapping, buildColumnMapping, getPreviewRows, inferColumnsFromRows, parseImportFile } from "@/features/database/utils/data-import";
-import { buildExportFileName, serializeExport, type ExportFormat } from "@/features/database/utils/data-export";
+import { buildExportFileName, serializeExport, serializeExportToXlsx, type ExportFormat } from "@/features/database/utils/data-export";
 import {
   autoDetectGenerator,
   BASE_GENERATORS,
@@ -303,8 +303,13 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
       };
 
       const result = serializeExport(payload, format);
-      setOutput(result);
-      const blob = new Blob([result], { type: "text/plain;charset=utf-8" });
+      setOutput(format === "xlsx" ? "[Binary XLSX output]" : result);
+      const mimeType = format === "xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "text/plain;charset=utf-8";
+      const blob = format === "xlsx"
+        ? new Blob([serializeExportToXlsx(payload)], { type: mimeType })
+        : new Blob([result], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -351,6 +356,7 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
                   <SelectItem value="csv">CSV</SelectItem>
                   <SelectItem value="json">JSON</SelectItem>
                   <SelectItem value="markdown">Markdown</SelectItem>
+                  <SelectItem value="xlsx">Excel (XLSX)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -34,8 +34,8 @@
 
 ### Import/Export
 - CSV import/export, JSON export, SQL export
-- **Import XLSX** — Não implementado
-- **Export XLSX** — Não implementado
+- **Import XLSX** ✅ — `data-import.ts` com `parseExcelBuffer()`, `ImportDataDialog` já aceita `.xlsx,.xls`
+- **Export XLSX** ✅ — `data-export.ts` com `serializeExportToXlsx()`, `ExportDataDialog` e `QueryResults` com botão XLSX
 
 ### Definitions Browser
 - Enums, functions, constraints, indexes, triggers
@@ -70,8 +70,8 @@
 | # | Feature | Descrição |
 |---|---|---|
 | 5 | **Vim Mode** | ✅ **Implementado** | Toggle na toolbar do SQL Editor, `monaco-vim` com status bar, store persistente (`editor-preferences.ts`) |
-| 6 | **Import XLSX** | Adicionar suporte a `.xlsx` (SheetJS) |
-| 7 | **Export XLSX** | Exportar resultados/consultas para `.xlsx` |
+| 6 | **Import XLSX** | ✅ **Implementado** | `data-import.ts` com `parseExcelBuffer()`, suporte a `.xlsx,.xls` no `ImportDataDialog` |
+| 7 | **Export XLSX** | ✅ **Implementado** | `serializeExportToXlsx()` no `data-export.ts`, botão XLSX no `ExportDataDialog` e `QueryResults` |
 | 8 | **Copy TSV/JSON** | Opções no menu de contexto da grid: "Copy as TSV", "Copy as JSON" |
 | 9 | **View modes (Data/Structure/JSON)** | Adicionar toggle "JSON View" nas abas de visualização |
 
@@ -101,7 +101,7 @@
 
 | Categoria | Total | Existentes | Novos |
 |-----------|-------|------------|-------|
-| Features listadas | 25 | 10 (parcial/total) | 15 |
+| Features listadas | 25 | 12 (parcial/total) | 13 |
 
 **Top 5 recomendados para implementar:**
 

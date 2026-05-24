@@ -1,6 +1,7 @@
 import type { DdlScript } from "@/ipc/db/types";
+import * as XLSX from "xlsx";
 
-export type ExportFormat = "sql" | "csv" | "json" | "markdown";
+export type ExportFormat = "sql" | "csv" | "json" | "markdown" | "xlsx";
 
 export interface ExportLayerPayload {
   metadata: {
@@ -23,7 +24,8 @@ export interface ExportLayerPayload {
 
 export function buildExportFileName(payload: ExportLayerPayload, format: ExportFormat): string {
   const suffix = payload.metadata.scope === "table" ? `${payload.metadata.schema}.${payload.metadata.table}` : payload.metadata.schema;
-  return `db-export-${suffix}.${format === "markdown" ? "md" : format}`;
+  const ext = format === "markdown" ? "md" : format === "xlsx" ? "xlsx" : format;
+  return `db-export-${suffix}.${ext}`;
 }
 
 function toSqlLiteral(value: unknown): string {
@@ -109,4 +111,26 @@ export function serializeExport(payload: ExportLayerPayload, format: ExportForma
   }
 
   return lines.join("\n");
+}
+
+export function serializeExportToXlsx(payload: ExportLayerPayload): ArrayBuffer {
+  const workbook = XLSX.utils.book_new();
+
+  for (const dataSet of payload.layers.data) {
+    const sheetName = dataSet.table.length > 31
+      ? `${dataSet.table.slice(0, 28)}...`
+      : dataSet.table;
+
+    const rows: unknown[][] = [dataSet.columns];
+    for (const row of dataSet.rows) {
+      rows.push(dataSet.columns.map((col) => row[col]));
+    }
+
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+  }
+
+  const result = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+  const buffer = new Uint8Array(result as number[]).buffer;
+  return buffer;
 }

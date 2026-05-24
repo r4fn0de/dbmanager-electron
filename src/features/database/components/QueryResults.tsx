@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { QueryResult } from "@/ipc/db/types";
 import { formatDuration } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import * as XLSX from "xlsx";
 
 interface QueryResultsProps {
   result: QueryResult | null;
@@ -92,6 +93,28 @@ function exportAsJson(result: QueryResult) {
   const a = document.createElement("a");
   a.href = url;
   a.download = "query-results.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportAsXlsx(result: QueryResult) {
+  const header = result.columns.map((c) => c.name);
+  const rows = result.rows.map((row) =>
+    row.map((cell) => formatCellValue(cell)),
+  );
+  const sheetData = [header, ...rows];
+  const sheet = XLSX.utils.aoa_to_sheet(sheetData);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Results");
+  const rawBuffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+  const buffer = new Uint8Array(rawBuffer as number[]).buffer;
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "query-results.xlsx";
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -381,6 +404,15 @@ export function QueryResults({
           >
             <Icon name="download" className="size-3" />
             JSON
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => exportAsXlsx(result)}
+            title="Export as Excel (XLSX)"
+          >
+            <Icon name="download" className="size-3" />
+            XLSX
           </Button>
         </div>
       </div>
