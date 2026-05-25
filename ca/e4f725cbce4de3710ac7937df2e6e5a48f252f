@@ -1,0 +1,37 @@
+src/features/database/components/TableDataEditor/components/TableEditorGrid.tsx
+  s_a4bbf5891ca952::t_2df0cf38b79610 35-39,41
+src/features/database/components/TableDataEditor/components/TableEditorGridRows.tsx
+  s_a4bbf5891ca952::t_457664cd96241f 178
+src/features/database/components/TableDataEditor/TableDataEditor.tsx
+  s_a4bbf5891ca952::t_4a68c15aeb89d5 291,1562,2211-2216,2220-2221
+  s_a4bbf5891ca952::t_93c891515162d3 1563
+  s_aa25923192e54b::t_41d8a7ba69c8a0 2164-2181
+  s_aa25923192e54b::t_40132fe8cd8c43 2163
+  s_aa25923192e54b::t_ff36ea5afe4940 5,595-608,2006-2045,2047-2123
+  s_aa25923192e54b::t_ffefe5a2de9eae 2126-2159
+  s_a4bbf5891ca952::t_8df9dde6d283ae 1304,2237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "cae4f725cbce4de3710ac7937df2e6e5a48f252f",
+  "prompts": {},
+  "sessions": {
+    "s_a4bbf5891ca952": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e5f60-5c3c-7120-8ba7-61ddb9f1cb80",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    },
+    "s_aa25923192e54b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e5ca4-8df5-70c1-9ce4-06ce7135bbac",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
