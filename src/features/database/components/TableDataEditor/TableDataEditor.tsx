@@ -28,10 +28,14 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -39,7 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   TableBody,
   TableCell,
@@ -1544,218 +1547,50 @@ function TableDataEditorInner({
       onClickCapture={clearSelectionOnOutsideClick}
     >
       <div className="border-b bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 px-3 py-2 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto pr-2">
-          {onToggleSidebar && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className={cn(
-                      "text-muted-foreground hover:text-foreground",
-                      pressableClass,
-                    )}
-                    onClick={onToggleSidebar}
-                  >
-                    {isSidebarVisible ? (
-                      <UiIcon name="panel-left-close" className="h-4 w-4" />
-                    ) : (
-                      <UiIcon name="panel-left" className="h-4 w-4" />
-                    )}
-                  </Button>
-                }
-              />
-              <TooltipContent side="bottom" sideOffset={4}>
-                {isSidebarVisible ? "Hide" : "Show"} explorer <KbdGroup className="ml-1.5"><Kbd>⌘</Kbd><Kbd>B</Kbd></KbdGroup>
-              </TooltipContent>
-            </Tooltip>
-          )}
-
-          <Button
-            variant="default"
-            size="sm"
-            className={cn("font-medium", pressableClass)}
-            onClick={handleAddDraftRecord}
-          >
-            <UiIcon name="plus" className="h-3.5 w-3.5" />
-            Add row
-          </Button>
-
-          {onRequestAddColumn && (
+        {/* ── Left: Add row + View mode ─────────────────────── */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          {viewMode === "data" && (
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               className={cn("font-medium", pressableClass)}
-              onClick={onRequestAddColumn}
+              onClick={handleAddDraftRecord}
             >
               <UiIcon name="plus" className="h-3.5 w-3.5" />
-              Column
+              Add row
             </Button>
           )}
-
-          <Button
-            variant={showFilters ? "secondary" : "outline"}
-            size="sm"
-            className={cn("font-medium", pressableClass)}
-            onClick={() => setShowFilters((v) => !v)}
-          >
-            <UiIcon name="filter" className="h-3.5 w-3.5" />
-            Filter
-          </Button>
-
-          <ToggleGroup
-            value={[viewMode]}
-            onValueChange={(groupValue) => {
-              const value = groupValue[0];
-              if (value) setViewMode(value as ViewMode);
-            }}
-            className="ml-1"
-          >
-            <ToggleGroupItem
-              value="data"
-              aria-label="Data view"
-              className="h-7 px-2 text-[11px]"
-            >
-              Data
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="structure"
-              aria-label="Structure view"
-              className="h-7 px-2 text-[11px]"
-            >
-              Structure
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="json"
-              aria-label="JSON view"
-              className="h-7 px-2 text-[11px]"
-            >
-              JSON
-            </ToggleGroupItem>
-          </ToggleGroup>
 
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className={cn("font-medium", pressableClass)}
-                />
-              }
-            >
-              <UiIcon name="columns-3" className="h-3.5 w-3.5" />
-              Columns
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="min-w-48">
-              {table.columns.map((column) => (
-                <DropdownMenuCheckboxItem
-                  key={column.name}
-                  checked={visibleColumns.includes(column.name)}
-                  onCheckedChange={(checked) => {
-                    setVisibleColumns((current) => {
-                      if (checked) {
-                        return current.includes(column.name)
-                          ? current
-                          : [...current, column.name];
-                      }
-                      if (current.length === 1) return current;
-                      return current.filter((name) => name !== column.name);
-                    });
-                  }}
+                  className="h-7 gap-1 px-2 text-[11px] font-medium"
                 >
-                  {column.name}
-                </DropdownMenuCheckboxItem>
-              ))}
+                  {viewMode === "data" ? "Data" : viewMode === "structure" ? "Structure" : "JSON"}
+                  <UiIcon name="chevron-down" className="size-3 opacity-50" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start" className="min-w-32">
+              <DropdownMenuItem onClick={() => setViewMode("data")}>
+                <UiIcon name="table" className="size-3.5" />
+                Data
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setViewMode("structure")}>
+                <UiIcon name="columns-3" className="size-3.5" />
+                Structure
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setViewMode("json")}>
+                <UiIcon name="braces" className="size-3.5" />
+                JSON
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {(onRequestDropColumn ||
-            onRequestRenameColumn ||
-            onRequestAlterColumnType ||
-            onRequestSetColumnDefault ||
-            onRequestSetColumnNullable) && (
-            <>
-              <Select
-                value={ddlColumnName}
-                onValueChange={(value) => {
-                  if (value) setDdlColumnName(value);
-                }}
-              >
-                <SelectTrigger size="sm" className="h-8 text-sm w-auto min-w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {table.columns.map((column) => (
-                    <SelectItem key={column.name} value={column.name}>
-                      {column.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn("font-medium", pressableClass)}
-                    />
-                  }
-                >
-                  Column DDL
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem
-                    disabled={!ddlColumnName || !onRequestRenameColumn}
-                    onClick={() =>
-                      ddlColumnName && onRequestRenameColumn?.(ddlColumnName)
-                    }
-                  >
-                    Rename column
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!ddlColumnName || !onRequestAlterColumnType}
-                    onClick={() => {
-                      const column = columnMap[ddlColumnName];
-                      if (column) onRequestAlterColumnType?.(column);
-                    }}
-                  >
-                    Alter column type
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!ddlColumnName || !onRequestSetColumnDefault}
-                    onClick={() => {
-                      const column = columnMap[ddlColumnName];
-                      if (column) onRequestSetColumnDefault?.(column);
-                    }}
-                  >
-                    Set / Drop default
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!ddlColumnName || !onRequestSetColumnNullable}
-                    onClick={() => {
-                      const column = columnMap[ddlColumnName];
-                      if (column) onRequestSetColumnNullable?.(column);
-                    }}
-                  >
-                    Set / Drop NOT NULL
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!ddlColumnName || !onRequestDropColumn}
-                    onClick={() =>
-                      ddlColumnName && onRequestDropColumn?.(ddlColumnName)
-                    }
-                  >
-                    Drop column
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          )}
-
-          {selectedRowKeys.size > 0 && (
+          {viewMode === "data" && selectedRowKeys.size > 0 && (
             <Button
               variant="destructive"
               size="sm"
@@ -1769,7 +1604,8 @@ function TableDataEditorInner({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 pl-2 border-l">
+        {/* ── Right: Info + actions ──────────────────────── */}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
           {(isLoading || isSwitchingTable) && rowsResponse && (
             <UiIcon name="loader" className="h-3 w-3 animate-spin" />
           )}
@@ -1781,6 +1617,32 @@ function TableDataEditorInner({
               {dirtyCounts.deletes > 0 && <span className="text-red-600 dark:text-red-400">-{dirtyCounts.deletes}</span>}
             </span>
           )}
+
+          <Separator orientation="vertical" className="h-4 mx-1" />
+
+          {viewMode === "data" && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn(
+                      showFilters ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                      pressableClass,
+                    )}
+                    onClick={() => setShowFilters((v) => !v)}
+                  >
+                    <UiIcon name="filter" className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
+              <TooltipContent side="bottom" sideOffset={4}>
+                Filter rows
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1810,6 +1672,57 @@ function TableDataEditorInner({
               Refresh rows
             </TooltipContent>
           </Tooltip>
+
+          {viewMode === "data" && (
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className={cn(
+                            "text-muted-foreground hover:text-foreground",
+                            pressableClass,
+                          )}
+                        >
+                          <UiIcon name="columns-3" className="h-3.5 w-3.5" />
+                        </Button>
+                      }
+                    />
+                  }
+                />
+                <TooltipContent side="bottom" sideOffset={4}>
+                  Column visibility
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent className="min-w-48" align="end">
+                {table.columns.map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.name}
+                    checked={visibleColumns.includes(column.name)}
+                    onCheckedChange={(checked) => {
+                      setVisibleColumns((current) => {
+                        if (checked) {
+                          return current.includes(column.name)
+                            ? current
+                            : [...current, column.name];
+                        }
+                        if (current.length === 1) return current;
+                        return current.filter((name) => name !== column.name);
+                      });
+                    }}
+                  >
+                    {column.name}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {/* ── Overflow menu ────────────────────────────── */}
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger
@@ -1824,94 +1737,128 @@ function TableDataEditorInner({
                           pressableClass,
                         )}
                       >
-                        <UiIcon name="copy" className="h-3.5 w-3.5" />
+                        <UiIcon name="more-horizontal" className="h-3.5 w-3.5" />
                       </Button>
                     }
                   />
                 }
               />
               <TooltipContent side="bottom" sideOffset={4}>
-                Copy data
+                More actions
               </TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void copyAsTsv()}>
-                <UiIcon name="copy" className="size-3.5" />
-                Copy as TSV
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void copyAsJson()}>
-                <UiIcon name="copy" className="size-3.5" />
-                Copy as JSON
+            <DropdownMenuContent align="end" className="w-52">
+              {onToggleSidebar && (
+                <DropdownMenuItem onClick={onToggleSidebar}>
+                  <UiIcon name={isSidebarVisible ? "panel-left-close" : "panel-left"} className="size-3.5" />
+                  {isSidebarVisible ? "Hide" : "Show"} explorer
+                </DropdownMenuItem>
+              )}
+              {viewMode === "data" && onRequestAddColumn && (
+                <DropdownMenuItem onClick={onRequestAddColumn}>
+                  <UiIcon name="plus" className="size-3.5" />
+                  Add column
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              {viewMode === "data" && (
+                <>
+                  <DropdownMenuItem onClick={() => void copyAsTsv()}>
+                    <UiIcon name="copy" className="size-3.5" />
+                    Copy as TSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void copyAsJson()}>
+                    <UiIcon name="copy" className="size-3.5" />
+                    Copy as JSON
+                  </DropdownMenuItem>
+                </>
+              )}
+              {onExportData && (
+                <DropdownMenuItem onClick={onExportData}>
+                  <UiIcon name="download" className="size-3.5" />
+                  Export data
+                </DropdownMenuItem>
+              )}
+              {onSeedData && (
+                <DropdownMenuItem onClick={onSeedData}>
+                  <UiIcon name="dice" className="size-3.5" />
+                  Seed data
+                </DropdownMenuItem>
+              )}
+              {(onRequestDropColumn ||
+                onRequestRenameColumn ||
+                onRequestAlterColumnType ||
+                onRequestSetColumnDefault ||
+                onRequestSetColumnNullable) && viewMode === "data" && (
+                <DropdownMenuSeparator />
+              )}
+              {(onRequestDropColumn ||
+                onRequestRenameColumn ||
+                onRequestAlterColumnType ||
+                onRequestSetColumnDefault ||
+                onRequestSetColumnNullable) && viewMode === "data" && (
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Column DDL</DropdownMenuLabel>
+                  {table.columns.slice(0, 8).map((column) => (
+                    <DropdownMenuItem
+                      key={column.name}
+                      onClick={() => setDdlColumnName(column.name)}
+                      className={cn(
+                        "text-[11px] font-mono",
+                        ddlColumnName === column.name && "bg-accent",
+                      )}
+                    >
+                      {column.name}
+                    </DropdownMenuItem>
+                  ))}
+                  {table.columns.length > 8 && (
+                    <DropdownMenuItem disabled className="text-[11px] text-muted-foreground">
+                      +{table.columns.length - 8} more columns…
+                    </DropdownMenuItem>
+                  )}
+                  {onRequestRenameColumn && ddlColumnName && (
+                    <DropdownMenuItem onClick={() => onRequestRenameColumn(ddlColumnName)}>
+                      Rename column
+                    </DropdownMenuItem>
+                  )}
+                  {onRequestAlterColumnType && ddlColumnName && columnMap[ddlColumnName] && (
+                    <DropdownMenuItem onClick={() => onRequestAlterColumnType(columnMap[ddlColumnName])}>
+                      Alter column type
+                    </DropdownMenuItem>
+                  )}
+                  {onRequestSetColumnDefault && ddlColumnName && columnMap[ddlColumnName] && (
+                    <DropdownMenuItem onClick={() => onRequestSetColumnDefault(columnMap[ddlColumnName])}>
+                      Set / Drop default
+                    </DropdownMenuItem>
+                  )}
+                  {onRequestSetColumnNullable && ddlColumnName && columnMap[ddlColumnName] && (
+                    <DropdownMenuItem onClick={() => onRequestSetColumnNullable(columnMap[ddlColumnName])}>
+                      Set / Drop NOT NULL
+                    </DropdownMenuItem>
+                  )}
+                  {onRequestDropColumn && ddlColumnName && (
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => onRequestDropColumn(ddlColumnName)}
+                    >
+                      Drop column
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => {
+                  setPendingTruncate(true);
+                  setConfirmText("");
+                }}
+              >
+                <UiIcon name="trash" className="size-3.5" />
+                Truncate table
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {onExportData && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className={cn(
-                      "text-muted-foreground hover:text-foreground",
-                      pressableClass,
-                    )}
-                    onClick={onExportData}
-                  >
-                    <UiIcon name="download" className="h-3.5 w-3.5" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="bottom" sideOffset={4}>
-                Export data
-              </TooltipContent>
-            </Tooltip>
-          )}
-          {onSeedData && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className={cn(
-                      "text-muted-foreground hover:text-foreground",
-                      pressableClass,
-                    )}
-                    onClick={onSeedData}
-                  >
-                    <UiIcon name="dice" className="h-3.5 w-3.5" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="bottom" sideOffset={4}>
-                Seed data
-              </TooltipContent>
-            </Tooltip>
-          )}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn(
-                    "text-muted-foreground hover:text-destructive",
-                    pressableClass,
-                  )}
-                  onClick={() => {
-                    setPendingTruncate(true);
-                    setConfirmText("");
-                  }}
-                >
-                  <UiIcon name="trash" className="h-3.5 w-3.5" />
-                </Button>
-              }
-            />
-            <TooltipContent side="bottom" sideOffset={4}>
-              Truncate table
-            </TooltipContent>
-          </Tooltip>
         </div>
       </div>
 

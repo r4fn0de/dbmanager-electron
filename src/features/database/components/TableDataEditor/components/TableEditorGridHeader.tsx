@@ -47,19 +47,19 @@ export function TableEditorGridHeader({
             >
               <button
                 type="button"
-                className="w-full h-full text-left cursor-pointer pr-2 overflow-hidden select-none"
+                className="w-full h-full text-left pr-2 overflow-hidden select-none"
                 onClick={() => onSortColumn(columnName)}
               >
                 <div className="flex items-center min-w-0 gap-1">
                   <span
-                    className="min-w-0 flex-1 basis-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground/90 select-text"
+                    className="min-w-0 flex-1 basis-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-foreground/90"
                     title={column?.data_type ? `${columnName} (${column.data_type})` : columnName}
                   >
                     {columnName}
                   </span>
                   {column?.data_type ? (
                     <span
-                      className="min-w-0 max-w-[42%] truncate whitespace-nowrap text-[10px] font-normal text-muted-foreground/70 select-text"
+                      className="min-w-0 max-w-[42%] truncate whitespace-nowrap text-[10px] font-normal text-muted-foreground/70"
                       title={column.data_type}
                     >
                       {column.data_type}

@@ -1806,129 +1806,137 @@ export function SqlEditor({
             </Tooltip>
           </div>
 
-          {/* ── Editor toolbar (single row) ──────────────────── */}
-          <div className="flex items-center gap-2 border-b border-border/50 px-3 h-9">
-            {/* Query title */}
-            <Input
-              className="h-7 w-[180px] rounded-md border-0 bg-transparent px-1.5 font-medium text-sm hover:bg-muted/60 focus:bg-muted focus-visible:ring-0 transition-colors"
-              value={doc.title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Untitled query"
-            />
-
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => void saveCurrentQuery()}
-                    className="gap-1"
-                  >
-                    <UiIcon name="device-floppy" className="size-3" />
-                    Save
-                  </Button>
-                }
+          {/* ── Editor toolbar ──────────────────── */}
+          <div className="flex items-center gap-1.5 border-b border-border/50 px-2 h-9">
+            {/* ── Left: Document actions ─────── */}
+            <div className="flex items-center gap-1">
+              <Input
+                className="h-7 w-[180px] rounded-md border-0 bg-transparent px-1.5 font-medium text-sm hover:bg-muted/60 focus:bg-muted focus-visible:ring-0 transition-colors"
+                value={doc.title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Untitled query"
               />
-              <TooltipContent>
-                Save query
-                <KbdGroup>
-                  <Kbd>⌘</Kbd>
-                  <Kbd>S</Kbd>
-                </KbdGroup>
-              </TooltipContent>
-            </Tooltip>
 
-            <Separator orientation="vertical" className="h-4" />
-
-            {/* Current connection (fixed by page context) */}
-            <span
-              className={cn(
-                "inline-block size-[7px] rounded-full shrink-0",
-                selectedConnection ? "bg-emerald-500" : "bg-muted-foreground/40"
-              )}
-            />
-            <span className="max-w-[260px] truncate text-xs text-foreground/70">
-              {selectedConnectionMeta.label || "No connection selected"}
-            </span>
-
-            <Separator orientation="vertical" className="h-4" />
-
-            {/* Vim mode toggle */}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Toggle
-                    pressed={vimMode}
-                    onPressedChange={(pressed) => useEditorPreferencesStore.getState().setVimMode(pressed)}
-                    aria-label="Toggle Vim mode"
-                    className="h-6 px-1.5 text-[10px]"
-                  />
-                }
-              />
-              <TooltipContent>Toggle Vim mode</TooltipContent>
-            </Tooltip>
-
-            {/* Safe mode selector */}
-            <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          className={cn(
-                            "h-6 gap-1 px-1.5 text-[10px] font-medium",
-                            isReadOnlySafeMode && "text-red-500",
-                            safeModeLevel === "alert" && "text-amber-500",
-                            safeModeLevel === "silent" && "text-muted-foreground",
-                          )}
-                        >
-                          <UiIcon
-                            name={isReadOnlySafeMode ? "alert-triangle" : safeModeLevel === "alert" ? "shield-check" : "shield"}
-                            className="size-3"
-                          />
-                          {SAFE_MODE_LABELS[safeModeLevel]}
-                        </Button>
-                      }
-                    />
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => void saveCurrentQuery()}
+                      className="gap-1"
+                    >
+                      <UiIcon name="device-floppy" className="size-3" />
+                      Save
+                    </Button>
                   }
                 />
-                <TooltipContent>{SAFE_MODE_DESCRIPTIONS[safeModeLevel]}</TooltipContent>
+                <TooltipContent>
+                  Save query
+                  <KbdGroup>
+                    <Kbd>⌘</Kbd>
+                    <Kbd>S</Kbd>
+                  </KbdGroup>
+                </TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="start" className="w-56">
-                {(["off", "silent", "alert", "readonly"] as SafeModeLevel[]).map((level) => (
-                  <DropdownMenuItem
-                    key={level}
-                    onClick={() => useSafeModeStore.getState().setLevel(selectedConnection ?? "", level)}
-                    className={cn(
-                      "flex items-center gap-2 text-xs",
-                      safeModeLevel === level && "bg-accent",
-                    )}
-                  >
-                    <UiIcon
-                      name={level === "readonly" ? "alert-triangle" : level === "alert" ? "shield-check" : "shield"}
-                      className={cn(
-                        "size-3.5",
-                        level === "readonly" && "text-red-500",
-                        level === "alert" && "text-amber-500",
-                        level === "silent" && "text-muted-foreground",
-                      )}
-                    />
-                    <div className="flex flex-col">
-                      <span className="font-medium">{SAFE_MODE_LABELS[level]}</span>
-                      <span className="text-[10px] text-muted-foreground">{SAFE_MODE_DESCRIPTIONS[level]}</span>
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            </div>
 
             <Separator orientation="vertical" className="h-4" />
 
-            {/* Run button */}
+            {/* ── Center: Connection ─────────── */}
+            <div className="flex items-center gap-1.5 px-1.5">
+              <span
+                className={cn(
+                  "inline-block size-[7px] rounded-full shrink-0",
+                  selectedConnection ? "bg-emerald-500" : "bg-muted-foreground/40"
+                )}
+              />
+              <span className="max-w-[260px] truncate text-xs text-foreground/70">
+                {selectedConnectionMeta.label || "No connection selected"}
+              </span>
+            </div>
+
+            <Separator orientation="vertical" className="h-4" />
+
+            {/* ── Right: Editor settings ─────── */}
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Toggle
+                      pressed={vimMode}
+                      onPressedChange={(pressed) => useEditorPreferencesStore.getState().setVimMode(pressed)}
+                      aria-label="Toggle Vim mode"
+                      className="h-6 gap-1 px-1.5 text-[10px]"
+                    >
+                      <UiIcon name="keyboard" className="size-3" />
+                      Vim
+                    </Toggle>
+                  }
+                />
+                <TooltipContent>Toggle Vim mode</TooltipContent>
+              </Tooltip>
+
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className={cn(
+                              "h-6 gap-1 px-1.5 text-[10px] font-medium",
+                              isReadOnlySafeMode && "text-red-500",
+                              safeModeLevel === "alert" && "text-amber-500",
+                              safeModeLevel === "silent" && "text-muted-foreground",
+                            )}
+                          >
+                            <UiIcon
+                              name={isReadOnlySafeMode ? "alert-triangle" : safeModeLevel === "alert" ? "shield-check" : "shield"}
+                              className="size-3"
+                            />
+                            {SAFE_MODE_LABELS[safeModeLevel]}
+                          </Button>
+                        }
+                      />
+                    }
+                  />
+                  <TooltipContent>{SAFE_MODE_DESCRIPTIONS[safeModeLevel]}</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="start" className="w-56">
+                  {(["off", "silent", "alert", "readonly"] as SafeModeLevel[]).map((level) => (
+                    <DropdownMenuItem
+                      key={level}
+                      onClick={() => useSafeModeStore.getState().setLevel(selectedConnection ?? "", level)}
+                      className={cn(
+                        "flex items-center gap-2 text-xs",
+                        safeModeLevel === level && "bg-accent",
+                      )}
+                    >
+                      <UiIcon
+                        name={level === "readonly" ? "alert-triangle" : level === "alert" ? "shield-check" : "shield"}
+                        className={cn(
+                          "size-3.5",
+                          level === "readonly" && "text-red-500",
+                          level === "alert" && "text-amber-500",
+                          level === "silent" && "text-muted-foreground",
+                        )}
+                      />
+                      <div className="flex flex-col">
+                        <span className="font-medium">{SAFE_MODE_LABELS[level]}</span>
+                        <span className="text-[10px] text-muted-foreground">{SAFE_MODE_DESCRIPTIONS[level]}</span>
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <Separator orientation="vertical" className="h-4" />
+
+            {/* ── Run ────────────────────────── */}
             <div className="ml-auto flex items-center gap-2 shrink-0">
               {isExecuting && (
                 <div className="flex items-center gap-2">
@@ -1940,7 +1948,6 @@ export function SqlEditor({
                     variant="ghost"
                     onClick={() => {
                       executionAbort.current?.abort();
-                      // Also cancel on the server side
                       if (activeRequestIdRef.current) {
                         cancelQuery(activeRequestIdRef.current);
                       }
