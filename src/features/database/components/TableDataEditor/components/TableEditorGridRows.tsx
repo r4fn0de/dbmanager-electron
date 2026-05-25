@@ -175,7 +175,7 @@ export function TableEditorGridRows({
                 row,
                 index,
                 top: rowRect.top + rowRect.height / 2,
-                left: rowRect.left - 12,
+                left: rowRect.left,
                 width: rowRect.width,
                 height: rowRect.height,
               });

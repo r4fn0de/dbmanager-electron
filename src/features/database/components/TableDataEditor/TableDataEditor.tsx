@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dbQueryKeys, dbQueryOptions } from "@/lib/query-options";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconArrowsDiagonal2 } from "@tabler/icons-react";
+import { Database, KeyRound, Link2, ShieldCheck } from "lucide-react";
 import {
   forwardRef,
   type ForwardedRef,
@@ -287,6 +288,7 @@ function TableDataEditorInner({
     width: number;
     height: number;
   }>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
 
   const liveViewStateRef = useRef({
@@ -589,6 +591,20 @@ function TableDataEditorInner({
 
   const hasDraftChanges =
     dirtyCounts.inserts + dirtyCounts.updates + dirtyCounts.deletes > 0;
+
+  const structureStats = useMemo(() => {
+    const nullableCount = table.columns.filter((column) => column.is_nullable).length;
+    const defaultCount = table.columns.filter((column) => column.column_default !== null).length;
+    return {
+      columns: table.columns.length,
+      nullable: nullableCount,
+      notNull: table.columns.length - nullableCount,
+      defaults: defaultCount,
+      primaryKeys: primaryKey.length,
+      foreignKeys: foreignKeys.length,
+      hasRls: table.has_rls,
+    };
+  }, [foreignKeys.length, primaryKey.length, table.columns, table.has_rls]);
 
   useEffect(() => {
     if (!pendingEditPerfRowKeyRef.current) return;
@@ -1285,7 +1301,7 @@ function TableDataEditorInner({
       const button = floatingRowButtonRef.current;
       if (!button) return;
       button.style.top = `${payload.top}px`;
-      button.style.left = `${payload.left}px`;
+      button.style.left = `${payload.left - 8}px`;
       button.style.opacity = expandedRow ? "0" : "1";
       button.style.pointerEvents = expandedRow ? "none" : "auto";
     },
@@ -1543,7 +1559,8 @@ function TableDataEditorInner({
 
   return (
     <div
-      className="relative h-full flex flex-col min-h-0 overflow-visible"
+      ref={editorContainerRef}
+      className="relative h-full flex flex-col min-h-0 overflow-hidden"
       onClickCapture={clearSelectionOnOutsideClick}
     >
       <div className="border-b bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 px-3 py-2 flex items-center justify-between gap-3">
@@ -1986,65 +2003,182 @@ function TableDataEditorInner({
         />
       </div>
       ) : viewMode === "structure" ? (
-        <div className="flex-1 min-h-0 overflow-auto">
-          <table className="w-full border-collapse text-xs">
-            <thead className="sticky top-0 z-10 bg-background">
-              <tr className="border-b border-border/50 bg-background">
-                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">#</th>
-                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">Column</th>
-                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">Type</th>
-                <th className="h-8 px-3 text-left font-medium whitespace-nowrap border-r border-border/30" scope="col">Nullable</th>
-                <th className="h-8 px-3 text-left font-medium whitespace-nowrap" scope="col">Default</th>
-              </tr>
-            </thead>
-            <tbody>
-              {table.columns.map((col, i) => (
-                <tr key={col.name} className="border-b border-border/30 hover:bg-muted/30">
-                  <td className="h-7 px-3 font-mono text-muted-foreground border-r border-border/30">{i + 1}</td>
-                  <td className="h-7 px-3 font-mono font-medium border-r border-border/30">{col.name}</td>
-                  <td className="h-7 px-3 font-mono text-muted-foreground border-r border-border/30">{col.udt_name ?? col.data_type}</td>
-                  <td className="h-7 px-3 border-r border-border/30">{col.is_nullable ? "Yes" : "No"}</td>
-                  <td className="h-7 px-3 font-mono text-muted-foreground">{col.column_default ?? "—"}</td>
-                </tr>
+        <div className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_0%_0%,hsl(var(--muted)/0.32),transparent_44%),radial-gradient(circle_at_100%_100%,hsl(var(--muted)/0.2),transparent_46%)] p-4">
+          <div className="mx-auto w-full max-w-5xl rounded-xl border border-border/60 bg-background/92 p-4 shadow-sm backdrop-blur-sm">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border/50 pb-4">
+              <div className="flex min-w-[170px] items-center gap-2 rounded-md border border-border/60 bg-muted/25 px-3 py-2">
+                <Database className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Table name</p>
+                  <p className="font-mono text-xs font-medium text-foreground">{table.name}</p>
+                </div>
+              </div>
+              <div className="flex min-w-[150px] items-center gap-2 rounded-md border border-border/60 bg-muted/25 px-3 py-2">
+                <UiIcon name="table" className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Schema</p>
+                  <p className="font-mono text-xs font-medium text-foreground">{table.schema}</p>
+                </div>
+              </div>
+              <div className="ml-auto flex min-w-[190px] items-center gap-2 rounded-md border border-border/60 bg-muted/25 px-3 py-2">
+                <ShieldCheck className={cn("h-4 w-4", structureStats.hasRls ? "text-emerald-400" : "text-muted-foreground")} />
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Row level security</p>
+                  <p className="text-xs font-medium text-foreground">{structureStats.hasRls ? "Enabled" : "Disabled"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-7">
+              {[
+                { label: "Columns", value: structureStats.columns },
+                { label: "Not null", value: structureStats.notNull },
+                { label: "Nullable", value: structureStats.nullable },
+                { label: "Defaults", value: structureStats.defaults },
+                { label: "PK", value: structureStats.primaryKeys },
+                { label: "FK", value: structureStats.foreignKeys },
+                { label: "RLS", value: structureStats.hasRls ? "On" : "Off" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-md border border-border/50 bg-muted/20 px-2.5 py-2">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                  <p className="mt-0.5 font-mono text-xs font-semibold text-foreground">{item.value}</p>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            <div className="mt-5 rounded-lg border border-border/60 bg-background">
+              <div className="border-b border-border/50 px-3 py-2">
+                <h3 className="text-xs font-semibold tracking-wide text-foreground">COLUMNS</h3>
+              </div>
+              <table className="w-full border-collapse text-xs">
+                <thead className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+                  <tr className="border-b border-border/50">
+                    <th className="h-8 px-3 text-left font-medium whitespace-nowrap" scope="col">#</th>
+                    <th className="h-8 px-3 text-left font-medium whitespace-nowrap" scope="col">Name</th>
+                    <th className="h-8 px-3 text-left font-medium whitespace-nowrap" scope="col">Definition</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {table.columns.map((col, i) => {
+                    const typeName = (col.udt_name ?? col.data_type).toUpperCase();
+                    const isPrimaryKey = primaryKey.includes(col.name);
+                    const isForeignKey = foreignKeysByColumn.has(col.name);
+                    const isNullable = col.is_nullable;
+                    const defaultValue = col.column_default;
+                    return (
+                      <tr key={col.name} className="border-b border-border/40 transition-colors hover:bg-muted/30">
+                        <td className="h-9 px-3 font-mono text-[11px] text-muted-foreground align-top">{i + 1}</td>
+                        <td className="h-9 px-3 align-top">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-medium text-foreground">{col.name}</span>
+                            {isPrimaryKey ? <KeyRound className="h-3.5 w-3.5 text-amber-400" /> : null}
+                            {isForeignKey ? <Link2 className="h-3.5 w-3.5 text-cyan-400" /> : null}
+                          </div>
+                        </td>
+                        <td className="h-9 px-3 pb-2 align-top font-mono leading-6">
+                          <span className="text-rose-400">{typeName}</span>
+                          {isPrimaryKey ? <span className="text-rose-400"> PRIMARY KEY</span> : null}
+                          {isForeignKey ? (
+                            <span className="text-rose-400">
+                              {" "}REFERENCES {foreignKeysByColumn.get(col.name)?.referenced_table}({foreignKeysByColumn.get(col.name)?.referenced_column})
+                            </span>
+                          ) : null}
+                          {!isNullable ? <span className="text-rose-400"> NOT NULL</span> : null}
+                          {defaultValue ? (
+                            <>
+                              <span className="text-rose-400"> DEFAULT</span>{" "}
+                              <span className="text-sky-300">{defaultValue}</span>
+                            </>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {(primaryKey.length > 0 || foreignKeys.length > 0) ? (
+              <div className="mt-4 rounded-lg border border-border/60 bg-background">
+                <div className="border-b border-border/50 px-3 py-2">
+                  <h3 className="text-xs font-semibold tracking-wide text-foreground">CONSTRAINTS</h3>
+                </div>
+                <div className="p-2">
+                  {primaryKey.map((columnName) => (
+                    <div key={`pk-${columnName}`} className="rounded-md px-2 py-1.5 font-mono text-xs hover:bg-muted/25">
+                      <span className="text-rose-400">PRIMARY KEY</span> ({columnName})
+                    </div>
+                  ))}
+                  {foreignKeys.map((fk) => (
+                    <div key={fk.name} className="rounded-md px-2 py-1.5 font-mono text-xs hover:bg-muted/25">
+                      <span className="text-rose-400">FOREIGN KEY</span> ({fk.column_name})
+                      <span className="text-muted-foreground"> REFERENCES </span>
+                      {fk.referenced_schema ? `${fk.referenced_schema}.` : ""}
+                      {fk.referenced_table}({fk.referenced_column})
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-auto">
-          <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-all select-text">
-            {JSON.stringify(
-              effectiveRows.map(({ row }) => {
-                const obj: Record<string, unknown> = {};
-                for (const col of visibleColumns) {
-                  obj[col] = row[col] ?? null;
-                }
-                return obj;
-              }),
-              null,
-              2,
-            )}
-          </pre>
+        <div className="flex-1 min-h-0 overflow-auto bg-[radial-gradient(circle_at_0%_0%,hsl(var(--muted)/0.32),transparent_44%),radial-gradient(circle_at_100%_100%,hsl(var(--muted)/0.2),transparent_46%)] p-4">
+          <div className="mx-auto w-full max-w-5xl rounded-xl border border-border/60 bg-background/92 p-4 shadow-sm backdrop-blur-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">JSON view</p>
+                <p className="font-mono text-xs text-foreground">
+                  {table.schema}.{table.name}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-md border border-border/60 bg-muted/25 px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                  rows: {effectiveRows.length}
+                </span>
+                <span className="rounded-md border border-border/60 bg-muted/25 px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                  cols: {visibleColumns.length}
+                </span>
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg border border-border/60 bg-[#0f1116]">
+              <pre className="max-h-[70vh] overflow-auto p-4 text-xs font-mono leading-5 text-slate-200 whitespace-pre select-text">
+                {JSON.stringify(
+                  effectiveRows.map(({ row }) => {
+                    const obj: Record<string, unknown> = {};
+                    for (const col of visibleColumns) {
+                      obj[col] = row[col] ?? null;
+                    }
+                    return obj;
+                  }),
+                  null,
+                  2,
+                )}
+              </pre>
+            </div>
+          </div>
         </div>
       )}
 
-      <TableEditorFooter
-        page={page}
-        totalPages={totalPages}
-        pageSize={pageSize}
-        isLoading={isLoading}
-        hasDraftChanges={hasDraftChanges}
-        isSaving={isSaving}
-        pressableClass={pressableClass}
-        onPrevPage={() => setPage((current) => Math.max(current - 1, 0))}
-        onNextPage={() => setPage((current) => current + 1)}
-        onPageSizeChange={(size) => {
-          setPageSize(size);
-          setPage(0);
-        }}
-        onDiscardDrafts={discardDrafts}
-        onSaveChanges={() => void saveAllChanges()}
-      />
+      {viewMode === "data" ? (
+        <TableEditorFooter
+          page={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          isLoading={isLoading}
+          hasDraftChanges={hasDraftChanges}
+          isSaving={isSaving}
+          pressableClass={pressableClass}
+          onPrevPage={() => setPage((current) => Math.max(current - 1, 0))}
+          onNextPage={() => setPage((current) => current + 1)}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(0);
+          }}
+          onDiscardDrafts={discardDrafts}
+          onSaveChanges={() => void saveAllChanges()}
+        />
+      ) : null}
 
       <TableEditorDialogs
         tableName={table.name}
@@ -2074,11 +2208,17 @@ function TableDataEditorInner({
           event.stopPropagation();
           const hovered = hoveredRowAnchorRef.current;
           if (!hovered) return;
+          const containerRect = editorContainerRef.current?.getBoundingClientRect();
+          const minLeft = containerRect ? containerRect.left + 2 : hovered.left;
+          const clampedLeft = Math.max(hovered.left, minLeft);
+          const maxWidth = containerRect
+            ? Math.max(0, containerRect.right - clampedLeft - 2)
+            : hovered.width;
           openRowDetails(hovered.rowKey, hovered.row, hovered.index);
           setExpandedRowOutline({
             top: hovered.top - hovered.height / 2,
-            left: hovered.left,
-            width: hovered.width,
+            left: clampedLeft,
+            width: Math.min(hovered.width, maxWidth),
             height: hovered.height,
           });
           hoveredRowAnchorRef.current = null;
@@ -2094,7 +2234,7 @@ function TableDataEditorInner({
         }}
         onMouseEnter={cancelPendingHoverClear}
         onMouseLeave={scheduleHoverClear}
-        className="fixed z-[10000] flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm border border-border/70 bg-background text-muted-foreground opacity-0 pointer-events-none shadow-xs hover:text-foreground hover:bg-muted cursor-pointer transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
+        className="fixed z-[10000] flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm border border-border/70 bg-background text-muted-foreground opacity-0 pointer-events-none shadow-xs hover:text-foreground hover:bg-muted cursor-default transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
       >
         <IconArrowsDiagonal2 className="h-3 w-3" />
       </button>

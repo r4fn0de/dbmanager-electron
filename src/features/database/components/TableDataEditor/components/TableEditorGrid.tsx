@@ -32,9 +32,13 @@ export function TableEditorGrid({
   }
 
   return (
-    <div ref={scrollRef} className="h-full overflow-auto" onScroll={onGridScroll}>
+    <div
+      ref={scrollRef}
+      className="h-full overflow-auto focus-within:ring-2 focus-within:ring-ring/40 focus-within:ring-inset"
+      onScroll={onGridScroll}
+    >
       <table
-        className="w-max table-fixed caption-bottom text-xs border-separate border-spacing-0 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
+        className="w-max table-fixed caption-bottom text-xs border-separate border-spacing-0 focus-visible:outline-none"
         onKeyDown={handleTableKeyDown}
         tabIndex={0}
       >
@@ -44,4 +48,3 @@ export function TableEditorGrid({
     </div>
   );
 }
-
