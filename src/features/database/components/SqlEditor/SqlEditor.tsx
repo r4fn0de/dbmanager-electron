@@ -1275,7 +1275,24 @@ export function SqlEditor({
         // Vim mode init can fail in some environments — silently ignore
       }
     }
-  }, [dbType, vimMode]);
+  }, [dbType]);
+
+  // React to vim mode toggle (runs after editor is already mounted)
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    vimModeRef.current?.dispose();
+    vimModeRef.current = null;
+    if (vimMode) {
+      try {
+        const statusEl = document.getElementById("vim-status-bar");
+        vimModeRef.current = initVimMode(editor, statusEl ?? undefined);
+      } catch {
+        // Vim mode init can fail in some environments — silently ignore
+      }
+    }
+  }, [vimMode]);
+
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -1860,22 +1877,6 @@ export function SqlEditor({
 
             {/* ── Right: Editor settings ─────── */}
             <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Toggle
-                      pressed={vimMode}
-                      onPressedChange={(pressed) => useEditorPreferencesStore.getState().setVimMode(pressed)}
-                      aria-label="Toggle Vim mode"
-                      className="h-6 gap-1 px-1.5 text-[10px]"
-                    >
-                      <UiIcon name="keyboard" className="size-3" />
-                      Vim
-                    </Toggle>
-                  }
-                />
-                <TooltipContent>Toggle Vim mode</TooltipContent>
-              </Tooltip>
 
               <DropdownMenu>
                 <Tooltip>
