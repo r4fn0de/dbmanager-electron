@@ -45,6 +45,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
+import {
   TableBody,
   TableCell,
   TableHead,
@@ -1578,34 +1582,29 @@ function TableDataEditorInner({
             </Button>
           )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-[11px] font-medium"
-                >
-                  {viewMode === "data" ? "Data" : viewMode === "structure" ? "Structure" : "JSON"}
-                  <UiIcon name="chevron-down" className="size-3 opacity-50" />
-                </Button>
-              }
-            />
-            <DropdownMenuContent align="start" className="min-w-32">
-              <DropdownMenuItem onClick={() => setViewMode("data")}>
-                <UiIcon name="table" className="size-3.5" />
-                Data
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setViewMode("structure")}>
-                <UiIcon name="columns-3" className="size-3.5" />
-                Structure
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setViewMode("json")}>
-                <UiIcon name="braces" className="size-3.5" />
-                JSON
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ToggleGroup
+            value={[viewMode]}
+            onValueChange={(value) => {
+              if (value.length > 0) setViewMode(value[0] as ViewMode);
+            }}
+            variant="outline"
+            size="sm"
+            spacing={0}
+            className="h-7"
+          >
+            <ToggleGroupItem value="data" className="text-[11px] gap-1 px-2">
+              <UiIcon name="table" className="size-3.5" />
+              Data
+            </ToggleGroupItem>
+            <ToggleGroupItem value="structure" className="text-[11px] gap-1 px-2">
+              <UiIcon name="columns-3" className="size-3.5" />
+              Structure
+            </ToggleGroupItem>
+            <ToggleGroupItem value="json" className="text-[11px] gap-1 px-2">
+              <UiIcon name="braces" className="size-3.5" />
+              JSON
+            </ToggleGroupItem>
+          </ToggleGroup>
 
           {viewMode === "data" && selectedRowKeys.size > 0 && (
             <Button
