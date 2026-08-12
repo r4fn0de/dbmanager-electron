@@ -1,0 +1,14 @@
+src/routes/__root.tsx
+  h_6400716131bbc6 376-377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "4712bb736323bd7c6fa370563792febedb7b3619",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
