@@ -6,10 +6,8 @@ import {
   ConnectionTabs,
   useConnectionTabSync,
 } from "@/features/connection";
-import {
-  ThemeToggle,
-  SettingsDialog,
-} from "@/features/settings";
+import { ThemeToggle } from "@/features/settings";
+import { Settings } from "@/components/icons/Settings";
 import { minimizeWindow, maximizeWindow, closeWindow } from "@/features/shell";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { MySql } from "@/components/icons/MySql";
@@ -98,6 +96,10 @@ export function TitleBar() {
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
   const themePreset = useAppearanceStore((s) => s.themePreset);
   const navigate = useNavigate();
+  const handleOpenSettings = useCallback(() => {
+    useConnectionTabsStore.getState().openSettingsTab();
+    navigate({ to: "/settings" });
+  }, [navigate]);
 
   // Auto-add tabs when navigating to database pages
   useConnectionTabSync();
@@ -298,7 +300,14 @@ export function TitleBar() {
           <div className="w-[78px] shrink-0 h-full draglayer" />
           {tabsSlot}
           <div className="ml-auto flex items-center no-drag pl-0">
-            <SettingsDialog />
+            <button
+              type="button"
+              aria-label="Settings"
+              onClick={handleOpenSettings}
+              className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground active:scale-[0.97]"
+            >
+              <Settings className="size-4" />
+            </button>
             <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-default" />
           </div>
         </div>
@@ -319,7 +328,14 @@ export function TitleBar() {
 
         <div className="flex items-center shrink-0 no-drag">
           <div className="flex items-center px-0 gap-0.5">
-            <SettingsDialog />
+            <button
+              type="button"
+              aria-label="Settings"
+              onClick={handleOpenSettings}
+              className="inline-flex size-8 items-center justify-center rounded-none text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground active:scale-[0.97]"
+            >
+              <Settings className="size-4" />
+            </button>
             <ThemeToggle className="inline-flex size-8 items-center justify-center rounded-none text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-default" />
           </div>
           <Button

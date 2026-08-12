@@ -25,11 +25,12 @@ import {
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { useAppearanceStore } from "@/lib/stores/appearance";
 import { ipc } from "@/ipc/manager";
-import { useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
+import { isSettingsTab, useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
 import { useConnectionsList } from "@/features/connection";
 import { useLocalDatabases } from "@/features/localDb";
 import { cn } from "@/lib/utils";
 import type { Connection, DatabaseType } from "@/ipc/db/types";
+import type { ConnectionTab } from "@/lib/stores/connection-tabs";
 import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 
 import "../styles/global.css";
@@ -303,6 +304,19 @@ function Root() {
   }, [handleAiChatToggle]);
 
   const navigate = useNavigate();
+  const navigateToTab = useCallback(
+    (tab: ConnectionTab) => {
+      if (isSettingsTab(tab)) {
+        navigate({ to: "/settings" });
+        return;
+      }
+      navigate({
+        to: "/database/$connectionId",
+        params: { connectionId: tab.id },
+      });
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -321,18 +335,20 @@ function Root() {
           const openIds = new Set(tabs.map((t) => t.id));
           const candidates = recentTabIds.filter((id) => openIds.has(id) && id !== activeTabId);
           const target = candidates[candidates.length - 1] ?? tabs.find((t) => t.id !== activeTabId)?.id;
-          if (target) {
-            setActiveTab(target);
-            navigate({ to: "/database/$connectionId", params: { connectionId: target } });
+          const targetTab = target ? tabs.find((tab) => tab.id === target) : undefined;
+          if (targetTab) {
+            setActiveTab(targetTab.id);
+            navigateToTab(targetTab);
           }
         } else {
           // Ctrl+Tab: go to most-recently-used (second in MRU stack)
           const openIds = new Set(tabs.map((t) => t.id));
           const candidates = recentTabIds.filter((id) => openIds.has(id) && id !== activeTabId);
           const target = candidates[0] ?? tabs.find((t) => t.id !== activeTabId)?.id;
-          if (target) {
-            setActiveTab(target);
-            navigate({ to: "/database/$connectionId", params: { connectionId: target } });
+          const targetTab = target ? tabs.find((tab) => tab.id === target) : undefined;
+          if (targetTab) {
+            setActiveTab(targetTab.id);
+            navigateToTab(targetTab);
           }
         }
         return;
@@ -349,19 +365,20 @@ function Root() {
         event.stopPropagation();
 
         const store = useConnectionTabsStore.getState();
-        const { tabs, activeTabId, removeTab } = store;
+        const { tabs, activeTabId, recentTabIds, removeTab } = store;
         if (!activeTabId || tabs.length === 0) return;
 
-        const idx = tabs.findIndex((t) => t.id === activeTabId);
+        const activeTab = tabs.find((tab) => tab.id === activeTabId);
         const remaining = tabs.filter((t) => t.id !== activeTabId);
+        const nextTab = isSettingsTab(activeTab ?? { id: activeTabId })
+          ? recentTabIds
+              .map((id) => remaining.find((tab) => tab.id === id))
+              .find((tab): tab is ConnectionTab => tab !== undefined)
+          : remaining[Math.min(tabs.findIndex((t) => t.id === activeTabId), remaining.length - 1)];
         removeTab(activeTabId);
 
-        if (remaining.length > 0) {
-          const nextIdx = Math.min(idx, remaining.length - 1);
-          const nextTab = remaining[nextIdx];
-          if (nextTab) {
-            navigate({ to: "/database/$connectionId", params: { connectionId: nextTab.id } });
-          }
+        if (nextTab) {
+          navigateToTab(nextTab);
         } else {
           navigate({ to: "/" });
         }
@@ -390,17 +407,17 @@ function Root() {
         const next = tabs[nextIdx];
         if (next) {
           setActiveTab(next.id);
-          navigate({ to: "/database/$connectionId", params: { connectionId: next.id } });
+          navigateToTab(next);
         }
         return;
       }
     };
 
     // Capture phase ensures these shortcuts work even when components
-    // intercept keydown in bubble phase (Monaco, etc.)
+    // intercept keydown events in bubble phase (Monaco, etc.)
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [navigate]);
+  }, [navigate, navigateToTab]);
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
