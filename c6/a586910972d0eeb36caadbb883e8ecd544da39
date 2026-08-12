@@ -1,0 +1,20 @@
+src/features/settings/components/SettingsPage.tsx
+  h_6400716131bbc6 1-88
+src/features/settings/index.ts
+  h_6400716131bbc6 2
+src/routeTree.gen.ts
+  h_6400716131bbc6 12,16-20,34,39,45,50,52-53,58,64-70,90
+src/routes/settings.tsx
+  h_6400716131bbc6 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "c6a586910972d0eeb36caadbb883e8ecd544da39",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
