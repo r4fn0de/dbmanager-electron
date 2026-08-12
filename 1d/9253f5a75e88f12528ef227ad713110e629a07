@@ -1,0 +1,14 @@
+docs/superpowers/specs/2026-08-12-settings-tab-design.md
+  h_6400716131bbc6 1-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "1d9253f5a75e88f12528ef227ad713110e629a07",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
