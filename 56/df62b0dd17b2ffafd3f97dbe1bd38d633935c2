@@ -1,0 +1,16 @@
+src/lib/stores/connection-tabs.ts
+  h_6400716131bbc6 9-12,16,27-38,46,126-141
+src/tests/unit/connection-tabs.test.ts
+  h_6400716131bbc6 1-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "56df62b0dd17b2ffafd3f97dbe1bd38d633935c2",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
