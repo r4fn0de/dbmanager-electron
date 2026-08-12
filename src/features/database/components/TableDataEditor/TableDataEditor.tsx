@@ -1571,15 +1571,33 @@ function TableDataEditorInner({
         {/* ── Left: Add row + View mode ─────────────────────── */}
         <div className="flex items-center gap-1.5 min-w-0">
           {viewMode === "data" && (
-            <Button
-              variant="default"
-              size="sm"
-              className={cn("font-medium", pressableClass)}
-              onClick={handleAddDraftRecord}
-            >
-              <UiIcon name="plus" className="h-3.5 w-3.5" />
-              Add row
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className={cn("font-medium gap-1", pressableClass)}
+                  >
+                    <UiIcon name="plus" className="h-3.5 w-3.5" />
+                    Add
+                    <UiIcon name="chevron-down" className="size-3 opacity-50" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="min-w-32">
+                <DropdownMenuItem onClick={handleAddDraftRecord}>
+                  <UiIcon name="table" className="size-3.5" />
+                  Row
+                </DropdownMenuItem>
+                {onRequestAddColumn && (
+                  <DropdownMenuItem onClick={onRequestAddColumn}>
+                    <UiIcon name="columns-3" className="size-3.5" />
+                    Column
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           <ToggleGroup
@@ -1768,12 +1786,6 @@ function TableDataEditorInner({
                 <DropdownMenuItem onClick={onToggleSidebar}>
                   <UiIcon name={isSidebarVisible ? "panel-left-close" : "panel-left"} className="size-3.5" />
                   {isSidebarVisible ? "Hide" : "Show"} explorer
-                </DropdownMenuItem>
-              )}
-              {viewMode === "data" && onRequestAddColumn && (
-                <DropdownMenuItem onClick={onRequestAddColumn}>
-                  <UiIcon name="plus" className="size-3.5" />
-                  Add column
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
