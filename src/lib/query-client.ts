@@ -88,7 +88,7 @@ const persistFilter = (key: readonly unknown[]) => {
 };
 
 persistQueryClientSave({
-  queryClient,
+  queryClient: queryClient as Parameters<typeof persistQueryClientSave>[0]["queryClient"],
   persister: {
     persistClient: async (client) => {
       // Filter to only schema-related queries before persisting

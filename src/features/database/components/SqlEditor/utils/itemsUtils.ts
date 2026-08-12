@@ -1,5 +1,5 @@
 import type { SchemaCompletionData } from "@/lib/monaco-sql-setup";
-import { Parser } from "node-sql-parser";
+import { Parser, type AST } from "node-sql-parser";
 
 export interface SqlSidebarItemColumn {
   name: string;
@@ -371,7 +371,7 @@ export function mergeDroppedColumnsIntoStatement(
   if (!ast || typeof ast !== "object") return { sql: statement, merged: false };
   const selectAst = ast as {
     type?: string;
-    columns?: Array<{ expr?: unknown; as?: string | null }>;
+    columns?: Array<{ type?: string; expr?: unknown; as?: string | null }>;
     from?: Array<{ db?: string | null; table?: string | null; as?: string | null; join?: string; on?: unknown }>;
   };
   if (selectAst.type !== "select" || !Array.isArray(selectAst.from) || selectAst.from.length === 0) {
@@ -468,7 +468,7 @@ export function mergeDroppedColumnsIntoStatement(
   let mergedSql = statement;
   if (changed) {
     try {
-      mergedSql = sqlAstParser.sqlify(selectAst as object, { database: "Postgresql" });
+      mergedSql = sqlAstParser.sqlify(selectAst as unknown as AST, { database: "Postgresql" });
     } catch {
       mergedSql = statement;
       changed = false;

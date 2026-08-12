@@ -269,7 +269,7 @@ export function QueryResults({
               disabled={isFixingWithAi}
             >
               <Icon
-                name={isFixingWithAi ? "loader" : "wand-sparkles"}
+                name={isFixingWithAi ? "loader" : "wand"}
                 className={cn("size-3", isFixingWithAi && "animate-spin")}
               />
               {isFixingWithAi ? "Fixing..." : "Fix with AI"}

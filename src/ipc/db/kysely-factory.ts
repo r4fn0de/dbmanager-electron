@@ -14,13 +14,13 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import Module from "node:module";
 import { join } from "node:path";
-import type { Pool as MysqlPool } from "mysql2/promise";
+import type { Pool as MysqlPool, PoolOptions as MysqlPoolOptions } from "mysql2/promise";
 
 import type { PgDatabase } from "./kysely-types";
 import type { MysqlDatabase } from "./kysely-types";
 import { closeAllSqliteDbs } from "./sqlite-driver";
 
-// ---------------------------------------------------------------------------
+const nodeModule = Module as typeof Module & { _initPaths: () => void };
 // Pool cache — one pool per connection string, per engine
 // ---------------------------------------------------------------------------
 
@@ -43,7 +43,7 @@ function ensureResourcesNodePath(): void {
 
   if (!segments.includes(base)) {
     process.env.NODE_PATH = current ? `${base}:${current}` : base;
-    Module._initPaths();
+    nodeModule._initPaths();
   }
 }
 
@@ -119,7 +119,7 @@ export function getPgPool(connectionString: string): any {
   });
 
   // Health check logging
-  pool.on("error", (err) => {
+  pool.on("error", (err: Error) => {
     console.error("[pg:pool] error:", err.message);
   });
   pool.on("connect", () => {
@@ -181,9 +181,9 @@ export async function getMysqlPool(
     // round-trip on MySQL 8.0+). Explicitly disabling SSL for non-SSL URIs
     // avoids unintended TLS negotiation that can stall the connection.
     const sslEnabled = /[?&]ssl=(true|1|require)/i.test(connectionString);
-    const sslOption: mysql.PoolOptions["ssl"] = sslEnabled
-      ? { rejectUnauthorized: false }
-      : false;
+    const sslOption = (
+      sslEnabled ? { rejectUnauthorized: false } : false
+    ) as unknown as MysqlPoolOptions["ssl"];
 
     const pool = mysql.createPool({
       uri: connectionString,
@@ -284,7 +284,7 @@ function createHttpClickHouseClient(url: string): ClickHouseClient {
           const text = await response.text();
           if (!text.trim()) return [] as unknown as T[];
           try {
-            return text.split("\n").filter(Boolean).map((line) => JSON.parse(line)) as T;
+            return text.split("\n").filter(Boolean).map((line) => JSON.parse(line)) as T[];
           } catch {
             return [] as unknown as T[];
           }

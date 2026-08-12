@@ -14,7 +14,10 @@
     "noImplicitAny": true,
     "sourceMap": true,
     "strict": true,
-    "baseUrl": ".",
+    "rootDir": ".",
+    "types": ["node", "vite/client", "vitest/globals"],
+    "skipLibCheck": true,
+    "noUncheckedSideEffectImports": false,
     "paths": {
       "@/*": ["./src/*"]
     },

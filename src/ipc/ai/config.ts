@@ -206,6 +206,10 @@ export function getAiSettings(): AiSettings {
       defaults.openaiCompatibleBaseURL,
     ),
     customModels: store.get("customModels", defaults.customModels),
+    privacySettings: store.get("privacySettings", defaults.privacySettings),
+    privacyPreset: store.get("privacyPreset", defaults.privacyPreset),
+    ollamaModels: store.get("ollamaModels", defaults.ollamaModels),
+    ollamaDetected: store.get("ollamaDetected", defaults.ollamaDetected),
   };
 }
 

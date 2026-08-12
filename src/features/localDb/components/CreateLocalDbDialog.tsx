@@ -427,7 +427,7 @@ export function CreateLocalDbDialog({
                       onClick={() => setStep(1)}
                       className="ml-auto flex h-7 items-center gap-1 rounded-lg border border-border/60 bg-card px-2.5 text-[10px] font-medium text-muted-foreground hover:border-primary/30 hover:text-primary transition-all active:scale-95 shrink-0"
                     >
-                      <Icon name="arrow-left" className="size-3" />
+                      <Icon name="chevron-left" className="size-3" />
                       Change
                     </button>
                   </div>
@@ -437,7 +437,7 @@ export function CreateLocalDbDialog({
                     {/* ── Connection section ── */}
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2">
-                        <Icon name="plug" className="size-3 text-muted-foreground/40" />
+                        <Icon name="plug-connected" className="size-3 text-muted-foreground/40" />
                         <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
                           Connection
                         </span>
@@ -605,7 +605,7 @@ export function CreateLocalDbDialog({
                 disabled={isBusy}
                 className="h-8 px-3 text-xs gap-1.5"
               >
-                <Icon name="arrow-left" className="size-3.5" />
+                <Icon name="chevron-left" className="size-3.5" />
                 Back
               </Button>
             ) : (

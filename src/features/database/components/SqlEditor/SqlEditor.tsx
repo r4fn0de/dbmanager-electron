@@ -2022,9 +2022,10 @@ export function SqlEditor({
                         );
                         const refs = normalized.map((item) => item.qualified);
 
-                        if (!hasExplicitSelection && editorInstance?.getModel() && editorInstance.getPosition()) {
-                          const model = editorInstance.getModel();
-                          const offset = model.getOffsetAt(editorInstance.getPosition());
+                        const model = editorInstance?.getModel();
+                        const position = editorInstance?.getPosition();
+                        if (!hasExplicitSelection && model && position) {
+                          const offset = model.getOffsetAt(position);
                           const statement = getStatementRangeAtOffset(model.getValue(), offset);
                           if (statement) {
                             const merged = mergeDroppedColumnsIntoStatement(
@@ -2239,11 +2240,12 @@ export function SqlEditor({
                           result={item.result}
                           error={item.error}
                           durationMs={item.durationMs}
-                          onFixWithAi={
-                            item.error
-                              ? () => void handleFixSql(item.query, item.error)
-                              : undefined
-                          }
+                          onFixWithAi={(() => {
+                            const error = item.error;
+                            return error
+                              ? () => void handleFixSql(item.query, error)
+                              : undefined;
+                          })()}
                           isFixingWithAi={isFixingSql}
                         />
                       </TabsContent>

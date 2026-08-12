@@ -829,7 +829,7 @@ export function createPostgresDriver(): DatabaseDriver {
         // Build column statistics
         const STATS_TIMEOUT_MS = 15_000;
         const columnStats = await Promise.all(
-          columnResult.rows.map(async (col) => {
+          columnResult.rows.map(async (col: Record<string, unknown>) => {
             const colName = col.column_name as string;
             const dataType = col.data_type as string;
             const isNullable = col.is_nullable === "YES";
@@ -898,7 +898,7 @@ export function createPostgresDriver(): DatabaseDriver {
                   ]),
                   statsTimeout,
                 ]);
-                stat.topValues = topValuesResult.rows.map((r) => ({
+                stat.topValues = topValuesResult.rows.map((r: Record<string, unknown>) => ({
                   value: String(r.value),
                   count: Number.parseInt(r.count as string, 10),
                 }));

@@ -59,7 +59,9 @@ export interface ToolInvocationPart {
 /** Union of all part types that can appear in an assistant message. */
 export type AiChatMessagePart = TextPart | ReasoningPart | SourcePart | ToolInvocationPart;
 
-function isToolInvocationOpen(part: AiChatMessagePart): boolean {
+function isToolInvocationOpen(
+  part: AiChatMessagePart,
+): part is ToolInvocationPart {
   return part.type === "tool-invocation" && part.toolInvocation.state !== "result";
 }
 

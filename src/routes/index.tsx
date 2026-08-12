@@ -452,7 +452,12 @@ function Home() {
                     className="h-8 pl-8 text-xs bg-muted/20"
                   />
                 </div>
-                <Select value={activeTagFilter} onValueChange={setActiveTagFilter}>
+                <Select
+                  value={activeTagFilter}
+                  onValueChange={(value) => {
+                    if (value !== null) setActiveTagFilter(value);
+                  }}
+                >
                   <SelectTrigger size="default" className="h-8 w-[160px] text-xs bg-muted/20">
                     <SelectValue placeholder="Tag" />
                   </SelectTrigger>

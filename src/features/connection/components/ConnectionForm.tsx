@@ -771,7 +771,7 @@ export function ConnectionForm({
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <UiIcon name="plug" className="size-3 text-muted-foreground/40" />
+                    <UiIcon name="plug-connected" className="size-3 text-muted-foreground/40" />
                     <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
                       Connection
                     </span>
@@ -822,7 +822,7 @@ export function ConnectionForm({
             ) : (
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
-                  <UiIcon name="folder" className="size-3 text-muted-foreground/40" />
+                  <UiIcon name="folder-open" className="size-3 text-muted-foreground/40" />
                   <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
                     Organization
                   </span>
@@ -879,7 +879,7 @@ export function ConnectionForm({
                   disabled={isSaving || isTesting}
                   className="h-8 gap-1.5 px-3 text-xs"
                 >
-                  <UiIcon name="arrow-left" className="size-3.5" />
+                  <UiIcon name="chevron-left" className="size-3.5" />
                   Back
                 </Button>
               )}
@@ -892,7 +892,7 @@ export function ConnectionForm({
                   disabled={isSaving || isTesting}
                   className="h-8 gap-1.5 px-3 text-xs"
                 >
-                  <UiIcon name="arrow-left" className="size-3.5" />
+                  <UiIcon name="chevron-left" className="size-3.5" />
                   Back
                 </Button>
               )}

@@ -11,9 +11,13 @@ import type {
 import type { DriverConnectionConfig } from "./driver";
 import { getPgPool } from "./kysely-factory";
 
+type PgField = { name: string; dataTypeID: number };
+
 const runtimeRequire = createRequire(
   join(process.resourcesPath || process.cwd(), "package.json"),
 );
+
+const nodeModule = Module as typeof Module & { _initPaths: () => void };
 
 type PgClientCtor = new (config: Record<string, unknown>) => {
   connect: () => Promise<void>;
@@ -34,7 +38,7 @@ function ensureResourcesNodePath(): void {
 
   if (!segments.includes(base)) {
     process.env.NODE_PATH = current ? `${base}:${current}` : base;
-    Module._initPaths();
+    nodeModule._initPaths();
   }
 }
 
@@ -214,14 +218,14 @@ export async function executePgQuery(connectionString: string, sqlQuery: string,
       };
     }
 
-    const columns: ColumnMeta[] = result.fields.map((f) => ({
+    const columns: ColumnMeta[] = result.fields.map((f: PgField) => ({
       name: f.name,
       type_name: mapPgType(f.dataTypeID),
     }));
 
     return {
       columns,
-      rows: result.rows.map((row) => Object.values(row)),
+      rows: result.rows.map((row: Record<string, unknown>) => Object.values(row)),
       row_count: result.rowCount ?? 0,
     };
   } finally {
@@ -421,7 +425,7 @@ export async function listPgRowsRaw(
     countClause.params,
   );
 
-  const columns = rowsResult.fields.map((f) => ({
+  const columns = rowsResult.fields.map((f: PgField) => ({
     name: f.name,
     type_name: mapPgType(f.dataTypeID),
   }));
@@ -732,7 +736,7 @@ export async function exportTableData(
 
   return {
     rows,
-    columns: result.fields.map((f) => f.name),
+    columns: result.fields.map((f: PgField) => f.name),
     hasMore,
     totalExported: offset + rows.length,
   };
