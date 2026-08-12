@@ -6,9 +6,14 @@ export type ConnectionTabChrome = "tables-sidebar" | "sql-sidebar";
 
 export type SidebarSection = "overview" | "tables" | "keys" | "sql-editor" | "commands" | "visualizer" | "definitions";
 
+export const SETTINGS_TAB_ID = "__settings__";
+
+type ConnectionTabKind = "connection" | "settings";
+
 export interface ConnectionTab {
   id: string;
   name: string;
+  kind?: ConnectionTabKind;
   isLocal?: boolean;
   color?: string;
   provider?: ConnectionProvider;
@@ -19,6 +24,18 @@ export interface ConnectionTab {
   lastTable?: string;
 }
 
+export function buildSettingsTab(): ConnectionTab {
+  return {
+    id: SETTINGS_TAB_ID,
+    name: "Settings",
+    kind: "settings",
+  };
+}
+
+export function isSettingsTab(tab: Pick<ConnectionTab, "id" | "kind">): boolean {
+  return tab.id === SETTINGS_TAB_ID || tab.kind === "settings";
+}
+
 interface ConnectionTabsState {
   tabs: ConnectionTab[];
   activeTabId: string | null;
@@ -26,6 +43,7 @@ interface ConnectionTabsState {
   recentTabIds: string[];
 
   addTab: (tab: ConnectionTab) => void;
+  openSettingsTab: () => void;
   removeTab: (id: string) => void;
   setActiveTab: (id: string | null) => void;
   renameTab: (id: string, name: string) => void;
@@ -105,6 +123,22 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
       activeTabId: null,
       recentTabIds: [],
 
+
+      openSettingsTab: () =>
+        set((state) => {
+          const recent = [
+            SETTINGS_TAB_ID,
+            ...state.recentTabIds.filter((id) => id !== SETTINGS_TAB_ID),
+          ];
+          if (state.tabs.some((tab) => tab.id === SETTINGS_TAB_ID)) {
+            return { activeTabId: SETTINGS_TAB_ID, recentTabIds: recent };
+          }
+          return {
+            tabs: [...state.tabs, buildSettingsTab()],
+            activeTabId: SETTINGS_TAB_ID,
+            recentTabIds: recent,
+          };
+        }),
       addTab: (tab) =>
         set((state) => {
           const recent = [tab.id, ...state.recentTabIds.filter((rid) => rid !== tab.id)];
