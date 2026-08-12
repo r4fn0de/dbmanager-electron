@@ -1,0 +1,16 @@
+src/components/TitleBar.tsx
+  h_6400716131bbc6 9-10,99-102,303-310,331-338
+src/routes/__root.tsx
+  h_6400716131bbc6 28,33,307-319,338-341,348-351,368,371,373-377,380-381,410,417,420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "123643ce590ed1054e0111cc0077f3b79b55ca12",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
