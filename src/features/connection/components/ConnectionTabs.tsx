@@ -20,6 +20,8 @@ import { useConnectionsList } from "../hooks/useConnectionsList";
 import { useLocalDatabases } from "@/features/localDb";
 import {
   detectConnectionProvider,
+  isSettingsTab,
+  SETTINGS_TAB_ID,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 import { useAppearanceStore } from "@/lib/stores/appearance";
@@ -31,7 +33,7 @@ interface ConnectionTabsProps {
 }
 
 export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
-  const { tabs, activeTabId, removeTab, setActiveTab, reorderTabsByIds } =
+  const { tabs, activeTabId, recentTabIds, removeTab, setActiveTab, reorderTabsByIds } =
     useConnectionTabsStore();
   const { connections } = useConnectionsList();
   const { databases: localDatabases } = useLocalDatabases();
@@ -59,11 +61,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
       ? (dbMatch.connectionId as string)
       : null;
 
-  // Derive the effective active tab: if the URL shows a database page, that
-  // connection is active; otherwise (home page) no tab is visually active.
-  // This replaces an Effect that called setActiveTab — derived state should
-  // be calculated during render, not set via Effect.
-  const effectiveActiveId = currentConnectionId ?? activeTabId;
+  // Derive the effective active tab from the current route when possible.
+  const isSettingsRoute = pathname === "/settings";
+  const effectiveActiveId =
+    currentConnectionId ?? (isSettingsRoute ? SETTINGS_TAB_ID : null) ?? activeTabId;
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === effectiveActiveId) ?? null,
     [tabs, effectiveActiveId],
@@ -80,24 +81,49 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     }
   }, [currentConnectionId, pathname, activeTabId, setActiveTab]);
 
+  const navigateToTab = useCallback(
+    (tab: ConnectionTab) => {
+      if (isSettingsTab(tab)) {
+        navigate({ to: "/settings" });
+        return;
+      }
+      navigate({
+        to: "/database/$connectionId",
+        params: { connectionId: tab.id },
+      });
+    },
+    [navigate],
+  );
+
   const handleTabClick = useCallback(
     (id: string) => {
       if (suppressClickRef.current) return;
+      const tab = tabs.find((candidate) => candidate.id === id);
+      if (!tab) return;
       setActiveTab(id);
-      navigate({
-        to: "/database/$connectionId",
-        params: { connectionId: id },
-      });
+      navigateToTab(tab);
     },
-    [navigate, setActiveTab],
+    [navigateToTab, setActiveTab, tabs],
   );
 
   const handleClose = useCallback(
     (e: React.MouseEvent | React.KeyboardEvent, id: string) => {
       e.stopPropagation();
-      const wasActive = activeTabId === id;
+      const wasActive = effectiveActiveId === id;
       const idx = tabs.findIndex((t) => t.id === id);
+      const tab = tabs.find((candidate) => candidate.id === id);
+      const isClosingSettings = tab ? isSettingsTab(tab) : false;
       const remaining = tabs.filter((t) => t.id !== id);
+      const recentFallback = isClosingSettings
+        ? recentTabIds
+            .filter((candidateId) => candidateId !== id)
+            .map((candidateId) =>
+              remaining.find((candidate) => candidate.id === candidateId),
+            )
+            .find((candidate): candidate is ConnectionTab => Boolean(candidate))
+        : undefined;
+      const nextTab =
+        recentFallback ?? remaining[Math.min(idx, remaining.length - 1)];
 
       // Trigger exit animation before actual removal
       setClosingTabIds((prev) => new Set([...prev, id]));
@@ -112,15 +138,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
         });
 
         if (wasActive) {
-          if (remaining.length > 0) {
-            const nextIdx = Math.min(idx, remaining.length - 1);
-            const nextTab = remaining[nextIdx];
-            if (nextTab) {
-              navigate({
-                to: "/database/$connectionId",
-                params: { connectionId: nextTab.id },
-              });
-            }
+          if (nextTab) {
+            navigateToTab(nextTab);
           } else {
             navigate({ to: "/" });
           }
@@ -130,7 +149,14 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
       // Store timer for cleanup if needed
       closeTimersRef.current[id] = timer;
     },
-    [activeTabId, tabs, removeTab, navigate],
+    [
+      effectiveActiveId,
+      navigate,
+      navigateToTab,
+      recentTabIds,
+      removeTab,
+      tabs,
+    ],
   );
 
   // Ref to store close timers for cleanup
@@ -285,7 +311,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
       layoutScroll
       ref={containerRef}
       role="tablist"
-      aria-label="Connection tabs"
+      aria-label="Application tabs"
       onWheel={handleWheel}
       className={cn(
         "flex items-center h-full overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
@@ -422,33 +448,35 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 )}
               </div>
             )}
-
             <div className="relative z-10 flex w-full min-w-0 items-center justify-start gap-1.5 pl-3 pr-3">
-              {tab.provider === "neon" ? (
-                <Neon className="size-3.5 shrink-0" />
-              ) : tab.provider === "supabase" ? (
-                <Supabase className="size-3.5 shrink-0" />
-              ) : tab.provider === "mysql" || tab.provider === "mariadb" ? (
-                <MySql className="size-3.5 shrink-0" />
-              ) : tab.provider === "clickhouse" ? (
-                <ClickHouse className="size-3.5 shrink-0" />
-              ) : tab.provider === "redis" ? (
-                <Redis className="size-3.5 shrink-0" />
-              ) : tab.isLocal ? (
-                <LocalDbTypeIcon className="size-3.5 shrink-0" />
-              ) : colorDot ? (
-                <span
-                  className="relative size-2 rounded-full shrink-0"
-                  style={{
-                    backgroundColor: colorDot,
-                    boxShadow: `inset 0 0 0 0.5px ${colorDot}80, 0 0 3px ${colorDot}40`,
-                  }}
-                />
-              ) : tab.provider === "url" ? (
-                <Icon name="globe" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
-              ) : (
-                <Icon name="server" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
-              )}
+
+            {isSettingsTab(tab) ? (
+              <Icon name="settings" className="size-3.5 shrink-0" />
+            ) : tab.provider === "neon" ? (
+              <Neon className="size-3.5 shrink-0" />
+            ) : tab.provider === "supabase" ? (
+              <Supabase className="size-3.5 shrink-0" />
+            ) : tab.provider === "mysql" || tab.provider === "mariadb" ? (
+              <MySql className="size-3.5 shrink-0" />
+            ) : tab.provider === "clickhouse" ? (
+              <ClickHouse className="size-3.5 shrink-0" />
+            ) : tab.provider === "redis" ? (
+              <Redis className="size-3.5 shrink-0" />
+            ) : tab.isLocal ? (
+              <LocalDbTypeIcon className="size-3.5 shrink-0" />
+            ) : colorDot ? (
+              <span
+                className="relative size-2 rounded-full shrink-0"
+                style={{
+                  backgroundColor: colorDot,
+                  boxShadow: `inset 0 0 0 0.5px ${colorDot}80, 0 0 3px ${colorDot}40`,
+                }}
+              />
+            ) : tab.provider === "url" ? (
+              <Icon name="globe" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
+            ) : (
+              <Icon name="server" className="size-3 shrink-0 text-current/70 transition-colors group-hover:text-current" />
+            )}
 
               <div className="relative min-w-0 flex-1 pr-1 transition-[padding-right] duration-150 ease-out group-hover:pr-5">
                 <span
@@ -551,6 +579,7 @@ export function useConnectionTabSync() {
     // Remove tabs for connections that no longer exist
     if (connections.length > 0) {
       for (const tab of tabs) {
+        if (isSettingsTab(tab)) continue;
         if (!connectionIds.has(tab.id)) {
           removeTab(tab.id);
           navigateAwayFromDeleted(tab.id);
@@ -558,8 +587,8 @@ export function useConnectionTabSync() {
       }
     }
 
-    // Update existing tabs with fresh connection data
     for (const tab of tabs) {
+      if (isSettingsTab(tab)) continue;
       const conn = connectionsById.get(tab.id);
       if (!conn) continue;
 
