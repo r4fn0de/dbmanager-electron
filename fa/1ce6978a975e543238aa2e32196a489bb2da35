@@ -1,0 +1,19 @@
+src/features/database/components/TableDataEditor/TableDataEditor.tsx
+  s_4d06d92b619027::t_3d3d45534287d1 1574-1600
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "fa1ce6978a975e543238aa2e32196a489bb2da35",
+  "prompts": {},
+  "sessions": {
+    "s_4d06d92b619027": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ses_1949b42a9ffevOgtDvGg03uNUY",
+        "model": "unknown"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
