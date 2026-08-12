@@ -558,10 +558,14 @@ export function useConnectionTabSync() {
         const nextIdx = Math.min(deletedIdx, remaining.length - 1);
         const nextTab = remaining[nextIdx];
         if (nextTab) {
-          navigate({
-            to: "/database/$connectionId",
-            params: { connectionId: nextTab.id },
-          });
+          if (isSettingsTab(nextTab)) {
+            navigate({ to: "/settings" });
+          } else {
+            navigate({
+              to: "/database/$connectionId",
+              params: { connectionId: nextTab.id },
+            });
+          }
         }
       } else {
         navigate({ to: "/" });
