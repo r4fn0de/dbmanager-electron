@@ -1,0 +1,44 @@
+bun.lock
+  h_6400716131bbc6 25-26,34-37,44,49,69,71,90,118,120-121,124,129,132,334-335,580,582,584,586,588,590,592,594,596,598,600,828,830,832,834,836,838,840,842,844,846,848,850,852,854,856,858,860,862,864,866,868,1038,1046,1048,1068-1107,1272,1602,1614,1814,2584,2588,2880,2962,2974,3140,3228-3229,3338-3340,3342,3344-3346,3350,3354-3357,3370-3389,3414-3415,3440,3474-3475,3492-3493,3584-3585,3654-3655,3748-3753,3756-3775,3812-3814,3830-3831,3874-3875
+package.json
+  h_6400716131bbc6 58-59,67-70,77,82,102,104,123,151,153-154,157,162,165
+src/features/ai/hooks/useAiChat.ts
+  h_6400716131bbc6 62-64
+src/features/connection/components/ConnectionForm.tsx
+  h_6400716131bbc6 774,825,882,895
+src/features/database/components/QueryResults.tsx
+  h_6400716131bbc6 272
+src/features/database/components/SqlEditor/SqlEditor.tsx
+  h_6400716131bbc6 2025-2028,2243-2248
+src/features/database/components/SqlEditor/utils/itemsUtils.ts
+  h_6400716131bbc6 2,374,471
+src/features/localDb/components/CreateLocalDbDialog.tsx
+  h_6400716131bbc6 430,440,608
+src/ipc/ai/config.ts
+  h_6400716131bbc6 209-212
+src/ipc/db/kysely-factory.ts
+  h_6400716131bbc6 17,23,46,122,184-186,287
+src/ipc/db/pg-driver-adapter.ts
+  h_6400716131bbc6 832,901
+src/ipc/db/pg-runtime.ts
+  h_6400716131bbc6 14-15,20-21,41,221,228,428,739
+src/lib/query-client.ts
+  h_6400716131bbc6 91
+src/routes/index.tsx
+  h_6400716131bbc6 455-460
+src/tests/unit/setup.ts
+  h_6400716131bbc6 1
+tsconfig.json
+  h_6400716131bbc6 17-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "375916e4b526381e81c79d94f4454e85e37d1685",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
