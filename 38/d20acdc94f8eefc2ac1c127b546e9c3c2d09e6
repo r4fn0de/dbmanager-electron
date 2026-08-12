@@ -1,0 +1,15 @@
+docs/superpowers/plans/2026-08-12-settings-tab.md
+  h_6400716131bbc6 1-57,60-65,68-69,71,73,75,77,79-87,89-95,97,99,101-186,189-196,198,201,203,205,207-224,226,228,230-362,364-520
+  h_6400716131bbc6 58-59,66-67,70,72,74,76,78,88,96,98,100,187-188,197,199-200,202,204,206,225,227,229,363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "38d20acdc94f8eefc2ac1c127b546e9c3c2d09e6",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
