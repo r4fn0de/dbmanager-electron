@@ -373,7 +373,8 @@ function Root() {
         const nextTab = isSettingsTab(activeTab ?? { id: activeTabId })
           ? recentTabIds
               .map((id) => remaining.find((tab) => tab.id === id))
-              .find((tab): tab is ConnectionTab => tab !== undefined)
+              .find((tab): tab is ConnectionTab => tab !== undefined) ??
+            remaining[Math.min(tabs.findIndex((t) => t.id === activeTabId), remaining.length - 1)]
           : remaining[Math.min(tabs.findIndex((t) => t.id === activeTabId), remaining.length - 1)];
         removeTab(activeTabId);
 
