@@ -1,0 +1,14 @@
+src/features/connection/components/ConnectionTabs.tsx
+  h_6400716131bbc6 561-568
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "22637be1d3f358f52291c2e1625ae4166e6e85a5",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
