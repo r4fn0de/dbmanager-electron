@@ -21,11 +21,11 @@ Remove dnd-kit imports, collision helpers, and the custom sortable item wrapper.
 
 **Step 2: Restore the documented group**
 
-Use `Reorder.Group axis="x" values={tabIds} onReorder={handleReorder}` with the existing tab-list ref, wheel handler, classes, and accessibility attributes.
+Use `Reorder.Group axis="x" values={orderedTabIds} onReorder={handleReorder}` with the existing tab-list ref, wheel handler, classes, and accessibility attributes. Keep `orderedTabIds` local during a drag so crossing tabs does not persist to Zustand on every reorder event.
 
 **Step 3: Restore item drag behavior**
 
-Render each tab using `Reorder.Item value={tab.id}`. Keep the current tab handlers and visual states; use `dragMomentum={false}`, `dragElastic={0}`, `dragConstraints={containerRef}`, `layout="position"`, and the existing drag feedback.
+Render each tab using `Reorder.Item value={tab.id}`. Keep the current tab handlers and visual states; use `dragMomentum={false}`, `dragElastic={0}`, `dragConstraints={containerRef}`, and `layout="position"`. Keep Motion in control of transforms by removing CSS `transform` transitions and use a short layout transition so neighboring tabs settle without lingering overlap. Commit the local order to Zustand only on drag end.
 
 ### Task 2: Update Motion
 
@@ -51,7 +51,7 @@ Expected: no TypeScript errors.
 **Step 2: Run the reorder smoke test**
 
 Run: `PW_TAB_REORDER_SMOKE=1 bun run test:e2e -- connection-tabs-reorder.spec.ts`
-Expected: PASS, including horizontal-only movement and cleared drag feedback.
+Expected: PASS, including horizontal-only movement, no overlap after crossing a neighbor, smooth local reordering, and cleared drag feedback.
 
 **Step 3: Check the diff**
 

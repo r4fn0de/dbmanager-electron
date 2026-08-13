@@ -1,24 +1,9 @@
 import {
-  closestCenter,
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  horizontalListSortingStrategy,
-  SortableContext,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
   useMatchRoute,
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { motion } from "motion/react";
+import { motion, Reorder } from "motion/react";
 import { useTheme } from "next-themes";
 import { Icon } from "@/components/ui/Icon";
 import { Neon } from "@/components/icons/Neon";
@@ -47,81 +32,6 @@ interface ConnectionTabsProps {
   gooeyFilterId?: string;
 }
 
-interface SortableTabItemProps {
-  children: React.ReactNode;
-  className: string;
-  id: string;
-  isActive: boolean;
-  isClosing: boolean;
-  isNew: boolean;
-  onClick: () => void;
-  onKeyDown: (event: React.KeyboardEvent<HTMLLIElement>) => void;
-  onMouseDown: (event: React.MouseEvent<HTMLLIElement>) => void;
-  onRef: (element: HTMLLIElement | null) => void;
-  title: string;
-}
-
-function SortableTabItem({
-  children,
-  className,
-  id,
-  isActive,
-  isClosing,
-  isNew,
-  onClick,
-  onKeyDown,
-  onMouseDown,
-  onRef,
-  title,
-}: SortableTabItemProps) {
-  const { attributes, isDragging, listeners, setNodeRef, transform, transition } =
-    useSortable({ id });
-
-  const handleRef = (element: HTMLLIElement | null) => {
-    setNodeRef(element);
-    onRef(element);
-  };
-
-  const dragTransform = transform
-    ? {
-        ...transform,
-        scaleX: isDragging ? 1.04 : transform.scaleX,
-        scaleY: isDragging ? 1.04 : transform.scaleY,
-      }
-    : null;
-
-  return (
-    <motion.li
-      {...attributes}
-      {...listeners}
-      animate={{ opacity: isClosing ? 0 : 1 }}
-      initial={isNew ? { opacity: 0 } : false}
-      onClick={onClick}
-      onKeyDown={onKeyDown}
-      onMouseDown={onMouseDown}
-      ref={handleRef}
-      role="tab"
-      tabIndex={isActive ? 0 : -1}
-      title={title}
-      className={cn(
-        className,
-        isDragging && "z-40 cursor-grabbing shadow-[0_8px_24px_hsl(var(--foreground)/0.08)]",
-      )}
-      style={{
-        overflow: "visible",
-        transform: dragTransform ? CSS.Transform.toString(dragTransform) : undefined,
-        transition,
-      }}
-      transition={{
-        duration: isClosing ? 0.18 : isNew ? 0.25 : 0.15,
-        ease: [0.23, 1, 0.32, 1],
-      }}
-    >
-      {children}
-    </motion.li>
-  );
-}
-
 export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const { tabs, activeTabId, recentTabIds, removeTab, setActiveTab, reorderTabsByIds } =
     useConnectionTabsStore();
@@ -136,6 +46,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
   const [newTabIds, setNewTabIds] = useState<Set<string>>(new Set());
   // Track closing tab IDs for exit animation
   const [closingTabIds, setClosingTabIds] = useState<Set<string>>(new Set());
+  const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+  const [orderedTabIds, setOrderedTabIds] = useState(tabIds);
+  const orderedTabIdsRef = useRef(tabIds);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const matchRoute = useMatchRoute();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { resolvedTheme } = useTheme();
@@ -375,7 +289,18 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     prevTabIdsRef.current = currentIds;
   }, [tabs]);
 
-  const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+  useEffect(() => {
+    if (draggingTabId) return;
+
+    const isSameOrder =
+      orderedTabIdsRef.current.length === tabIds.length &&
+      orderedTabIdsRef.current.every((id, index) => id === tabIds[index]);
+    if (isSameOrder) return;
+
+    orderedTabIdsRef.current = tabIds;
+    setOrderedTabIds(tabIds);
+  }, [draggingTabId, tabIds]);
+
   const connectionsById = useMemo(
     () => new Map(connections.map((connection) => [connection.id, connection])),
     [connections],
@@ -384,67 +309,56 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     () => new Map(localDatabases.map((localDb) => [localDb.id, localDb])),
     [localDatabases],
   );
-  const handleReorder = useCallback(
-    (nextOrder: string[]) => {
-      reorderTabsByIds(nextOrder);
-    },
-    [reorderTabsByIds],
+  const tabsById = useMemo(
+    () => new Map(tabs.map((tab) => [tab.id, tab] as const)),
+    [tabs],
   );
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
+  const orderedTabs = useMemo(
+    () =>
+      orderedTabIds
+        .map((id) => tabsById.get(id))
+        .filter((tab): tab is (typeof tabs)[number] => Boolean(tab)),
+    [orderedTabIds, tabsById],
   );
-
-  const handleDragStart = useCallback(() => {
-    suppressClickRef.current = true;
+  const handleReorder = useCallback((nextOrder: string[]) => {
+    orderedTabIdsRef.current = nextOrder;
+    setOrderedTabIds(nextOrder);
   }, []);
+
+  const handleDragEnd = useCallback(() => {
+    reorderTabsByIds(orderedTabIdsRef.current);
+    setDraggingTabId(null);
+    requestAnimationFrame(() => {
+      suppressClickRef.current = false;
+    });
+  }, [reorderTabsByIds]);
 
   const handleDragCancel = useCallback(() => {
+    orderedTabIdsRef.current = tabIds;
+    setOrderedTabIds(tabIds);
+    setDraggingTabId(null);
     suppressClickRef.current = false;
-  }, []);
-
-  const handleDragEnd = useCallback(
-    ({ active, over }: DragEndEvent) => {
-      if (over && active.id !== over.id) {
-        const oldIndex = tabIds.indexOf(String(active.id));
-        const newIndex = tabIds.indexOf(String(over.id));
-        if (oldIndex >= 0 && newIndex >= 0) {
-          handleReorder(arrayMove(tabIds, oldIndex, newIndex));
-        }
-      }
-
-      requestAnimationFrame(() => {
-        suppressClickRef.current = false;
-      });
-    },
-    [handleReorder, tabIds],
-  );
-
+  }, [tabIds]);
   if (tabs.length === 0) return null;
 
   return (
-    <DndContext
-      collisionDetection={closestCenter}
-      onDragCancel={handleDragCancel}
-      onDragEnd={handleDragEnd}
-      onDragStart={handleDragStart}
-      sensors={sensors}
+    <Reorder.Group
+      axis="x"
+      layoutScroll
+      onReorder={handleReorder}
+      ref={containerRef}
+      role="tablist"
+      values={orderedTabIds}
+      aria-label="Application tabs"
+      onWheel={handleWheel}
+      className={cn(
+        "flex items-center h-full overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
+        gooeyFilterId
+          ? "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]"
+          : "gap-[5px]",
+      )}
     >
-      <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
-        <ul
-          ref={containerRef}
-          role="tablist"
-          aria-label="Application tabs"
-          onWheel={handleWheel}
-          className={cn(
-            "flex items-center h-full overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
-            gooeyFilterId
-              ? "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]"
-              : "gap-[5px]",
-          )}
-        >
-      {tabs.map((tab) => {
+      {orderedTabs.map((tab) => {
         const isActive = tab.id === effectiveActiveId;
         const colorDot = tab.color || (tab.isLocal ? "#22c55e" : undefined);
         const localDbType =
@@ -463,17 +377,57 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
         const isClosing = closingTabIds.has(tab.id);
 
         return (
-          <SortableTabItem
+          <Reorder.Item
+            key={tab.id}
+            value={tab.id}
+            layout="position"
+            dragMomentum={false}
+            dragElastic={0}
+            dragConstraints={containerRef}
+            transition={{
+              layout: {
+                duration: 0.08,
+                ease: [0.23, 1, 0.32, 1],
+              },
+            }}
+            whileDrag={{
+              zIndex: 40,
+              scale: 1.04,
+              boxShadow:
+                "0 8px 24px hsl(var(--foreground) / 0.08), 0 2px 8px hsl(var(--foreground) / 0.06)",
+            }}
+            initial={isNewTab ? { opacity: 0, scale: 0.92, y: -4 } : false}
+            animate={
+              isClosing
+                ? { opacity: 0, scale: 0.88, y: -2 }
+                : { opacity: 1, scale: 1, y: 0 }
+            }
+            ref={(element: HTMLLIElement | null) => {
+              tabRefs.current[tab.id] = element;
+            }}
+            role="tab"
+            tabIndex={isActive ? 0 : -1}
+            aria-selected={isActive}
+            onDragStart={() => {
+              setDraggingTabId(tab.id);
+              suppressClickRef.current = true;
+            }}
+            onDragEnd={handleDragEnd}
+            onPointerCancel={handleDragCancel}
+            onClick={() => handleTabClick(tab.id)}
+            onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
+            onMouseDown={(event) => handleMouseDown(event, tab.id)}
             className={cn(
               "group relative flex items-center justify-center gap-1.5 h-[39px] w-[128px] px-0 text-xs font-medium",
               "rounded-sm shrink-0 outline-none cursor-default",
+              draggingTabId === tab.id && "cursor-grabbing",
               shouldShowNeoTabBorder && isActive && "border border-border border-b-0",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-              "transition-[background-color,color,opacity,transform] duration-150 ease-out",
+              "transition-[background-color,color,opacity] duration-150 ease-out",
               isActive
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
-              "active:scale-[0.98] active:transition-transform active:duration-75",
+              "active:scale-[0.98] active:duration-75",
               !isActive &&
                 cn(
                   "isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:bg-transparent after:transition-[background-color,opacity] after:duration-150 after:ease-out",
@@ -485,17 +439,6 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                   ? (themePreset === "neo" ? "rounded-t-[3px] rounded-b-0" : "rounded-t-[5px] rounded-b-[5px]")
                   : (themePreset === "neo" ? "rounded-t-[3px] rounded-b-0" : "rounded-[5px]")),
             )}
-            id={tab.id}
-            isActive={isActive}
-            isClosing={isClosing}
-            isNew={isNewTab}
-            key={tab.id}
-            onClick={() => handleTabClick(tab.id)}
-            onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
-            onMouseDown={(event) => handleMouseDown(event, tab.id)}
-            onRef={(element) => {
-              tabRefs.current[tab.id] = element;
-            }}
             title={tab.name}
           >
             {gooeyFilterId && isActive && (
@@ -604,12 +547,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             >
               <Icon name="x" className="size-3" />
             </button>
-          </SortableTabItem>
+          </Reorder.Item>
         );
         })}
-        </ul>
-      </SortableContext>
-    </DndContext>
+    </Reorder.Group>
   );
 }
 

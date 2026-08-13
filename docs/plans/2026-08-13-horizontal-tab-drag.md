@@ -4,24 +4,24 @@
 
 **Goal:** Prevent connection tabs from moving vertically while dragging, without changing collision detection or reorder animation.
 
-**Architecture:** Define a small local dnd-kit modifier in `ConnectionTabs.tsx` that preserves the incoming transform's horizontal offset and forces its vertical offset to zero. Pass it to `DndContext`; leave `SortableContext`, collision detection, and Motion styling intact.
+**Architecture:** Use Motion's documented `Reorder.Group axis="x"` with `values`/`onReorder` and `Reorder.Item value={tab.id}`. Motion owns the drag transform and layout animation, while the existing handlers and visual states remain on each item.
 
-**Tech Stack:** React, TypeScript, `@dnd-kit/core`, `@dnd-kit/sortable`, Motion.
+**Tech Stack:** React, TypeScript, Motion 13.1.0, Playwright.
 
 ---
 
-### Task 1: Add the horizontal-axis modifier
+### Task 1: Restore Motion Reorder
 
 **Files:**
 - Modify: `src/features/connection/components/ConnectionTabs.tsx`
 
-**Step 1: Write the modifier**
+**Step 1: Render the documented group**
 
-Create a typed local modifier that accepts dnd-kit's modifier arguments and returns the original transform with `y: 0`.
+Use `Reorder.Group axis="x" values={tabIds} onReorder={handleReorder}` and preserve the current tab-list ref, classes, accessibility attributes, and wheel scrolling.
 
-**Step 2: Attach the modifier**
+**Step 2: Render reorder items**
 
-Pass the modifier through the existing `DndContext`'s `modifiers` prop. Do not alter the existing collision detector or horizontal sorting strategy.
+Use `Reorder.Item value={tab.id}` with the existing visual states and handlers, plus `dragMomentum={false}`, `dragElastic={0}`, `dragConstraints={containerRef}`, and `layout="position"`.
 
 **Step 3: Run typecheck**
 
