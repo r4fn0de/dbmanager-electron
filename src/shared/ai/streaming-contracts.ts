@@ -1,5 +1,8 @@
 import type { ModelMessage } from "ai";
 import type { DatabaseType } from "@/ipc/db/types";
+import type { AiSessionMetadata } from "@/shared/ai/connection-contracts";
+
+export type AiStreamSessionMetadata = AiSessionMetadata;
 
 export type Unsubscribe = () => void;
 
@@ -22,7 +25,14 @@ export interface UserConnectionsContext {
 
 export interface ChatStartInput {
   chatId: string;
-  connectionId: string | null;
+  /** Active database connection ID; optional for global chat mode. */
+  connectionId?: string | null;
+  /** Selected AI connection profile, when different from the legacy default. */
+  aiConnectionId?: string | null;
+  /** Selected model within the AI connection profile. */
+  modelId?: string | null;
+  /** Existing agent/session metadata, retained as optional during migration. */
+  sessionMetadata?: AiSessionMetadata;
   mentionedConnectionId?: string | null;
   dbType: DatabaseType;
   schemaContext?: string;
@@ -41,6 +51,13 @@ export interface ChatStartInput {
 
 export interface InlineGenerateStartInput {
   requestId: string;
+  /** Selected AI connection profile, when different from the legacy default. */
+  connectionId?: string | null;
+  /** Explicit alias for callers that distinguish AI and database connections. */
+  aiConnectionId?: string | null;
+  /** Selected model within the AI connection profile. */
+  modelId?: string | null;
+  sessionMetadata?: AiSessionMetadata;
   dbType: DatabaseType;
   prompt: string;
   sql?: string;
@@ -86,26 +103,30 @@ export interface AiUsage {
   cachedInputTokens?: number;
 }
 
-export interface AiChatDonePayload {
+export interface AiChatDonePayload extends AiSessionMetadata {
   chatId: string;
   finishReason?: string | null;
   usage?: AiUsage | null;
+  sessionMetadata?: AiSessionMetadata;
 }
 
-export interface AiInlineDonePayload {
+export interface AiInlineDonePayload extends AiSessionMetadata {
   requestId: string;
   finishReason?: string | null;
   usage?: AiUsage | null;
+  sessionMetadata?: AiSessionMetadata;
 }
 
-export interface AiChatErrorPayload {
+export interface AiChatErrorPayload extends AiSessionMetadata {
   chatId: string;
   message: string;
+  sessionMetadata?: AiSessionMetadata;
 }
 
-export interface AiInlineErrorPayload {
+export interface AiInlineErrorPayload extends AiSessionMetadata {
   requestId: string;
   message: string;
+  sessionMetadata?: AiSessionMetadata;
 }
 
 type StreamChunkCommon =
@@ -148,6 +169,8 @@ type StreamChunkCommon =
       result?: unknown;
     };
 
+// `source` is already used by the source chunk payload, so lifecycle metadata
+// is attached to done/error events rather than intersected into every chunk.
 export type AiChatChunkPayload = { chatId: string } & StreamChunkCommon;
 export type AiInlineChunkPayload = { requestId: string } & StreamChunkCommon;
 
