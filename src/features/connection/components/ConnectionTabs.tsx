@@ -448,7 +448,10 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                 )}
               </div>
             )}
-            <div className="relative z-10 flex w-full min-w-0 items-center justify-start gap-1.5 pl-3 pr-3">
+            <div className={cn(
+              "relative z-10 flex w-full min-w-0 items-center justify-start gap-1.5 pl-3 pr-3",
+              gooeyFilterId && "-translate-y-[3px]",
+            )}>
 
             {isSettingsTab(tab) ? (
               <Icon name="settings" className="size-3.5 shrink-0" />
@@ -498,7 +501,8 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               onClick={(e) => handleClose(e, tab.id)}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                "absolute right-2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 outline-none",
+                "absolute right-2 top-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 outline-none",
+                gooeyFilterId ? "-translate-y-[calc(50%+2px)]" : "-translate-y-1/2",
                 "transition-[opacity,transform,background-color] duration-150 ease-out",
                 "focus-visible:ring-2 focus-visible:ring-ring",
                 solidBackground
