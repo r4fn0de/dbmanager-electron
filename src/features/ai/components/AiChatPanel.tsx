@@ -4,16 +4,69 @@
  * Embedded in the SQL Editor view as a collapsible side panel.
  * Uses the useAiChat hook to manage streaming chat over Electron IPC.
  */
-import { PostgreSql } from "@/components/icons/PostgreSql";
-import { Neon } from "@/components/icons/Neon";
-import { Supabase } from "@/components/icons/Supabase";
-import { MySql } from "@/components/icons/MySql";
-import { MariaDb } from "@/components/icons/MariaDb";
-import { Sqlite } from "@/components/icons/Sqlite";
+
+import { AnimatePresence, motion } from "motion/react";
+import { useTheme } from "next-themes";
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { StickToBottomContext } from "use-stick-to-bottom";
 import { ClickHouse } from "@/components/icons/ClickHouse";
+import { MariaDb } from "@/components/icons/MariaDb";
+import { MySql } from "@/components/icons/MySql";
+import { Neon } from "@/components/icons/Neon";
+import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Redis } from "@/components/icons/Redis";
+import { Sqlite } from "@/components/icons/Sqlite";
+import { Supabase } from "@/components/icons/Supabase";
+import { Button } from "@/components/ui/button";
+import { CodeBlockCode } from "@/components/ui/code-block";
+import { DotmSquare12 } from "@/components/ui/dotm-square-12";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FeedbackBar } from "@/components/ui/feedback-bar";
+import { Icon as UiIcon } from "@/components/ui/Icon";
+import {
+  PromptInput,
+  PromptInputActions,
+  PromptInputTextarea,
+} from "@/components/ui/prompt-input";
+import { setPromptInputCursorOffset } from "@/components/ui/prompt-input-mentions";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  findConnectionByMentionName,
+  parseMentions,
+} from "@/features/ai/lib/mention-utils";
+import { useConnectionsList } from "@/features/connection/hooks/useConnectionsList";
+import type { DatabaseType } from "@/ipc/db/types";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
-import { motion, AnimatePresence } from "motion/react";
+import { cn } from "@/lib/utils";
+import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
+import { getAiSettings } from "../hooks/ai-actions";
+import {
+  type AiChatMessage,
+  type TextPart,
+  type ToolInvocationPart,
+  useAiChat,
+} from "../hooks/useAiChat";
+import { useMessageFeedback } from "../hooks/useAiFeedback";
+import { useMentions } from "../hooks/useMentions";
+import { ChatTable } from "./ai-elements/chat-table";
 import {
   Conversation,
   ConversationContent,
@@ -22,25 +75,6 @@ import {
   conversationMotionPresets,
 } from "./ai-elements/conversation";
 import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "./ai-elements/reasoning";
-import { Shimmer } from "./ai-elements/shimmer";
-import { useTheme } from "next-themes";
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { StickToBottomContext } from "use-stick-to-bottom";
-import { Button } from "@/components/ui/button";
-import { Icon as UiIcon } from "@/components/ui/Icon";
-import { CodeBlockCode } from "@/components/ui/code-block";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Message,
   MessageAction,
   MessageContent,
@@ -48,30 +82,13 @@ import {
   MessageToolbar,
 } from "./ai-elements/message";
 import {
-  PromptInput,
-  PromptInputActions,
-  PromptInputTextarea,
-} from "@/components/ui/prompt-input";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { parseMentions, findConnectionByMentionName } from "@/features/ai/lib/mention-utils";
-import { useAiChat, type AiChatMessage, type TextPart, type ToolInvocationPart } from "../hooks/useAiChat";
-import { useMessageFeedback } from "../hooks/useAiFeedback";
-import { useMentions } from "../hooks/useMentions";
-import { MentionDropdown } from "./MentionDropdown";
-import { MentionChip } from "./MentionChip";
-import { useConnectionsList } from "@/features/connection/hooks/useConnectionsList";
-import { FeedbackBar } from "@/components/ui/feedback-bar";
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "./ai-elements/reasoning";
+import { Shimmer } from "./ai-elements/shimmer";
 import { ChatTool, type ChatToolPart } from "./ai-elements/tool";
-import { ChatTable } from "./ai-elements/chat-table";
-import { cn } from "@/lib/utils";
-import { DotmSquare12 } from "@/components/ui/dotm-square-12";
-import type { DatabaseType } from "@/ipc/db/types";
-import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
-import { getAiSettings } from "../hooks/ai-actions";
+import { MentionDropdown } from "./MentionDropdown";
 
 function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
   if (provider) {
@@ -109,7 +126,10 @@ function getDatabaseIcon(dbType: DatabaseType, provider?: ConnectionProvider) {
   }
 }
 
-function getDatabaseBrandColor(dbType: DatabaseType, provider?: ConnectionProvider): {
+function getDatabaseBrandColor(
+  dbType: DatabaseType,
+  provider?: ConnectionProvider
+): {
   bgLight: string;
   textLight: string;
   bgDark: string;
@@ -118,49 +138,108 @@ function getDatabaseBrandColor(dbType: DatabaseType, provider?: ConnectionProvid
   if (provider) {
     switch (provider) {
       case "neon":
-        return { bgLight: "#00E0D914", textLight: "#008F8A", bgDark: "#00E0D920", textDark: "#00E0D9" };
+        return {
+          bgDark: "#00E0D920",
+          bgLight: "#00E0D914",
+          textDark: "#00E0D9",
+          textLight: "#008F8A",
+        };
       case "supabase":
-        return { bgLight: "#3ECF8E14", textLight: "#1A8A55", bgDark: "#3ECF8E20", textDark: "#3ECF8E" };
+        return {
+          bgDark: "#3ECF8E20",
+          bgLight: "#3ECF8E14",
+          textDark: "#3ECF8E",
+          textLight: "#1A8A55",
+        };
       case "mysql":
-        return { bgLight: "#00546B14", textLight: "#00546B", bgDark: "#00546B20", textDark: "#4DB8D4" };
+        return {
+          bgDark: "#00546B20",
+          bgLight: "#00546B14",
+          textDark: "#4DB8D4",
+          textLight: "#00546B",
+        };
       case "mariadb":
-        return { bgLight: "#C49A6C14", textLight: "#8B6914", bgDark: "#C49A6C20", textDark: "#D4B07C" };
+        return {
+          bgDark: "#C49A6C20",
+          bgLight: "#C49A6C14",
+          textDark: "#D4B07C",
+          textLight: "#8B6914",
+        };
       case "clickhouse":
-        return { bgLight: "#FFCC0014", textLight: "#9A7B00", bgDark: "#FFCC0020", textDark: "#FFD633" };
+        return {
+          bgDark: "#FFCC0020",
+          bgLight: "#FFCC0014",
+          textDark: "#FFD633",
+          textLight: "#9A7B00",
+        };
       case "redis":
-        return { bgLight: "#DC382D14", textLight: "#DC382D", bgDark: "#DC382D20", textDark: "#EF6B5E" };
+        return {
+          bgDark: "#DC382D20",
+          bgLight: "#DC382D14",
+          textDark: "#EF6B5E",
+          textLight: "#DC382D",
+        };
     }
   }
 
   switch (dbType) {
     case "postgresql":
-      return { bgLight: "#33679114", textLight: "#336791", bgDark: "#33679120", textDark: "#6BA0D0" };
+      return {
+        bgDark: "#33679120",
+        bgLight: "#33679114",
+        textDark: "#6BA0D0",
+        textLight: "#336791",
+      };
     case "mysql":
-      return { bgLight: "#00546B14", textLight: "#00546B", bgDark: "#00546B20", textDark: "#4DB8D4" };
+      return {
+        bgDark: "#00546B20",
+        bgLight: "#00546B14",
+        textDark: "#4DB8D4",
+        textLight: "#00546B",
+      };
     case "mariadb":
-      return { bgLight: "#C49A6C14", textLight: "#8B6914", bgDark: "#C49A6C20", textDark: "#D4B07C" };
+      return {
+        bgDark: "#C49A6C20",
+        bgLight: "#C49A6C14",
+        textDark: "#D4B07C",
+        textLight: "#8B6914",
+      };
     case "sqlite":
-      return { bgLight: "#0F80CC14", textLight: "#0F6BA8", bgDark: "#0F80CC20", textDark: "#5CB3E8" };
+      return {
+        bgDark: "#0F80CC20",
+        bgLight: "#0F80CC14",
+        textDark: "#5CB3E8",
+        textLight: "#0F6BA8",
+      };
     case "clickhouse":
-      return { bgLight: "#FFCC0014", textLight: "#9A7B00", bgDark: "#FFCC0020", textDark: "#FFD633" };
+      return {
+        bgDark: "#FFCC0020",
+        bgLight: "#FFCC0014",
+        textDark: "#FFD633",
+        textLight: "#9A7B00",
+      };
     case "redis":
-      return { bgLight: "#DC382D14", textLight: "#DC382D", bgDark: "#DC382D20", textDark: "#EF6B5E" };
+      return {
+        bgDark: "#DC382D20",
+        bgLight: "#DC382D14",
+        textDark: "#EF6B5E",
+        textLight: "#DC382D",
+      };
     default:
-      return { bgLight: "#33679114", textLight: "#336791", bgDark: "#33679120", textDark: "#6BA0D0" };
+      return {
+        bgDark: "#33679120",
+        bgLight: "#33679114",
+        textDark: "#6BA0D0",
+        textLight: "#336791",
+      };
   }
 }
 
 interface AiChatPanelProps {
+  /** Additional className for the root element (layout positioning) */
+  className?: string;
   /** Active connection ID (optional in global mode) */
   connectionId: string | null;
-  /** Active connection display label */
-  connectionLabel?: string;
-  /** Database engine type */
-  dbType: DatabaseType;
-  /** Cloud provider (neon, supabase, etc.) — overrides dbType icon when available */
-  provider?: ConnectionProvider;
-  /** Optional schema context (table/column names) */
-  schemaContext?: string;
   /** Optional connection metadata for AI context (host, port, local vs remote) */
   connectionInfo?: {
     name: string;
@@ -169,8 +248,8 @@ interface AiChatPanelProps {
     database: string;
     isLocal?: boolean;
   };
-  /** Optional global connection snapshot for cross-connection questions */
-  userConnectionsContext?: UserConnectionsContext;
+  /** Active connection display label */
+  connectionLabel?: string;
   /** Compact preview of what editor context will be sent to AI */
   contextPreview?: {
     connectionLabel: string;
@@ -179,14 +258,20 @@ interface AiChatPanelProps {
     errorPreview?: string;
     tablePreview?: string;
   };
+  /** Database engine type */
+  dbType: DatabaseType;
   /** Whether the panel is visible */
   isOpen: boolean;
-  /** Additional className for the root element (layout positioning) */
-  className?: string;
-  /** Callback to insert SQL into the editor */
-  onInsertSql?: (sql: string) => void;
   /** Callback when panel is closed */
   onClose?: () => void;
+  /** Callback to insert SQL into the editor */
+  onInsertSql?: (sql: string) => void;
+  /** Cloud provider (neon, supabase, etc.) — overrides dbType icon when available */
+  provider?: ConnectionProvider;
+  /** Optional schema context (table/column names) */
+  schemaContext?: string;
+  /** Optional global connection snapshot for cross-connection questions */
+  userConnectionsContext?: UserConnectionsContext;
 }
 
 type ToolCallLike = ToolInvocationPart["toolInvocation"];
@@ -210,15 +295,20 @@ function AssistantCodeBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const displayLang = language?.trim() || "sql";
-  const isSqlLikeLanguage = /^(sql|postgres|postgresql|mysql|mariadb|sqlite|clickhouse)$/i.test(displayLang);
+  const isSqlLikeLanguage =
+    /^(sql|postgres|postgresql|mysql|mariadb|sqlite|clickhouse)$/i.test(
+      displayLang
+    );
   const isSqlByContent =
     /\b(select|insert|update|delete|create|alter|drop|with|from|where|join)\b/i.test(
-      code,
+      code
     );
   const canInsertSql = (isSqlLikeLanguage || isSqlByContent) && !!onInsertSql;
 
   useEffect(() => {
-    if (!copied) return;
+    if (!copied) {
+      return;
+    }
     const timer = setTimeout(() => setCopied(false), 1200);
     return () => clearTimeout(timer);
   }, [copied]);
@@ -226,11 +316,12 @@ function AssistantCodeBlock({
   return (
     <div className="group/code relative rounded-lg border border-border/40 bg-background/60 backdrop-blur-sm">
       {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-border/30 bg-muted/30 px-3 py-1">
-        <span className="text-[11px] font-medium text-muted-foreground/80 select-text">{displayLang}</span>
-        <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-hover/code:opacity-100 group-focus-within/code:opacity-100">
+      <div className="flex items-center justify-between border-border/30 border-b bg-muted/30 px-3 py-1">
+        <span className="select-text font-medium text-[11px] text-muted-foreground/80">
+          {displayLang}
+        </span>
+        <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 ease-out group-focus-within/code:opacity-100 group-hover/code:opacity-100">
           <MessageAction
-            tooltip={copied ? "Copied" : "Copy code"}
             label={copied ? "Copied" : "Copy code"}
             onClick={async () => {
               try {
@@ -240,16 +331,21 @@ function AssistantCodeBlock({
                 // Ignore copy failures.
               }
             }}
+            tooltip={copied ? "Copied" : "Copy code"}
           >
-            {copied ? <UiIcon name="check" className="size-3" /> : <UiIcon name="copy" className="size-3" />}
+            {copied ? (
+              <UiIcon className="size-3" name="check" />
+            ) : (
+              <UiIcon className="size-3" name="copy" />
+            )}
           </MessageAction>
           {canInsertSql && (
             <MessageAction
-              tooltip="Insert SQL"
               label="Insert SQL"
               onClick={() => onInsertSql(code)}
+              tooltip="Insert SQL"
             >
-              <UiIcon name="code" className="size-3" />
+              <UiIcon className="size-3" name="code" />
             </MessageAction>
           )}
         </div>
@@ -257,10 +353,10 @@ function AssistantCodeBlock({
       {/* Code content */}
       <div className="w-full overflow-x-auto text-[13px]">
         <CodeBlockCode
+          className="[&>pre]:m-0! [&>pre]:rounded-none! [&>pre]:px-4 [&>pre]:py-3"
           code={code}
           language={language || "sql"}
           theme={codeTheme}
-          className="[&>pre]:rounded-none! [&>pre]:m-0! [&>pre]:px-4 [&>pre]:py-3"
         />
       </div>
     </div>
@@ -274,23 +370,27 @@ function AssistantCodeBlock({
 function extractSqlSnippet(value: unknown): string | null {
   if (typeof value === "string") {
     const text = value.trim();
-    if (!text) return null;
+    if (!text) {
+      return null;
+    }
     const lowered = text.toLowerCase();
     if (
-      lowered.includes("select ")
-      || lowered.includes("insert ")
-      || lowered.includes("update ")
-      || lowered.includes("delete ")
-      || lowered.includes("create ")
-      || lowered.includes("alter ")
-      || lowered.includes("drop ")
-      || lowered.includes("with ")
+      lowered.includes("select ") ||
+      lowered.includes("insert ") ||
+      lowered.includes("update ") ||
+      lowered.includes("delete ") ||
+      lowered.includes("create ") ||
+      lowered.includes("alter ") ||
+      lowered.includes("drop ") ||
+      lowered.includes("with ")
     ) {
       return text;
     }
     return null;
   }
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object") {
+    return null;
+  }
 
   const record = value as Record<string, unknown>;
   for (const key of ["sql", "query", "statement", "ddl", "command"]) {
@@ -308,9 +408,14 @@ function extractSourceMeta(source: unknown): { label: string; url?: string } {
   }
 
   const sourceRecord = source as Record<string, unknown>;
-  const title = typeof sourceRecord.title === "string" ? sourceRecord.title.trim() : "";
-  const url = typeof sourceRecord.url === "string" ? sourceRecord.url.trim() : undefined;
-  const sourceType = typeof sourceRecord.sourceType === "string" ? sourceRecord.sourceType.trim() : "";
+  const title =
+    typeof sourceRecord.title === "string" ? sourceRecord.title.trim() : "";
+  const url =
+    typeof sourceRecord.url === "string" ? sourceRecord.url.trim() : undefined;
+  const sourceType =
+    typeof sourceRecord.sourceType === "string"
+      ? sourceRecord.sourceType.trim()
+      : "";
 
   if (title) {
     return { label: title, url };
@@ -324,12 +429,20 @@ function extractSourceMeta(source: unknown): { label: string; url?: string } {
   return { label: "Reference" };
 }
 
-function getToolStatus(invocation: ToolCallLike): "running" | "success" | "error" {
-  if (invocation.state === "call") return "running";
+function getToolStatus(
+  invocation: ToolCallLike
+): "running" | "success" | "error" {
+  if (invocation.state === "call") {
+    return "running";
+  }
   if (invocation.result && typeof invocation.result === "object") {
     const result = invocation.result as Record<string, unknown>;
-    if (typeof result.error === "string" && result.error.trim()) return "error";
-    if (result.success === false || result.ok === false) return "error";
+    if (typeof result.error === "string" && result.error.trim()) {
+      return "error";
+    }
+    if (result.success === false || result.ok === false) {
+      return "error";
+    }
   }
   return "success";
 }
@@ -342,28 +455,38 @@ function toChatToolPart(invocation: ToolCallLike): ChatToolPart {
 
   // Extract error text from result if applicable
   let errorText: string | undefined;
-  if (status === "error" && invocation.result && typeof invocation.result === "object") {
+  if (
+    status === "error" &&
+    invocation.result &&
+    typeof invocation.result === "object"
+  ) {
     const result = invocation.result as Record<string, unknown>;
     errorText = typeof result.error === "string" ? result.error : undefined;
   }
 
   // Map invocation state → ChatToolPart state
   const state: ChatToolPart["state"] =
-    invocation.state === "pending-approval" ? "pending-approval"
-    : invocation.state === "call" ? "input-streaming"
-    : invocation.state === "partial-call" ? "input-available"
-    : status === "error" ? "output-error"
-    : "output-available";
+    invocation.state === "pending-approval"
+      ? "pending-approval"
+      : invocation.state === "call"
+        ? "input-streaming"
+        : invocation.state === "partial-call"
+          ? "input-available"
+          : status === "error"
+            ? "output-error"
+            : "output-available";
 
   // Safely cast args/output to Record<string, unknown>
-  const input = (invocation.args && typeof invocation.args === "object")
-    ? invocation.args as Record<string, unknown>
-    : undefined;
-  const output = (invocation.result !== undefined && invocation.result !== null)
-    ? typeof invocation.result === "object"
-      ? invocation.result as Record<string, unknown>
-      : { result: invocation.result }
-    : undefined;
+  const input =
+    invocation.args && typeof invocation.args === "object"
+      ? (invocation.args as Record<string, unknown>)
+      : undefined;
+  const output =
+    invocation.result !== undefined && invocation.result !== null
+      ? typeof invocation.result === "object"
+        ? (invocation.result as Record<string, unknown>)
+        : { result: invocation.result }
+      : undefined;
 
   // Extract approval request metadata if present
   const approvalRequest =
@@ -372,13 +495,13 @@ function toChatToolPart(invocation: ToolCallLike): ChatToolPart {
       : undefined;
 
   return {
-    type: invocation.toolName,
-    state,
+    approvalRequest,
+    errorText,
     input,
     output,
+    state,
     toolCallId: invocation.toolCallId,
-    errorText,
-    approvalRequest,
+    type: invocation.toolName,
   };
 }
 
@@ -417,17 +540,21 @@ function AiMessageFeedback({
       return false;
     }
   });
-  const [localRating, setLocalRating] = useState<"positive" | "negative" | null>(null);
-  const [isLoadingExistingFeedback, setIsLoadingExistingFeedback] = useState(true);
+  const [localRating, setLocalRating] = useState<
+    "positive" | "negative" | null
+  >(null);
+  const [isLoadingExistingFeedback, setIsLoadingExistingFeedback] =
+    useState(true);
 
-  const prompt = message.parts
-    ?.reduce<string[]>((texts, part) => {
-      if (part.type === "text") {
-        texts.push(part.text);
-      }
-      return texts;
-    }, [])
-    .join(" ") ?? "";
+  const prompt =
+    message.parts
+      ?.reduce<string[]>((texts, part) => {
+        if (part.type === "text") {
+          texts.push(part.text);
+        }
+        return texts;
+      }, [])
+      .join(" ") ?? "";
 
   const response = message.content ?? "";
 
@@ -436,7 +563,7 @@ function AiMessageFeedback({
     message.id,
     prompt,
     response,
-    connectionId ?? undefined,
+    connectionId ?? undefined
   );
 
   useEffect(() => {
@@ -464,16 +591,19 @@ function AiMessageFeedback({
     };
   }, [loadFeedback]);
 
-  const handleFeedback = useCallback((newRating: "positive" | "negative") => {
-    // Optimistic UI: update immediately so the user sees feedback
-    setLocalRating(newRating);
+  const handleFeedback = useCallback(
+    (newRating: "positive" | "negative") => {
+      // Optimistic UI: update immediately so the user sees feedback
+      setLocalRating(newRating);
 
-    // Fire-and-forget IPC call
-    toggleFeedback(newRating).catch(() => {
-      // Revert on failure
-      setLocalRating(null);
-    });
-  }, [toggleFeedback]);
+      // Fire-and-forget IPC call
+      toggleFeedback(newRating).catch(() => {
+        // Revert on failure
+        setLocalRating(null);
+      });
+    },
+    [toggleFeedback]
+  );
 
   const activeRating = localRating ?? rating;
 
@@ -496,9 +626,7 @@ function AiMessageFeedback({
   return (
     <div className="mt-2 flex justify-start">
       <FeedbackBar
-        title="Was this helpful?"
-        onHelpful={() => handleFeedback("positive")}
-        onNotHelpful={() => handleFeedback("negative")}
+        className="origin-left scale-90"
         onClose={() => {
           setIsDismissed(true);
           try {
@@ -507,7 +635,9 @@ function AiMessageFeedback({
             // Ignore localStorage failures.
           }
         }}
-        className="scale-90 origin-left"
+        onHelpful={() => handleFeedback("positive")}
+        onNotHelpful={() => handleFeedback("negative")}
+        title="Was this helpful?"
       />
     </div>
   );
@@ -534,7 +664,9 @@ function ChatMessage({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (!copied) return;
+    if (!copied) {
+      return;
+    }
     const timer = setTimeout(() => {
       setCopied(false);
     }, 1200);
@@ -542,7 +674,9 @@ function ChatMessage({
   }, [copied]);
 
   const handleCopyMessage = useCallback(async () => {
-    if (!message.content) return;
+    if (!message.content) {
+      return;
+    }
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
@@ -555,77 +689,77 @@ function ChatMessage({
   if (isUser) {
     return (
       <motion.div
-        layout="position"
-        initial={conversationMotionPresets.message.initial}
         animate={conversationMotionPresets.message.animate}
         exit={conversationMotionPresets.message.exit}
+        initial={conversationMotionPresets.message.initial}
+        layout="position"
         transition={conversationMotionPresets.message.transition}
       >
         <Message
+          className="group/msg w-full max-w-full py-2 pr-3 pl-3"
           from="user"
-          className="group/msg w-full max-w-full pl-3 pr-3 py-2"
         >
-          <div className="ml-auto flex max-w-[72%] min-w-0 flex-col items-end">
-          {(message.contextSnapshot?.selectionPreview || message.contextSnapshot?.errorPreview || message.contextSnapshot?.tablePreview) && (
-            <div className="mb-1.5 flex w-full justify-end">
-              {message.contextSnapshot?.tablePreview && (
-                <div
-                  className="
-                    inline-flex max-w-full cursor-default items-center gap-2
-                    rounded-lg bg-muted/50 px-2 py-1
-                  "
-                >
-                  <UiIcon name="table" className="size-3.5 shrink-0 text-muted-foreground/70" />
-                  <div className="min-w-0">
-                    <p className="truncate text-[12px] font-medium text-foreground/90">
-                      {message.contextSnapshot.tablePreview}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/70">Selected Table</p>
+          <div className="ml-auto flex min-w-0 max-w-[72%] flex-col items-end">
+            {(message.contextSnapshot?.selectionPreview ||
+              message.contextSnapshot?.errorPreview ||
+              message.contextSnapshot?.tablePreview) && (
+              <div className="mb-1.5 flex w-full justify-end">
+                {message.contextSnapshot?.tablePreview && (
+                  <div className="inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-muted/50 px-2 py-1">
+                    <UiIcon
+                      className="size-3.5 shrink-0 text-muted-foreground/70"
+                      name="table"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-[12px] text-foreground/90">
+                        {message.contextSnapshot.tablePreview}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Selected Table
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {message.contextSnapshot?.selectionPreview && (
-                <div
-                  className="
-                    inline-flex w-45.5 max-w-full min-h-13 cursor-default
-                    items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5
-                  "
-                >
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/8 text-[10px] font-semibold text-muted-foreground">
-                    SQL
-                  </span>
-                  <div className="min-w-0 overflow-hidden">
-                    <p className="truncate text-[12px] font-medium text-foreground/90">
-                      {message.contextSnapshot.selectionPreview}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/70">Selected Text</p>
+                )}
+                {message.contextSnapshot?.selectionPreview && (
+                  <div className="inline-flex min-h-13 w-45.5 max-w-full cursor-default items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/8 font-semibold text-[10px] text-muted-foreground">
+                      SQL
+                    </span>
+                    <div className="min-w-0 overflow-hidden">
+                      <p className="truncate font-medium text-[12px] text-foreground/90">
+                        {message.contextSnapshot.selectionPreview}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/70">
+                        Selected Text
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {!message.contextSnapshot?.selectionPreview && message.contextSnapshot?.errorPreview && (
-                <div
-                  className="
-                    inline-flex max-w-full cursor-default items-center gap-2
-                    rounded-lg bg-amber-500/8 px-2 py-1
-                  "
-                >
-                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-600/70 dark:text-amber-400/70" />
-                  <div className="min-w-0">
-                    <p className="truncate text-[12px] text-amber-700/80 dark:text-amber-300/80">
-                      {message.contextSnapshot.errorPreview}
-                    </p>
-                    <p className="text-[11px] text-amber-600/50 dark:text-amber-400/50">Last Error</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {message.content && (
-            <p className="text-[14px] leading-6 whitespace-pre-wrap wrap-break-word rounded-2xl bg-muted/60 px-3.5 py-2 text-foreground">
-              {message.content}
-            </p>
-          )}
-        </div>
+                )}
+                {!message.contextSnapshot?.selectionPreview &&
+                  message.contextSnapshot?.errorPreview && (
+                    <div className="inline-flex max-w-full cursor-default items-center gap-2 rounded-lg bg-amber-500/8 px-2 py-1">
+                      <UiIcon
+                        className="size-3.5 shrink-0 text-amber-600/70 dark:text-amber-400/70"
+                        name="code"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] text-amber-700/80 dark:text-amber-300/80">
+                          {message.contextSnapshot.errorPreview}
+                        </p>
+                        <p className="text-[11px] text-amber-600/50 dark:text-amber-400/50">
+                          Last Error
+                        </p>
+                      </div>
+                    </div>
+                  )}
+              </div>
+            )}
+            {message.content && (
+              <p className="wrap-break-word whitespace-pre-wrap rounded-2xl bg-muted/60 px-3.5 py-2 text-[14px] text-foreground leading-6">
+                {message.content}
+              </p>
+            )}
+          </div>
         </Message>
       </motion.div>
     );
@@ -657,7 +791,10 @@ function ChatMessage({
     } else if (part.type === "text") {
       // Flush any accumulated tool invocations before rendering text
       if (pendingTools.length > 0) {
-        renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+        renderedParts.push({
+          invocations: [...pendingTools],
+          kind: "tool-group",
+        });
         pendingTools = [];
       }
       const segments = splitTextIntoSegments(part.text);
@@ -666,7 +803,10 @@ function ChatMessage({
       }
     } else if (part.type === "reasoning") {
       if (pendingTools.length > 0) {
-        renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+        renderedParts.push({
+          invocations: [...pendingTools],
+          kind: "tool-group",
+        });
         pendingTools = [];
       }
       if (part.text.trim()) {
@@ -674,7 +814,10 @@ function ChatMessage({
       }
     } else if (part.type === "source") {
       if (pendingTools.length > 0) {
-        renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+        renderedParts.push({
+          invocations: [...pendingTools],
+          kind: "tool-group",
+        });
         pendingTools = [];
       }
       renderedParts.push({ kind: "source", source: part.source });
@@ -682,129 +825,134 @@ function ChatMessage({
   }
   // Flush any remaining tool invocations at the end
   if (pendingTools.length > 0) {
-    renderedParts.push({ kind: "tool-group", invocations: [...pendingTools] });
+    renderedParts.push({ invocations: [...pendingTools], kind: "tool-group" });
   }
 
   const hasContent = renderedParts.length > 0;
 
   return (
     <motion.div
-      layout="position"
-      initial={conversationMotionPresets.message.initial}
       animate={conversationMotionPresets.message.animate}
       exit={conversationMotionPresets.message.exit}
+      initial={conversationMotionPresets.message.initial}
+      layout="position"
       transition={conversationMotionPresets.message.transition}
     >
       <Message
+        className="group/msg w-full max-w-full py-2 pr-2 pl-1"
         from="assistant"
-        className="group/msg w-full max-w-full pl-1 pr-2 py-2"
       >
-        <div className="min-w-0 flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           {/* Render parts in their original interleaved order */}
           {hasContent && (
             <div className="space-y-3">
               {renderedParts.map((block, blockIndex) =>
                 block.kind === "tool-group" ? (
-                  <div key={`tools-${blockIndex}`} className="space-y-2">
+                  <div className="space-y-2" key={`tools-${blockIndex}`}>
                     {block.invocations!.map((tip) => {
                       const chatToolPart = toChatToolPart(tip.toolInvocation);
-                      const sqlFromTool = extractSqlSnippet(tip.toolInvocation.result) ?? extractSqlSnippet(tip.toolInvocation.args);
+                      const sqlFromTool =
+                        extractSqlSnippet(tip.toolInvocation.result) ??
+                        extractSqlSnippet(tip.toolInvocation.args);
                       return (
                         <div key={tip.toolInvocation.toolCallId}>
                           <ChatTool
-                            toolPart={chatToolPart}
-                            defaultOpen
                             className="mt-1"
+                            defaultOpen
                             onApprove={onApproveToolCall}
                             onReject={onRejectToolCall}
+                            toolPart={chatToolPart}
                           />
-                          {sqlFromTool && onInsertSql && tip.toolInvocation.state === "result" && (
-                            <MessageAction
-                              tooltip="Insert SQL from tool"
-                              label="Insert SQL"
-                              onClick={() => onInsertSql(sqlFromTool)}
-                              className="mt-1 ml-1"
-                            >
-                              <UiIcon name="code" className="size-3.5" />
-                            </MessageAction>
-                          )}
+                          {sqlFromTool &&
+                            onInsertSql &&
+                            tip.toolInvocation.state === "result" && (
+                              <MessageAction
+                                className="mt-1 ml-1"
+                                label="Insert SQL"
+                                onClick={() => onInsertSql(sqlFromTool)}
+                                tooltip="Insert SQL from tool"
+                              >
+                                <UiIcon className="size-3.5" name="code" />
+                              </MessageAction>
+                            )}
                         </div>
                       );
                     })}
                   </div>
-                ) : (
-                  block.kind === "reasoning" ? (
-                    <Reasoning
-                      key={`reasoning-${blockIndex}`}
-                      defaultOpen={false}
-                      isStreaming={message.isStreaming}
-                      className="mb-1 rounded-md border border-border/30 bg-muted/20 px-3 py-2"
-                    >
-                      <ReasoningTrigger className="text-xs text-muted-foreground/80">
+                ) : block.kind === "reasoning" ? (
+                  <Reasoning
+                    className="mb-1 rounded-md border border-border/30 bg-muted/20 px-3 py-2"
+                    defaultOpen={false}
+                    isStreaming={message.isStreaming}
+                    key={`reasoning-${blockIndex}`}
+                  >
+                    <ReasoningTrigger className="text-muted-foreground/80 text-xs">
+                      <span className="inline-flex items-center gap-1.5">
+                        <UiIcon className="size-3.5" name="brain" />
+                        Reasoning
+                      </span>
+                    </ReasoningTrigger>
+                    <ReasoningContent className="mt-2 text-xs leading-6">
+                      {block.reasoningText ?? ""}
+                    </ReasoningContent>
+                  </Reasoning>
+                ) : block.kind === "source" ? (
+                  <div
+                    className="rounded-md border border-border/30 bg-muted/20 px-3 py-2 text-muted-foreground text-xs"
+                    key={`source-${blockIndex}`}
+                  >
+                    {(() => {
+                      const sourceMeta = extractSourceMeta(block.source);
+                      return sourceMeta.url ? (
+                        <a
+                          className="inline-flex items-center gap-1.5 text-primary underline-offset-4 hover:underline"
+                          href={sourceMeta.url}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <UiIcon className="size-3.5" name="link" />
+                          {sourceMeta.label}
+                        </a>
+                      ) : (
                         <span className="inline-flex items-center gap-1.5">
-                          <UiIcon name="brain" className="size-3.5" />
-                          Reasoning
+                          <UiIcon className="size-3.5" name="link" />
+                          {sourceMeta.label}
                         </span>
-                      </ReasoningTrigger>
-                      <ReasoningContent className="mt-2 text-xs leading-6">
-                        {block.reasoningText ?? ""}
-                      </ReasoningContent>
-                    </Reasoning>
-                  ) : block.kind === "source" ? (
-                    <div
-                      key={`source-${blockIndex}`}
-                      className="rounded-md border border-border/30 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
-                    >
-                      {(() => {
-                        const sourceMeta = extractSourceMeta(block.source);
-                        return sourceMeta.url ? (
-                          <a
-                            href={sourceMeta.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 text-primary underline-offset-4 hover:underline"
-                          >
-                            <UiIcon name="link" className="size-3.5" />
-                            {sourceMeta.label}
-                          </a>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5">
-                            <UiIcon name="link" className="size-3.5" />
-                            {sourceMeta.label}
-                          </span>
-                        );
-                      })()}
-                    </div>
-                  ) : (
+                      );
+                    })()}
+                  </div>
+                ) : (
                   <Fragment key={`text-${blockIndex}`}>
                     {block.segments!.map((seg, segIndex) =>
                       seg.type === "text" ? (
                         <MessageContent
-                          key={`seg-${segIndex}`}
                           className={ASSISTANT_PROSE_CLASS}
+                          key={`seg-${segIndex}`}
                         >
-                          <MessageResponse isStreaming={message.isStreaming}>{seg.content}</MessageResponse>
+                          <MessageResponse isStreaming={message.isStreaming}>
+                            {seg.content}
+                          </MessageResponse>
                         </MessageContent>
                       ) : seg.type === "code" ? (
                         <AssistantCodeBlock
-                          key={`seg-${segIndex}`}
                           code={seg.code}
-                          language={seg.language}
                           codeTheme={codeTheme}
-                          onInsertSql={onInsertSql}
                           isStreaming={message.isStreaming}
+                          key={`seg-${segIndex}`}
+                          language={seg.language}
+                          onInsertSql={onInsertSql}
                         />
                       ) : (
                         <ChatTable
+                          className="my-1"
+                          isStreaming={message.isStreaming}
                           key={`seg-${segIndex}`}
                           markdown={seg.markdown}
-                          isStreaming={message.isStreaming}
-                          className="my-1"
                         />
-                      ),
+                      )
                     )}
                   </Fragment>
-                )),
+                )
               )}
             </div>
           )}
@@ -812,24 +960,28 @@ function ChatMessage({
           {!message.isStreaming && (message.content || firstSqlBlock) && (
             <MessageToolbar className="mt-0 justify-start gap-1.5">
               <MessageAction
-                tooltip={copied ? "Copied" : "Copy response"}
+                disabled={!message.content}
                 label={copied ? "Copied" : "Copy response"}
                 onClick={handleCopyMessage}
-                disabled={!message.content}
+                tooltip={copied ? "Copied" : "Copy response"}
               >
-                {copied ? <UiIcon name="check" className="size-3.5" /> : <UiIcon name="copy" className="size-3.5" />}
+                {copied ? (
+                  <UiIcon className="size-3.5" name="check" />
+                ) : (
+                  <UiIcon className="size-3.5" name="copy" />
+                )}
               </MessageAction>
               <MessageAction
-                tooltip="Insert first SQL block"
+                disabled={!(onInsertSql && firstSqlBlock)}
                 label="Insert first SQL block"
                 onClick={() => {
                   if (firstSqlBlock?.type === "code" && onInsertSql) {
                     onInsertSql(firstSqlBlock.code);
                   }
                 }}
-                disabled={!onInsertSql || !firstSqlBlock}
+                tooltip="Insert first SQL block"
               >
-                <UiIcon name="code" className="size-3.5" />
+                <UiIcon className="size-3.5" name="code" />
               </MessageAction>
             </MessageToolbar>
           )}
@@ -837,30 +989,30 @@ function ChatMessage({
           {/* Feedback buttons for completed assistant messages — show only ~25% of the time */}
           {!message.isStreaming && message.role === "assistant" && !isUser && (
             <AiMessageFeedback
-              message={message}
               connectionId={connectionId}
               conversationId={conversationId}
+              message={message}
               showFeedback={shouldShowFeedback(message.id)}
             />
           )}
 
           {/* Thinking indicator — ai-elements Reasoning, minimal style */}
           {message.isStreaming && !message.content && (
-            <Reasoning isStreaming className="mb-0! px-3">
+            <Reasoning className="mb-0! px-3" isStreaming>
               <ReasoningTrigger className="gap-1.5 py-1 text-xs">
                 <DotmSquare12
-                  size={14}
-                  dotSize={2}
-                  speed={1.2}
-                  pattern="full"
                   animated
-                  hoverAnimated={false}
-                  className="shrink-0 opacity-85"
                   aria-hidden
+                  className="shrink-0 opacity-85"
+                  dotSize={2}
+                  hoverAnimated={false}
+                  pattern="full"
+                  size={14}
+                  speed={1.2}
                 />
                 <Shimmer
                   as="span"
-                  className="text-xs font-medium"
+                  className="font-medium text-xs"
                   duration={1.8}
                   spread={1.4}
                 >
@@ -870,8 +1022,8 @@ function ChatMessage({
             </Reasoning>
           )}
           {/* No-content fallback for completed/aborted messages */}
-          {!message.isStreaming && !hasContent && (
-            <p className="px-3 text-xs text-muted-foreground">No response</p>
+          {!(message.isStreaming || hasContent) && (
+            <p className="px-3 text-muted-foreground text-xs">No response</p>
           )}
         </div>
       </Message>
@@ -893,7 +1045,9 @@ type TextSegment =
  * so tool-invocation parts are handled separately via the parts array.
  */
 function splitTextIntoSegments(text: string): TextSegment[] {
-  if (!text) return [];
+  if (!text) {
+    return [];
+  }
 
   const segments: TextSegment[] = [];
   const fenceRegex = /```([\w-]+)?\s*\n([\s\S]*?)```/g;
@@ -913,9 +1067,9 @@ function splitTextIntoSegments(text: string): TextSegment[] {
     const normalizedCode = code?.trim() ?? "";
     if (normalizedCode) {
       segments.push({
-        type: "code",
         code: normalizedCode,
         language: language?.trim() || undefined,
+        type: "code",
       });
     }
 
@@ -938,9 +1092,9 @@ function splitTextIntoSegments(text: string): TextSegment[] {
       const openFenceCode = (openFenceMatch[2] ?? "").trim();
       if (openFenceCode) {
         segments.push({
-          type: "code",
           code: openFenceCode,
           language: openFenceMatch[1]?.trim() || undefined,
+          type: "code",
         });
       }
     } else {
@@ -949,7 +1103,7 @@ function splitTextIntoSegments(text: string): TextSegment[] {
   }
 
   if (segments.length === 0) {
-    segments.push({ type: "text", content: text });
+    segments.push({ content: text, type: "text" });
   }
 
   return segments;
@@ -961,7 +1115,9 @@ function splitTextIntoSegments(text: string): TextSegment[] {
  */
 function pushProseSegments(segments: TextSegment[], raw: string): void {
   const trimmed = raw.trim();
-  if (!trimmed) return;
+  if (!trimmed) {
+    return;
+  }
 
   const lines = trimmed.split("\n");
   // Group consecutive |-prefixed lines into blocks.
@@ -974,22 +1130,22 @@ function pushProseSegments(segments: TextSegment[], raw: string): void {
     const isTableLine = line.trimStart().startsWith("|");
     const kind = isTableLine ? "table" : "prose";
 
-    if (kind !== currentKind) {
+    if (kind === currentKind) {
+      blocks[blocks.length - 1].lines.push(line);
+    } else {
       blocks.push({ kind, lines: [line] });
       currentKind = kind;
-    } else {
-      blocks[blocks.length - 1].lines.push(line);
     }
   }
 
   for (const block of blocks) {
     const content = block.lines.join("\n");
     if (block.kind === "table" && block.lines.length >= 2) {
-      segments.push({ type: "table", markdown: content });
+      segments.push({ markdown: content, type: "table" });
     } else {
       const prose = content.trim();
       if (prose) {
-        segments.push({ type: "text", content: prose });
+        segments.push({ content: prose, type: "text" });
       }
     }
   }
@@ -1038,10 +1194,10 @@ export function AiChatPanel({
     rejectToolCall,
   } = useAiChat({
     connectionId,
-    dbType,
-    connectionLabel,
-    schemaContext,
     connectionInfo,
+    connectionLabel,
+    dbType,
+    schemaContext,
     userConnectionsContext,
   });
 
@@ -1051,13 +1207,13 @@ export function AiChatPanel({
     selection: boolean;
     error: boolean;
     table: boolean;
-  }>({ selection: false, error: false, table: false });
+  }>({ error: false, selection: false, table: false });
   const [exitingContext, setExitingContext] = useState<{
     selection: boolean;
     error: boolean;
     table: boolean;
-  }>({ selection: false, error: false, table: false });
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  }>({ error: false, selection: false, table: false });
+  const inputRef = useRef<HTMLDivElement>(null);
   const mentionDropdownRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<StickToBottomContext | null>(null);
   const previousConversationIdRef = useRef<string | null>(null);
@@ -1084,20 +1240,24 @@ export function AiChatPanel({
   const handleMentionSelect = useCallback(
     (connectionIndex: number) => {
       const connection = mentionState.filteredConnections[connectionIndex];
-      if (!connection) return;
+      if (!connection) {
+        return;
+      }
       const result = selectMention(connection);
       if (result !== null) {
         setInput(result.text);
-        // Focus and place cursor where the mention token was removed.
+        // Focus and place cursor after the inserted mention token.
         requestAnimationFrame(() => {
-          const textarea = inputRef.current;
-          if (!textarea) return;
-          textarea.focus();
-          textarea.setSelectionRange(result.cursorPos, result.cursorPos);
+          const editor = inputRef.current;
+          if (!editor) {
+            return;
+          }
+          editor.focus();
+          setPromptInputCursorOffset(editor, result.cursorPos);
         });
       }
     },
-    [mentionState.filteredConnections, selectMention],
+    [mentionState.filteredConnections, selectMention]
   );
 
   // Focus input when panel opens
@@ -1119,7 +1279,11 @@ export function AiChatPanel({
     previousIsOpenRef.current = isOpen;
     previousConversationIdRef.current = activeConversationId;
 
-    if (!isOpen || !activeConversationId || (!openedNow && !conversationChanged)) return;
+    if (
+      !(isOpen && activeConversationId && (openedNow || conversationChanged))
+    ) {
+      return;
+    }
 
     const t1 = setTimeout(() => {
       void conversationRef.current?.scrollToBottom();
@@ -1135,12 +1299,16 @@ export function AiChatPanel({
   }, [activeConversationId, isOpen]);
 
   useEffect(() => {
-    setDismissedContext({ selection: false, error: false, table: false });
-    setExitingContext({ selection: false, error: false, table: false });
-  }, [contextPreview?.selectionPreview, contextPreview?.errorPreview, contextPreview?.tablePreview]);
+    setDismissedContext({ error: false, selection: false, table: false });
+    setExitingContext({ error: false, selection: false, table: false });
+  }, [
+    contextPreview?.selectionPreview,
+    contextPreview?.errorPreview,
+    contextPreview?.tablePreview,
+  ]);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (contextDismissTimeoutsRef.current.selection) {
         clearTimeout(contextDismissTimeoutsRef.current.selection);
       }
@@ -1150,81 +1318,74 @@ export function AiChatPanel({
       if (contextDismissTimeoutsRef.current.table) {
         clearTimeout(contextDismissTimeoutsRef.current.table);
       }
-    };
-  }, []);
+    },
+    []
+  );
 
   const showSelectionContextChip = Boolean(
-    contextPreview?.selectionPreview && !dismissedContext.selection,
+    contextPreview?.selectionPreview && !dismissedContext.selection
   );
   const showErrorContextChip = Boolean(
-    contextPreview?.errorPreview && !dismissedContext.error,
+    contextPreview?.errorPreview && !dismissedContext.error
   );
   const showTableContextChip = Boolean(
-    contextPreview?.tablePreview && !dismissedContext.table,
+    contextPreview?.tablePreview && !dismissedContext.table
   );
 
   const hasChips =
-    showSelectionContextChip || showErrorContextChip || showTableContextChip ||
-    exitingContext.selection || exitingContext.error || exitingContext.table ||
-    selectedMentions.size > 0;
+    showSelectionContextChip ||
+    showErrorContextChip ||
+    showTableContextChip ||
+    exitingContext.selection ||
+    exitingContext.error ||
+    exitingContext.table;
 
-  const handleInputChange = useCallback((value: string) => {
-    setInput(value);
-    const textarea = inputRef.current;
-    const cursorPos = textarea?.selectionStart ?? value.length;
-    handleTextChange(value, cursorPos);
-  }, [handleTextChange]);
+  const inlineMentions = useMemo(
+    () =>
+      Array.from(selectedMentions.values()).map((connection) => ({
+        id: connection.id,
+        label: connection.name,
+      })),
+    [selectedMentions]
+  );
+
+  const handleInputChange = useCallback(
+    (value: string, cursorPos?: number) => {
+      setInput(value);
+      if (cursorPos !== undefined) {
+        handleTextChange(value, cursorPos);
+      }
+    },
+    [handleTextChange]
+  );
 
   const handleTextareaKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Backspace") {
-        const textarea = inputRef.current;
-        const atBeginning = Boolean(
-          textarea &&
-          textarea.selectionStart === 0 &&
-          textarea.selectionEnd === 0,
-        );
-
-        if (atBeginning && selectedMentions.size > 0) {
-          const mentionIds = Array.from(selectedMentions.keys());
-          const lastMentionId = mentionIds[mentionIds.length - 1];
-          if (lastMentionId) {
-            event.preventDefault();
-            removeMention(lastMentionId);
-            return;
-          }
-        }
-      }
-
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
       const handled = handleMentionKeyDown(event);
       if (handled && event.key === "Enter") {
         // Enter was consumed by mention dropdown for selection
         handleMentionSelect(mentionState.activeIndex);
       }
     },
-    [
-      handleMentionKeyDown,
-      mentionState.activeIndex,
-      handleMentionSelect,
-      selectedMentions,
-      removeMention,
-    ],
+    [handleMentionKeyDown, mentionState.activeIndex, handleMentionSelect]
   );
 
   const handleSubmit = useCallback(() => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading) {
+      return;
+    }
 
     // Close mention dropdown if open
     closeMention();
 
     const contextSnapshot = {
-      selectionPreview:
-        showSelectionContextChip && contextPreview?.selectionPreview
-          ? contextPreview.selectionPreview
-          : undefined,
       errorPreview:
         showErrorContextChip && contextPreview?.errorPreview
           ? contextPreview.errorPreview
+          : undefined,
+      selectionPreview:
+        showSelectionContextChip && contextPreview?.selectionPreview
+          ? contextPreview.selectionPreview
           : undefined,
       tablePreview:
         showTableContextChip && contextPreview?.tablePreview
@@ -1241,7 +1402,11 @@ export function AiChatPanel({
     if (showTableContextChip) {
       setExitingContext((prev) => ({ ...prev, table: true }));
     }
-    if (showSelectionContextChip || showErrorContextChip || showTableContextChip) {
+    if (
+      showSelectionContextChip ||
+      showErrorContextChip ||
+      showTableContextChip
+    ) {
       setTimeout(() => {
         if (showSelectionContextChip) {
           setDismissedContext((prev) => ({ ...prev, selection: true }));
@@ -1261,15 +1426,19 @@ export function AiChatPanel({
     // Resolve any @mentions in the input to connection IDs
     const selectedMentionConnection = Array.from(selectedMentions.values())[0];
     const mentionNames = parseMentions(input.trim());
-    const typedMentionConnection = mentionNames.length > 0
-      ? findConnectionByMentionName(connections, mentionNames[0])
-      : undefined;
-    const mentionedConnection = selectedMentionConnection ?? typedMentionConnection;
+    const typedMentionConnection =
+      mentionNames.length > 0
+        ? findConnectionByMentionName(connections, mentionNames[0])
+        : undefined;
+    const mentionedConnection =
+      selectedMentionConnection ?? typedMentionConnection;
 
     const prompt = input.trim();
     sendMessage(prompt, {
       contextSnapshot:
-        contextSnapshot.selectionPreview || contextSnapshot.errorPreview || contextSnapshot.tablePreview
+        contextSnapshot.selectionPreview ||
+        contextSnapshot.errorPreview ||
+        contextSnapshot.tablePreview
           ? contextSnapshot
           : undefined,
       mentionedConnectionId: mentionedConnection?.id ?? null,
@@ -1293,31 +1462,60 @@ export function AiChatPanel({
   ]);
 
   const handleRetryLastPrompt = useCallback(() => {
-    if (!lastSubmittedPrompt || isLoading) return;
+    if (!lastSubmittedPrompt || isLoading) {
+      return;
+    }
     clearError();
     sendMessage(lastSubmittedPrompt);
   }, [clearError, isLoading, lastSubmittedPrompt, sendMessage]);
 
-  const handleDismissContextChip = useCallback((kind: "selection" | "error" | "table") => {
-    setExitingContext((prev) => ({ ...prev, [kind]: true }));
-    const existing = contextDismissTimeoutsRef.current[kind];
-    if (existing) clearTimeout(existing);
-    contextDismissTimeoutsRef.current[kind] = setTimeout(() => {
-      setDismissedContext((prev) => ({ ...prev, [kind]: true }));
-      setExitingContext((prev) => ({ ...prev, [kind]: false }));
-      contextDismissTimeoutsRef.current[kind] = undefined;
-    }, 250);
-  }, []);
+  const handleDismissContextChip = useCallback(
+    (kind: "selection" | "error" | "table") => {
+      setExitingContext((prev) => ({ ...prev, [kind]: true }));
+      const existing = contextDismissTimeoutsRef.current[kind];
+      if (existing) {
+        clearTimeout(existing);
+      }
+      contextDismissTimeoutsRef.current[kind] = setTimeout(() => {
+        setDismissedContext((prev) => ({ ...prev, [kind]: true }));
+        setExitingContext((prev) => ({ ...prev, [kind]: false }));
+        contextDismissTimeoutsRef.current[kind] = undefined;
+      }, 250);
+    },
+    []
+  );
+
+  const dismissSelectionChip = useCallback(
+    () => handleDismissContextChip("selection"),
+    [handleDismissContextChip]
+  );
+  const dismissErrorChip = useCallback(
+    () => handleDismissContextChip("error"),
+    [handleDismissContextChip]
+  );
+  const dismissTableChip = useCallback(
+    () => handleDismissContextChip("table"),
+    [handleDismissContextChip]
+  );
 
   const isEmpty = messages.length === 0;
   const hasActiveConnection = Boolean(connectionId);
-  const currentConnectionLabel = contextPreview?.connectionLabel || connectionLabel || connectionId || "No connection";
+  const currentConnectionLabel =
+    contextPreview?.connectionLabel ||
+    connectionLabel ||
+    connectionId ||
+    "No connection";
   const activeConversation =
-    conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
+    conversations.find(
+      (conversation) => conversation.id === activeConversationId
+    ) ?? null;
 
   return (
     <motion.div
-      className={cn("relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent", className)}
+      className={cn(
+        "relative flex h-full flex-col overflow-hidden rounded-b-md bg-transparent",
+        className
+      )}
       style={{ width: "100%" }}
     >
       {/* Header — minimal, near-transparent */}
@@ -1330,7 +1528,7 @@ export function AiChatPanel({
               const isDark = resolvedTheme === "dark";
               return (
                 <span
-                  className="inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full px-2 text-[10px] font-medium transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
+                  className="inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full px-2 font-medium text-[10px] transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]"
                   style={{
                     backgroundColor: isDark ? colors.bgDark : colors.bgLight,
                     color: isDark ? colors.textDark : colors.textLight,
@@ -1342,16 +1540,8 @@ export function AiChatPanel({
               );
             })()
           ) : (
-            <span
-              className="
-                inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full
-                bg-muted/40 px-2 text-[10px] font-medium
-                text-muted-foreground/70
-                dark:bg-muted/30 dark:text-muted-foreground/60
-                transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]
-              "
-            >
-              <UiIcon name="database" className="size-3" />
+            <span className="inline-flex h-4.5 shrink-0 items-center gap-1.5 rounded-full bg-muted/40 px-2 font-medium text-[10px] text-muted-foreground/70 transition-[background,color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] dark:bg-muted/30 dark:text-muted-foreground/60">
+              <UiIcon className="size-3" name="database" />
               <span>Global</span>
             </span>
           )}
@@ -1359,95 +1549,108 @@ export function AiChatPanel({
             <DropdownMenuTrigger
               render={
                 <Button
-                  variant="ghost"
+                  className="h-7 min-w-0 max-w-35 xs:max-w-45 flex-1 justify-between px-2 font-semibold text-xs tracking-tight sm:max-w-52.5"
                   size="sm"
-                  className="h-7 min-w-0 flex-1 justify-between px-2 text-xs font-semibold tracking-tight max-w-35 xs:max-w-45 sm:max-w-52.5"
+                  variant="ghost"
                 >
-                  <span className="truncate shrink">
+                  <span className="shrink truncate">
                     {activeConversation?.title ?? "AI Chat"}
                   </span>
                   <UiIcon
+                    className="ml-1 size-3 shrink-0 opacity-70"
                     name="chevron-down"
-                    className="size-3 shrink-0 opacity-70 ml-1"
                   />
                 </Button>
               }
             />
-            <DropdownMenuContent align="start" side="bottom" className="w-72.5 p-1">
-              <div className="px-2 py-1 text-[11px] font-semibold tracking-wide text-muted-foreground/70 uppercase">
+            <DropdownMenuContent
+              align="start"
+              className="w-72.5 p-1"
+              side="bottom"
+            >
+              <div className="px-2 py-1 font-semibold text-[11px] text-muted-foreground/70 uppercase tracking-wide">
                 History
               </div>
               <DropdownMenuItem
-                onClick={startNewConversation}
+                className="my-0.5 gap-2 rounded-md transition-[transform,background] duration-150 ease-out active:scale-[0.97]"
                 disabled={isLoading}
-                className="gap-2 rounded-md my-0.5 active:scale-[0.97] transition-[transform,background] duration-150 ease-out"
+                onClick={startNewConversation}
               >
-                <UiIcon name="plus" className="size-3.5" />
+                <UiIcon className="size-3.5" name="plus" />
                 New conversation
               </DropdownMenuItem>
               <DropdownMenuSeparator className="my-1" />
               {conversations.length === 0 ? (
-                <div className="px-2 py-4 text-center text-xs text-muted-foreground/60">
+                <div className="px-2 py-4 text-center text-muted-foreground/60 text-xs">
                   No conversations yet
                 </div>
               ) : (
-                <div className="max-h-60 overflow-y-auto overscroll-contain -mx-1 px-1">
+                <div className="-mx-1 max-h-60 overflow-y-auto overscroll-contain px-1">
                   {conversations.map((conversation, index) => {
                     const isActive = conversation.id === activeConversationId;
                     return (
                       <DropdownMenuItem
-                        key={conversation.id}
                         className={cn(
-                          "flex items-center justify-between gap-2 rounded-md my-0.5 px-2 py-1.5",
+                          "my-0.5 flex items-center justify-between gap-2 rounded-md px-2 py-1.5",
                           "transition-[transform,background] duration-150 ease-out active:scale-[0.97]",
-                          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-1",
-                          isActive && "bg-primary/5",
+                          "motion-safe:fade-in-0 motion-safe:slide-in-from-left-1 motion-safe:animate-in",
+                          isActive && "bg-primary/5"
                         )}
-                        style={{ animationDelay: `${index * 40}ms`, animationFillMode: "backwards" }}
-                        onClick={() => selectConversation(conversation.id)}
                         disabled={isLoading}
+                        key={conversation.id}
+                        onClick={() => selectConversation(conversation.id)}
+                        style={{
+                          animationDelay: `${index * 40}ms`,
+                          animationFillMode: "backwards",
+                        }}
                       >
                         <div className="flex min-w-0 flex-col gap-0.5">
                           <div className="flex items-center gap-1.5">
                             {isActive && (
-                              <span className="size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-150" />
+                              <span className="motion-safe:zoom-in-50 size-1.5 shrink-0 rounded-full bg-primary motion-safe:animate-in motion-safe:duration-150" />
                             )}
-                            <span className={cn(
-                              "truncate text-xs font-medium",
-                              isActive ? "text-foreground" : "text-foreground/80",
-                            )}>
+                            <span
+                              className={cn(
+                                "truncate font-medium text-xs",
+                                isActive
+                                  ? "text-foreground"
+                                  : "text-foreground/80"
+                              )}
+                            >
                               {conversation.title}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 pl-3">
                             <span className="truncate text-[10px] text-muted-foreground/70">
-                              {conversation.contextTag?.connectionLabel
-                                || conversation.contextTag?.connectionId
-                                || "No connection"}
+                              {conversation.contextTag?.connectionLabel ||
+                                conversation.contextTag?.connectionId ||
+                                "No connection"}
                             </span>
-                            <span className="text-[10px] text-muted-foreground/40">·</span>
+                            <span className="text-[10px] text-muted-foreground/40">
+                              ·
+                            </span>
                             <span className="text-[10px] text-muted-foreground/50 tabular-nums">
                               {new Intl.DateTimeFormat(undefined, {
-                                month: "2-digit",
                                 day: "2-digit",
                                 hour: "2-digit",
                                 minute: "2-digit",
+                                month: "2-digit",
                               }).format(new Date(conversation.updatedAt))}
                             </span>
                           </div>
                         </div>
                         <button
-                          type="button"
                           aria-label="Delete conversation"
+                          className="rounded p-1 text-muted-foreground/50 transition-[color,transform] duration-150 ease-out hover:text-destructive active:scale-[0.93] disabled:opacity-30"
+                          disabled={conversations.length === 1 || isLoading}
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
                             deleteConversation(conversation.id);
                           }}
-                          className="rounded p-1 text-muted-foreground/50 transition-[color,transform] duration-150 ease-out hover:text-destructive active:scale-[0.93] disabled:opacity-30"
-                          disabled={conversations.length === 1 || isLoading}
+                          type="button"
                         >
-                          <UiIcon name="trash" className="size-3" />
+                          <UiIcon className="size-3" name="trash" />
                         </button>
                       </DropdownMenuItem>
                     );
@@ -1456,11 +1659,11 @@ export function AiChatPanel({
               )}
               <DropdownMenuSeparator className="my-1" />
               <DropdownMenuItem
-                onClick={clearAllConversations}
+                className="my-0.5 gap-2 rounded-md text-muted-foreground transition-[transform,background] duration-150 ease-out active:scale-[0.97]"
                 disabled={isLoading || conversations.length === 0}
-                className="gap-2 rounded-md my-0.5 text-muted-foreground active:scale-[0.97] transition-[transform,background] duration-150 ease-out"
+                onClick={clearAllConversations}
               >
-                <UiIcon name="trash" className="size-3.5" />
+                <UiIcon className="size-3.5" name="trash" />
                 Clear all
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -1471,13 +1674,13 @@ export function AiChatPanel({
             <TooltipTrigger
               render={
                 <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={startNewConversation}
+                  className="text-muted-foreground transition-[color,transform] duration-150 ease-out hover:text-foreground active:scale-[0.97]"
                   disabled={isLoading}
-                  className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
+                  onClick={startNewConversation}
+                  size="icon-xs"
+                  variant="ghost"
                 >
-                  <UiIcon name="plus" className="size-3.5" />
+                  <UiIcon className="size-3.5" name="plus" />
                 </Button>
               }
             />
@@ -1487,13 +1690,13 @@ export function AiChatPanel({
             <TooltipTrigger
               render={
                 <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={clearMessages}
+                  className="text-muted-foreground transition-[color,transform] duration-150 ease-out hover:text-foreground active:scale-[0.97]"
                   disabled={isEmpty || isLoading}
-                  className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
+                  onClick={clearMessages}
+                  size="icon-xs"
+                  variant="ghost"
                 >
-                  <UiIcon name="trash" className="size-3.5" />
+                  <UiIcon className="size-3.5" name="trash" />
                 </Button>
               }
             />
@@ -1504,12 +1707,12 @@ export function AiChatPanel({
               <TooltipTrigger
                 render={
                   <Button
-                    variant="ghost"
-                    size="icon-xs"
+                    className="text-muted-foreground transition-[color,transform] duration-150 ease-out hover:text-foreground active:scale-[0.97]"
                     onClick={onClose}
-                    className="text-muted-foreground hover:text-foreground transition-[color,transform] duration-150 ease-out active:scale-[0.97]"
+                    size="icon-xs"
+                    variant="ghost"
                   >
-                    <UiIcon name="panel-right" className="size-3.5" />
+                    <UiIcon className="size-3.5" name="panel-right" />
                   </Button>
                 }
               />
@@ -1520,59 +1723,59 @@ export function AiChatPanel({
       </div>
 
       {/* Messages — auto-scroll via StickToBottom */}
-      <Conversation className="flex-1 min-h-0 -mb-2" contextRef={conversationRef}>
+      <Conversation
+        className="-mb-2 min-h-0 flex-1"
+        contextRef={conversationRef}
+      >
         <ConversationContent
+          className="flex flex-col gap-0 pr-0 pl-3"
           key={activeConversationId ?? "no-conversation"}
-          className="flex flex-col gap-0 pl-3 pr-0"
         >
           {isEmpty ? (
             <ConversationEmptyState>
               <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                <UiIcon name="bot" className="size-5 text-primary" />
+                <UiIcon className="size-5 text-primary" name="bot" />
               </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-medium">AI SQL Assistant</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Ask about your database schema, generate queries, or fix errors.
+              <div className="space-y-1 text-center">
+                <p className="font-medium text-sm">AI SQL Assistant</p>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Ask about your database schema, generate queries, or fix
+                  errors.
                 </p>
               </div>
-              <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                {getContextualSuggestions(dbType, hasActiveConnection).map((suggestion, index) => (
-                  <button
-                    key={suggestion.label}
-                    type="button"
-                    onClick={() => sendMessage(suggestion.label)}
-                    className="
-                      group/suggest inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium
-                      bg-muted/40 text-muted-foreground/80
-                      hover:bg-muted/70 hover:text-foreground/90
-                      dark:bg-muted/25 dark:text-muted-foreground/70
-                      dark:hover:bg-muted/50 dark:hover:text-foreground/80
-                      transition-[background,color,transform,opacity]
-                      duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
-                      active:scale-[0.96] active:opacity-70
-                      motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1.5
-                      motion-safe:duration-200 motion-safe:ease-out
-                    "
-                    style={{ animationDelay: `${index * 60}ms`, animationFillMode: "backwards" }}
-                  >
-                    <span className="shrink-0 text-muted-foreground/60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-active/suggest:scale-95">{suggestion.icon}</span>
-                    {suggestion.label}
-                  </button>
-                ))}
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {getContextualSuggestions(dbType, hasActiveConnection).map(
+                  (suggestion, index) => (
+                    <button
+                      className="group/suggest motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1.5 inline-flex items-center gap-1.5 rounded-full bg-muted/40 px-3 py-1.5 font-medium text-[11px] text-muted-foreground/80 transition-[background,color,transform,opacity] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-muted/70 hover:text-foreground/90 active:scale-[0.96] active:opacity-70 motion-safe:animate-in motion-safe:duration-200 motion-safe:ease-out dark:bg-muted/25 dark:text-muted-foreground/70 dark:hover:bg-muted/50 dark:hover:text-foreground/80"
+                      key={suggestion.label}
+                      onClick={() => sendMessage(suggestion.label)}
+                      style={{
+                        animationDelay: `${index * 60}ms`,
+                        animationFillMode: "backwards",
+                      }}
+                      type="button"
+                    >
+                      <span className="shrink-0 text-muted-foreground/60 transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-active/suggest:scale-95">
+                        {suggestion.icon}
+                      </span>
+                      {suggestion.label}
+                    </button>
+                  )
+                )}
               </div>
             </ConversationEmptyState>
           ) : (
             <AnimatePresence initial={false} mode="popLayout">
               {messages.map((msg) => (
                 <ChatMessage
-                  key={msg.id}
-                  message={msg}
                   codeTheme={codeTheme}
-                  onInsertSql={onInsertSql}
                   connectionId={connectionId}
                   conversationId={activeConversationId!}
+                  key={msg.id}
+                  message={msg}
                   onApproveToolCall={approveToolCall}
+                  onInsertSql={onInsertSql}
                   onRejectToolCall={rejectToolCall}
                 />
               ))}
@@ -1583,31 +1786,36 @@ export function AiChatPanel({
       </Conversation>
 
       {/* Input */}
-      <div className="z-30 shrink-0 pl-4 pr-3 py-2">
+      <div className="z-30 shrink-0 py-2 pr-3 pl-4">
         {error && (
-          <div className="relative z-10 mb-2 rounded-md border border-red-500/30 bg-red-500/8 px-2.5 py-2 text-xs text-red-700 dark:text-red-300 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
+          <div className="motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 relative z-10 mb-2 rounded-md border border-red-500/30 bg-red-500/8 px-2.5 py-2 text-red-700 text-xs motion-safe:animate-in motion-safe:duration-150 dark:text-red-300">
             <div className="flex items-start gap-2">
-              <UiIcon name="alert-triangle" className="mt-0.5 size-3.5 shrink-0" />
+              <UiIcon
+                className="mt-0.5 size-3.5 shrink-0"
+                name="alert-triangle"
+              />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">Streaming failed</p>
-                <p className="mt-0.5 break-words text-red-700/90 dark:text-red-300/90">{error}</p>
+                <p className="mt-0.5 break-words text-red-700/90 dark:text-red-300/90">
+                  {error}
+                </p>
                 <div className="mt-2 flex items-center gap-1.5">
                   <Button
+                    className="h-6 border-red-500/30 bg-transparent px-2 text-[11px] text-red-700 hover:bg-red-500/10 dark:text-red-300"
+                    disabled={!lastSubmittedPrompt || isLoading}
+                    onClick={handleRetryLastPrompt}
+                    size="sm"
                     type="button"
                     variant="outline"
-                    size="sm"
-                    className="h-6 border-red-500/30 bg-transparent px-2 text-[11px] text-red-700 hover:bg-red-500/10 dark:text-red-300"
-                    onClick={handleRetryLastPrompt}
-                    disabled={!lastSubmittedPrompt || isLoading}
                   >
                     Retry
                   </Button>
                   <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
                     className="h-6 px-2 text-[11px] text-red-700/80 hover:bg-red-500/10 hover:text-red-700 dark:text-red-300/80 dark:hover:text-red-300"
                     onClick={clearError}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
                   >
                     Dismiss
                   </Button>
@@ -1620,26 +1828,22 @@ export function AiChatPanel({
           {/* Mention dropdown */}
           {mentionState.isOpen && (
             <MentionDropdown
-              ref={mentionDropdownRef}
-              connections={mentionState.filteredConnections}
               activeIndex={mentionState.activeIndex}
+              connections={mentionState.filteredConnections}
+              onClose={closeMention}
               onSelect={(connection) => {
-                const selectedIndex = mentionState.filteredConnections.findIndex(
-                  (item) => item.id === connection.id,
-                );
+                const selectedIndex =
+                  mentionState.filteredConnections.findIndex(
+                    (item) => item.id === connection.id
+                  );
                 if (selectedIndex >= 0) {
                   handleMentionSelect(selectedIndex);
                 }
               }}
-              onClose={closeMention}
+              ref={mentionDropdownRef}
             />
           )}
           <PromptInput
-            value={input}
-            onValueChange={handleInputChange}
-            onSubmit={handleSubmit}
-            isLoading={isLoading}
-            onClick={() => inputRef.current?.focus()}
             className={cn(
               "relative z-30 rounded-2xl border border-border/30",
               "bg-background/60 px-2 shadow-none backdrop-blur-md",
@@ -1647,189 +1851,198 @@ export function AiChatPanel({
               "focus-within:border-border/50 focus-within:bg-background/70",
               "dark:focus-within:bg-background/60",
               "transition-[background,border-color,padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-              hasChips ? "pt-3 pb-1" : "py-1",
+              hasChips ? "pt-3 pb-1" : "py-1"
             )}
+            isLoading={isLoading}
+            onClick={() => inputRef.current?.focus()}
+            onCursorChange={handleInputChange}
+            onSubmit={handleSubmit}
+            onValueChange={handleInputChange}
+            value={input}
           >
-          <AnimatePresence>
-                  {showSelectionContextChip && (
-                <motion.div
-                  key="selection-context"
-                  layout="position"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="group/ctx relative inline-flex w-45.5 max-w-full min-h-13 cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1.5 dark:bg-muted/30 mb-1"
-                >
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-foreground/15 text-[10px] font-semibold text-foreground dark:bg-foreground/10">
-                    AI
-                  </span>
-                  <div className="min-w-0 overflow-hidden">
-                    <p className="truncate text-[12px] font-medium text-foreground">
-                      {contextPreview?.selectionPreview}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/80 dark:text-muted-foreground/70">Selected Text</p>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Remove selected text context"
-                    className="absolute -right-2 -top-2 rounded-full border border-border/60 bg-background p-0.5 text-muted-foreground opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-foreground group-hover/ctx:opacity-100"
-                    onClick={() => handleDismissContextChip("selection")}
-                  >
-                    <UiIcon name="x" className="size-3" />
-                  </button>
-                </motion.div>
-              )}
-                  {showErrorContextChip && (
-                <motion.div
-                  key="error-context"
-                  layout="position"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/15 px-2 py-1 dark:border-amber-400/35 dark:bg-amber-400/20 mb-1"
-                >
-                  <UiIcon name="code" className="size-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
-                  <div className="min-w-0">
-                    <p className="truncate text-[12px] font-medium text-amber-800 dark:text-amber-200">
-                      {contextPreview?.errorPreview}
-                    </p>
-                    <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80">Last Error</p>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Remove error context"
-                    className="absolute -right-2 -top-2 rounded-full border border-amber-400/35 bg-background p-0.5 text-amber-700/70 opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-amber-900 group-hover/ctx:opacity-100 dark:text-amber-300/80 dark:hover:text-amber-200"
-                    onClick={() => handleDismissContextChip("error")}
-                  >
-                    <UiIcon name="x" className="size-3" />
-                  </button>
-                </motion.div>
-              )}
-                  {showTableContextChip && (
-                <motion.div
-                  key="table-context"
-                  layout="position"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  className="group/ctx relative inline-flex max-w-full cursor-default items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-2 py-1 dark:bg-muted/30 mb-1"
-                >
-                  <UiIcon name="table" className="size-3.5 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0">
-                    <p className="truncate text-[12px] font-medium text-foreground">
-                      {contextPreview?.tablePreview}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/80 dark:text-muted-foreground/70">Selected Table</p>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Remove table context"
-                    className="absolute -right-2 -top-2 rounded-full border border-border/60 bg-background p-0.5 text-muted-foreground opacity-0 shadow-sm transition-all duration-150 ease-out hover:text-foreground group-hover/ctx:opacity-100"
-                    onClick={() => handleDismissContextChip("table")}
-                  >
-                    <UiIcon name="x" className="size-3" />
-                  </button>
-                </motion.div>
-              )}
-          </AnimatePresence>
-          <div className={cn(
-            "flex flex-wrap items-center gap-1 px-1.5 py-0",
-            hasChips && "mt-2",
-          )}>
-            {Array.from(selectedMentions.entries()).map(([id, connection]) => (
-              <MentionChip
-                key={id}
-                connection={connection}
+            {hasChips ? (
+              <div className="flex flex-wrap items-center gap-1 px-1.5 pb-1.5">
+                <AnimatePresence>
+                  {showSelectionContextChip ? (
+                    <motion.div
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="group/ctx inline-flex h-[18px] min-w-0 max-w-[14rem] cursor-default items-center gap-1 rounded bg-muted/60 px-1 text-foreground/80 text-sm leading-none transition-colors hover:bg-muted/80 dark:bg-muted/40 dark:hover:bg-muted/60"
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      key="selection-context"
+                      layout="position"
+                      title={contextPreview?.selectionPreview}
+                      transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+                    >
+                      <span className="pointer-events-none inline-flex shrink-0 items-center group-hover/ctx:hidden">
+                        <span className="flex size-3.5 shrink-0 items-center justify-center rounded bg-foreground/10 font-semibold text-[8px] text-foreground/80">
+                          AI
+                        </span>
+                      </span>
+                      <button
+                        aria-label="Remove selected text context"
+                        className="hidden shrink-0 items-center text-muted-foreground transition-colors hover:text-foreground group-hover/ctx:inline-flex"
+                        onClick={dismissSelectionChip}
+                        tabIndex={-1}
+                        type="button"
+                      >
+                        <UiIcon className="size-3.5" name="x" />
+                      </button>
+                      <span className="truncate">
+                        {contextPreview?.selectionPreview}
+                      </span>
+                    </motion.div>
+                  ) : null}
+                  {showErrorContextChip ? (
+                    <motion.div
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="group/ctx inline-flex h-[18px] min-w-0 max-w-[14rem] cursor-default items-center gap-1 rounded bg-amber-500/15 px-1 text-amber-800 text-sm leading-none transition-colors hover:bg-amber-500/25 dark:bg-amber-400/20 dark:text-amber-200 dark:hover:bg-amber-400/30"
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      key="error-context"
+                      layout="position"
+                      title={contextPreview?.errorPreview}
+                      transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+                    >
+                      <span className="pointer-events-none inline-flex shrink-0 items-center group-hover/ctx:hidden">
+                        <UiIcon
+                          className="size-3.5 shrink-0 text-amber-700 dark:text-amber-300"
+                          name="code"
+                        />
+                      </span>
+                      <button
+                        aria-label="Remove error context"
+                        className="hidden shrink-0 items-center text-amber-700 transition-colors hover:opacity-80 group-hover/ctx:inline-flex dark:text-amber-300"
+                        onClick={dismissErrorChip}
+                        tabIndex={-1}
+                        type="button"
+                      >
+                        <UiIcon className="size-3.5" name="x" />
+                      </button>
+                      <span className="truncate">
+                        {contextPreview?.errorPreview}
+                      </span>
+                    </motion.div>
+                  ) : null}
+                  {showTableContextChip ? (
+                    <motion.div
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="group/ctx inline-flex h-[18px] min-w-0 max-w-[14rem] cursor-default items-center gap-1 rounded bg-muted/60 px-1 text-foreground/80 text-sm leading-none transition-colors hover:bg-muted/80 dark:bg-muted/40 dark:hover:bg-muted/60"
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      key="table-context"
+                      layout="position"
+                      title={contextPreview?.tablePreview}
+                      transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+                    >
+                      <span className="pointer-events-none inline-flex shrink-0 items-center group-hover/ctx:hidden">
+                        <UiIcon
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                          name="table"
+                        />
+                      </span>
+                      <button
+                        aria-label="Remove table context"
+                        className="hidden shrink-0 items-center text-muted-foreground transition-colors hover:text-foreground group-hover/ctx:inline-flex"
+                        onClick={dismissTableChip}
+                        tabIndex={-1}
+                        type="button"
+                      >
+                        <UiIcon className="size-3.5" name="x" />
+                      </button>
+                      <span className="truncate">
+                        {contextPreview?.tablePreview}
+                      </span>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            ) : null}
+            <div className="flex items-center px-1.5 py-0">
+              <PromptInputTextarea
+                className={cn(
+                  "max-h-62.5 min-h-10 w-auto! min-w-32 flex-1 basis-32 overflow-y-auto py-0 text-sm leading-5",
+                  "placeholder:text-muted-foreground/50",
+                  "dark:bg-transparent",
+                  "px-0"
+                )}
+                inlineMentions={inlineMentions}
+                onInlineMentionRemove={(mention) => removeMention(mention.id)}
+                onKeyDown={handleTextareaKeyDown}
+                placeholder={
+                  hasActiveConnection
+                    ? "Ask about your database…"
+                    : "Ask anything about SQL, modeling, or debugging…"
+                }
+                ref={inputRef}
               />
-            ))}
-            <PromptInputTextarea
-              ref={inputRef}
-              onKeyDown={handleTextareaKeyDown}
-              placeholder={
-                hasActiveConnection
-                  ? "Ask about your database…"
-                  : "Ask anything about SQL, modeling, or debugging…"
-              }
-              className={cn(
-                "w-auto! max-h-62.5 min-h-10 min-w-32 flex-1 basis-32 overflow-y-auto py-0 text-sm leading-5",
-                "placeholder:text-muted-foreground/50",
-                "dark:bg-transparent",
-                selectedMentions.size > 0 ? "pl-1.5 pr-0" : "px-0",
-              )}
-            />
-          </div>
-          <PromptInputActions className="justify-end gap-2 pl-2 pr-0.5 pb-1.5 pt-1">
-            {isLoading ? (
-             <Button
+            </div>
+            <PromptInputActions className="justify-end gap-2 pt-1 pr-0.5 pb-1.5 pl-2">
+              {isLoading ? (
+                <Button
+                  className="h-7 w-7 rounded-full border border-border/30 bg-background/50 text-muted-foreground backdrop-blur-sm transition-[background,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-background/70 hover:text-foreground active:scale-[0.96] dark:border-border/20 dark:bg-background/40 dark:hover:bg-background/60"
+                  onClick={abort}
+                  size="icon-sm"
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
-                  onClick={abort}
-                  className="
-                    h-7 w-7 rounded-full
-                    border border-border/30 bg-background/50 text-muted-foreground backdrop-blur-sm
-                    hover:bg-background/70 hover:text-foreground
-                    dark:border-border/20 dark:bg-background/40
-                    dark:hover:bg-background/60
-                    transition-[background,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
-                    active:scale-[0.96]
-                  "
                 >
-                  <UiIcon name="square" className="size-4" />
+                  <UiIcon className="size-4" name="square" />
                 </Button>
-            ) : (
-             <Button
-                  type="button"
-                  size="icon-sm"
-                  onClick={handleSubmit}
+              ) : (
+                <Button
+                  className="h-7 w-7 rounded-full bg-primary/85 text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] transition-[background,color,transform,opacity,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-primary active:scale-[0.96] disabled:bg-muted/50 disabled:text-muted-foreground/50 disabled:shadow-none dark:bg-primary/75 dark:disabled:bg-muted/30 dark:disabled:text-muted-foreground/40 dark:hover:bg-primary"
                   disabled={!input.trim()}
-                  className="
-                    h-7 w-7 rounded-full
-                    bg-primary/85 text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)]
-                    hover:bg-primary
-                    disabled:bg-muted/50 disabled:text-muted-foreground/50 disabled:shadow-none
-                    dark:bg-primary/75 dark:hover:bg-primary
-                    dark:disabled:bg-muted/30 dark:disabled:text-muted-foreground/40
-                    transition-[background,color,transform,opacity,box-shadow]
-                    duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]
-                    active:scale-[0.96]
-                  "
+                  onClick={handleSubmit}
+                  size="icon-sm"
+                  type="button"
                 >
-                  <UiIcon name="send" className="size-4" />
+                  <UiIcon className="size-4" name="send" />
                 </Button>
+              )}
+            </PromptInputActions>
+          </PromptInput>
+          {/* Data locality indicator */}
+          <div className="flex items-center justify-center gap-1.5 px-2 pt-1">
+            {providerIsLocal ? (
+              <span className="flex items-center gap-1 text-[10px] text-emerald-600/70 dark:text-emerald-400/50">
+                <UiIcon className="size-3" name="shield-check" />
+                Local model - data stays on device
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[10px] text-amber-600/60 dark:text-amber-400/40">
+                <UiIcon className="size-3" name="cloud" />
+                Data sent to external provider
+              </span>
             )}
-          </PromptInputActions>
-        </PromptInput>
-        {/* Data locality indicator */}
-        <div className="flex items-center justify-center gap-1.5 px-2 pt-1">
-          {providerIsLocal ? (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-600/70 dark:text-emerald-400/50">
-              <UiIcon name="shield-check" className="size-3" />
-              Local model - data stays on device
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-[10px] text-amber-600/60 dark:text-amber-400/40">
-              <UiIcon name="cloud" className="size-3" />
-              Data sent to external provider
-            </span>
-          )}
-        </div>
+          </div>
         </div>
       </div>
     </motion.div>
   );
 }
 
-function getContextualSuggestions(dbType: DatabaseType, hasConnection: boolean): Array<{ label: string; icon: ReactNode }> {
+function getContextualSuggestions(
+  dbType: DatabaseType,
+  hasConnection: boolean
+): Array<{ label: string; icon: ReactNode }> {
   if (!hasConnection) {
     return [
-      { label: "SQL best practices", icon: <UiIcon name="bulb" className="size-3" /> },
-      { label: "Database design tips", icon: <UiIcon name="table" className="size-3" /> },
-      { label: "Index optimization", icon: <UiIcon name="zap" className="size-3" /> },
-      { label: "Query examples", icon: <UiIcon name="code" className="size-3" /> },
+      {
+        icon: <UiIcon className="size-3" name="bulb" />,
+        label: "SQL best practices",
+      },
+      {
+        icon: <UiIcon className="size-3" name="table" />,
+        label: "Database design tips",
+      },
+      {
+        icon: <UiIcon className="size-3" name="zap" />,
+        label: "Index optimization",
+      },
+      {
+        icon: <UiIcon className="size-3" name="code" />,
+        label: "Query examples",
+      },
     ];
   }
 
@@ -1837,44 +2050,107 @@ function getContextualSuggestions(dbType: DatabaseType, hasConnection: boolean):
   switch (dbType) {
     case "postgresql":
       return [
-        { label: "List all tables", icon: <UiIcon name="table" className="size-3" /> },
-        { label: "Show table sizes", icon: <UiIcon name="database" className="size-3" /> },
-        { label: "Find slow queries", icon: <UiIcon name="zap" className="size-3" /> },
-        { label: "Check indexes", icon: <UiIcon name="search" className="size-3" /> },
-        { label: "RLS policies", icon: <UiIcon name="shield" className="size-3" /> },
+        {
+          icon: <UiIcon className="size-3" name="table" />,
+          label: "List all tables",
+        },
+        {
+          icon: <UiIcon className="size-3" name="database" />,
+          label: "Show table sizes",
+        },
+        {
+          icon: <UiIcon className="size-3" name="zap" />,
+          label: "Find slow queries",
+        },
+        {
+          icon: <UiIcon className="size-3" name="search" />,
+          label: "Check indexes",
+        },
+        {
+          icon: <UiIcon className="size-3" name="shield" />,
+          label: "RLS policies",
+        },
       ];
     case "mysql":
     case "mariadb":
       return [
-        { label: "Show all tables", icon: <UiIcon name="table" className="size-3" /> },
-        { label: "Table statuses", icon: <UiIcon name="database" className="size-3" /> },
-        { label: "Find missing indexes", icon: <UiIcon name="zap" className="size-3" /> },
-        { label: "Check constraints", icon: <UiIcon name="search" className="size-3" /> },
+        {
+          icon: <UiIcon className="size-3" name="table" />,
+          label: "Show all tables",
+        },
+        {
+          icon: <UiIcon className="size-3" name="database" />,
+          label: "Table statuses",
+        },
+        {
+          icon: <UiIcon className="size-3" name="zap" />,
+          label: "Find missing indexes",
+        },
+        {
+          icon: <UiIcon className="size-3" name="search" />,
+          label: "Check constraints",
+        },
       ];
     case "sqlite":
       return [
-        { label: "List tables", icon: <UiIcon name="table" className="size-3" /> },
-        { label: "Schema info", icon: <UiIcon name="database" className="size-3" /> },
-        { label: "Table sizes", icon: <UiIcon name="zap" className="size-3" /> },
+        {
+          icon: <UiIcon className="size-3" name="table" />,
+          label: "List tables",
+        },
+        {
+          icon: <UiIcon className="size-3" name="database" />,
+          label: "Schema info",
+        },
+        {
+          icon: <UiIcon className="size-3" name="zap" />,
+          label: "Table sizes",
+        },
       ];
     case "clickhouse":
       return [
-        { label: "List tables", icon: <UiIcon name="table" className="size-3" /> },
-        { label: "Table engines", icon: <UiIcon name="database" className="size-3" /> },
-        { label: "Partition info", icon: <UiIcon name="zap" className="size-3" /> },
+        {
+          icon: <UiIcon className="size-3" name="table" />,
+          label: "List tables",
+        },
+        {
+          icon: <UiIcon className="size-3" name="database" />,
+          label: "Table engines",
+        },
+        {
+          icon: <UiIcon className="size-3" name="zap" />,
+          label: "Partition info",
+        },
       ];
     case "redis":
       return [
-        { label: "List keys", icon: <UiIcon name="key" className="size-3" /> },
-        { label: "Memory usage", icon: <UiIcon name="database" className="size-3" /> },
-        { label: "Key patterns", icon: <UiIcon name="search" className="size-3" /> },
+        { icon: <UiIcon className="size-3" name="key" />, label: "List keys" },
+        {
+          icon: <UiIcon className="size-3" name="database" />,
+          label: "Memory usage",
+        },
+        {
+          icon: <UiIcon className="size-3" name="search" />,
+          label: "Key patterns",
+        },
       ];
     default:
       return [
-        { label: "Show tables", icon: <UiIcon name="table" className="size-3" /> },
-        { label: "Find recent records", icon: <UiIcon name="search" className="size-3" /> },
-        { label: "Explain schema", icon: <UiIcon name="bulb" className="size-3" /> },
-        { label: "Optimize query", icon: <UiIcon name="zap" className="size-3" /> },
+        {
+          icon: <UiIcon className="size-3" name="table" />,
+          label: "Show tables",
+        },
+        {
+          icon: <UiIcon className="size-3" name="search" />,
+          label: "Find recent records",
+        },
+        {
+          icon: <UiIcon className="size-3" name="bulb" />,
+          label: "Explain schema",
+        },
+        {
+          icon: <UiIcon className="size-3" name="zap" />,
+          label: "Optimize query",
+        },
       ];
   }
 }

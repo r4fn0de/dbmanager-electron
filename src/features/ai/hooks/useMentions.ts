@@ -1,52 +1,57 @@
 import { useCallback, useRef, useState } from "react";
-import type { Connection } from "@/ipc/db/types";
 import {
-  getMentionState,
   filterConnectionsByMention,
+  getMentionState,
 } from "@/features/ai/lib/mention-utils";
+import type { Connection } from "@/ipc/db/types";
+
+const WHITESPACE_AT_END_REGEX = /\s$/;
+const WHITESPACE_AT_START_REGEX = /^\s/;
 
 export interface UseMentionsState {
+  activeIndex: number;
+  filteredConnections: Connection[];
   isOpen: boolean;
   query: string;
   startIndex: number;
-  activeIndex: number;
-  filteredConnections: Connection[];
 }
 
 export interface UseMentionsReturn {
-  mentionState: UseMentionsState;
-  handleTextChange: (text: string, cursorPos: number) => void;
-  handleKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
-  selectMention: (
-    connection: Connection,
-  ) => { text: string; cursorPos: number } | null;
-  closeMention: () => void;
-  selectedMentions: Map<string, Connection>;
-  removeMention: (connectionId: string) => void;
   clearMentions: () => void;
+  closeMention: () => void;
+  handleKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => boolean;
+  handleTextChange: (text: string, cursorPos: number) => void;
+  mentionState: UseMentionsState;
+  removeMention: (connectionId: string) => void;
+  selectedMentions: Map<string, Connection>;
+  selectMention: (
+    connection: Connection
+  ) => { text: string; cursorPos: number } | null;
 }
 
 export function useMentions(connections: Connection[]): UseMentionsReturn {
   const [mentionState, setMentionState] = useState<UseMentionsState>({
+    activeIndex: 0,
+    filteredConnections: [],
     isOpen: false,
     query: "",
     startIndex: -1,
-    activeIndex: 0,
-    filteredConnections: [],
   });
 
-  const [selectedMentions, setSelectedMentions] = useState<Map<string, Connection>>(new Map());
+  const [selectedMentions, setSelectedMentions] = useState<
+    Map<string, Connection>
+  >(new Map());
 
   const currentTextRef = useRef("");
   const cursorPosRef = useRef(0);
 
   const closeMention = useCallback(() => {
     setMentionState({
+      activeIndex: 0,
+      filteredConnections: [],
       isOpen: false,
       query: "",
       startIndex: -1,
-      activeIndex: 0,
-      filteredConnections: [],
     });
   }, []);
 
@@ -57,7 +62,9 @@ export function useMentions(connections: Connection[]): UseMentionsReturn {
 
       const state = getMentionState(text, cursorPos);
       if (!state) {
-        if (mentionState.isOpen) closeMention();
+        if (mentionState.isOpen) {
+          closeMention();
+        }
         return;
       }
 
@@ -66,22 +73,24 @@ export function useMentions(connections: Connection[]): UseMentionsReturn {
       // If no matches and query is non-empty, still show dropdown (empty state)
       // If query is empty, show all connections
       setMentionState((prev) => ({
-        isOpen: true,
-        query: state.query,
-        startIndex: state.startIndex,
         activeIndex:
           prev.isOpen && prev.query === state.query
             ? Math.min(prev.activeIndex, Math.max(0, filtered.length - 1))
             : 0,
         filteredConnections: filtered,
+        isOpen: true,
+        query: state.query,
+        startIndex: state.startIndex,
       }));
     },
-    [connections, mentionState.isOpen, mentionState.query, closeMention],
+    [connections, mentionState.isOpen, closeMention]
   );
 
   const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-      if (!mentionState.isOpen) return false;
+    (event: React.KeyboardEvent<HTMLDivElement>): boolean => {
+      if (!mentionState.isOpen) {
+        return false;
+      }
 
       const { filteredConnections, activeIndex } = mentionState;
 
@@ -130,31 +139,37 @@ export function useMentions(connections: Connection[]): UseMentionsReturn {
           return false;
       }
     },
-    [mentionState, closeMention],
+    [mentionState, closeMention]
   );
 
   const selectMention = useCallback(
     (connection: Connection): { text: string; cursorPos: number } | null => {
       const text = currentTextRef.current;
       const { startIndex, query } = mentionState;
-      if (startIndex < 0) return null;
+      if (startIndex < 0) {
+        return null;
+      }
 
       const mentionEndIndex = startIndex + 1 + query.length;
       const before = text.slice(0, startIndex);
       const after = text.slice(mentionEndIndex);
 
-      let nextText = `${before}${after}`;
-      let cursorPos = startIndex;
-
-      // Keep spacing natural when mention was in the middle of the sentence.
-      const beforeEndsWithWhitespace = /\s$/.test(before);
-      const afterStartsWithWhitespace = /^\s/.test(after);
-      if (before && after && !beforeEndsWithWhitespace && !afterStartsWithWhitespace) {
-        nextText = `${before} ${after}`;
-        cursorPos = startIndex + 1;
-      } else if (beforeEndsWithWhitespace && afterStartsWithWhitespace) {
-        nextText = `${before}${after.slice(1)}`;
+      const mentionToken = `@${connection.name}`;
+      const beforeEndsWithWhitespace = WHITESPACE_AT_END_REGEX.test(before);
+      const afterStartsWithWhitespace = WHITESPACE_AT_START_REGEX.test(after);
+      const separatorBefore = before && !beforeEndsWithWhitespace ? " " : "";
+      let separatorAfter = " ";
+      if (after && afterStartsWithWhitespace) {
+        separatorAfter = "";
+      } else if (after && !afterStartsWithWhitespace) {
+        separatorAfter = " ";
       }
+      const nextText = `${before}${separatorBefore}${mentionToken}${separatorAfter}${after}`;
+      const cursorPos =
+        startIndex +
+        separatorBefore.length +
+        mentionToken.length +
+        separatorAfter.length;
 
       // Add to selected mentions map
       setSelectedMentions((prev) => {
@@ -164,9 +179,9 @@ export function useMentions(connections: Connection[]): UseMentionsReturn {
       });
 
       closeMention();
-      return { text: nextText, cursorPos };
+      return { cursorPos, text: nextText };
     },
-    [mentionState, closeMention],
+    [mentionState, closeMention]
   );
 
   const removeMention = useCallback((connectionId: string) => {
@@ -182,13 +197,13 @@ export function useMentions(connections: Connection[]): UseMentionsReturn {
   }, []);
 
   return {
-    mentionState,
-    handleTextChange,
-    handleKeyDown,
-    selectMention,
-    closeMention,
-    selectedMentions,
-    removeMention,
     clearMentions,
+    closeMention,
+    handleKeyDown,
+    handleTextChange,
+    mentionState,
+    removeMention,
+    selectedMentions,
+    selectMention,
   };
 }
