@@ -1,22 +1,29 @@
 /**
  * AI Configuration — manages API keys and provider settings.
  *
- * API keys are stored securely in electron-store (encrypted on disk).
- * The provider registry maps provider names → AI SDK model constructors.
+ * API keys are encrypted with Electron safeStorage before they are persisted
+ * in electron-store. The provider registry maps provider names → AI SDK model
+ * constructors.
  */
-import Store from "electron-store";
-import { safeStorage } from "electron";
-import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
+import { safeStorage } from "electron";
+import Store from "electron-store";
 import {
-  PRIVACY_PRESETS,
+  type LegacyAiSettings,
+  migrateLegacyAiSettings,
+  syncLegacyAiSettings,
+} from "@/ipc/ai/connections-store";
+import { decryptSecret, encryptSecret } from "@/ipc/security/secrets";
+import {
   type AiModelEntry,
   type AiProviderName,
-  type PrivacySettings,
+  PRIVACY_PRESETS,
   type PrivacyPreset,
+  type PrivacySettings,
 } from "@/shared/ai/streaming-contracts";
 
 // Re-export AiProviderName so consumers can import it from this module
@@ -65,11 +72,9 @@ const defaults: AiSettings = {
 const store = new Store<AiSettings>({
   name: "ai-settings",
   defaults,
-  // NOTE: encryptionKey is intentionally omitted so electron-store uses
-  // Electron's safeStorage API for native OS-level encryption when available.
-  // On platforms where safeStorage is unavailable (e.g. Linux without a keyring),
-  // the data is stored as plaintext (which is still restricted to the user's
-  // app data directory). We warn about this below.
+  // API keys are encrypted explicitly by getStoredApiKeys/setStoredApiKeys.
+  // On platforms where safeStorage is unavailable (e.g. Linux without a
+  // keyring), the fallback remains restricted to the user's app data directory.
 });
 
 // Warn if API keys will be stored in plaintext (Linux without keyring/keychain)
@@ -80,6 +85,53 @@ if (!safeStorage.isEncryptionAvailable()) {
     "Install a keyring/keychain (e.g. gnome-keyring) for encrypted storage.",
   );
 }
+
+function getStoredApiKeys(): Record<string, string> {
+  const stored = store.get("apiKeys", {});
+  return Object.fromEntries(
+    Object.entries(stored).map(([provider, key]) => [
+      provider,
+      decryptSecret(key),
+    ]),
+  );
+}
+
+function setStoredApiKeys(apiKeys: Record<string, string>): void {
+  const encrypted = Object.fromEntries(
+    Object.entries(apiKeys).map(([provider, key]) => [
+      provider,
+      encryptSecret(key),
+    ]),
+  );
+  store.set("apiKeys", encrypted);
+}
+
+function getLegacySettingsSnapshot(): LegacyAiSettings {
+  return {
+    provider: store.get("provider", defaults.provider),
+    model: store.get("model", defaults.model),
+    apiKeys: getStoredApiKeys(),
+    openaiCompatibleBaseURL: store.get(
+      "openaiCompatibleBaseURL",
+      defaults.openaiCompatibleBaseURL,
+    ),
+    ollamaBaseURL: store.get("ollamaBaseURL", defaults.ollamaBaseURL),
+    customModels: store.get("customModels", defaults.customModels),
+    ollamaModels: store.get("ollamaModels", defaults.ollamaModels),
+  };
+}
+
+function migrateAiConnections(): void {
+  const legacy = getLegacySettingsSnapshot();
+  migrateLegacyAiSettings(legacy);
+  if (Object.keys(legacy.apiKeys).length > 0) {
+    setStoredApiKeys(legacy.apiKeys);
+  }
+}
+
+// Migrate before any caller can resolve a model or settings response. The
+// legacy fields remain the compatibility source of truth for existing APIs.
+migrateAiConnections();
 
 // ---------------------------------------------------------------------------
 // Provider registry — maps provider name → AI SDK model factory + optional metadata
@@ -327,10 +379,11 @@ function isValidHttpUrl(value: string): boolean {
 
 /** Get the current AI settings */
 export function getAiSettings(): AiSettings {
+  migrateAiConnections();
   return {
     provider: store.get("provider", defaults.provider),
     model: store.get("model", defaults.model),
-    apiKeys: store.get("apiKeys", defaults.apiKeys),
+    apiKeys: getStoredApiKeys(),
     openaiCompatibleBaseURL: store.get("openaiCompatibleBaseURL", defaults.openaiCompatibleBaseURL),
     ollamaBaseURL: store.get("ollamaBaseURL", defaults.ollamaBaseURL),
     customModels: store.get("customModels", defaults.customModels),
@@ -371,7 +424,7 @@ export function updateAiSettings(input: Partial<AiSettings>): AiSettings {
 
   if (input.provider) store.set("provider", nextProvider);
   if (input.model || input.provider) store.set("model", nextModel);
-  if (input.apiKeys) store.set("apiKeys", input.apiKeys);
+  if (input.apiKeys) setStoredApiKeys(input.apiKeys);
   if (input.openaiCompatibleBaseURL) {
     store.set("openaiCompatibleBaseURL", nextOpenAICompatibleBaseURL);
   }
@@ -384,19 +437,21 @@ export function updateAiSettings(input: Partial<AiSettings>): AiSettings {
     }
     store.set("ollamaBaseURL", trimmed);
   }
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
   return getAiSettings();
 }
 
 /** Set API key for a specific provider */
 export function setApiKey(provider: AiProviderName, key: string): void {
-  const apiKeys = store.get("apiKeys", {});
+  const apiKeys = getStoredApiKeys();
   apiKeys[provider] = key;
-  store.set("apiKeys", apiKeys);
+  setStoredApiKeys(apiKeys);
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
 }
 
 /** Get API key for a specific provider */
 export function getApiKey(provider: AiProviderName): string {
-  return store.get("apiKeys", {})[provider] ?? "";
+  return getStoredApiKeys()[provider] ?? "";
 }
 
 /** Add a custom model ID for a provider (persists across restarts) */
@@ -412,6 +467,7 @@ export function addCustomModel(
     list.push(id);
     all[provider] = list;
     store.set("customModels", all);
+    syncLegacyAiSettings(getLegacySettingsSnapshot());
   }
 }
 
@@ -426,6 +482,7 @@ export function removeCustomModel(
   if (filtered.length !== list.length) {
     all[provider] = filtered;
     store.set("customModels", all);
+    syncLegacyAiSettings(getLegacySettingsSnapshot());
   }
 }
 
@@ -466,7 +523,7 @@ export function isAiConfigured(): boolean {
   if (settings.provider === "ollama" && settings.ollamaDetected) {
     return true;
   }
-  const apiKeys = store.get("apiKeys", {});
+  const apiKeys = settings.apiKeys;
   if (
     settings.provider === "openai-compatible" &&
     settings.openaiCompatibleBaseURL.trim().length > 0
@@ -537,6 +594,7 @@ export async function detectOllama(): Promise<{
     if (!response.ok) {
       store.set("ollamaDetected", false);
       store.set("ollamaModels", []);
+      syncLegacyAiSettings(getLegacySettingsSnapshot());
       return { detected: false, models: [] };
     }
 
@@ -547,11 +605,13 @@ export async function detectOllama(): Promise<{
 
     store.set("ollamaDetected", true);
     store.set("ollamaModels", models);
+    syncLegacyAiSettings(getLegacySettingsSnapshot());
 
     return { detected: true, models };
   } catch {
     store.set("ollamaDetected", false);
     store.set("ollamaModels", []);
+    syncLegacyAiSettings(getLegacySettingsSnapshot());
     return { detected: false, models: [] };
   }
 }
