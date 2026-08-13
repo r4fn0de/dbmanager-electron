@@ -1,8 +1,30 @@
-import { useAppearanceStore } from "@/lib/stores/appearance";
-import { ThemeToggle } from "./ThemeToggle";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { ReactNode } from "react";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ipc } from "@/ipc/manager";
+import { useAppearanceStore } from "@/lib/stores/appearance";
+import { LangToggle } from "./LangToggle";
+import { ThemeToggle } from "./ThemeToggle";
+
+function SettingRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">
+      <div className="space-y-0.5">
+        <p className="font-medium text-sm">{title}</p>
+        <p className="text-muted-foreground text-xs">{description}</p>
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
 
 export function AppearanceSettings() {
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
@@ -12,61 +34,56 @@ export function AppearanceSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">
-        <div className="space-y-0.5">
-          <p className="text-sm font-medium">Theme</p>
-          <p className="text-xs text-muted-foreground">
-            Switch between light and dark mode
-          </p>
-        </div>
-        <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 hover:text-foreground hover:bg-muted/60 transition-colors duration-150 ease-out active:scale-[0.97]" />
-      </div>
+      <SettingRow
+        description="Switch between light and dark mode"
+        title="Theme"
+      >
+        <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-foreground/75 transition-colors duration-150 ease-out hover:bg-muted/60 hover:text-foreground active:scale-[0.97]" />
+      </SettingRow>
 
-      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">
-        <div className="space-y-0.5">
-          <p className="text-sm font-medium">Theme style</p>
-          <p className="text-xs text-muted-foreground">
-            Choose the visual palette used by the app
-          </p>
-        </div>
+      <SettingRow description="Choose the interface language" title="Language">
+        <LangToggle />
+      </SettingRow>
+
+      <SettingRow
+        description="Choose the visual palette used by the app"
+        title="Theme style"
+      >
         <ToggleGroup
-          value={[themePreset]}
+          aria-label="Theme style"
           onValueChange={(value) => {
             const next = value[0];
             if (next === "default" || next === "neo") {
               setThemePreset(next);
             }
           }}
-          variant="outline"
           size="sm"
           spacing={1}
-          aria-label="Theme style"
+          value={[themePreset]}
+          variant="outline"
         >
-          <ToggleGroupItem value="default" aria-label="Default theme style">
+          <ToggleGroupItem aria-label="Default theme style" value="default">
             Default
           </ToggleGroupItem>
-          <ToggleGroupItem value="neo" aria-label="Neo theme style">
+          <ToggleGroupItem aria-label="Neo theme style" value="neo">
             Neo
           </ToggleGroupItem>
         </ToggleGroup>
-      </div>
+      </SettingRow>
 
-      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.02] px-4 py-3 transition-colors duration-150 ease-out hover:border-border/80">
-        <div className="space-y-0.5">
-          <p className="text-sm font-medium">Solid background</p>
-          <p className="text-xs text-muted-foreground">
-            Disable blur and transparency effects
-          </p>
-        </div>
+      <SettingRow
+        description="Disable blur and transparency effects"
+        title="Solid background"
+      >
         <Switch
-          size="default"
           checked={solidBackground}
           onCheckedChange={(checked) => {
             setSolidBackground(checked);
             void ipc.client.window.setWindowVibrancy({ solid: checked });
           }}
+          size="default"
         />
-      </div>
+      </SettingRow>
     </div>
   );
 }

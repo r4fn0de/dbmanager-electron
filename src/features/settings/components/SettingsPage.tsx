@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { AiSettingsPanel } from "@/features/ai";
+import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { AiSettingsPanel } from "@/features/ai";
 import { cn } from "@/lib/utils";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ShortcutsPanel } from "./ShortcutsPanel";
@@ -14,12 +14,33 @@ type SettingsCategory = "appearance" | "ai" | "shortcuts" | "updates";
 const SETTINGS_ITEMS: Array<{
   id: SettingsCategory;
   label: string;
+  description: string;
   icon: "palette" | "sparkles" | "keyboard" | "download";
 }> = [
-  { id: "appearance", label: "Appearance", icon: "palette" },
-  { id: "ai", label: "AI Assistant", icon: "sparkles" },
-  { id: "shortcuts", label: "Shortcuts", icon: "keyboard" },
-  { id: "updates", label: "Updates", icon: "download" },
+  {
+    description: "Theme, colors and display preferences",
+    icon: "palette",
+    id: "appearance",
+    label: "Appearance",
+  },
+  {
+    description: "Providers, models and privacy controls",
+    icon: "sparkles",
+    id: "ai",
+    label: "AI Assistant",
+  },
+  {
+    description: "Keyboard shortcuts across the app",
+    icon: "keyboard",
+    id: "shortcuts",
+    label: "Shortcuts",
+  },
+  {
+    description: "App version and update checks",
+    icon: "download",
+    id: "updates",
+    label: "Updates",
+  },
 ];
 
 export function SettingsPage() {
@@ -28,57 +49,73 @@ export function SettingsPage() {
   const activeItem = SETTINGS_ITEMS.find((item) => item.id === activeCategory);
 
   return (
-    <section className="h-full min-h-0 flex flex-col overflow-hidden bg-background">
-      <header className="px-6 py-4 shrink-0 border-b border-border/40">
-        <h1 className="text-base font-semibold text-foreground">
-          {activeItem?.label ?? "Settings"}
-        </h1>
+    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <header className="flex shrink-0 items-center gap-3 border-border/40 border-b px-6 py-4">
+        <div className="flex size-9 items-center justify-center rounded-lg bg-muted/60 text-foreground/80">
+          <Icon name={activeItem?.icon ?? "settings"} size={18} />
+        </div>
+        <div className="min-w-0 space-y-0.5">
+          <h1 className="font-semibold text-base text-foreground leading-none">
+            {activeItem?.label ?? "Settings"}
+          </h1>
+          <p className="truncate text-muted-foreground text-xs">
+            {activeItem?.description ?? "Configure the application"}
+          </p>
+        </div>
       </header>
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        <div className="w-48 shrink-0 border-r border-border/40 px-2 py-2 flex flex-col gap-0.5">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <nav
+          aria-label="Settings categories"
+          className="flex w-52 shrink-0 flex-col gap-1 border-border/40 border-r px-3 py-3"
+        >
           {SETTINGS_ITEMS.map((item) => {
             const isActive = activeCategory === item.id;
             return (
               <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveCategory(item.id)}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 ease-out text-left active:scale-[0.98] select-none",
+                  "group flex select-none items-center gap-3 rounded-lg px-3 py-2 text-left font-medium text-sm transition-colors duration-150 ease-out active:scale-[0.98]",
                   isActive
-                    ? "bg-muted/50 text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+                    ? "bg-muted/60 text-foreground"
+                    : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                 )}
+                key={item.id}
+                onClick={() => setActiveCategory(item.id)}
+                type="button"
               >
                 <Icon
-                  name={item.icon}
-                  size={16}
                   className={cn(
                     "shrink-0 transition-colors duration-150 ease-out",
-                    isActive ? "text-primary" : "text-muted-foreground",
+                    isActive
+                      ? "text-primary"
+                      : "text-muted-foreground group-hover:text-foreground"
                   )}
+                  name={item.icon}
+                  size={16}
                 />
-                {item.label}
+                <span className="truncate">{item.label}</span>
               </button>
             );
           })}
-        </div>
+        </nav>
 
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <AnimatePresence mode="wait" initial={false}>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <AnimatePresence initial={false} mode="wait">
             <motion.div
-              key={activeCategory}
-              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
+              className="h-full overflow-y-auto"
               exit={{ opacity: 0, y: -4 }}
+              initial={{ opacity: 0, y: 4 }}
+              key={activeCategory}
               transition={{ duration: 0.18, ease: EASE_OUT }}
-              className="h-full overflow-y-auto px-6 py-4"
             >
-              {activeCategory === "appearance" && <AppearanceSettings />}
-              {activeCategory === "ai" && <AiSettingsPanel compact />}
-              {activeCategory === "shortcuts" && <ShortcutsPanel />}
-              {activeCategory === "updates" && <UpdatesPanel />}
+              <div className="mx-auto max-w-2xl px-6 py-5">
+                {activeCategory === "appearance" && <AppearanceSettings />}
+                {activeCategory === "ai" && <AiSettingsPanel compact />}
+                {activeCategory === "shortcuts" && <ShortcutsPanel />}
+                {activeCategory === "updates" && <UpdatesPanel />}
+              </div>
             </motion.div>
           </AnimatePresence>
         </div>

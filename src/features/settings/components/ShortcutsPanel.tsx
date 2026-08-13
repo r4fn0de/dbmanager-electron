@@ -1,13 +1,13 @@
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 
 interface ShortcutItem {
-  keys: string[];
   description: string;
+  keys: string[];
 }
 
 interface ShortcutSection {
-  title: string;
   items: ShortcutItem[];
+  title: string;
 }
 
 export function ShortcutsPanel() {
@@ -20,75 +20,75 @@ export function ShortcutsPanel() {
 
   const sections: ShortcutSection[] = [
     {
+      items: [
+        { description: "Overview", keys: ["1"] },
+        { description: "Tables", keys: ["2"] },
+        { description: "SQL Editor", keys: ["3"] },
+        { description: "Visualizer", keys: ["4"] },
+        { description: "Definitions", keys: ["5"] },
+        { description: "Toggle tables sidebar", keys: [mod, "B"] },
+        { description: "Refresh schema", keys: [mod, "R"] },
+      ],
       title: "Navigation",
-      items: [
-        { keys: ["1"], description: "Overview" },
-        { keys: ["2"], description: "Tables" },
-        { keys: ["3"], description: "SQL Editor" },
-        { keys: ["4"], description: "Visualizer" },
-        { keys: ["5"], description: "Definitions" },
-        { keys: [mod, "B"], description: "Toggle tables sidebar" },
-        { keys: [mod, "R"], description: "Refresh schema" },
-      ],
     },
     {
-      title: "Tabs",
       items: [
-        { keys: [mod, "Tab"], description: "Next tab (MRU)" },
-        { keys: [mod, shift, "Tab"], description: "Previous tab (MRU)" },
-        { keys: [mod, "W"], description: "Close current tab" },
-        { keys: [mod, shift, "]"], description: "Next tab (visual order)" },
+        { description: "Next tab (MRU)", keys: [mod, "Tab"] },
+        { description: "Previous tab (MRU)", keys: [mod, shift, "Tab"] },
+        { description: "Close current tab", keys: [mod, "W"] },
+        { description: "Next tab (visual order)", keys: [mod, shift, "]"] },
         {
-          keys: [mod, shift, "["],
           description: "Previous tab (visual order)",
+          keys: [mod, shift, "["],
         },
-        { keys: ["Ctrl", "PageDown"], description: "Next tab" },
-        { keys: ["Ctrl", "PageUp"], description: "Previous tab" },
+        { description: "Next tab", keys: ["Ctrl", "PageDown"] },
+        { description: "Previous tab", keys: ["Ctrl", "PageUp"] },
       ],
+      title: "Tabs",
     },
     {
+      items: [{ description: "Toggle AI Chat panel", keys: [mod, "J"] }],
       title: "AI Assistant",
-      items: [{ keys: [mod, "J"], description: "Toggle AI Chat panel" }],
     },
     {
+      items: [
+        { description: "Run SQL", keys: [mod, "Enter"] },
+        { description: "Save query", keys: [mod, "S"] },
+        { description: "Format SQL", keys: [mod, shift, "F"] },
+        { description: "EXPLAIN query", keys: [mod, "E"] },
+        { description: "EXPLAIN ANALYZE query", keys: [mod, shift, "E"] },
+        { description: "Focus search", keys: [mod, "K"] },
+        { description: "Focus search (when not in input)", keys: ["/"] },
+      ],
       title: "SQL Editor",
-      items: [
-        { keys: [mod, "Enter"], description: "Run SQL" },
-        { keys: [mod, "S"], description: "Save query" },
-        { keys: [mod, shift, "F"], description: "Format SQL" },
-        { keys: [mod, "E"], description: "EXPLAIN query" },
-        { keys: [mod, shift, "E"], description: "EXPLAIN ANALYZE query" },
-        { keys: [mod, "K"], description: "Focus search" },
-        { keys: ["/"], description: "Focus search (when not in input)" },
-      ],
     },
     {
-      title: "Global",
       items: [
-        { keys: [mod, "C"], description: "Copy" },
-        { keys: [mod, "V"], description: "Paste" },
-        { keys: [mod, "X"], description: "Cut" },
-        { keys: [mod, "Z"], description: "Undo" },
-        { keys: [mod, shift, "Z"], description: "Redo" },
-        { keys: [mod, "A"], description: "Select All" },
+        { description: "Copy", keys: [mod, "C"] },
+        { description: "Paste", keys: [mod, "V"] },
+        { description: "Cut", keys: [mod, "X"] },
+        { description: "Undo", keys: [mod, "Z"] },
+        { description: "Redo", keys: [mod, shift, "Z"] },
+        { description: "Select All", keys: [mod, "A"] },
       ],
+      title: "Global",
     },
   ];
 
   return (
     <div className="space-y-6">
       {sections.map((section) => (
-        <div key={section.title} className="space-y-2">
-          <h3 className="text-xs font-medium text-muted-foreground">
+        <div className="space-y-2" key={section.title}>
+          <h3 className="font-semibold text-muted-foreground/70 text-xs uppercase tracking-wide">
             {section.title}
           </h3>
-          <div className="space-y-1.5">
+          <div className="divide-y divide-border/50 rounded-xl border border-border/60 bg-muted/[0.02] px-4">
             {section.items.map((item, idx) => (
               <div
+                className="flex items-center justify-between py-2.5 first:pt-3 last:pb-3"
                 key={idx}
-                className="flex items-center justify-between py-1.5"
               >
-                <span className="text-sm text-muted-foreground">
+                <span className="text-foreground/90 text-sm">
                   {item.description}
                 </span>
                 <KbdGroup>
