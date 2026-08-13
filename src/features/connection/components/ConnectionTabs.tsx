@@ -1,9 +1,24 @@
 import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   useMatchRoute,
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { motion, Reorder } from "motion/react";
+import { motion } from "motion/react";
 import { useTheme } from "next-themes";
 import { Icon } from "@/components/ui/Icon";
 import { Neon } from "@/components/icons/Neon";
@@ -30,6 +45,81 @@ import type { ConnectionTab } from "@/lib/stores/connection-tabs";
 
 interface ConnectionTabsProps {
   gooeyFilterId?: string;
+}
+
+interface SortableTabItemProps {
+  children: React.ReactNode;
+  className: string;
+  id: string;
+  isActive: boolean;
+  isClosing: boolean;
+  isNew: boolean;
+  onClick: () => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLLIElement>) => void;
+  onMouseDown: (event: React.MouseEvent<HTMLLIElement>) => void;
+  onRef: (element: HTMLLIElement | null) => void;
+  title: string;
+}
+
+function SortableTabItem({
+  children,
+  className,
+  id,
+  isActive,
+  isClosing,
+  isNew,
+  onClick,
+  onKeyDown,
+  onMouseDown,
+  onRef,
+  title,
+}: SortableTabItemProps) {
+  const { attributes, isDragging, listeners, setNodeRef, transform, transition } =
+    useSortable({ id });
+
+  const handleRef = (element: HTMLLIElement | null) => {
+    setNodeRef(element);
+    onRef(element);
+  };
+
+  const dragTransform = transform
+    ? {
+        ...transform,
+        scaleX: isDragging ? 1.04 : transform.scaleX,
+        scaleY: isDragging ? 1.04 : transform.scaleY,
+      }
+    : null;
+
+  return (
+    <motion.li
+      {...attributes}
+      {...listeners}
+      animate={{ opacity: isClosing ? 0 : 1 }}
+      initial={isNew ? { opacity: 0 } : false}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      onMouseDown={onMouseDown}
+      ref={handleRef}
+      role="tab"
+      tabIndex={isActive ? 0 : -1}
+      title={title}
+      className={cn(
+        className,
+        isDragging && "z-40 cursor-grabbing shadow-[0_8px_24px_hsl(var(--foreground)/0.08)]",
+      )}
+      style={{
+        overflow: "visible",
+        transform: dragTransform ? CSS.Transform.toString(dragTransform) : undefined,
+        transition,
+      }}
+      transition={{
+        duration: isClosing ? 0.18 : isNew ? 0.25 : 0.15,
+        ease: [0.23, 1, 0.32, 1],
+      }}
+    >
+      {children}
+    </motion.li>
+  );
 }
 
 export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
@@ -300,26 +390,60 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
     },
     [reorderTabsByIds],
   );
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  );
+
+  const handleDragStart = useCallback(() => {
+    suppressClickRef.current = true;
+  }, []);
+
+  const handleDragCancel = useCallback(() => {
+    suppressClickRef.current = false;
+  }, []);
+
+  const handleDragEnd = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      if (over && active.id !== over.id) {
+        const oldIndex = tabIds.indexOf(String(active.id));
+        const newIndex = tabIds.indexOf(String(over.id));
+        if (oldIndex >= 0 && newIndex >= 0) {
+          handleReorder(arrayMove(tabIds, oldIndex, newIndex));
+        }
+      }
+
+      requestAnimationFrame(() => {
+        suppressClickRef.current = false;
+      });
+    },
+    [handleReorder, tabIds],
+  );
 
   if (tabs.length === 0) return null;
 
   return (
-    <Reorder.Group
-      axis="x"
-      values={tabIds}
-      onReorder={handleReorder}
-      layoutScroll
-      ref={containerRef}
-      role="tablist"
-      aria-label="Application tabs"
-      onWheel={handleWheel}
-      className={cn(
-        "flex items-center h-full overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
-        gooeyFilterId
-          ? "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]"
-          : "gap-[5px]",
-      )}
+    <DndContext
+      collisionDetection={closestCenter}
+      onDragCancel={handleDragCancel}
+      onDragEnd={handleDragEnd}
+      onDragStart={handleDragStart}
+      sensors={sensors}
     >
+      <SortableContext items={tabIds} strategy={horizontalListSortingStrategy}>
+        <ul
+          ref={containerRef}
+          role="tablist"
+          aria-label="Application tabs"
+          onWheel={handleWheel}
+          className={cn(
+            "flex items-center h-full overflow-x-auto scrollbar-none pl-0 pr-1 pt-2 pb-2",
+            gooeyFilterId
+              ? "items-end pt-0 pb-0 px-1 -translate-y-[5px] mb-[-6px] gap-[3px]"
+              : "gap-[5px]",
+          )}
+        >
       {tabs.map((tab) => {
         const isActive = tab.id === effectiveActiveId;
         const colorDot = tab.color || (tab.isLocal ? "#22c55e" : undefined);
@@ -339,50 +463,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
         const isClosing = closingTabIds.has(tab.id);
 
         return (
-          <Reorder.Item
-            key={tab.id}
-            value={tab.id}
-            layout="position"
-            dragMomentum={false}
-            dragElastic={0.1}
-            dragConstraints={containerRef}
-            whileDrag={{
-              zIndex: 40,
-              scale: 1.04,
-              boxShadow:
-                "0 8px 24px hsl(var(--foreground) / 0.08), 0 2px 8px hsl(var(--foreground) / 0.06)",
-              cursor: "grabbing",
-            }}
-            initial={isNewTab ? { opacity: 0, scale: 0.92, y: -4 } : false}
-            animate={
-              isClosing
-                ? { opacity: 0, scale: 0.88, y: -2 }
-                : { opacity: 1, scale: 1, y: 0 }
-            }
-            transition={{
-              type: "spring",
-              stiffness: 500,
-              damping: 30,
-              mass: 0.8,
-              bounce: 0.08,
-            }}
-            ref={(el: HTMLLIElement | null) => {
-              tabRefs.current[tab.id] = el;
-            }}
-            role="tab"
-            tabIndex={isActive ? 0 : -1}
-            aria-selected={isActive}
-            onDragStart={() => {
-              suppressClickRef.current = true;
-            }}
-            onDragEnd={() => {
-              requestAnimationFrame(() => {
-                suppressClickRef.current = false;
-              });
-            }}
-            onClick={() => handleTabClick(tab.id)}
-            onKeyDown={(e) => handleTabKeyDown(e, tab.id)}
-            onMouseDown={(e) => handleMouseDown(e, tab.id)}
+          <SortableTabItem
             className={cn(
               "group relative flex items-center justify-center gap-1.5 h-[39px] w-[128px] px-0 text-xs font-medium",
               "rounded-sm shrink-0 outline-none cursor-default",
@@ -404,8 +485,16 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
                   ? (themePreset === "neo" ? "rounded-t-[3px] rounded-b-0" : "rounded-t-[5px] rounded-b-[5px]")
                   : (themePreset === "neo" ? "rounded-t-[3px] rounded-b-0" : "rounded-[5px]")),
             )}
-            style={{
-              overflow: "visible",
+            id={tab.id}
+            isActive={isActive}
+            isClosing={isClosing}
+            isNew={isNewTab}
+            key={tab.id}
+            onClick={() => handleTabClick(tab.id)}
+            onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
+            onMouseDown={(event) => handleMouseDown(event, tab.id)}
+            onRef={(element) => {
+              tabRefs.current[tab.id] = element;
             }}
             title={tab.name}
           >
@@ -500,6 +589,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               type="button"
               onClick={(e) => handleClose(e, tab.id)}
               onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
               className={cn(
                 "absolute right-2 top-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 outline-none",
                 gooeyFilterId ? "-translate-y-[calc(50%+2px)]" : "-translate-y-1/2",
@@ -514,10 +604,12 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
             >
               <Icon name="x" className="size-3" />
             </button>
-          </Reorder.Item>
+          </SortableTabItem>
         );
-      })}
-    </Reorder.Group>
+        })}
+        </ul>
+      </SortableContext>
+    </DndContext>
   );
 }
 
