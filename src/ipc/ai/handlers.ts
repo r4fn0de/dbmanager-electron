@@ -21,9 +21,20 @@ import {
   getPrivacySettings,
   getPrivacyPreset,
   updatePrivacySettings,
+  fetchProviderModels,
+  validateApiKey,
   type AiProviderName,
 } from "./config";
 import type { DatabaseType } from "@/ipc/db/types";
+
+// Provider enum used in Zod schemas — keeps DRY across all provider inputs.
+const PROVIDER_ENUM = z.enum([
+  "openai",
+  "anthropic",
+  "google",
+  "openai-compatible",
+  "ollama",
+]);
 
 // ---------------------------------------------------------------------------
 // Settings handlers
@@ -36,9 +47,10 @@ export const aiGetSettings = os.handler(async () => {
 export const aiUpdateSettings = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]).optional(),
+      provider: PROVIDER_ENUM.optional(),
       model: z.string().optional(),
       openaiCompatibleBaseURL: z.string().optional(),
+      ollamaBaseURL: z.string().optional(),
     }),
   )
   .handler(async ({ input }) => {
@@ -54,15 +66,23 @@ export const aiUpdateSettings = os
 export const aiSetApiKey = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
+      provider: PROVIDER_ENUM,
       key: z.string(),
     }),
   )
   .handler(async ({ input }) => {
     try {
+      // Validate API key format before persisting
+      const validation = validateApiKey(input.provider as AiProviderName, input.key);
+      if (!validation.valid) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: validation.error ?? "Invalid API key format",
+        });
+      }
       setApiKey(input.provider as AiProviderName, input.key);
       return { success: true };
     } catch (error) {
+      if (error instanceof ORPCError) throw error;
       throw new ORPCError("BAD_REQUEST", {
         message: error instanceof Error ? error.message : "Failed to save AI API key",
       });
@@ -72,7 +92,7 @@ export const aiSetApiKey = os
 export const aiGetApiKey = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
+      provider: PROVIDER_ENUM,
     }),
   )
   .handler(async ({ input }) => {
@@ -91,6 +111,33 @@ export const aiGetApiKey = os
 export const aiIsConfigured = os.handler(async () => {
   return isAiConfigured();
 });
+
+// ---------------------------------------------------------------------------
+// Model discovery — fetch available models from a provider's API
+// ---------------------------------------------------------------------------
+
+export const aiFetchModels = os
+  .input(
+    z.object({
+      provider: PROVIDER_ENUM,
+      apiKey: z.string().optional(),
+      baseURL: z.string().optional(),
+    }),
+  )
+  .handler(async ({ input }) => {
+    try {
+      const models = await fetchProviderModels(
+        input.provider as AiProviderName,
+        input.apiKey,
+        input.baseURL,
+      );
+      return { models };
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to fetch models",
+      });
+    }
+  });
 
 // ---------------------------------------------------------------------------
 // Fix SQL — takes broken SQL + error message, returns corrected SQL
@@ -352,7 +399,7 @@ ${input.tables.join(", ")}${contextSection}`,
 export const aiAddCustomModel = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
+      provider: PROVIDER_ENUM,
       modelId: z.string().min(1),
     }),
   )
@@ -364,7 +411,7 @@ export const aiAddCustomModel = os
 export const aiRemoveCustomModel = os
   .input(
     z.object({
-      provider: z.enum(["openai", "anthropic", "google", "openai-compatible", "ollama"]),
+      provider: PROVIDER_ENUM,
       modelId: z.string().min(1),
     }),
   )

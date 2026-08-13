@@ -498,7 +498,7 @@ export function ConnectionTabs({ gooeyFilterId }: ConnectionTabsProps) {
               onClick={(e) => handleClose(e, tab.id)}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                "absolute right-2 top-1/2 -translate-y-1/2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 outline-none",
+                "absolute right-2 z-10 inline-flex size-5 items-center justify-center rounded-sm p-0.5 outline-none",
                 "transition-[opacity,transform,background-color] duration-150 ease-out",
                 "focus-visible:ring-2 focus-visible:ring-ring",
                 solidBackground

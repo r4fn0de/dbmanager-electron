@@ -22,6 +22,7 @@ import {
   aiDetectOllama,
   aiGetPrivacySettings,
   aiUpdatePrivacySettings,
+  aiFetchModels,
 } from "./handlers";
 import {
   saveFeedbackHandler,
@@ -55,6 +56,7 @@ export const ai = {
   setApiKey: aiSetApiKey,
   getApiKey: aiGetApiKey,
   isConfigured: aiIsConfigured,
+  fetchModels: aiFetchModels,
   // SQL assistance
   fixSql: aiFixSql,
   updateSql: aiUpdateSql,

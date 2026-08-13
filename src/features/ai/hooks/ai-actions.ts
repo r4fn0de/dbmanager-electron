@@ -1,18 +1,13 @@
 /**
  * Module-level IPC proxy functions for AI operations.
- *
- * These are plain async functions — NOT React hooks — so they cause
- * zero re-renders. Use them anywhere: event handlers, effects,
- * queryFn callbacks, or even outside React components.
- *
- * Streaming chat is handled via the useAiChat hook (Electron IPC events),
- * not through these ORPC-based functions.
  */
 import { ipc } from "@/ipc/manager";
 import type { DatabaseType } from "@/ipc/db/types";
-import type { PrivacySettings, PrivacyPreset } from "@/shared/ai/streaming-contracts";
+import type { AiModelEntry, AiProviderName, PrivacySettings, PrivacyPreset } from "@/shared/ai/streaming-contracts";
 
-type AiProvider = "openai" | "anthropic" | "google" | "openai-compatible" | "ollama";
+// Re-export AiProviderName for consumers
+export type { AiProviderName };
+
 type AiDbType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite";
 
 function extractAiErrorMessage(error: unknown, fallback: string): string {
@@ -42,24 +37,29 @@ function extractAiErrorMessage(error: unknown, fallback: string): string {
 
 export interface AiProvidersInfo {
   current: {
-    provider: string;
+    provider: AiProviderName;
     model: string;
     openaiCompatibleBaseURL: string;
+    ollamaBaseURL: string;
   };
   encryptionAvailable: boolean;
   ollamaDetected: boolean;
   ollamaModels: string[];
   providers: {
-    name: string;
+    name: AiProviderName;
     label: string;
     defaultModel: string;
-    models: { id: string; label: string; isCustom?: boolean }[];
+    models: AiModelEntry[];
+    customModels: AiModelEntry[];
     hasApiKey: boolean;
+    requiresApiKey: boolean;
+    allowCustomModel: boolean;
+    apiKeyFormat?: { placeholder: string };
   }[];
 }
 
 export interface AiApiKeyInfo {
-  provider: AiProvider;
+  provider: AiProviderName;
   masked: string;
   hasKey: boolean;
 }
@@ -100,8 +100,6 @@ function toAiDbType(dbType: DatabaseType): AiDbType {
 export async function getAiSettings(): Promise<AiProvidersInfo> {
   try {
     const result = await ipc.client.ai.getSettings();
-    // The ORPC handler calls getProvidersInfo() which returns { current, providers }.
-    // Validate shape to fail loudly if ORPC type inference drifts.
     if (!result || typeof result !== "object" || !("current" in result) || !("providers" in result)) {
       throw new Error("Unexpected AI settings response shape");
     }
@@ -112,9 +110,10 @@ export async function getAiSettings(): Promise<AiProvidersInfo> {
 }
 
 export async function updateAiSettings(input: {
-  provider?: AiProvider;
+  provider?: AiProviderName;
   model?: string;
   openaiCompatibleBaseURL?: string;
+  ollamaBaseURL?: string;
 }): Promise<void> {
   try {
     await ipc.client.ai.updateSettings(input);
@@ -124,7 +123,7 @@ export async function updateAiSettings(input: {
 }
 
 export async function setAiApiKey(
-  provider: AiProvider,
+  provider: AiProviderName,
   key: string,
 ): Promise<{ success: boolean }> {
   try {
@@ -135,7 +134,7 @@ export async function setAiApiKey(
 }
 
 export async function getAiApiKey(
-  provider: AiProvider,
+  provider: AiProviderName,
 ): Promise<AiApiKeyInfo> {
   try {
     return await ipc.client.ai.getApiKey({ provider });
@@ -149,6 +148,20 @@ export async function isAiConfigured(): Promise<boolean> {
     return await ipc.client.ai.isConfigured();
   } catch {
     return false;
+  }
+}
+
+/** Fetch available models for a provider from its API. */
+export async function fetchProviderModels(
+  provider: AiProviderName,
+  apiKey?: string,
+  baseURL?: string,
+): Promise<AiModelEntry[]> {
+  try {
+    const result = await ipc.client.ai.fetchModels({ provider, apiKey, baseURL });
+    return result.models ?? [];
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to fetch provider models"));
   }
 }
 
@@ -232,7 +245,7 @@ export async function getAiTableSearchMatches(
 }
 
 export async function addCustomModel(
-  provider: AiProvider,
+  provider: AiProviderName,
   modelId: string,
 ): Promise<AiProvidersInfo> {
   try {
@@ -243,7 +256,7 @@ export async function addCustomModel(
 }
 
 export async function removeCustomModel(
-  provider: AiProvider,
+  provider: AiProviderName,
   modelId: string,
 ): Promise<AiProvidersInfo> {
   try {

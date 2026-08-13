@@ -192,3 +192,19 @@ export interface AiRendererApi {
     onRequest: (listener: (payload: ToolApprovalRequestPayload) => void) => Unsubscribe;
   };
 }
+
+/** The canonical list of AI provider identifiers used across the app. */
+export type AiProviderName =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "openai-compatible"
+  | "ollama";
+
+/** A model entry returned by a provider's model-list API or static catalog. */
+export interface AiModelEntry {
+  id: string;
+  label: string;
+  /** Whether this model was added by the user (custom) */
+  isCustom?: boolean;
+}
