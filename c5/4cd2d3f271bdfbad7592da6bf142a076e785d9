@@ -1,0 +1,30 @@
+src/ipc/ai/index.ts
+  h_6400716131bbc6 25,59
+src/shared/ai/streaming-contracts.ts
+  h_6400716131bbc6 195-210
+src/ipc/ai/config.ts
+  h_6400716131bbc6 16-17,22-24,38-39,57,85,88,97-104,107-108,110-131,137,139-143,150,152-156,163,165-169,184-188,192-193,196,204,216,218-219,222-312,334-335,378-386,443,459,463,484,487,494,497,500,503-504,506-510,524-527,532
+  h_6400716131bbc6 109
+src/features/ai/components/AiSettingsPanel.tsx
+  h_6400716131bbc6 7,17,19,22,36,44-51,70-97,103-105,124-144,162,169,194-195,202-203,217-219,224-247,343,345-365,409-433,445,448-591,593-725,727-822
+  h_6400716131bbc6 98,106,145,220-223,248
+src/features/ai/hooks/ai-actions.ts
+  h_6400716131bbc6 6,8-9,40,43,49,52-53,55-57,62,113,116,126,137,154-164,248,259
+  h_6400716131bbc6 7,165-167
+src/ipc/ai/handlers.ts
+  h_6400716131bbc6 24-25,30-38,50,53,69,75-81,85,95,115-140,402,414
+  h_6400716131bbc6 141
+src/features/connection/components/ConnectionTabs.tsx
+  h_6400716131bbc6 501
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "c54cd2d3f271bdfbad7592da6bf142a076e785d9",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
