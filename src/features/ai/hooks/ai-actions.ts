@@ -1,9 +1,22 @@
 /**
  * Module-level IPC proxy functions for AI operations.
  */
-import { ipc } from "@/ipc/manager";
 import type { DatabaseType } from "@/ipc/db/types";
-import type { AiModelEntry, AiProviderName, PrivacySettings, PrivacyPreset } from "@/shared/ai/streaming-contracts";
+import { ipc } from "@/ipc/manager";
+import type {
+  AiAuthStatus,
+  AiConnection,
+  AiConnectionProvider,
+  AiModel,
+  AiModelCapability,
+  AiPermissionScope,
+} from "@/shared/ai/connection-contracts";
+import type {
+  AiModelEntry,
+  AiProviderName,
+  PrivacyPreset,
+  PrivacySettings,
+} from "@/shared/ai/streaming-contracts";
 
 // Re-export AiProviderName for consumers
 export type { AiProviderName };
@@ -62,6 +75,45 @@ export interface AiApiKeyInfo {
   provider: AiProviderName;
   masked: string;
   hasKey: boolean;
+}
+
+type AiPermissionDecision = "allow" | "ask" | "deny";
+
+export type AiConnectionPermissionPolicy = Partial<
+  Record<AiPermissionScope, AiPermissionDecision>
+>;
+
+export interface AiConnectionCreateInput {
+  apiKey?: string;
+  baseUrl?: string;
+  capabilities?: AiModelCapability[];
+  defaultModelId?: string;
+  executablePath?: string;
+  models?: AiModel[];
+  name?: string;
+  permissionPolicy?: AiConnectionPermissionPolicy;
+  provider: AiConnectionProvider;
+  type?: "api" | "cli-agent";
+  workspacePath?: string;
+}
+
+export interface AiConnectionUpdateInput {
+  apiKey?: string;
+  baseUrl?: string;
+  capabilities?: AiModelCapability[];
+  clearApiKey?: boolean;
+  defaultModelId?: string;
+  executablePath?: string;
+  models?: AiModel[];
+  name?: string;
+  permissionPolicy?: AiConnectionPermissionPolicy;
+  workspacePath?: string;
+}
+
+export interface AiConnectionTestResult {
+  connectionId: string;
+  message?: string;
+  status: AiAuthStatus;
 }
 
 export interface AiSqlResult {
@@ -162,6 +214,117 @@ export async function fetchProviderModels(
     return result.models ?? [];
   } catch (err) {
     throw new Error(extractAiErrorMessage(err, "Failed to fetch provider models"));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI connection management
+// ---------------------------------------------------------------------------
+
+export async function listAiConnections(): Promise<AiConnection[]> {
+  try {
+    return await ipc.client.ai.listConnections();
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to list AI connections"));
+  }
+}
+
+export async function getAiConnection(connectionId: string): Promise<AiConnection> {
+  try {
+    return await ipc.client.ai.getConnection({ connectionId });
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to get AI connection"));
+  }
+}
+
+export async function createAiConnection(
+  input: AiConnectionCreateInput,
+): Promise<AiConnection> {
+  try {
+    return await ipc.client.ai.createConnection(input);
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to create AI connection"));
+  }
+}
+
+export async function updateAiConnection(
+  connectionId: string,
+  patch: AiConnectionUpdateInput,
+): Promise<AiConnection> {
+  try {
+    return await ipc.client.ai.updateConnection({ connectionId, patch });
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to update AI connection"));
+  }
+}
+
+export async function deleteAiConnection(connectionId: string): Promise<void> {
+  try {
+    await ipc.client.ai.deleteConnection({ connectionId });
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to delete AI connection"));
+  }
+}
+
+export async function setAiConnectionDefaultModel(
+  connectionId: string,
+  modelId: string,
+): Promise<AiConnection> {
+  try {
+    return await ipc.client.ai.setDefaultModel({ connectionId, modelId });
+  } catch (err) {
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to set the default AI model"),
+    );
+  }
+}
+
+export async function setAiConnectionModels(
+  connectionId: string,
+  models: AiModel[],
+): Promise<AiConnection> {
+  try {
+    return await ipc.client.ai.setConnectionModels({ connectionId, models });
+  } catch (err) {
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to update AI connection models"),
+    );
+  }
+}
+
+export async function listAiConnectionModels(
+  connectionId: string,
+): Promise<AiModel[]> {
+  try {
+    const result = await ipc.client.ai.listConnectionModels({ connectionId });
+    return result.models;
+  } catch (err) {
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to list AI connection models"),
+    );
+  }
+}
+
+export async function testAiConnection(
+  connectionId: string,
+): Promise<AiConnectionTestResult> {
+  try {
+    return await ipc.client.ai.testConnection({ connectionId });
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to test AI connection"));
+  }
+}
+
+export async function discoverAiConnectionModels(
+  connectionId: string,
+): Promise<AiModel[]> {
+  try {
+    const result = await ipc.client.ai.discoverModels({ connectionId });
+    return result.models;
+  } catch (err) {
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to discover AI connection models"),
+    );
   }
 }
 

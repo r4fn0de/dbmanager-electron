@@ -1,4 +1,4 @@
-import { ai } from "./ai";
+import { ai as aiProcedures } from "./ai";
 import { app } from "./app";
 import { db } from "./db";
 import { shell } from "./shell";
@@ -11,5 +11,5 @@ export const router = {
   app,
   shell,
   db,
-  ai,
+  ai: aiProcedures,
 };

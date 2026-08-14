@@ -43,6 +43,18 @@ import {
   cleanupMemoryHandler,
   getRecentHistoryHandler,
 } from "./memory-handlers";
+import {
+  aiCreateConnection,
+  aiDeleteConnection,
+  aiDiscoverModels,
+  aiGetConnection,
+  aiListConnectionModels,
+  aiListConnections,
+  aiSetConnectionModels,
+  aiSetDefaultModel,
+  aiTestConnection,
+  aiUpdateConnection,
+} from "./connection-handlers";
 
 export { registerAiStreamingHandlers } from "./streaming";
 export { AI_IPC_CHANNELS } from "@/constants";
@@ -91,4 +103,15 @@ export const ai = {
   clearMemory: clearMemoryHandler,
   cleanupMemory: cleanupMemoryHandler,
   getRecentHistory: getRecentHistoryHandler,
+  // Connection management
+  listConnections: aiListConnections,
+  getConnection: aiGetConnection,
+  createConnection: aiCreateConnection,
+  updateConnection: aiUpdateConnection,
+  deleteConnection: aiDeleteConnection,
+  setDefaultModel: aiSetDefaultModel,
+  setConnectionModels: aiSetConnectionModels,
+  listConnectionModels: aiListConnectionModels,
+  testConnection: aiTestConnection,
+  discoverModels: aiDiscoverModels,
 };
