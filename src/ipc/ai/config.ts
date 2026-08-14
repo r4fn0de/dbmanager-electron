@@ -5,14 +5,12 @@
  * in electron-store. The provider registry maps provider names → AI SDK model
  * constructors.
  */
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { safeStorage } from "electron";
 import Store from "electron-store";
+import { resolveApiModel } from "@/ipc/ai/adapters/api-provider-adapter";
 import {
+  getDefaultConnectionId,
   type LegacyAiSettings,
   migrateLegacyAiSettings,
   syncLegacyAiSettings,
@@ -139,12 +137,6 @@ migrateAiConnections();
 
 export interface ProviderEntry {
   label: string;
-  /** Factory: given a model ID + API key, returns a LanguageModel instance */
-  modelFactory: (options: {
-    modelId: string;
-    apiKey?: string;
-    settings: AiSettings;
-  }) => LanguageModel;
   defaultModel: string;
   /** Whether the user can type arbitrary model IDs (e.g. for self-hosted) */
   allowCustomModel: boolean;
@@ -156,7 +148,6 @@ export interface ProviderEntry {
   apiKeyFormat?: { pattern: RegExp; placeholder: string };
 }
 
-const DEFAULT_OLLAMA_URL = "http://localhost:11434/v1";
 const OLLAMA_BASE_URL = "http://localhost:11434";
 
 // Static model catalog fallback (used if modelsFetcher is unavailable)
@@ -184,7 +175,6 @@ const STATIC_MODELS: Record<AiProviderName, { id: string; label: string }[]> = {
 const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   openai: {
     label: "OpenAI",
-    modelFactory: ({ modelId, apiKey }) => createOpenAI({ apiKey })(modelId),
     defaultModel: "gpt-4o-mini",
     allowCustomModel: true,
     requiresApiKey: true,
@@ -196,8 +186,6 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   },
   anthropic: {
     label: "Anthropic",
-    modelFactory: ({ modelId, apiKey }) =>
-      createAnthropic({ apiKey })(modelId),
     defaultModel: "claude-sonnet-4-5-20250514",
     allowCustomModel: true,
     requiresApiKey: true,
@@ -209,8 +197,6 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   },
   google: {
     label: "Google",
-    modelFactory: ({ modelId, apiKey }) =>
-      createGoogleGenerativeAI({ apiKey })(modelId),
     defaultModel: "gemini-2.0-flash",
     allowCustomModel: true,
     requiresApiKey: true,
@@ -222,14 +208,6 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   },
   "openai-compatible": {
     label: "OpenAI-Compatible",
-    modelFactory: ({ modelId, apiKey, settings }) => {
-      const provider = createOpenAICompatible({
-        name: "openai-compatible",
-        baseURL: settings.openaiCompatibleBaseURL,
-        ...(apiKey ? { apiKey } : {}),
-      });
-      return provider.chatModel(modelId);
-    },
     defaultModel: "",
     allowCustomModel: true,
     requiresApiKey: false,
@@ -241,15 +219,6 @@ const PROVIDERS: Record<AiProviderName, ProviderEntry> = {
   },
   ollama: {
     label: "Ollama",
-    modelFactory: ({ modelId, settings }) => {
-      const baseURL = getOllamaBaseURL(settings);
-      const provider = createOpenAICompatible({
-        name: "ollama",
-        baseURL,
-        apiKey: "ollama",
-      });
-      return provider.chatModel(modelId);
-    },
     defaultModel: "qwen2.5-coder:7b",
     allowCustomModel: true,
     requiresApiKey: false,
@@ -358,11 +327,6 @@ export function validateApiKey(providerName: AiProviderName, key: string): { val
 // ---------------------------------------------------------------------------
 // Settings storage helpers
 // ---------------------------------------------------------------------------
-
-function getOllamaBaseURL(settings?: AiSettings): string {
-  const custom = settings?.ollamaBaseURL?.trim() ?? "";
-  return custom ? `${custom}/v1` : DEFAULT_OLLAMA_URL;
-}
 
 function isValidHttpUrl(value: string): boolean {
   try {
@@ -486,35 +450,26 @@ export function removeCustomModel(
   }
 }
 
-/** Get the currently configured LanguageModel instance */
+/** Resolve a LanguageModel for one saved AI connection profile. */
+export function getModelForConnection(
+  connectionId: string,
+  modelId?: string,
+): LanguageModel {
+  return resolveApiModel({ connectionId, modelId }).model;
+}
+
+/**
+ * Compatibility wrapper for callers that still use the global AI selection.
+ * The migrated default profile is now the source of truth.
+ */
 export function getCurrentModel(): LanguageModel {
-  const settings = getAiSettings();
-  if (!isProviderName(settings.provider)) {
-    throw new Error(`Invalid AI provider '${settings.provider}' in settings.`);
-  }
-
-  const providerName = settings.provider;
-  const provider = PROVIDERS[providerName];
-  const apiKey = settings.apiKeys[providerName];
-
-  if (provider.requiresApiKey && !apiKey) {
+  const connectionId = getDefaultConnectionId();
+  if (!connectionId) {
     throw new Error(
-      `API key not configured for ${provider?.label ?? providerName}. ` +
-      "Set it in Settings → AI.",
+      "No AI connection is configured. Create an AI connection in Settings → AI.",
     );
   }
-
-  if (
-    providerName === "openai-compatible" &&
-    !isValidHttpUrl(settings.openaiCompatibleBaseURL)
-  ) {
-    throw new Error(
-      "OpenAI-compatible base URL is invalid. Set it in Settings → AI.",
-    );
-  }
-
-  const modelId = settings.model || provider.defaultModel;
-  return provider.modelFactory({ modelId, apiKey, settings });
+  return resolveApiModel({ connectionId }).model;
 }
 
 /** Check if AI is configured (has at least one API key or Ollama detected) */
