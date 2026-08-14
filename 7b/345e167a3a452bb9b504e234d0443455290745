@@ -1,0 +1,35 @@
+src/ipc/ai/index.ts
+  s_c71317b8d07afc::t_56ebb81c3a37eb 46-57,106-116
+src/ipc/router.ts
+  s_c71317b8d07afc::t_99abcb8af1ca29 1,14
+src/features/ai/hooks/ai-actions.ts
+  s_c71317b8d07afc::t_970888108cc675 5,18
+  s_c71317b8d07afc::t_05fa9d56e32f77 6-17,19,80-118,220-329
+  s_c71317b8d07afc::t_ae16b0225e2197 330
+src/tests/unit/ipc/ai/connection-handlers.test.ts
+  s_c71317b8d07afc::t_9614dcdf22099e 1-53,55-105,107-124,126-152,154-155,157-163,165-195,197-199,201-203,205-234,236-238,240-263,265-269,271-279,283,290-293,304-317
+  s_c71317b8d07afc::t_e3605fc1a506fe 280-282,285-289,294-301,303
+  s_c71317b8d07afc::t_4c6952c9820c96 302
+  s_c71317b8d07afc::t_efc02ea03bdccb 54,106,125,153,156,164,196,200,204,235,239,264,270,284
+src/ipc/ai/connection-handlers.ts
+  s_c71317b8d07afc::t_bf1aa359948a74 1-4,6-12,14-129,131-139,141-149,151-165,167-180,182-191,193-203,205-215,217-257
+  s_c71317b8d07afc::t_df74da0b4218ff 130,140,150,166,181,192,204,216
+  s_c71317b8d07afc::t_af781f3ee314f3 5
+  s_c71317b8d07afc::t_4157b7d97a8482 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "7b345e167a3a452bb9b504e234d0443455290745",
+  "prompts": {},
+  "sessions": {
+    "s_c71317b8d07afc": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019ffd9c-a3f8-7662-ae2c-5c97bf0a6859",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
