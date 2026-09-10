@@ -49,7 +49,7 @@ export function SettingsPage() {
   const activeItem = SETTINGS_ITEMS.find((item) => item.id === activeCategory);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background">
       <header className="flex shrink-0 items-center gap-3 border-border/40 border-b px-6 py-4">
         <div className="flex size-9 items-center justify-center rounded-lg bg-muted/60 text-foreground/80">
           <Icon name={activeItem?.icon ?? "settings"} size={18} />

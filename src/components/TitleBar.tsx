@@ -171,7 +171,7 @@ export function TitleBar() {
 
   const tabsSlot = (
     <div className="min-w-0 flex-1 h-full flex items-end gap-0.5 pl-0 draglayer">
-      <GooeySvgFilter id={titlebarGooeyFilterId} strength={5} />
+      <GooeySvgFilter id={titlebarGooeyFilterId} strength={5} borderColor="var(--border)" />
       <div className="no-drag h-full flex items-end">
         <ConnectionTabs gooeyFilterId={titlebarGooeyFilterId} />
       </div>
