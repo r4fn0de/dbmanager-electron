@@ -1,4 +1,5 @@
 import { useTheme } from "next-themes";
+import type { Size } from "motion-panels/react";
 import type { DragEvent, KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,11 +13,10 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { LazyMonacoEditor, type OnMount } from "../LazyMonacoEditor";
 
 import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  useDefaultLayout,
-} from "@/components/ui/resizable";
+  Panel,
+  PanelGroup,
+  PanelSeparator,
+} from "@/components/ui/motion-panels";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -34,6 +34,10 @@ import { useSqlWorkspace,
 } from "../../hooks/useSqlWorkspace";
 import { fixSql, updateSql } from "@/features/ai/hooks/ai-actions";
 import { formatDuration } from "@/lib/utils";
+import {
+  percentageToPixels,
+  usePersistedPanelSize,
+} from "@/lib/use-persisted-panel-size";
 import {
   buildExplainSql,
   formatSql,
@@ -201,16 +205,18 @@ export function SqlEditor({
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [lastSelectedColumn, setLastSelectedColumn] = useState<string | null>(null);
 
-  // Layout persistence via useDefaultLayout (same pattern as conar)
-  // onLayoutChanged fires AFTER drag ends — no debouncing needed
-  const sidebarLayout = useDefaultLayout({
-    id: `sql-sidebar-${selectedConnection ?? "default"}`,
-    storage: localStorage,
-  });
-  const editorSplitLayout = useDefaultLayout({
-    id: `sql-editor-split-${selectedConnection ?? "default"}`,
-    storage: localStorage,
-  });
+  // Panel sizes persist per connection. motion-panels reports a new size once a
+  // drag or key press lands, so there is nothing to debounce.
+  const [sidebarSize, setSidebarSize] = usePersistedPanelSize(
+    `sql-sidebar-${selectedConnection ?? "default"}`,
+    "22%",
+    "sql-sidebar",
+  );
+  const [resultsSize, setResultsSize] = usePersistedPanelSize(
+    `sql-editor-split-${selectedConnection ?? "default"}`,
+    "50%",
+    "sql-results-pane",
+  );
 
 
   const [isExecuting, setIsExecuting] = useState(false);
@@ -237,8 +243,20 @@ export function SqlEditor({
   const inlinePreviousSqlRef = useRef("");
   const inlineStreamTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inlineStartFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track sidebar pixel width in a ref (cheap, no setState) — read on layout change
-  const sidebarWidthRef = useRef<number>(0);
+  // Measured to turn the sidebar's percentage size into the pixel width the
+  // connection tab chrome aligns to.
+  const workspaceRef = useRef<HTMLElement>(null);
+
+  const handleSidebarResize = useCallback(
+    (next: Size) => {
+      setSidebarSize(next);
+      const width = workspaceRef.current?.clientWidth ?? 0;
+      if (onWorkspaceSidebarResize && width > 0) {
+        onWorkspaceSidebarResize(percentageToPixels(next, width));
+      }
+    },
+    [onWorkspaceSidebarResize, setSidebarSize],
+  );
 
   // AI panel state
   const [isFixingSql, setIsFixingSql] = useState(false);
@@ -1338,398 +1356,385 @@ export function SqlEditor({
 
   return (
     <section
+      ref={workspaceRef}
       className="h-full min-h-0 rounded-none bg-background"
       aria-label="SQL editor workspace"
       onKeyDown={handleKeyDown}
     >
-      <ResizablePanelGroup
-        className="h-full min-h-0"
-        defaultLayout={sidebarLayout.defaultLayout}
-        onLayoutChanged={(layout) => {
-          sidebarLayout.onLayoutChanged(layout);
-          // Update parent width only after drag ends (onLayoutChanged fires post-drag)
-          // using the ref populated by onResize — avoids per-pixel setState during drag.
-          if (onWorkspaceSidebarResize && sidebarWidthRef.current > 0) {
-            onWorkspaceSidebarResize(sidebarWidthRef.current);
-          }
-        }}
-      >
-        {showWorkspaceSidebar && (            <ResizablePanel
-            id="sql-sidebar"
-            defaultSize="22%"
+      <PanelGroup className="h-full min-h-0">
+        {showWorkspaceSidebar && (
+          <Panel
+            size={sidebarSize}
             minSize="15%"
             maxSize="40%"
-            onResize={(size) => {
-              // Track width in ref only (cheap, no setState) — read on layout change
-              sidebarWidthRef.current = size.inPixels;
-            }}
+            onSizeChange={handleSidebarResize}
             className="min-h-0 bg-sidebar"
           >
-          <aside className="h-full min-h-0 flex flex-col bg-sidebar">
-            {/* Sidebar Header */}
-            <div className="px-3 pt-3 pb-1 shrink-0">
-              {/* Title Row */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <UiIcon name="file-code-2" className="size-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold tracking-tight text-foreground">Workspace</span>
-                  {isExecuting ? (
-                    <UiIcon name="loader" className="size-3 animate-spin text-muted-foreground" />
-                  ) : (
-                    savedQueries.length > 0 && (
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {savedQueries.length} saved · {history.length} history
-                      </span>
-                    )
+            <aside className="h-full min-h-0 flex flex-col bg-sidebar">
+              {/* Sidebar Header */}
+              <div className="px-3 pt-3 pb-1 shrink-0">
+                {/* Title Row */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <UiIcon name="file-code-2" className="size-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold tracking-tight text-foreground">Workspace</span>
+                    {isExecuting ? (
+                      <UiIcon name="loader" className="size-3 animate-spin text-muted-foreground" />
+                    ) : (
+                      savedQueries.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {savedQueries.length} saved · {history.length} history
+                        </span>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative">
+                  <UiIcon name="search" className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
+                  <Input
+                    ref={searchInputRef}
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                    placeholder={activeSidebarTab === "items" ? "Filter items..." : "Filter queries..."}
+                    className="h-7 pl-7 pr-7 text-xs bg-muted/40 border-dashed focus:bg-background focus:border-solid"
+                  />
+                  {searchText && (
+                    <button
+                      type="button"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setSearchText("")}
+                    >
+                      <UiIcon name="x" className="size-3" />
+                    </button>
                   )}
                 </div>
               </div>
 
-              {/* Search Bar */}
-              <div className="relative">
-                <UiIcon name="search" className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground pointer-events-none" />
-                <Input
-                  ref={searchInputRef}
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  placeholder={activeSidebarTab === "items" ? "Filter items..." : "Filter queries..."}
-                  className="h-7 pl-7 pr-7 text-xs bg-muted/40 border-dashed focus:bg-background focus:border-solid"
-                />
-                {searchText && (
-                  <button
-                    type="button"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setSearchText("")}
-                  >
-                    <UiIcon name="x" className="size-3" />
-                  </button>
-                )}
-              </div>
-            </div>
+              {/* Tabs */}
+              <Tabs
+                value={activeSidebarTab}
+                onValueChange={(value) =>
+                  setActiveSidebarTab(value as "saved" | "history" | "items")
+                }
+                className="flex-1 min-h-0 flex flex-col"
+              >
+                <TabsList variant="line" className="mx-3 shrink-0">
+                  <TabsTrigger value="items" className="gap-1.5 text-xs">
+                    <UiIcon name="layout-grid" className="size-3" />
+                    Items
+                  </TabsTrigger>
+                  <TabsTrigger value="saved" className="gap-1.5 text-xs">
+                    <UiIcon name="star" className="size-3" />
+                    Saved
+                  </TabsTrigger>
+                  <TabsTrigger value="history" className="gap-1.5 text-xs">
+                    <UiIcon name="clock" className="size-3" />
+                    History
+                  </TabsTrigger>
+                </TabsList>
 
-            {/* Tabs */}
-            <Tabs
-              value={activeSidebarTab}
-              onValueChange={(value) =>
-                setActiveSidebarTab(value as "saved" | "history" | "items")
-              }
-              className="flex-1 min-h-0 flex flex-col"
-            >
-              <TabsList variant="line" className="mx-3 shrink-0">
-                <TabsTrigger value="items" className="gap-1.5 text-xs">
-                  <UiIcon name="layout-grid" className="size-3" />
-                  Items
-                </TabsTrigger>
-                <TabsTrigger value="saved" className="gap-1.5 text-xs">
-                  <UiIcon name="star" className="size-3" />
-                  Saved
-                </TabsTrigger>
-                <TabsTrigger value="history" className="gap-1.5 text-xs">
-                  <UiIcon name="clock" className="size-3" />
-                  History
-                </TabsTrigger>
-              </TabsList>
+                {/* Items */}
+                <TabsContent value="items" className="min-h-0 flex flex-col flex-1">
+                  <ScrollArea className="flex-1 min-h-0">
+                    <div className="px-2 py-1.5">
+                      {filteredItemsTree.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                          <UiIcon name="layout-grid" className="size-4 text-muted-foreground/50 mb-2" />
+                          <p className="text-xs text-muted-foreground">
+                            {searchText ? "No matches found" : "No items available"}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {filteredItemsTree.map((schema) => {
+                            const isSchemaExpanded = expandedSchemas[schema.name] ?? true;
+                            return (
+                              <div key={schema.name} className="rounded-md">
+                                <button
+                                  type="button"
+                                  className="group w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-left hover:bg-muted/50 transition-colors"
+                                  onClick={() => toggleSchemaExpanded(schema.name)}
+                                >
+                                  <UiIcon
+                                    name="chevron-right"
+                                    className={cn(
+                                      "size-3 text-muted-foreground transition-transform",
+                                      isSchemaExpanded && "rotate-90",
+                                    )}
+                                  />
+                                  <UiIcon name="database" className="size-3.5 text-muted-foreground" />
+                                  <span className="flex-1 truncate text-[13px] font-medium leading-tight">
+                                    {schema.name}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                                    {schema.tables.length}
+                                  </span>
+                                </button>
 
-              {/* Items */}
-              <TabsContent value="items" className="min-h-0 flex flex-col flex-1">
-                <ScrollArea className="flex-1 min-h-0">
-                  <div className="px-2 py-1.5">
-                    {filteredItemsTree.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <UiIcon name="layout-grid" className="size-4 text-muted-foreground/50 mb-2" />
-                        <p className="text-xs text-muted-foreground">
-                          {searchText ? "No matches found" : "No items available"}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {filteredItemsTree.map((schema) => {
-                          const isSchemaExpanded = expandedSchemas[schema.name] ?? true;
-                          return (
-                            <div key={schema.name} className="rounded-md">
-                              <button
-                                type="button"
-                                className="group w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-left hover:bg-muted/50 transition-colors"
-                                onClick={() => toggleSchemaExpanded(schema.name)}
-                              >
-                                <UiIcon
-                                  name="chevron-right"
-                                  className={cn(
-                                    "size-3 text-muted-foreground transition-transform",
-                                    isSchemaExpanded && "rotate-90",
-                                  )}
-                                />
-                                <UiIcon name="database" className="size-3.5 text-muted-foreground" />
-                                <span className="flex-1 truncate text-[13px] font-medium leading-tight">
-                                  {schema.name}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground tabular-nums">
-                                  {schema.tables.length}
-                                </span>
-                              </button>
-
-                              {isSchemaExpanded && (
-                                <div className="ml-4 mt-0.5 space-y-0.5">
-                                  {schema.tables.map((table) => {
-                                    const tableKey = `${schema.name}.${table.name}`;
-                                    const isTableExpanded = expandedTables[tableKey] ?? true;
-                                    return (
-                                      <div key={tableKey} className="rounded-md">
-                                        <div className="flex items-center gap-1">
-                                          <button
-                                            type="button"
-                                            className="group w-full flex items-center gap-2 px-2.5 py-[6px] rounded-md text-left hover:bg-muted/40 transition-colors"
-                                            onClick={() => toggleTableExpanded(tableKey)}
-                                          >
-                                            <UiIcon
-                                              name="chevron-right"
-                                              className={cn(
-                                                "size-3 text-muted-foreground transition-transform",
-                                                isTableExpanded && "rotate-90",
-                                              )}
-                                            />
-                                            <UiIcon name="table" className="size-3.5 text-muted-foreground" />
-                                            <span className="flex-1 truncate text-[12px] font-medium">
-                                              {table.name}
-                                            </span>
-                                            <span className="text-[10px] text-muted-foreground tabular-nums">
-                                              {table.columns.length}
-                                            </span>
-                                          </button>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon-xs"
-                                            className="mr-1 text-muted-foreground hover:text-foreground"
-                                            onClick={() => handleInsertTableFromItems(schema.name, table.name)}
-                                            draggable
-                                            onDragStart={(event) => {
-                                              event.dataTransfer.setData("text/sql-table-ref", `${schema.name}.${table.name}`);
-                                              event.dataTransfer.effectAllowed = "copy";
-                                            }}
-                                          >
-                                            <UiIcon name="plus" className="size-3" />
-                                          </Button>
-                                        </div>
-
-                                        {isTableExpanded && (
-                                          <div className="ml-6 space-y-0.5">
-                                            {table.columns.map((column) => (
-                                              <button
-                                                key={`${tableKey}.${column.name}`}
-                                                type="button"
+                                {isSchemaExpanded && (
+                                  <div className="ml-4 mt-0.5 space-y-0.5">
+                                    {schema.tables.map((table) => {
+                                      const tableKey = `${schema.name}.${table.name}`;
+                                      const isTableExpanded = expandedTables[tableKey] ?? true;
+                                      return (
+                                        <div key={tableKey} className="rounded-md">
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              className="group w-full flex items-center gap-2 px-2.5 py-[6px] rounded-md text-left hover:bg-muted/40 transition-colors"
+                                              onClick={() => toggleTableExpanded(tableKey)}
+                                            >
+                                              <UiIcon
+                                                name="chevron-right"
                                                 className={cn(
-                                                  "group w-full flex items-center gap-2 px-2.5 py-[5px] rounded-md text-left transition-colors",
-                                                  selectedColumns.includes(makeQualifiedColumnRef(schema.name, table.name, column.name))
-                                                    ? "bg-accent text-accent-foreground"
-                                                    : "hover:bg-muted/30",
+                                                  "size-3 text-muted-foreground transition-transform",
+                                                  isTableExpanded && "rotate-90",
                                                 )}
-                                                onClick={(event) => {
-                                                  const qualified = makeQualifiedColumnRef(schema.name, table.name, column.name);
-                                                  if (event.shiftKey && lastSelectedColumn) {
-                                                    selectRangeInTable(schema.name, table.name, table.columns, lastSelectedColumn, qualified);
-                                                    return;
-                                                  }
-                                                  if (event.metaKey || event.ctrlKey) {
-                                                    toggleColumnSelection(qualified);
-                                                    return;
-                                                  }
-                                                  setSelectedColumns([qualified]);
-                                                  setLastSelectedColumn(qualified);
-                                                }}
-                                                draggable
-                                                onDragStart={(event) => {
-                                                  const qualified = makeQualifiedColumnRef(schema.name, table.name, column.name);
-                                                  const fromSameTable = selectedColumns.filter((selected) =>
-                                                    selected.startsWith(`${schema.name}.${table.name}.`),
-                                                  );
-                                                  const dragColumns = fromSameTable.includes(qualified)
-                                                    ? fromSameTable
-                                                    : [qualified];
-                                                  event.dataTransfer.setData("text/sql-column-ref", dragColumns[0] ?? qualified);
-                                                  event.dataTransfer.setData("text/sql-column-refs", JSON.stringify(dragColumns));
-                                                  event.dataTransfer.setData("text/plain", dragColumns.join(", "));
-                                                  event.dataTransfer.effectAllowed = "copy";
-                                                  setMultiItemDragPreview(event, dragColumns);
-                                                }}
-                                              >
-                                                <UiIcon name="key" className="size-3 text-muted-foreground/70" />
-                                                <span className="flex-1 truncate text-[11px] font-mono">
-                                                  {column.name}
-                                                </span>
-                                                <span className="truncate text-[10px] text-muted-foreground/70 max-w-24">
-                                                  {column.dataType}
-                                                </span>
-                                              </button>
-                                            ))}
+                                              />
+                                              <UiIcon name="table" className="size-3.5 text-muted-foreground" />
+                                              <span className="flex-1 truncate text-[12px] font-medium">
+                                                {table.name}
+                                              </span>
+                                              <span className="text-[10px] text-muted-foreground tabular-nums">
+                                                {table.columns.length}
+                                              </span>
+                                            </button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon-xs"
+                                              className="mr-1 text-muted-foreground hover:text-foreground"
+                                              onClick={() => handleInsertTableFromItems(schema.name, table.name)}
+                                              draggable
+                                              onDragStart={(event) => {
+                                                event.dataTransfer.setData("text/sql-table-ref", `${schema.name}.${table.name}`);
+                                                event.dataTransfer.effectAllowed = "copy";
+                                              }}
+                                            >
+                                              <UiIcon name="plus" className="size-3" />
+                                            </Button>
                                           </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+
+                                          {isTableExpanded && (
+                                            <div className="ml-6 space-y-0.5">
+                                              {table.columns.map((column) => (
+                                                <button
+                                                  key={`${tableKey}.${column.name}`}
+                                                  type="button"
+                                                  className={cn(
+                                                    "group w-full flex items-center gap-2 px-2.5 py-[5px] rounded-md text-left transition-colors",
+                                                    selectedColumns.includes(makeQualifiedColumnRef(schema.name, table.name, column.name))
+                                                      ? "bg-accent text-accent-foreground"
+                                                      : "hover:bg-muted/30",
+                                                  )}
+                                                  onClick={(event) => {
+                                                    const qualified = makeQualifiedColumnRef(schema.name, table.name, column.name);
+                                                    if (event.shiftKey && lastSelectedColumn) {
+                                                      selectRangeInTable(schema.name, table.name, table.columns, lastSelectedColumn, qualified);
+                                                      return;
+                                                    }
+                                                    if (event.metaKey || event.ctrlKey) {
+                                                      toggleColumnSelection(qualified);
+                                                      return;
+                                                    }
+                                                    setSelectedColumns([qualified]);
+                                                    setLastSelectedColumn(qualified);
+                                                  }}
+                                                  draggable
+                                                  onDragStart={(event) => {
+                                                    const qualified = makeQualifiedColumnRef(schema.name, table.name, column.name);
+                                                    const fromSameTable = selectedColumns.filter((selected) =>
+                                                      selected.startsWith(`${schema.name}.${table.name}.`),
+                                                    );
+                                                    const dragColumns = fromSameTable.includes(qualified)
+                                                      ? fromSameTable
+                                                      : [qualified];
+                                                    event.dataTransfer.setData("text/sql-column-ref", dragColumns[0] ?? qualified);
+                                                    event.dataTransfer.setData("text/sql-column-refs", JSON.stringify(dragColumns));
+                                                    event.dataTransfer.setData("text/plain", dragColumns.join(", "));
+                                                    event.dataTransfer.effectAllowed = "copy";
+                                                    setMultiItemDragPreview(event, dragColumns);
+                                                  }}
+                                                >
+                                                  <UiIcon name="key" className="size-3 text-muted-foreground/70" />
+                                                  <span className="flex-1 truncate text-[11px] font-mono">
+                                                    {column.name}
+                                                  </span>
+                                                  <span className="truncate text-[10px] text-muted-foreground/70 max-w-24">
+                                                    {column.dataType}
+                                                  </span>
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                {/* Saved queries */}
+                <TabsContent value="saved" className="min-h-0 flex flex-col flex-1">
+                  <ScrollArea className="flex-1 min-h-0">
+                    <div className="px-2 py-1.5">
+                      <div className="space-y-0.5">
+                        {filteredSaved.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="group/saved rounded-md px-2.5 py-[7px] hover:bg-muted/50 transition-colors relative"
+                          >
+                            <button
+                              type="button"
+                              className="w-full text-left pr-12"
+                              onClick={() => hydrateFromSaved(entry)}
+                            >
+                              <p className="text-[13px] font-medium truncate leading-tight">
+                                {entry.title}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground truncate font-mono leading-4 mt-0.5">
+                                {previewSql(entry.sql)}
+                              </p>
+                            </button>
+                            {/* Hover-reveal actions */}
+                            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/saved:opacity-100 transition-opacity">
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      onClick={() => {
+                                        const next = window.prompt(
+                                          "Rename query",
+                                          entry.title,
+                                        );
+                                        if (next?.trim()) {
+                                          void renameQuery(entry.id, next.trim());
+                                        }
+                                      }}
+                                      className="text-muted-foreground hover:text-foreground"
+                                    >
+                                      <UiIcon name="pencil" className="size-3" />
+                                    </Button>
+                                  }
+                                />
+                                <TooltipContent>Rename query</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      onClick={() => void deleteQuery(entry.id)}
+                                      className="text-muted-foreground hover:text-destructive"
+                                    >
+                                      <UiIcon name="trash" className="size-3" />
+                                    </Button>
+                                  }
+                                />
+                                <TooltipContent>Delete query</TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {filteredSaved.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                          <UiIcon name="star" className="size-4 text-muted-foreground/50 mb-2" />
+                          <p className="text-xs text-muted-foreground">
+                            {searchText ? "No matches found" : "No saved queries"}
+                          </p>
+                          {searchText && (
+                            <p className="text-[11px] text-muted-foreground/60 mt-1">
+                              Press ⌘S to save queries
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                {/* History */}
+                <TabsContent
+                  value="history"
+                  className="min-h-0 flex flex-col flex-1"
+                >
+                  <ScrollArea className="flex-1 min-h-0">
+                    <div className="px-2 py-1.5">
+                      <div className="space-y-0.5">
+                        {filteredHistory.map((entry) => (
+                          <button
+                            key={entry.id}
+                            type="button"
+                            className="group/history w-full flex items-start gap-2.5 px-2.5 py-[7px] rounded-md text-left hover:bg-muted/50 transition-colors"
+                            onClick={() => hydrateFromHistory(entry)}
+                          >
+                            {/* Status indicator */}
+                            <span
+                              className={cn(
+                                "mt-1 inline-block size-1.5 rounded-full shrink-0",
+                                entry.status === "success" ? "bg-emerald-500" : "bg-destructive/60"
+                              )}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-medium truncate leading-tight">
+                                {entry.sqlPreview}
+                              </p>
+
+                              {/* Meta row */}
+                              <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
+                                <span>{formatDuration(entry.durationMs)}</span>
+                                <span className="opacity-30">·</span>
+                                <span>{entry.rowCount} rows</span>
+                                <span className="opacity-30">·</span>
+                                <span>{new Date(entry.createdAt).toLocaleTimeString()}</span>
+                              </div>
+
+                              {/* Error message */}
+                              {entry.status === "error" && entry.errorMessage && (
+                                <p className="text-[10px] text-destructive/60 mt-0.5 truncate">
+                                  {entry.errorMessage}
+                                </p>
                               )}
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-
-              {/* Saved queries */}
-              <TabsContent value="saved" className="min-h-0 flex flex-col flex-1">
-                <ScrollArea className="flex-1 min-h-0">
-                  <div className="px-2 py-1.5">
-                    <div className="space-y-0.5">
-                      {filteredSaved.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className="group/saved rounded-md px-2.5 py-[7px] hover:bg-muted/50 transition-colors relative"
-                        >
-                          <button
-                            type="button"
-                            className="w-full text-left pr-12"
-                            onClick={() => hydrateFromSaved(entry)}
-                          >
-                            <p className="text-[13px] font-medium truncate leading-tight">
-                              {entry.title}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground truncate font-mono leading-4 mt-0.5">
-                              {previewSql(entry.sql)}
-                            </p>
                           </button>
-                          {/* Hover-reveal actions */}
-                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/saved:opacity-100 transition-opacity">
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => {
-                                      const next = window.prompt(
-                                        "Rename query",
-                                        entry.title,
-                                      );
-                                      if (next?.trim()) {
-                                        void renameQuery(entry.id, next.trim());
-                                      }
-                                    }}
-                                    className="text-muted-foreground hover:text-foreground"
-                                  >
-                                    <UiIcon name="pencil" className="size-3" />
-                                  </Button>
-                                }
-                              />
-                              <TooltipContent>Rename query</TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    onClick={() => void deleteQuery(entry.id)}
-                                    className="text-muted-foreground hover:text-destructive"
-                                  >
-                                    <UiIcon name="trash" className="size-3" />
-                                  </Button>
-                                }
-                              />
-                              <TooltipContent>Delete query</TooltipContent>
-                            </Tooltip>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {filteredSaved.length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <UiIcon name="star" className="size-4 text-muted-foreground/50 mb-2" />
-                        <p className="text-xs text-muted-foreground">
-                          {searchText ? "No matches found" : "No saved queries"}
-                        </p>
-                        {searchText && (
-                          <p className="text-[11px] text-muted-foreground/60 mt-1">
-                            Press ⌘S to save queries
-                          </p>
-                        )}
+                        ))}
                       </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
 
-              {/* History */}
-              <TabsContent
-                value="history"
-                className="min-h-0 flex flex-col flex-1"
-              >
-                <ScrollArea className="flex-1 min-h-0">
-                  <div className="px-2 py-1.5">
-                    <div className="space-y-0.5">
-                      {filteredHistory.map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          className="group/history w-full flex items-start gap-2.5 px-2.5 py-[7px] rounded-md text-left hover:bg-muted/50 transition-colors"
-                          onClick={() => hydrateFromHistory(entry)}
-                        >
-                          {/* Status indicator */}
-                          <span
-                            className={cn(
-                              "mt-1 inline-block size-1.5 rounded-full shrink-0",
-                              entry.status === "success" ? "bg-emerald-500" : "bg-destructive/60"
-                            )}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium truncate leading-tight">
-                              {entry.sqlPreview}
+                      {filteredHistory.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                          <UiIcon name="clock" className="size-4 text-muted-foreground/50 mb-2" />
+                          <p className="text-xs text-muted-foreground">
+                            {searchText ? "No matches found" : "No history yet"}
+                          </p>
+                          {searchText && (
+                            <p className="text-[11px] text-muted-foreground/60 mt-1">
+                              Run a query with ⌘⏎
                             </p>
-
-                            {/* Meta row */}
-                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
-                              <span>{formatDuration(entry.durationMs)}</span>
-                              <span className="opacity-30">·</span>
-                              <span>{entry.rowCount} rows</span>
-                              <span className="opacity-30">·</span>
-                              <span>{new Date(entry.createdAt).toLocaleTimeString()}</span>
-                            </div>
-
-                            {/* Error message */}
-                            {entry.status === "error" && entry.errorMessage && (
-                              <p className="text-[10px] text-destructive/60 mt-0.5 truncate">
-                                {entry.errorMessage}
-                              </p>
-                            )}
-                          </div>
-                        </button>
-                      ))}
+                          )}
+                        </div>
+                      )}
                     </div>
-
-                    {filteredHistory.length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <UiIcon name="clock" className="size-4 text-muted-foreground/50 mb-2" />
-                        <p className="text-xs text-muted-foreground">
-                          {searchText ? "No matches found" : "No history yet"}
-                        </p>
-                        {searchText && (
-                          <p className="text-[11px] text-muted-foreground/60 mt-1">
-                            Run a query with ⌘⏎
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-            </Tabs>
-          </aside>
-          </ResizablePanel>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </aside>
+          </Panel>
         )}
-        {showWorkspaceSidebar && <ResizableHandle withHandle />}
-        <ResizablePanel id="sql-editor" className="min-h-0 min-w-0">
+        {showWorkspaceSidebar && <PanelSeparator withHandle />}
+        <Panel className="min-h-0 min-w-0">
           <div className="h-full min-w-0 flex flex-col">
           {/* ── Tab bar ────────────────────────────────────────── */}
           <div className="flex items-end h-[34px] border-b border-border/60 bg-background shrink-0 pl-1">
@@ -1987,13 +1992,8 @@ export function SqlEditor({
             </div>
           </div>
 
-          <ResizablePanelGroup
-            orientation="vertical"
-            className="flex-1 min-h-0"
-            defaultLayout={editorSplitLayout.defaultLayout}
-            onLayoutChanged={editorSplitLayout.onLayoutChanged}
-          >
-            <ResizablePanel id="sql-editor-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
+          <PanelGroup orientation="vertical" className="flex-1 min-h-0">
+            <Panel className="min-h-0">
               <div
                 className="h-full min-h-0 relative"
                 onDragOver={(e) => {
@@ -2195,86 +2195,92 @@ export function SqlEditor({
               )}
               </AnimatePresence>
               </div>
-            </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel id="sql-results-pane" defaultSize="50%" minSize="20%" maxSize="80%" className="min-h-0">
-            <section className="h-full min-h-0 flex flex-col">
-              {(runResultStats.total > 0 || lastResult || lastError) && (
-                <div className="border-b px-3 py-2 shrink-0 flex items-center justify-end gap-3">
-                  {runResultStats.total > 0 && (
-                    <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-                      {runResultStats.total} total · {runResultStats.success} ok · {runResultStats.error} err
-                    </div>
+            </Panel>
+            <PanelSeparator withHandle />
+            <Panel
+              size={resultsSize}
+              minSize="20%"
+              maxSize="80%"
+              onSizeChange={setResultsSize}
+              className="min-h-0"
+            >
+              <section className="h-full min-h-0 flex flex-col">
+                {(runResultStats.total > 0 || lastResult || lastError) && (
+                  <div className="border-b px-3 py-2 shrink-0 flex items-center justify-end gap-3">
+                    {runResultStats.total > 0 && (
+                      <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
+                        {runResultStats.total} total · {runResultStats.success} ok · {runResultStats.error} err
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="min-h-0 overflow-auto px-3 pb-3 pt-2">
+                  {runResults.length > 1 ? (
+                    <Tabs
+                      value={activeRunResult?.id ?? runResults[0]?.id}
+                      onValueChange={setActiveRunResultId}
+                      className="h-full min-h-0 flex flex-col"
+                    >
+                      <ScrollArea className="border-b py-1">
+                        <TabsList variant="line" className="w-max">
+                          {runResults.map((item, index) => (
+                            <TabsTrigger
+                              key={item.id}
+                              value={item.id}
+                              title={item.query}
+                              className={cn(
+                                item.status === "error" && "text-destructive"
+                              )}
+                            >
+                              Result {index + 1}
+                              <span className="ml-1 text-[10px] opacity-70">
+                                · {formatDuration(item.durationMs)}
+                              </span>
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </ScrollArea>
+                      {runResults.map((item) => (
+                        <TabsContent key={item.id} value={item.id} className="min-h-0 overflow-auto pt-3">
+                          <QueryResults
+                            result={item.result}
+                            error={item.error}
+                            durationMs={item.durationMs}
+                            onFixWithAi={(() => {
+                              const error = item.error;
+                              return error
+                                ? () => void handleFixSql(item.query, error)
+                                : undefined;
+                            })()}
+                            isFixingWithAi={isFixingSql}
+                          />
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  ) : (
+                    <QueryResults
+                      result={activeRunResult?.result ?? lastResult}
+                      error={activeRunResult?.error ?? lastError}
+                      durationMs={activeRunResult?.durationMs ?? lastDurationMs}
+                      onFixWithAi={
+                        (activeRunResult?.error ?? lastError)
+                          ? () =>
+                              void handleFixSql(
+                                activeRunResult?.query ?? doc.sql,
+                                activeRunResult?.error ?? lastError ?? undefined,
+                              )
+                          : undefined
+                      }
+                      isFixingWithAi={isFixingSql}
+                    />
                   )}
                 </div>
-              )}
-              <div className="min-h-0 overflow-auto px-3 pb-3 pt-2">
-                {runResults.length > 1 ? (
-                  <Tabs
-                    value={activeRunResult?.id ?? runResults[0]?.id}
-                    onValueChange={setActiveRunResultId}
-                    className="h-full min-h-0 flex flex-col"
-                  >
-                    <ScrollArea className="border-b py-1">
-                      <TabsList variant="line" className="w-max">
-                        {runResults.map((item, index) => (
-                          <TabsTrigger
-                            key={item.id}
-                            value={item.id}
-                            title={item.query}
-                            className={cn(
-                              item.status === "error" && "text-destructive"
-                            )}
-                          >
-                            Result {index + 1}
-                            <span className="ml-1 text-[10px] opacity-70">
-                              · {formatDuration(item.durationMs)}
-                            </span>
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
-                    </ScrollArea>
-                    {runResults.map((item) => (
-                      <TabsContent key={item.id} value={item.id} className="min-h-0 overflow-auto pt-3">
-                        <QueryResults
-                          result={item.result}
-                          error={item.error}
-                          durationMs={item.durationMs}
-                          onFixWithAi={(() => {
-                            const error = item.error;
-                            return error
-                              ? () => void handleFixSql(item.query, error)
-                              : undefined;
-                          })()}
-                          isFixingWithAi={isFixingSql}
-                        />
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                ) : (
-                  <QueryResults
-                    result={activeRunResult?.result ?? lastResult}
-                    error={activeRunResult?.error ?? lastError}
-                    durationMs={activeRunResult?.durationMs ?? lastDurationMs}
-                    onFixWithAi={
-                      (activeRunResult?.error ?? lastError)
-                        ? () =>
-                            void handleFixSql(
-                              activeRunResult?.query ?? doc.sql,
-                              activeRunResult?.error ?? lastError ?? undefined,
-                            )
-                        : undefined
-                    }
-                    isFixingWithAi={isFixingSql}
-                  />
-                )}
-              </div>
-            </section>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+              </section>
+            </Panel>
+          </PanelGroup>
           </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        </Panel>
+      </PanelGroup>
     </section>
   );
 }

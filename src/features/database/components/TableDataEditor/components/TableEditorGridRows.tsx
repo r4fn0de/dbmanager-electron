@@ -143,7 +143,7 @@ export function TableEditorGridRows({
                           title="Expand (open editor)"
                           onClick={(event) => event.stopPropagation()}
                           onMouseDown={(event) => event.stopPropagation()}
-                          className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocusedInsert ? "opacity-100" : ""}`}
+                          className={`absolute right-1 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocusedInsert ? "opacity-100" : ""}`}
                         >
                           <UiIcon name="arrows-maximize" className="h-3 w-3" />
                         </button>
@@ -183,7 +183,7 @@ export function TableEditorGridRows({
             onMouseLeave={scheduleHoverClear}
           >
             <TableCell
-              className={`sticky left-0 z-[1] w-12 min-w-12 border-r border-border px-2 relative ${selectionCellBackground}`}
+              className={`sticky left-0 z-[1] w-12 min-w-12 border-r border-border px-2 ${selectionCellBackground}`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="relative flex items-center justify-center">
@@ -341,7 +341,7 @@ export function TableEditorGridRows({
                             title="Expand (open editor)"
                             onClick={(event) => event.stopPropagation()}
                             onMouseDown={(event) => event.stopPropagation()}
-                            className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocused ? "opacity-100" : ""}`}
+                            className={`absolute right-1 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocused ? "opacity-100" : ""}`}
                           >
                             <UiIcon name="arrows-maximize" className="h-3 w-3" />
                           </button>

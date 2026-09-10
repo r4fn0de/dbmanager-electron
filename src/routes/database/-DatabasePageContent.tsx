@@ -20,12 +20,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  type PanelImperativeHandle,
-  useDefaultLayout,
-} from "@/components/ui/resizable";
+  Panel,
+  PanelGroup,
+  PanelSeparator,
+} from "@/components/ui/motion-panels";
 import {
   Tooltip,
   TooltipContent,
@@ -95,6 +93,11 @@ import {
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { cn } from "@/lib/utils";
 import {
+  percentageToPixels,
+  usePersistedPanelSize,
+} from "@/lib/use-persisted-panel-size";
+import type { Size } from "motion-panels/react";
+import {
   buildTableEditorTab,
   useTableEditorTabsStore,
 } from "@/lib/stores/table-editor-tabs";
@@ -111,13 +114,11 @@ const SECTION_SHORTCUTS: Record<string, SidebarSection> = {
 interface DatabasePageContentProps {
   connectionId: string;
   isActive?: boolean;
-  animateNavOnMount?: boolean;
 }
 
 export function DatabasePageContent({
   connectionId,
   isActive = true,
-  animateNavOnMount = true,
 }: DatabasePageContentProps) {
   const navigate = useNavigate();
   const {
@@ -196,19 +197,20 @@ export function DatabasePageContent({
   }, []);
 
   const isSidebarVisible = true;
-  const sidebarPanelRef = useRef<PanelImperativeHandle>(null);
   const [isNavVisible, setIsNavVisible] = useState(true);
   const [tablesSidebarWidthPx, setTablesSidebarWidthPx] = useState(280);
   const [sqlSidebarWidthPx, setSqlSidebarWidthPx] = useState(280);
-  const tablesSidebarWidthRef = useRef(tablesSidebarWidthPx);
   const tabWidthUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Layout persistence via useDefaultLayout (same pattern as conar)
-  // onLayoutChanged fires AFTER drag ends — no debouncing needed
-  const tablesLayout = useDefaultLayout({
-    id: `db-tables-layout-${connectionId}`,
-    storage: localStorage,
-  });
+  // The tables sidebar keeps its size per connection. motion-panels reports a new
+  // size once a drag or key press lands, so there is nothing to debounce.
+  const [tablesSidebarSize, setTablesSidebarSize] = usePersistedPanelSize(
+    `db-tables-layout-${connectionId}`,
+    "25%",
+    "tables-sidebar",
+  );
+  // Measured so the sidebar's percentage size can be reported to the tab chrome in pixels.
+  const tablesGroupRef = useRef<HTMLDivElement>(null);
 
   const handleBackToConnections = useCallback(() => {
     setIsNavVisible(false);
@@ -224,12 +226,16 @@ export function DatabasePageContent({
     };
   }, []);
 
-  // Width is only updated on layout change (after drag), not per-pixel
-  const handleSidebarResize = useCallback(
-    (panelSize: { asPercentage: number; inPixels: number }) => {
-      tablesSidebarWidthRef.current = panelSize.inPixels;
+  // Reported to the tab chrome once a drag lands, never per pixel.
+  const handleTablesSidebarResize = useCallback(
+    (next: Size) => {
+      setTablesSidebarSize(next);
+      const width = tablesGroupRef.current?.clientWidth ?? 0;
+      if (width > 0) {
+        setTablesSidebarWidthPx(percentageToPixels(next, width));
+      }
     },
-    [],
+    [setTablesSidebarSize],
   );
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -299,12 +305,6 @@ export function DatabasePageContent({
   const isVisualizerSection = activeSection === "visualizer";
   const isDefinitionsSection = activeSection === "definitions";
 
-  // Always expand sidebar when entering tables section
-  useEffect(() => {
-    if (isTablesSection && sidebarPanelRef.current?.isCollapsed()) {
-      sidebarPanelRef.current.expand();
-    }
-  }, [isTablesSection]);
 
   const {
     data: databaseInfo = null,
@@ -1241,7 +1241,7 @@ export function DatabasePageContent({
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 flex bg-transparent">
-        <AnimatePresence initial={animateNavOnMount}>
+        <AnimatePresence initial={false}>
           {isNavVisible && (
             <DatabaseNavSidebar
               connection={connection}
@@ -1262,25 +1262,19 @@ export function DatabasePageContent({
         >
           {/* Main Content Area */}
           <div className="flex-1 min-w-0 flex flex-col min-h-0">
-          <div className={isTablesSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isTablesSection}>
-            <ResizablePanelGroup
-              className="flex-1 min-w-0"
-              defaultLayout={tablesLayout.defaultLayout}
-              onLayoutChanged={(layout) => {
-                tablesLayout.onLayoutChanged(layout);
-                // Update tab chrome width after drag ends (not per-pixel)
-                setTablesSidebarWidthPx(tablesSidebarWidthRef.current);
-              }}
-            >
-              {/* Tables Sidebar — always mounted, collapses to a thin strip for smooth animation */}
-              <ResizablePanel
-                id="tables-sidebar"
-                defaultSize={25}
+          <div
+            ref={tablesGroupRef}
+            className={isTablesSection ? "flex-1 min-h-0" : "hidden"}
+            aria-hidden={!isTablesSection}
+          >
+            <PanelGroup className="h-full min-h-0 min-w-0">
+              {/* Tables Sidebar — always mounted, so its width animates instead of popping */}
+              <Panel
+                size={tablesSidebarSize}
                 minSize="15%"
                 maxSize="25%"
-                panelRef={sidebarPanelRef}
-                onResize={handleSidebarResize}
-                className="min-w-0 relative z-10"
+                onSizeChange={handleTablesSidebarResize}
+                className="min-w-0"
               >
                 <TablesExplorerSidebar
                   tablesBySchema={tablesBySchema}
@@ -1332,12 +1326,12 @@ export function DatabasePageContent({
                     requestSqlInsert(makeTableUpdateTemplateSql(schema, name));
                   }}
                 />
-              </ResizablePanel>
+              </Panel>
 
-              <ResizableHandle withHandle />
+              <PanelSeparator className="z-10" withHandle />
 
               {/* Main Panel */}
-              <ResizablePanel id="tables-main" minSize={30} className="min-w-0 min-h-0 relative z-20 overflow-hidden flex flex-col">
+              <Panel className="min-w-0 min-h-0 overflow-hidden flex flex-col">
                 <div className="border-b px-2 py-1.5 flex items-center gap-1 overflow-x-auto shrink-0">
                   {openTableTabs.map((tab) => {
                     const isActiveTab = tab.key === selectedTableKey;
@@ -1570,8 +1564,8 @@ export function DatabasePageContent({
                     defaultTableName={selectedTableRef?.name ?? ""}
                   />
                 )}
-              </ResizablePanel>
-            </ResizablePanelGroup>
+              </Panel>
+            </PanelGroup>
           </div>
           <div className={isSqlEditorSection ? "flex-1 min-h-0" : "hidden"} aria-hidden={!isSqlEditorSection}>
             <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Icon name="loader" className="h-6 w-6 animate-spin text-muted-foreground" /></div>}>

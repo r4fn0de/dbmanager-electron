@@ -94,7 +94,7 @@ export function DatabaseNavSidebar({
   return (
     <motion.aside
       className="min-h-0 -ml-1 flex flex-col bg-transparent items-center pt-0 pb-0 shrink-0 text-foreground overflow-hidden w-12"
-      initial={{ x: -48, opacity: 0 }}
+      initial={false}
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: -48, opacity: 0 }}
       transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
@@ -130,28 +130,14 @@ export function DatabaseNavSidebar({
       <div className="w-6 h-px bg-border/30 my-1" />
 
       {/* ── Navigation ─────────────────────────────────────── */}
-      <motion.nav
+      <nav
         className="flex flex-col items-center gap-0.5 px-1.5"
-        initial="hidden"
-        animate="visible"
       >
-        {getNavItems(connection.db_type).map(({ section, icon: Icon, label, shortcut }, index) => {
+        {getNavItems(connection.db_type).map(({ section, icon: Icon, label, shortcut }) => {
           const isActive = activeSection === section;
           return (
-            <motion.div
+            <div
               key={section}
-              variants={{
-                hidden: { opacity: 0, scale: 0.9 },
-                visible: {
-                  opacity: 1,
-                  scale: 1,
-                  transition: {
-                    delay: index * 0.05,
-                    duration: 0.2,
-                    ease: [0.23, 1, 0.32, 1],
-                  },
-                },
-              }}
             >
               <Tooltip>
                 <TooltipTrigger
@@ -184,10 +170,10 @@ export function DatabaseNavSidebar({
                   </span>
                 </TooltipContent>
               </Tooltip>
-            </motion.div>
+            </div>
           );
         })}
-      </motion.nav>
+      </nav>
 
       {/* Spacer */}
       <div className="flex-1" />

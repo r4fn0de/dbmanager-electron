@@ -5,39 +5,35 @@ import {
   useParams,
   useNavigate,
 } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
-import { AnimatePresence, motion } from "motion/react";
+import type { Size } from "motion-panels/react";
 import { ThemeProvider, UpdateToastListener } from "@/features/settings";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/TitleBar";
 import { Toaster } from "@/components/ui/sonner";
 import { TabbedConnectionView } from "@/features/database";
 import { AiChatPanel } from "@/features/ai";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  type GroupImperativeHandle,
-  type Layout,
-  type PanelImperativeHandle,
-} from "@/components/ui/resizable";
+import { Panel, PanelGroup } from "@/components/ui/motion-panels";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { useAppearanceStore } from "@/lib/stores/appearance";
 import { ipc } from "@/ipc/manager";
 import { isSettingsTab, useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
 import { useConnectionsList } from "@/features/connection";
 import { useLocalDatabases } from "@/features/localDb";
-import { cn } from "@/lib/utils";
 import type { Connection, DatabaseType } from "@/ipc/db/types";
 import type { ConnectionTab } from "@/lib/stores/connection-tabs";
 import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 
 import "../styles/global.css";
 
-// CSS transition values — runs off main thread (Emil: "CSS animations beat JS under load")
-// Strong ease-out curve for both panels + clip-path reveal
-const AI_PANEL_TRANSITION = "transition-[flex-grow,clip-path] duration-[220ms] ease-[cubic-bezier(0.23,1,0.32,1)]";
+// The AI panel folds to zero width, so its content slides out through the seam.
+// motion-panels owns the fold; these are only the content poses.
+const AI_PANEL_EASE: [number, number, number, number] = [0.23, 1, 0.32, 1];
+const AI_PANEL_OPEN = { opacity: 1, x: 0 };
+const AI_PANEL_CLOSED = { opacity: 0, x: "100%" };
+const AI_PANEL_FADE_IN = { duration: 0.22, ease: AI_PANEL_EASE };
+const AI_PANEL_FADE_OUT = { duration: 0.18, ease: AI_PANEL_EASE };
 
 function isAiChatShortcut(event: KeyboardEvent): boolean {
   if (event.isComposing || event.repeat) return false;
@@ -227,31 +223,11 @@ function Root() {
     [connections, localDbById],
   );
 
-  const panelGroupRef = useRef<GroupImperativeHandle>(null);
-  const aiPanelRef = useRef<PanelImperativeHandle>(null);
-  const aiResizeDraggingRef = useRef(false);
-  const [isAiPanelAnimating, setIsAiPanelAnimating] = useState(false);
-
-  const defaultLayout = useMemo((): Layout => {
-    if (!isAiChatOpen) {
-      return {
-        "root-main": 100,
-        "root-ai-chat": 0,
-      };
-    }
-
-    return {
-      "root-main": 100 - aiPanelSize,
-      "root-ai-chat": aiPanelSize,
-    };
-  }, [isAiChatOpen, aiPanelSize]);
-
-  const stopAiPanelAnimation = useCallback(() => {
-    setIsAiPanelAnimating(false);
-  }, []);
+  // The panel folds to zero on close, so the AI panel needs no imperative handle:
+  // `collapsed` drives the fold and `onSizeChange` reports a drag back in percent.
+  const aiPanelWidth: Size = `${aiPanelSize}%`;
 
   const handleAiChatClose = useCallback(() => {
-    setIsAiPanelAnimating(true);
     setAiChatOpen(false);
   }, [setAiChatOpen]);
 
@@ -259,34 +235,19 @@ function Root() {
     if (isAiChatOpen) {
       handleAiChatClose();
     } else {
-      setIsAiPanelAnimating(true);
       setAiChatOpen(true);
-      aiPanelRef.current?.expand();
     }
   }, [isAiChatOpen, handleAiChatClose, setAiChatOpen]);
 
-  useEffect(() => {
-    return () => {
-      aiResizeDraggingRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const finishResizeDrag = () => {
-      aiResizeDraggingRef.current = false;
-    };
-
-    window.addEventListener("pointerup", finishResizeDrag, true);
-    window.addEventListener("pointercancel", finishResizeDrag, true);
-    window.addEventListener("mouseup", finishResizeDrag, true);
-    window.addEventListener("blur", finishResizeDrag);
-    return () => {
-      window.removeEventListener("pointerup", finishResizeDrag, true);
-      window.removeEventListener("pointercancel", finishResizeDrag, true);
-      window.removeEventListener("mouseup", finishResizeDrag, true);
-      window.removeEventListener("blur", finishResizeDrag);
-    };
-  }, []);
+  // The panel reports a percentage, which is the unit the store persists.
+  const handleAiPanelResize = useCallback(
+    (next: Size) => {
+      setAiPanelSize(
+        typeof next === "number" ? next : Number.parseFloat(next),
+      );
+    },
+    [setAiPanelSize],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -428,97 +389,40 @@ function Root() {
           <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
             <div className="page-frame h-full relative">
               <div className="h-full overflow-hidden rounded-md">
-              <ResizablePanelGroup
-                orientation="horizontal"
-                className="h-full min-h-0"
-                defaultLayout={defaultLayout}
-                groupRef={panelGroupRef}
-                onLayoutChanged={(layout) => {
-                  if (!isAiChatOpen) return;
-                  const next = layout["root-ai-chat"];
-                  if (typeof next === "number" && next > 0) {
-                    setAiPanelSize(next);
-                  }
-                }}
-              >
-                <ResizablePanel id="root-main" className={cn("min-h-0 min-w-0", isAiPanelAnimating && AI_PANEL_TRANSITION)}>
+              <PanelGroup orientation="horizontal" className="h-full min-h-0">
+                <Panel className="min-h-0 min-w-0">
                   {isDatabaseRoute ? <TabbedConnectionView /> : <Outlet />}
-                </ResizablePanel>
+                </Panel>
 
-                <ResizableHandle
-                  onPointerDownCapture={() => {
-                    aiResizeDraggingRef.current = true;
-                    if (isAiPanelAnimating) {
-                      stopAiPanelAnimation();
-                    }
-                  }}
-                  className={cn(
-                    [
-                      // Keep the native separator visually neutral; draw exactly one custom guide line.
-                      "w-0! bg-transparent! hover:bg-transparent! border-0! focus-visible:ring-0! justify-center",
-                      "after:absolute after:inset-y-0 after:left-1/2 after:-translate-x-1/2 after:w-0.75 after:rounded-full after:transition-colors after:duration-150",
-                      "after:bg-transparent data-[separator=active]:after:bg-primary/55",
-                    ].join(" "),
-                    !(isAiChatOpen || isAiPanelAnimating) && "pointer-events-none opacity-0",
-                  )}
-                />
-                <ResizablePanel
-                  id="root-ai-chat"
-                  defaultSize={aiPanelSize}
+                <Panel
+                  size={aiPanelWidth}
                   minSize="15%"
                   maxSize="45%"
-                  collapsible
-                  collapsedSize={0}
-                  panelRef={aiPanelRef}
-                  onResize={(size) => {
-                    if (aiResizeDraggingRef.current && isAiPanelAnimating) {
-                      stopAiPanelAnimation();
-                    }
-
-// Keep collapse explicit (button/shortcut). During drag, force panel back to min width instead of collapsing.
-                    if (aiResizeDraggingRef.current && size.asPercentage === 0) {
-                      aiPanelRef.current?.resize("15%");
-                    }
-                  }}
-                  className={cn("min-h-0 min-w-0 overflow-hidden", isAiPanelAnimating && AI_PANEL_TRANSITION)}
+                  collapsed={!isAiChatOpen}
+                  keepMounted={false}
+                  onSizeChange={handleAiPanelResize}
+                  transition={AI_PANEL_FADE_IN}
+                  animate={{ ...AI_PANEL_OPEN, transition: AI_PANEL_FADE_IN }}
+                  exit={{ ...AI_PANEL_CLOSED, transition: AI_PANEL_FADE_OUT }}
+                  initial={AI_PANEL_CLOSED}
+                  className="min-h-0 min-w-0 overflow-hidden"
                 >
-                  <AnimatePresence
-                    initial={false}
-                    onExitComplete={() => {
-                      // After Motion exit animation finishes, collapse the panel
-                      // via CSS transition on flex-grow — container shrinks smoothly.
-                      aiPanelRef.current?.collapse();
-                      setIsAiPanelAnimating(false);
-                    }}
-                  >
-                    {isAiChatOpen && (
-                      <motion.div
-                        key="ai-panel-wrapper"
-                        className="h-full"
-                        initial={{ x: "100%", opacity: 0 }}
-                        animate={{ x: 0, opacity: 1, transition: { duration: 0.22, ease: [0.23, 1, 0.32, 1] } }}
-                        exit={{ x: "100%", opacity: 0, transition: { duration: 0.18, ease: [0.23, 1, 0.32, 1] } }}
-                      >
-                        <AiChatPanel
-                          key="ai-chat-panel"
-                          connectionId={effectiveContext.connectionId}
-                          connectionLabel={effectiveContext.connectionLabel}
-                          dbType={effectiveContext.dbType}
-                          provider={effectiveContext.provider}
-                          schemaContext={effectiveContext.schemaContext}
-                          connectionInfo={effectiveContext.connectionInfo}
-                          userConnectionsContext={userConnectionsContext}
-                          contextPreview={effectiveContext.contextPreview}
-                          isOpen={isAiChatOpen}
-                          className="-mt-1.5 h-[calc(100%+6px)] pl-0 pr-0"
-                          onClose={handleAiChatClose}
-                          onInsertSql={requestSqlInsertFromChat}
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </ResizablePanel>
-              </ResizablePanelGroup>
+                  <AiChatPanel
+                    className="-mt-1.5 h-[calc(100%+6px)] pl-0 pr-0"
+                    connectionId={effectiveContext.connectionId}
+                    connectionLabel={effectiveContext.connectionLabel}
+                    connectionInfo={effectiveContext.connectionInfo}
+                    contextPreview={effectiveContext.contextPreview}
+                    dbType={effectiveContext.dbType}
+                    isOpen={isAiChatOpen}
+                    onClose={handleAiChatClose}
+                    onInsertSql={requestSqlInsertFromChat}
+                    provider={effectiveContext.provider}
+                    schemaContext={effectiveContext.schemaContext}
+                    userConnectionsContext={userConnectionsContext}
+                  />
+                </Panel>
+              </PanelGroup>
               </div>
             </div>
           </div>
