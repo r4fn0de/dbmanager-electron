@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env tsx
 
 import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";

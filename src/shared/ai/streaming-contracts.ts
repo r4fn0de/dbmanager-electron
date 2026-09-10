@@ -42,6 +42,7 @@ export interface ChatStartInput {
     port: number;
     database: string;
     isLocal?: boolean;
+    branch?: string | null;
   };
   userConnectionsContext?: UserConnectionsContext;
   messages: ModelMessage[];
@@ -174,7 +175,7 @@ type StreamChunkCommon =
 export type AiChatChunkPayload = { chatId: string } & StreamChunkCommon;
 export type AiInlineChunkPayload = { requestId: string } & StreamChunkCommon;
 
-export interface ToolApprovalRequestPayload {
+export interface ToolApprovalRequestPayload extends AiSessionMetadata {
   chatId: string;
   toolCallId: string;
   toolName: string;
@@ -190,6 +191,8 @@ export interface ToolApprovalRequestPayload {
 export interface ToolApprovalResponsePayload {
   chatId: string;
   toolCallId: string;
+  /** Optional for compatibility with older renderer approval responders. */
+  sessionId?: string;
   approved: boolean;
 }
 
