@@ -19,6 +19,11 @@ import {
   aiTableSearch,
   aiAddCustomModel,
   aiRemoveCustomModel,
+  aiAddCustomProvider,
+  aiUpdateCustomProvider,
+  aiRemoveCustomProvider,
+  aiSetCustomProviderApiKey,
+  aiCheckProviderEndpoint,
   aiDetectOllama,
   aiGetPrivacySettings,
   aiUpdatePrivacySettings,
@@ -81,6 +86,12 @@ export const ai = {
   // Custom models
   addCustomModel: aiAddCustomModel,
   removeCustomModel: aiRemoveCustomModel,
+  // Custom providers
+  addCustomProvider: aiAddCustomProvider,
+  updateCustomProvider: aiUpdateCustomProvider,
+  removeCustomProvider: aiRemoveCustomProvider,
+  setCustomProviderApiKey: aiSetCustomProviderApiKey,
+  checkProviderEndpoint: aiCheckProviderEndpoint,
   // Ollama
   detectOllama: aiDetectOllama,
   // Privacy

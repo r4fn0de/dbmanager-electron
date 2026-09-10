@@ -14,6 +14,7 @@ import type {
 import type {
   AiModelEntry,
   AiProviderName,
+  CustomAiProvider,
   PrivacyPreset,
   PrivacySettings,
 } from "@/shared/ai/streaming-contracts";
@@ -48,9 +49,15 @@ function extractAiErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+export interface AiCustomProviderInfo extends CustomAiProvider {
+  hasApiKey: boolean;
+  isLocal: boolean;
+  customModels: AiModelEntry[];
+}
+
 export interface AiProvidersInfo {
   current: {
-    provider: AiProviderName;
+    provider: string;
     model: string;
     openaiCompatibleBaseURL: string;
     ollamaBaseURL: string;
@@ -58,6 +65,7 @@ export interface AiProvidersInfo {
   encryptionAvailable: boolean;
   ollamaDetected: boolean;
   ollamaModels: string[];
+  customProviders: AiCustomProviderInfo[];
   providers: {
     name: AiProviderName;
     label: string;
@@ -162,7 +170,7 @@ export async function getAiSettings(): Promise<AiProvidersInfo> {
 }
 
 export async function updateAiSettings(input: {
-  provider?: AiProviderName;
+  provider?: string;
   model?: string;
   openaiCompatibleBaseURL?: string;
   ollamaBaseURL?: string;
@@ -408,7 +416,7 @@ export async function getAiTableSearchMatches(
 }
 
 export async function addCustomModel(
-  provider: AiProviderName,
+  provider: string,
   modelId: string,
 ): Promise<AiProvidersInfo> {
   try {
@@ -419,7 +427,7 @@ export async function addCustomModel(
 }
 
 export async function removeCustomModel(
-  provider: AiProviderName,
+  provider: string,
   modelId: string,
 ): Promise<AiProvidersInfo> {
   try {
@@ -428,6 +436,71 @@ export async function removeCustomModel(
     throw new Error(
       extractAiErrorMessage(err, "Failed to remove custom model"),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Custom providers — user-saved named endpoints
+// ---------------------------------------------------------------------------
+
+export interface AiCustomProviderInput {
+  label: string;
+  baseURL: string;
+  apiKey?: string;
+  defaultModel?: string;
+}
+
+export async function addCustomProvider(
+  input: AiCustomProviderInput,
+): Promise<AiProvidersInfo> {
+  try {
+    return (await ipc.client.ai.addCustomProvider(input)) as AiProvidersInfo;
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to save custom provider"));
+  }
+}
+
+export async function updateCustomProvider(
+  id: string,
+  patch: { label?: string; baseURL?: string; defaultModel?: string },
+): Promise<AiProvidersInfo> {
+  try {
+    return (await ipc.client.ai.updateCustomProvider({ id, ...patch })) as AiProvidersInfo;
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to update custom provider"));
+  }
+}
+
+export async function removeCustomProvider(id: string): Promise<AiProvidersInfo> {
+  try {
+    return (await ipc.client.ai.removeCustomProvider({ id })) as AiProvidersInfo;
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to remove custom provider"));
+  }
+}
+
+export async function setCustomProviderApiKey(
+  id: string,
+  key: string,
+): Promise<AiProvidersInfo> {
+  try {
+    return (await ipc.client.ai.setCustomProviderApiKey({ id, key })) as AiProvidersInfo;
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to save custom provider key"));
+  }
+}
+
+export interface AiEndpointStatus {
+  reachable: boolean;
+  models: AiModelEntry[];
+  endpoint: "v1/models" | "api/tags" | null;
+}
+
+export async function checkProviderEndpoint(baseURL: string): Promise<AiEndpointStatus> {
+  try {
+    return (await ipc.client.ai.checkProviderEndpoint({ baseURL })) as AiEndpointStatus;
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to check endpoint"));
   }
 }
 

@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import {
@@ -103,6 +103,12 @@ export interface TablesExplorerSidebarProps {
   onInsertTableUpdateTemplate: (target: { schema: string; name: string }) => void;
 }
 
+/** Row height: py-1 (8px) plus the tallest inline control (a size-4 button, 16px). */
+const TABLE_ROW_ESTIMATE = 24;
+
+/** How long the pointer has to rest on a row before that row's queries are prefetched. */
+const PREFETCH_HOVER_DELAY_MS = 150;
+
 export function TablesExplorerSidebar({
   tablesBySchema,
   filteredTables,
@@ -149,9 +155,34 @@ export function TablesExplorerSidebar({
   const rowVirtualizer = useVirtualizer({
     count: filteredTables.length,
     getScrollElement: () => tableListParentRef.current,
-    estimateSize: () => 30,
+    estimateSize: () => TABLE_ROW_ESTIMATE,
     overscan: 6,
   });
+
+  // Prefetching on hover fires two queries per row. Scrolling the list drags the
+  // pointer across every row, so doing it on mouseenter alone storms the connection.
+  // Wait for the pointer to settle, and drop the pending one as soon as it moves on.
+  const prefetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelPrefetch = useCallback(() => {
+    if (prefetchTimeoutRef.current !== null) {
+      clearTimeout(prefetchTimeoutRef.current);
+      prefetchTimeoutRef.current = null;
+    }
+  }, []);
+
+  const schedulePrefetch = useCallback(
+    (schema: string, name: string) => {
+      cancelPrefetch();
+      prefetchTimeoutRef.current = setTimeout(() => {
+        prefetchTimeoutRef.current = null;
+        onPrefetchTable(schema, name);
+      }, PREFETCH_HOVER_DELAY_MS);
+    },
+    [cancelPrefetch, onPrefetchTable],
+  );
+
+  useEffect(() => cancelPrefetch, [cancelPrefetch]);
 
   return (
     <aside
@@ -495,6 +526,8 @@ export function TablesExplorerSidebar({
                 return (
                   <div
                     key={virtualRow.key}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtualRow.index}
                     className="absolute left-0 top-0 w-full px-0"
                     style={{ transform: `translateY(${virtualRow.start}px)` }}
                   >
@@ -520,11 +553,13 @@ export function TablesExplorerSidebar({
                               }
                             }}
                             onMouseEnter={() =>
-                              onPrefetchTable(table.schema, table.name)
+                              schedulePrefetch(table.schema, table.name)
                             }
+                            onMouseLeave={cancelPrefetch}
                             onFocus={() =>
-                              onPrefetchTable(table.schema, table.name)
+                              schedulePrefetch(table.schema, table.name)
                             }
+                            onBlur={cancelPrefetch}
                             className={cn(
                               "group w-full flex items-center gap-2 px-2 py-1 rounded-md text-left transition-colors duration-100",
                               isActive

@@ -16,7 +16,6 @@ import {
 } from "react";
 import { setUnsavedChanges as setWindowUnsavedChanges } from "@/features/shell/actions/window";
 import { Icon as UiIcon } from "@/components/ui/Icon";
-import { CellExpandPopover } from "../CellExpandPopover";
 import { Button } from "@/components/ui/button";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Checkbox } from "@/components/ui/checkbox";

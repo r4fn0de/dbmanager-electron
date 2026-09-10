@@ -1172,7 +1172,12 @@ export function AiChatPanel({
 
   useEffect(() => {
     getAiSettings().then((providersInfo) => {
-      setProviderIsLocal(providersInfo.current.provider === "ollama");
+      const custom = (providersInfo.customProviders ?? []).find(
+        (p) => p.id === providersInfo.current.provider,
+      );
+      setProviderIsLocal(
+        providersInfo.current.provider === "ollama" || (custom?.isLocal ?? false),
+      );
     });
   }, []);
 

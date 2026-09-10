@@ -17,6 +17,11 @@ import {
   getCurrentModel,
   addCustomModel,
   removeCustomModel,
+  addCustomProvider,
+  updateCustomProvider,
+  removeCustomProvider,
+  setCustomProviderApiKey,
+  checkProviderEndpoint,
   detectOllama,
   getPrivacySettings,
   getPrivacyPreset,
@@ -47,7 +52,8 @@ export const aiGetSettings = os.handler(async () => {
 export const aiUpdateSettings = os
   .input(
     z.object({
-      provider: PROVIDER_ENUM.optional(),
+      // Built-in name or `custom:<id>` — validated in config.
+      provider: z.string().optional(),
       model: z.string().optional(),
       openaiCompatibleBaseURL: z.string().optional(),
       ollamaBaseURL: z.string().optional(),
@@ -399,25 +405,125 @@ ${input.tables.join(", ")}${contextSection}`,
 export const aiAddCustomModel = os
   .input(
     z.object({
-      provider: PROVIDER_ENUM,
+      // Built-in name or `custom:<id>` — validated in config.
+      provider: z.string().min(1),
       modelId: z.string().min(1),
     }),
   )
   .handler(async ({ input }) => {
-    addCustomModel(input.provider as AiProviderName, input.modelId);
+    try {
+      addCustomModel(input.provider, input.modelId);
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to add custom model",
+      });
+    }
     return getProvidersInfo();
   });
 
 export const aiRemoveCustomModel = os
   .input(
     z.object({
-      provider: PROVIDER_ENUM,
+      // Built-in name or `custom:<id>` — validated in config.
+      provider: z.string().min(1),
       modelId: z.string().min(1),
     }),
   )
   .handler(async ({ input }) => {
-    removeCustomModel(input.provider as AiProviderName, input.modelId);
+    try {
+      removeCustomModel(input.provider, input.modelId);
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to remove custom model",
+      });
+    }
     return getProvidersInfo();
+  });
+
+// ---------------------------------------------------------------------------
+// Custom providers — user-saved named endpoints
+// ---------------------------------------------------------------------------
+
+const CUSTOM_PROVIDER_INPUT = z.object({
+  label: z.string().min(1).max(60),
+  baseURL: z.string().min(1),
+  apiKey: z.string().optional(),
+  defaultModel: z.string().optional(),
+});
+
+export const aiAddCustomProvider = os
+  .input(CUSTOM_PROVIDER_INPUT)
+  .handler(async ({ input }) => {
+    try {
+      addCustomProvider(input);
+      return getProvidersInfo();
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to save custom provider",
+      });
+    }
+  });
+
+export const aiUpdateCustomProvider = os
+  .input(
+    z.object({
+      id: z.string().min(1),
+      label: z.string().min(1).max(60).optional(),
+      baseURL: z.string().min(1).optional(),
+      defaultModel: z.string().optional(),
+    }),
+  )
+  .handler(async ({ input }) => {
+    try {
+      updateCustomProvider(input);
+      return getProvidersInfo();
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to update custom provider",
+      });
+    }
+  });
+
+export const aiRemoveCustomProvider = os
+  .input(z.object({ id: z.string().min(1) }))
+  .handler(async ({ input }) => {
+    try {
+      removeCustomProvider(input.id);
+      return getProvidersInfo();
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to remove custom provider",
+      });
+    }
+  });
+
+export const aiSetCustomProviderApiKey = os
+  .input(z.object({ id: z.string().min(1), key: z.string() }))
+  .handler(async ({ input }) => {
+    try {
+      setCustomProviderApiKey(input.id, input.key);
+      return getProvidersInfo();
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to save custom provider key",
+      });
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// Endpoint reachability — is a (local) provider running?
+// ---------------------------------------------------------------------------
+
+export const aiCheckProviderEndpoint = os
+  .input(z.object({ baseURL: z.string().min(1) }))
+  .handler(async ({ input }) => {
+    try {
+      return await checkProviderEndpoint(input.baseURL);
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: error instanceof Error ? error.message : "Failed to check endpoint",
+      });
+    }
   });
 
 // ---------------------------------------------------------------------------

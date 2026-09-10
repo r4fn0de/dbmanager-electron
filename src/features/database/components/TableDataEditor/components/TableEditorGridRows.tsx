@@ -47,10 +47,7 @@ export function TableEditorGridRows({
   totalVirtualRows,
 }: TableEditorGridRowsProps) {
   return (
-    <TableBody
-      className="align-top"
-      style={{ contentVisibility: "auto", containIntrinsicSize: "800px" }}
-    >
+    <TableBody className="align-top">
       {topSpacerHeight > 0 && (
         <tr aria-hidden="true" className="border-0">
           <td colSpan={visibleColumns.length + 1} className="border-0 p-0" style={{ height: topSpacerHeight }} />

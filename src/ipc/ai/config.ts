@@ -6,6 +6,7 @@
  * constructors.
  */
 import type { LanguageModel } from "ai";
+import { randomUUID } from "node:crypto";
 import { safeStorage } from "electron";
 import Store from "electron-store";
 import { resolveApiModel } from "@/ipc/ai/adapters/api-provider-adapter";
@@ -17,8 +18,11 @@ import {
 } from "@/ipc/ai/connections-store";
 import { decryptSecret, encryptSecret } from "@/ipc/security/secrets";
 import {
+  CUSTOM_AI_PROVIDER_PREFIX,
   type AiModelEntry,
   type AiProviderName,
+  type CustomAiProvider,
+  isCustomAiProviderId,
   PRIVACY_PRESETS,
   type PrivacyPreset,
   type PrivacySettings,
@@ -52,6 +56,8 @@ export interface AiSettings {
   ollamaModels: string[];
   /** Whether Ollama was detected on last check */
   ollamaDetected: boolean;
+  /** User-saved custom (OpenAI-compatible) provider endpoints */
+  customProviders: CustomAiProvider[];
 }
 
 const defaults: AiSettings = {
@@ -65,6 +71,7 @@ const defaults: AiSettings = {
   privacyPreset: "full",
   ollamaModels: [],
   ollamaDetected: false,
+  customProviders: [],
 };
 
 const store = new Store<AiSettings>({
@@ -116,6 +123,7 @@ function getLegacySettingsSnapshot(): LegacyAiSettings {
     ollamaBaseURL: store.get("ollamaBaseURL", defaults.ollamaBaseURL),
     customModels: store.get("customModels", defaults.customModels),
     ollamaModels: store.get("ollamaModels", defaults.ollamaModels),
+    customProviders: store.get("customProviders", defaults.customProviders),
   };
 }
 
@@ -230,17 +238,53 @@ function isProviderName(value: string): value is AiProviderName {
   return value in PROVIDERS;
 }
 
+/** Built-in or saved-custom provider reference. */
+function isProviderRef(value: string): boolean {
+  if (isProviderName(value)) return true;
+  if (!isCustomAiProviderId(value)) return false;
+  return getCustomProviderDef(value) !== undefined;
+}
+
+function getCustomProviders(): CustomAiProvider[] {
+  const stored = store.get("customProviders", defaults.customProviders);
+  return Array.isArray(stored) ? stored : [];
+}
+
+function getCustomProviderDef(id: string): CustomAiProvider | undefined {
+  return getCustomProviders().find((p) => p.id === id);
+}
+
+/** Hostnames that mean "runs on this machine" (no DNS lookup involved). */
+const LOCAL_HOSTNAMES = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "[::1]",
+]);
+
+/** Whether the base URL points at the local machine. */
+export function isLocalBaseURL(baseURL: string): boolean {
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(baseURL).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function getCustomModels(providerName: string): string[] {
   return store.get("customModels", {})[providerName] ?? [];
 }
 
-function isModelAllowedForProvider(providerName: AiProviderName, modelId: string): boolean {
+function isModelAllowedForProvider(providerRef: string, modelId: string): boolean {
   if (!modelId.trim()) return false;
-  const entry = PROVIDERS[providerName];
+  if (isCustomAiProviderId(providerRef)) return true;
+  if (!isProviderName(providerRef)) return false;
+  const entry = PROVIDERS[providerRef];
   if (entry.allowCustomModel) return true;
-  const custom = getCustomModels(providerName);
+  const custom = getCustomModels(providerRef);
   if (custom.includes(modelId)) return true;
-  return STATIC_MODELS[providerName]?.some((m) => m.id === modelId) ?? false;
+  return STATIC_MODELS[providerRef]?.some((m) => m.id === modelId) ?? false;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +381,165 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
+function normalizeBaseURL(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}
+
+function validateCustomProviderInput(input: {
+  label?: string;
+  baseURL?: string;
+  defaultModel?: string;
+  ignoreId?: string;
+}): { label: string; baseURL: string; defaultModel: string } {
+  const label = (input.label ?? "").trim();
+  if (!label) throw new Error("Custom provider name is required.");
+  if (label.length > 60) {
+    throw new Error("Custom provider name must be 60 characters or less.");
+  }
+  const duplicate = getCustomProviders().some(
+    (p) =>
+      p.id !== input.ignoreId && p.label.toLowerCase() === label.toLowerCase(),
+  );
+  if (duplicate) {
+    throw new Error(`A custom provider named '${label}' already exists.`);
+  }
+  const baseURL = normalizeBaseURL(input.baseURL ?? "");
+  if (!baseURL || !isValidHttpUrl(baseURL)) {
+    throw new Error("Invalid base URL. Use a valid http(s) URL.");
+  }
+  const defaultModel = (input.defaultModel ?? "").trim();
+  return { label, baseURL, defaultModel };
+}
+
+// ---------------------------------------------------------------------------
+// Custom providers — user-saved named OpenAI-compatible endpoints
+// ---------------------------------------------------------------------------
+
+export interface AddCustomProviderInput {
+  label: string;
+  baseURL: string;
+  apiKey?: string;
+  defaultModel?: string;
+}
+
+/** Save a new custom provider endpoint. Returns the saved definition. */
+export function addCustomProvider(input: AddCustomProviderInput): CustomAiProvider {
+  const validated = validateCustomProviderInput(input);
+  const def: CustomAiProvider = {
+    id: `${CUSTOM_AI_PROVIDER_PREFIX}${randomUUID()}`,
+    ...validated,
+  };
+  store.set("customProviders", [...getCustomProviders(), def]);
+  const apiKey = input.apiKey?.trim();
+  if (apiKey) {
+    const apiKeys = getStoredApiKeys();
+    apiKeys[def.id] = apiKey;
+    setStoredApiKeys(apiKeys);
+  }
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
+  return def;
+}
+
+export interface UpdateCustomProviderInput {
+  id: string;
+  label?: string;
+  baseURL?: string;
+  defaultModel?: string;
+}
+
+/** Update a saved custom provider's label, URL or default model. */
+export function updateCustomProvider(input: UpdateCustomProviderInput): CustomAiProvider {
+  const existing = getCustomProviderDef(input.id);
+  if (!existing) throw new Error("Custom provider not found.");
+  const validated = validateCustomProviderInput({
+    label: input.label ?? existing.label,
+    baseURL: input.baseURL ?? existing.baseURL,
+    defaultModel: input.defaultModel ?? existing.defaultModel,
+    ignoreId: input.id,
+  });
+  const next: CustomAiProvider = { id: existing.id, ...validated };
+  store.set(
+    "customProviders",
+    getCustomProviders().map((p) => (p.id === input.id ? next : p)),
+  );
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
+  return next;
+}
+
+/** Remove a saved custom provider (and its key). Falls back to OpenAI if selected. */
+export function removeCustomProvider(id: string): void {
+  const remaining = getCustomProviders().filter((p) => p.id !== id);
+  store.set("customProviders", remaining);
+  const apiKeys = getStoredApiKeys();
+  if (apiKeys[id]) {
+    delete apiKeys[id];
+    setStoredApiKeys(apiKeys);
+  }
+  if (store.get("provider", defaults.provider) === id) {
+    store.set("provider", "openai");
+    store.set("model", PROVIDERS.openai.defaultModel);
+  }
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
+}
+
+/** Set (or clear) the API key for a saved custom provider. */
+export function setCustomProviderApiKey(id: string, key: string): void {
+  if (!getCustomProviderDef(id)) throw new Error("Custom provider not found.");
+  const apiKeys = getStoredApiKeys();
+  if (key.trim()) apiKeys[id] = key.trim();
+  else delete apiKeys[id];
+  setStoredApiKeys(apiKeys);
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint reachability — "is the local provider running?"
+// ---------------------------------------------------------------------------
+
+export interface ProviderEndpointStatus {
+  reachable: boolean;
+  models: AiModelEntry[];
+  /** Which probe answered: the OpenAI-style list or Ollama's tags API */
+  endpoint: "v1/models" | "api/tags" | null;
+}
+
+/**
+ * Probe an OpenAI-compatible (or Ollama) base URL to check whether anything
+ * is listening. Tries `/v1/models` first, then Ollama's `/api/tags`.
+ */
+export async function checkProviderEndpoint(
+  baseURL: string,
+  timeoutMs = 2500,
+): Promise<ProviderEndpointStatus> {
+  const base = normalizeBaseURL(baseURL);
+  if (!base || !isValidHttpUrl(base)) {
+    throw new Error("Invalid base URL. Use a valid http(s) URL.");
+  }
+  const withoutV1Suffix = base.replace(/\/v1$/, "");
+  const probes: Array<{ endpoint: ProviderEndpointStatus["endpoint"]; url: string }> = [
+    { endpoint: "v1/models", url: `${withoutV1Suffix}/v1/models` },
+    { endpoint: "api/tags", url: `${withoutV1Suffix}/api/tags` },
+  ];
+  for (const probe of probes) {
+    try {
+      const res = await fetchWithError(timeoutMs, probe.url);
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        data?: Array<{ id: string }>;
+        models?: Array<{ name: string }>;
+      };
+      const models: AiModelEntry[] = [
+        ...(data.data ?? []).map((m) => ({ id: m.id, label: m.id })),
+        ...(data.models ?? []).map((m) => ({ id: m.name, label: m.name })),
+      ];
+      return { reachable: true, models, endpoint: probe.endpoint };
+    } catch {
+      // try the next probe
+    }
+  }
+  return { reachable: false, models: [], endpoint: null };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -355,6 +558,7 @@ export function getAiSettings(): AiSettings {
     privacyPreset: store.get("privacyPreset", defaults.privacyPreset),
     ollamaModels: store.get("ollamaModels", defaults.ollamaModels),
     ollamaDetected: store.get("ollamaDetected", defaults.ollamaDetected),
+    customProviders: store.get("customProviders", defaults.customProviders),
   };
 }
 
@@ -363,7 +567,7 @@ export function updateAiSettings(input: Partial<AiSettings>): AiSettings {
   const current = getAiSettings();
   const nextProviderRaw = input.provider ?? current.provider;
 
-  if (!isProviderName(nextProviderRaw)) {
+  if (!isProviderRef(nextProviderRaw)) {
     throw new Error(`Invalid AI provider '${nextProviderRaw}'.`);
   }
 
@@ -376,9 +580,16 @@ export function updateAiSettings(input: Partial<AiSettings>): AiSettings {
     );
   }
 
-  const nextProvider: AiProviderName = nextProviderRaw;
+  const nextProvider: string = nextProviderRaw;
+  const defaultModelFor = (ref: string): string => {
+    const custom = isCustomAiProviderId(ref)
+      ? getCustomProviderDef(ref)
+      : undefined;
+    if (custom) return custom.defaultModel;
+    return isProviderName(ref) ? PROVIDERS[ref].defaultModel : "";
+  };
   const nextModel = input.model
-    ?? (input.provider ? PROVIDERS[nextProvider].defaultModel : current.model);
+    ?? (input.provider ? defaultModelFor(nextProvider) : current.model);
 
   if (nextModel && !isModelAllowedForProvider(nextProvider, nextModel)) {
     throw new Error(
@@ -420,11 +631,14 @@ export function getApiKey(provider: AiProviderName): string {
 
 /** Add a custom model ID for a provider (persists across restarts) */
 export function addCustomModel(
-  provider: AiProviderName,
+  provider: string,
   modelId: string,
 ): void {
   const id = modelId.trim();
   if (!id) return;
+  if (!isProviderRef(provider)) {
+    throw new Error(`Invalid AI provider '${provider}'.`);
+  }
   const all = store.get("customModels", {});
   const list: string[] = all[provider] ?? [];
   if (!list.includes(id)) {
@@ -437,9 +651,12 @@ export function addCustomModel(
 
 /** Remove a custom model ID for a provider */
 export function removeCustomModel(
-  provider: AiProviderName,
+  provider: string,
   modelId: string,
 ): void {
+  if (!isProviderRef(provider)) {
+    throw new Error(`Invalid AI provider '${provider}'.`);
+  }
   const all = store.get("customModels", {});
   const list: string[] = all[provider] ?? [];
   const filtered = list.filter((m) => m !== modelId);
@@ -485,6 +702,12 @@ export function isAiConfigured(): boolean {
   ) {
     return true;
   }
+  const selectedCustom = isCustomAiProviderId(settings.provider)
+    ? getCustomProviderDef(settings.provider)
+    : undefined;
+  if (selectedCustom && selectedCustom.baseURL.trim().length > 0) {
+    return true;
+  }
   return Object.values(apiKeys).some((k) => k && k.trim().length > 0);
 }
 
@@ -493,7 +716,7 @@ export function getProvidersInfo() {
   const settings = getAiSettings();
   return {
     current: {
-      provider: settings.provider as AiProviderName,
+      provider: settings.provider,
       model: settings.model,
       openaiCompatibleBaseURL: settings.openaiCompatibleBaseURL,
       ollamaBaseURL: settings.ollamaBaseURL,
@@ -501,6 +724,19 @@ export function getProvidersInfo() {
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
     ollamaDetected: settings.ollamaDetected,
     ollamaModels: settings.ollamaModels,
+    customProviders: settings.customProviders.map((custom) => {
+      const addedModels = (settings.customModels[custom.id] ?? []).map((id) => ({
+        id,
+        label: id,
+        isCustom: true,
+      }));
+      return {
+        ...custom,
+        hasApiKey: !!(settings.apiKeys[custom.id]?.trim()),
+        isLocal: isLocalBaseURL(custom.baseURL),
+        customModels: addedModels satisfies AiModelEntry[],
+      };
+    }),
     providers: Object.entries(PROVIDERS).map(([name, entry]) => {
       const custom = settings.customModels[name] ?? [];
       const customModelEntries: AiModelEntry[] = custom.map((id) => ({
@@ -535,28 +771,18 @@ export async function detectOllama(): Promise<{
 }> {
   const settings = getAiSettings();
   const baseURL = settings.ollamaBaseURL?.trim()
-    ? `${settings.ollamaBaseURL.replace(/\/v1$/, "")}`
+    ? settings.ollamaBaseURL.replace(/\/v1$/, "")
     : OLLAMA_BASE_URL;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-
-    const response = await fetch(`${baseURL}/api/tags`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
+    const status = await checkProviderEndpoint(baseURL, 2000);
+    if (!status.reachable) {
       store.set("ollamaDetected", false);
       store.set("ollamaModels", []);
       syncLegacyAiSettings(getLegacySettingsSnapshot());
       return { detected: false, models: [] };
     }
 
-    const data = (await response.json()) as {
-      models?: Array<{ name: string }>;
-    };
-    const models = (data.models ?? []).map((m) => m.name);
+    const models = status.models.map((m) => m.id);
 
     store.set("ollamaDetected", true);
     store.set("ollamaModels", models);

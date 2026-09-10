@@ -20,6 +20,10 @@ import {
   aiModelSchema,
   workspacePathSchema,
 } from "@/shared/ai/connection-contracts";
+import {
+  type CustomAiProvider,
+  isCustomAiProviderId,
+} from "@/shared/ai/streaming-contracts";
 
 export const DEFAULT_AI_CONNECTION_ID = "default";
 const CONNECTIONS_STORAGE_VERSION = 1;
@@ -38,6 +42,7 @@ export interface LegacyAiSettings {
   ollamaModels?: string[];
   openaiCompatibleBaseURL: string;
   provider: string;
+  customProviders?: CustomAiProvider[];
 }
 
 export interface CreateAiConnectionInput {
@@ -390,12 +395,25 @@ function getLegacyProvider(legacy: LegacyAiSettings): AiApiProvider {
   return parsed.success ? parsed.data : "openai";
 }
 
+/** Saved custom provider selected in legacy settings, if any. */
+function getLegacyCustomDef(legacy: LegacyAiSettings): CustomAiProvider | undefined {
+  if (!isCustomAiProviderId(legacy.provider)) return undefined;
+  return legacy.customProviders?.find((p) => p.id === legacy.provider);
+}
+
+/** API key for the legacy default profile (custom ids keyed by full id). */
+function getLegacyApiKey(legacy: LegacyAiSettings): string {
+  return legacy.apiKeys[legacy.provider] ?? "";
+}
+
 function getLegacyModels(
   legacy: LegacyAiSettings,
   provider: AiApiProvider
 ): AiModel[] {
+  const custom = getLegacyCustomDef(legacy);
   const ids = [
     ...(legacy.customModels[provider] ?? []),
+    ...(custom ? (legacy.customModels[custom.id] ?? []) : []),
     ...(provider === "ollama" ? (legacy.ollamaModels ?? []) : []),
   ];
   const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
@@ -406,6 +424,15 @@ function getLegacyModels(
     isCustom: true,
     isFavorite: false,
   }));
+}
+
+function getCustomBaseUrl(custom: CustomAiProvider): string | undefined {
+  try {
+    return validateBaseUrl(custom.baseURL);
+  } catch {
+    // Keep an invalid custom URL readable without blocking the migration.
+    return undefined;
+  }
 }
 
 function getLegacyBaseUrl(
@@ -428,9 +455,12 @@ function createLegacyDefaultProfile(
   legacy: LegacyAiSettings,
   apiKey = ""
 ): StoredAiConnection {
-  const provider = getLegacyProvider(legacy);
-  const modelId = legacy.model.trim() || undefined;
-  const baseUrl = getLegacyBaseUrl(legacy, provider);
+  const custom = getLegacyCustomDef(legacy);
+  const provider = custom ? "openai-compatible" : getLegacyProvider(legacy);
+  const modelId = legacy.model.trim() || custom?.defaultModel || undefined;
+  const baseUrl = custom
+    ? getCustomBaseUrl(custom)
+    : getLegacyBaseUrl(legacy, provider);
   const models = addDefaultModel(
     normalizeModels(getLegacyModels(legacy, provider)),
     modelId
@@ -462,6 +492,18 @@ function writeLegacySecrets(legacy: LegacyAiSettings): void {
       );
     }
   }
+  // A selected custom provider stores its key under the full custom id;
+  // the default profile uses it as its openai-compatible credential.
+  const custom = getLegacyCustomDef(legacy);
+  const customKey = custom ? (legacy.apiKeys[custom.id] ?? "") : "";
+  if (customKey) {
+    setConnectionApiKeyInternal(
+      DEFAULT_AI_CONNECTION_ID,
+      "openai-compatible",
+      customKey,
+      false
+    );
+  }
 }
 
 /**
@@ -481,7 +523,7 @@ export function migrateLegacyAiSettings(
     if (!defaultConnection) {
       defaultConnection = createLegacyDefaultProfile(
         legacy,
-        legacy.apiKeys[getLegacyProvider(legacy)] ?? ""
+        getLegacyApiKey(legacy)
       );
       data.connections.push(defaultConnection);
     }
@@ -521,8 +563,7 @@ export function syncLegacyAiSettings(legacy: LegacyAiSettings): void {
     return;
   }
 
-  const provider = getLegacyProvider(legacy);
-  const apiKey = legacy.apiKeys[provider] ?? "";
+  const apiKey = getLegacyApiKey(legacy);
   const next = createLegacyDefaultProfile(legacy, apiKey);
   next.permissionPolicy = data.connections[defaultIndex].permissionPolicy;
   data.connections[defaultIndex] = next;

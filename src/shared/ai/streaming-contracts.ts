@@ -234,3 +234,19 @@ export interface AiModelEntry {
   /** Whether this model was added by the user (custom) */
   isCustom?: boolean;
 }
+
+/** Prefix for user-saved custom provider IDs (`custom:<uuid>`). */
+export const CUSTOM_AI_PROVIDER_PREFIX = "custom:";
+
+/** A user-saved custom (OpenAI-compatible) AI provider endpoint. No secrets. */
+export interface CustomAiProvider {
+  id: string;
+  label: string;
+  baseURL: string;
+  defaultModel: string;
+}
+
+/** Whether the provider id refers to a user-saved custom provider. */
+export function isCustomAiProviderId(providerId: string): boolean {
+  return providerId.startsWith(CUSTOM_AI_PROVIDER_PREFIX);
+}
