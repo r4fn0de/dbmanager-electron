@@ -1,13 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ChevronLeft, Key } from "lucide-react";
 import { Braces } from "@/components/icons/Braces";
 import { Database } from "@/components/icons/Database";
 import { Table } from "@/components/icons/Table";
-import { Terminal } from "@/components/icons/Terminal";
 import { Branch } from "@/components/icons/Branch";
-import { Refresh } from "@/components/icons/Refresh";
-import { Copy } from "@/components/icons/Copy";
 import { PostgreSql } from "@/components/icons/PostgreSql";
 import { Sqlite } from "@/components/icons/Sqlite";
 import { Neon } from "@/components/icons/Neon";
@@ -16,6 +12,7 @@ import { MySql } from "@/components/icons/MySql";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { Redis } from "@/components/icons/Redis";
 import { Kbd } from "@/components/ui/kbd";
+import { ReIcon } from "@/components/ui/ReIcon";
 import {
   Tooltip,
   TooltipContent,
@@ -24,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ConnectionProvider, SidebarSection } from "@/lib/stores/connection-tabs";
 import type { Connection } from "@/ipc/db/types";
+import { Grid8 } from "reicon-react";
 
 interface DatabaseNavSidebarProps {
   connection: Connection;
@@ -39,23 +37,75 @@ interface DatabaseNavSidebarProps {
 
 type NavItem = {
   section: SidebarSection;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: (className: string) => React.ReactNode;
   label: string;
   shortcut: string;
 };
 
+// `ReIcon` entries use `weight="Filled"` so they match the solid visual
+// language of the hand-written `@/components/icons` glyphs next to them.
 const SQL_NAV_ITEMS: NavItem[] = [
-  { section: "overview", icon: Database, label: "Overview", shortcut: "1" },
-  { section: "tables", icon: Table, label: "Tables", shortcut: "2" },
-  { section: "sql-editor", icon: Terminal, label: "SQL Editor", shortcut: "3" },
-  { section: "visualizer", icon: Branch, label: "Visualizer", shortcut: "4" },
-  { section: "definitions", icon: Braces, label: "Definitions", shortcut: "5" },
+  {
+    section: "overview",
+    icon: (className) => (
+      <ReIcon className={className} name="database" weight="Filled" />
+    ),
+    label: "Overview",
+    shortcut: "1",
+  },
+  {
+    section: "tables",
+    icon: (className) => <Grid8 className={className} weight="Filled" />,
+    label: "Tables",
+    shortcut: "2",
+  },
+  {
+    section: "sql-editor",
+    icon: (className) => (
+      <ReIcon className={className} name="terminal" weight="Filled" />
+    ),
+    label: "SQL Editor",
+    shortcut: "3",
+  },
+  {
+    section: "visualizer",
+    icon: (className) => <Branch className={className} />,
+    label: "Visualizer",
+    shortcut: "4",
+  },
+  {
+    section: "definitions",
+    icon: (className) => <Braces className={className} />,
+    label: "Definitions",
+    shortcut: "5",
+  },
 ];
 
 const REDIS_NAV_ITEMS: NavItem[] = [
-  { section: "overview", icon: Database, label: "Overview", shortcut: "1" },
-  { section: "keys", icon: Key, label: "Keys", shortcut: "2" },
-  { section: "commands", icon: Terminal, label: "Commands", shortcut: "3" },
+  {
+    section: "overview",
+    icon: (className) => (
+      <ReIcon className={className} name="database" weight="Filled" />
+    ),
+    label: "Overview",
+    shortcut: "1",
+  },
+  {
+    section: "keys",
+    icon: (className) => (
+      <ReIcon className={className} name="key" weight="Filled" />
+    ),
+    label: "Keys",
+    shortcut: "2",
+  },
+  {
+    section: "commands",
+    icon: (className) => (
+      <ReIcon className={className} name="terminal" weight="Filled" />
+    ),
+    label: "Commands",
+    shortcut: "3",
+  },
 ];
 
 function getNavItems(dbType?: string): NavItem[] {
@@ -133,7 +183,7 @@ export function DatabaseNavSidebar({
       <nav
         className="flex flex-col items-center gap-0.5 px-1.5"
       >
-        {getNavItems(connection.db_type).map(({ section, icon: Icon, label, shortcut }) => {
+        {getNavItems(connection.db_type).map(({ section, icon, label, shortcut }) => {
           const isActive = activeSection === section;
           return (
             <div
@@ -154,12 +204,12 @@ export function DatabaseNavSidebar({
                       whileTap={{ scale: 0.95 }}
                       transition={{ type: "spring", stiffness: 400, damping: 25 }}
                     >
-                      <Icon
-                        className={cn(
+                      {icon(
+                        cn(
                           "size-[18px] transition-colors duration-150",
                           isActive ? "text-foreground" : "text-foreground/60"
-                        )}
-                      />
+                        )
+                      )}
                     </motion.button>
                   }
                 />
@@ -195,7 +245,14 @@ export function DatabaseNavSidebar({
                   isRefreshing && "opacity-50 cursor-not-allowed"
                 )}
               >
-                <Refresh className={cn("size-[18px] text-foreground/60", isRefreshing && "animate-spin")} />
+                <ReIcon
+                  className={cn(
+                    "size-[18px] text-foreground/60",
+                    isRefreshing && "animate-spin"
+                  )}
+                  name="refresh"
+                  weight="Filled"
+                />
               </button>
             }
           />
@@ -213,7 +270,11 @@ export function DatabaseNavSidebar({
                   copyFeedback === "failed" && "text-destructive"
                 )}
               >
-                <Copy className="size-[18px] text-foreground/60" />
+                <ReIcon
+                  className="size-[18px] text-foreground/60"
+                  name="copy"
+                  weight="Filled"
+                />
               </button>
             }
           />
@@ -239,7 +300,10 @@ export function DatabaseNavSidebar({
                 }}
                 className="flex size-9 items-center justify-center rounded-lg transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 hover:bg-foreground/15"
               >
-                <ChevronLeft className="size-[18px] text-foreground/60" />
+                <ReIcon
+                  className="size-[18px] text-foreground/60"
+                  name="chevron-left"
+                />
               </button>
             }
           />
