@@ -122,4 +122,19 @@ describe("table column resizing", () => {
     fireEvent.mouseUp(document);
     expect(screen.getByText("alpha").closest("td")?.style.left).toBe("348px");
   });
+
+  it("centers row selection checkboxes like the header select-all", async () => {
+    const { container } = renderEditor();
+
+    await screen.findByText("alpha");
+    const headerCell = container.querySelector("thead th");
+    expect(headerCell?.className).toContain("justify-center");
+    const selectionCells = Array.from(
+      container.querySelectorAll("tbody td")
+    ).filter((td) => td.querySelector('[role="checkbox"]'));
+    expect(selectionCells.length).toBeGreaterThan(0);
+    for (const cell of selectionCells) {
+      expect(cell.className).toContain("justify-center");
+    }
+  });
 });

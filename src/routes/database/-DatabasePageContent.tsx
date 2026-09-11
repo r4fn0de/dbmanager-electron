@@ -1664,7 +1664,7 @@ export function DatabasePageContent({
                   />
                 </Panel>
 
-                <PanelSeparator className="z-10" withHandle />
+                <PanelSeparator withHandle />
 
                 {/* Main Panel */}
                 <Panel className="flex min-h-0 min-w-0 flex-col overflow-hidden">

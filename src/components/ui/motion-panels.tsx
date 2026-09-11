@@ -6,7 +6,7 @@ import { Separator } from "motion-panels/react";
 import { cn } from "@/lib/utils";
 
 const SEPARATOR =
-  "relative flex items-center justify-center outline-hidden after:absolute after:bg-border after:transition-colors after:content-[''] focus-visible:ring-[3px] focus-visible:ring-ring/50 hover:after:bg-muted-foreground aria-[orientation=horizontal]:h-3 aria-[orientation=horizontal]:after:inset-x-0 aria-[orientation=horizontal]:after:h-px aria-[orientation=vertical]:w-3 aria-[orientation=vertical]:after:inset-y-0 aria-[orientation=vertical]:after:w-px data-crossing:after:bg-muted-foreground data-resizing:after:bg-ring [&[aria-orientation=horizontal]>div]:rotate-90";
+  "relative z-40 flex items-center justify-center outline-hidden after:absolute after:bg-border after:transition-colors after:content-[''] focus-visible:ring-[3px] focus-visible:ring-ring/50 hover:after:bg-muted-foreground aria-[orientation=horizontal]:h-3 aria-[orientation=horizontal]:after:inset-x-0 aria-[orientation=horizontal]:after:h-px aria-[orientation=vertical]:w-3 aria-[orientation=vertical]:after:inset-y-0 aria-[orientation=vertical]:after:w-px data-crossing:after:bg-muted-foreground data-resizing:after:bg-ring [&[aria-orientation=horizontal]>div]:rotate-90";
 
 const HANDLE =
   "z-10 flex h-4 w-3 items-center justify-center rounded-xs border bg-border";

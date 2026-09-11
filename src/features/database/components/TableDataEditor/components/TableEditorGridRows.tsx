@@ -255,7 +255,7 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
             }}
           >
             <TableCell
-              className={`sticky left-0 z-[1] flex h-full w-12 min-w-12 items-center border-border border-r px-2 ${selectionCellBackground}`}
+              className={`sticky left-0 z-[1] flex h-full w-12 min-w-12 items-center justify-center border-border border-r px-2 ${selectionCellBackground}`}
               onClick={(e) => e.stopPropagation()}
               style={{ maxWidth: 48, minWidth: 48, width: 48 }}
             >
