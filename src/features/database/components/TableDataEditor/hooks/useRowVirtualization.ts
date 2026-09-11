@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type RefObject } from "react";
 import type { RowRecord } from "../types";
 import type { EffectiveRow } from "../utils/tableDataTransforms";
 
@@ -7,9 +7,11 @@ export const ROW_HEIGHT = 28;
 
 export function useRowVirtualization(
   draftInserts: RowRecord[],
-  effectiveRows: EffectiveRow[]
+  effectiveRows: EffectiveRow[],
+  externalScrollRef?: RefObject<HTMLDivElement | null>
 ) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const internalScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = externalScrollRef ?? internalScrollRef;
   const totalVirtualRows = draftInserts.length + effectiveRows.length;
   const rowVirtualizer = useVirtualizer({
     count: totalVirtualRows,
@@ -58,25 +60,25 @@ export function useRowVirtualization(
 
   const visibleEffectiveRows = useMemo(
     () =>
-      effectiveRows.filter((_, arrayIdx) =>
-        visibleEffectiveArrayIndices.has(arrayIdx)
+      effectiveRows.reduce<Array<EffectiveRow & { virtualIndex: number }>>(
+        (rows, entry, arrayIndex) => {
+          if (visibleEffectiveArrayIndices.has(arrayIndex)) {
+            rows.push({
+              ...entry,
+              virtualIndex: draftInserts.length + arrayIndex,
+            });
+          }
+          return rows;
+        },
+        []
       ),
-    [effectiveRows, visibleEffectiveArrayIndices]
+    [draftInserts.length, effectiveRows, visibleEffectiveArrayIndices]
   );
 
-  const topSpacerHeight = virtualItems.length > 0 ? virtualItems[0].start : 0;
-  const bottomSpacerHeight =
-    virtualItems.length > 0
-      ? rowVirtualizer.getTotalSize() -
-        virtualItems[virtualItems.length - 1].end
-      : 0;
-
   return {
-    bottomSpacerHeight,
-    ROW_HEIGHT,
     rowVirtualizer,
     scrollRef,
-    topSpacerHeight,
+    totalRowHeight: rowVirtualizer.getTotalSize(),
     totalVirtualRows,
     virtualItems,
     visibleDraftInserts,

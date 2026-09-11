@@ -1,4 +1,5 @@
-import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
+import type { VirtualItem } from "@tanstack/react-virtual";
+import { useMemo } from "react";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import type {
   EditingCell,
@@ -28,37 +29,41 @@ export function TableEditorGrid({
   handleTableKeyDown,
   ...rest
 }: TableEditorGridProps) {
-  const visibleColumns = rest.visibleColumns.filter(Boolean);
-  const columnVirtualizer = useVirtualizer({
-    count: visibleColumns.length,
-    estimateSize: (index) =>
-      rest.resolveColumnWidth(visibleColumns[index] ?? ""),
-    getScrollElement: () => scrollRef.current,
-    horizontal: true,
-    overscan: 3,
-  });
-  const measuredVirtualColumns = columnVirtualizer.getVirtualItems();
-  const [firstColumn] = visibleColumns;
-  const firstColumnSize = firstColumn
-    ? rest.resolveColumnWidth(firstColumn)
-    : 0;
-  const virtualColumns: VirtualItem[] =
-    measuredVirtualColumns.length > 0 || !firstColumn
-      ? measuredVirtualColumns
-      : [
-          {
-            end: firstColumnSize,
-            index: 0,
-            key: firstColumn,
-            lane: 0,
-            size: firstColumnSize,
-            start: 0,
-          },
-        ];
-  const totalColumnWidth = Math.max(
-    columnVirtualizer.getTotalSize(),
-    firstColumnSize
+  const visibleColumns = useMemo(
+    () => rest.visibleColumns.filter(Boolean),
+    [rest.visibleColumns]
   );
+  const { resolveColumnWidth } = rest;
+  // Single source of truth for column geometry: cumulative offsets derived
+  // from the same widths used for rendering. A column virtualizer was caching
+  // `size`/`start` by index and going stale on resize/hide/reorder, which
+  // desynced `left` from the rendered width and stacked cells on top of each
+  // other. Column counts are small (<100), so render all columns and keep
+  // virtualization for rows only (the actual perf bottleneck).
+  const virtualColumns: VirtualItem[] = useMemo(() => {
+    let start = 0;
+    return visibleColumns.map((columnName, index) => {
+      const size = resolveColumnWidth(columnName ?? "");
+      const item: VirtualItem = {
+        end: start + size,
+        index,
+        key: index,
+        lane: 0,
+        size,
+        start,
+      };
+      start += size;
+      return item;
+    });
+  }, [visibleColumns, resolveColumnWidth]);
+  const totalColumnWidth = useMemo(
+    () =>
+      virtualColumns.reduce((total, column) => total + column.size, 0) ||
+      (visibleColumns[0] ? resolveColumnWidth(visibleColumns[0]) : 0),
+    [virtualColumns, visibleColumns, resolveColumnWidth]
+  );
+  const tableWidth = totalColumnWidth + 48;
+  const tableHeight = rest.totalRowHeight + 32;
 
   if (isBlockingTableLoading) {
     return (
@@ -77,9 +82,13 @@ export function TableEditorGrid({
     >
       <table
         aria-label="Table data"
-        className="w-max table-fixed caption-bottom border-separate border-spacing-0 text-xs focus-visible:outline-none"
+        className="relative block border-separate border-spacing-0 text-xs focus-visible:outline-none"
         onKeyDown={handleTableKeyDown}
-        style={{ minWidth: totalColumnWidth + 48 }}
+        style={{
+          height: tableHeight,
+          minWidth: tableWidth,
+          width: "100%",
+        }}
         tabIndex={0}
       >
         <TableEditorGridHeader

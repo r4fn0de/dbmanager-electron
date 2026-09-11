@@ -2,17 +2,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { memo, useMemo } from "react";
 import { CellExpandPopover } from "../../CellExpandPopover";
 import { getGridCellIndex } from "../utils/tableDataTransforms";
 import { getCellTitle, normalizeDisplay } from "../utils/valueParsers";
 import type { TableEditorGridRowsProps } from "./TableEditorGrid.types";
 
-export function TableEditorGridRows({
-  topSpacerHeight,
-  bottomSpacerHeight,
+export const TableEditorGridRows = memo(function TableEditorGridRows({
   visibleColumns,
   virtualColumns,
   totalColumnWidth,
+  totalRowHeight,
+  virtualRows,
   visibleDraftInserts,
   editingCell,
   focusedCell,
@@ -25,18 +26,18 @@ export function TableEditorGridRows({
   suppressInlineEditorMouseUpRef,
   keepCaretNavigationInsideInlineInput,
   cancelEditing,
+  cancelPendingHoverClear,
   applyExpandedEditToInsert,
   visibleEffectiveRows,
   selectedRowKeys,
   draftUpdates,
+  draftInsertCount,
   handleRowClick,
-  cancelPendingHoverClear,
   showFloatingRowButton,
   scheduleHoverClear,
   onToggleRowSelection,
   findFkForColumn,
   beginEditExistingCell,
-  resolveColumnWidth,
   effectiveRowIndexByKey,
   effectiveRowsRef,
   isLoadingFk,
@@ -48,171 +49,179 @@ export function TableEditorGridRows({
   columnMap,
   totalVirtualRows,
 }: TableEditorGridRowsProps) {
-  const leftColumnSpacer = virtualColumns[0]?.start ?? 0;
-  const lastVirtualColumn = virtualColumns.at(-1);
-  const rightColumnSpacer = lastVirtualColumn
-    ? totalColumnWidth - lastVirtualColumn.end
-    : totalColumnWidth;
-  const columnSpan =
-    virtualColumns.length +
-    1 +
-    (leftColumnSpacer > 0 ? 1 : 0) +
-    (rightColumnSpacer > 0 ? 1 : 0);
+  const tableWidth = totalColumnWidth + 48;
+  const virtualRowsByIndex = useMemo(
+    () =>
+      new Map(virtualRows.map((virtualRow) => [virtualRow.index, virtualRow])),
+    [virtualRows]
+  );
 
   return (
-    <TableBody className="align-top">
-      {topSpacerHeight > 0 && (
-        <tr aria-hidden="true" className="border-0">
-          <td
-            className="border-0 p-0"
-            colSpan={columnSpan}
-            style={{ height: topSpacerHeight }}
-          />
-        </tr>
-      )}
-      {visibleDraftInserts.map(({ row, insertIndex }) => (
-        <TableRow
-          className="bg-emerald-500/5 hover:bg-emerald-500/10"
-          key={`insert:${insertIndex}`}
-        >
-          <TableCell
-            className="sticky left-0 z-[1] h-7 w-12 min-w-12 border-border border-r bg-background px-2 py-0.5 text-center text-muted-foreground"
-            style={{ maxWidth: 48, minWidth: 48, width: 48 }}
+    <TableBody
+      className="relative block align-top"
+      style={{
+        contain: "layout style",
+        height: totalRowHeight,
+        minWidth: tableWidth,
+        width: "100%",
+      }}
+    >
+      {visibleDraftInserts.map(({ row, insertIndex }) => {
+        const virtualRow = virtualRowsByIndex.get(insertIndex);
+        if (!virtualRow) {
+          return null;
+        }
+        return (
+          <TableRow
+            className="absolute top-0 left-0 block h-7 bg-emerald-500/5 hover:bg-emerald-500/10"
+            key={`insert:${insertIndex}`}
+            style={{
+              contain: "layout style",
+              height: virtualRow.size,
+              top: virtualRow.start,
+              width: "100%",
+            }}
           >
-            N
-          </TableCell>
-          {leftColumnSpacer > 0 ? (
             <TableCell
-              aria-hidden="true"
-              className="border-0 bg-background p-0"
-              style={{ width: leftColumnSpacer }}
-            />
-          ) : null}
-          {virtualColumns.map((virtualColumn) => {
-            const columnName = visibleColumns[virtualColumn.index];
-            if (!columnName) {
-              return null;
-            }
-            const isEditing =
-              editingCell?.source === "insert" &&
-              editingCell.insertIndex === insertIndex &&
-              editingCell.column === columnName;
-            const value = row[columnName];
-            const isFocusedInsert =
-              focusedCell?.rowKey === `insert:${insertIndex}` &&
-              focusedCell?.column === columnName;
-            const width = resolveColumnWidth(columnName);
-            return (
-              <TableCell
-                className={`group/cell relative h-7 truncate border-border border-r px-2 py-0.5 align-middle font-mono last:border-r-0 ${isFocusedInsert ? "bg-primary/5 ring-2 ring-primary/40 ring-inset" : ""}`}
-                key={`insert:${insertIndex}:${columnName}`}
-                onClick={() =>
-                  setFocusedCell({
-                    column: columnName,
-                    rowKey: `insert:${insertIndex}`,
-                  })
-                }
-                onDoubleClick={() =>
-                  beginEditInsertCell(insertIndex, columnName)
-                }
-                style={{ maxWidth: width, minWidth: width, width }}
-              >
-                {isEditing ? (
-                  <div className="relative">
-                    <span className="invisible block whitespace-nowrap">
-                      {normalizeDisplay(value)}
-                    </span>
-                    <Input
-                      className="!text-xs md:!text-xs absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono leading-4 shadow-none focus-visible:ring-0"
-                      onBlur={() => persistEditing()}
-                      onChange={(event) => {
-                        setEditingValue(event.target.value);
-                        loadFkOptionsDebounced(columnName, event.target.value);
-                      }}
-                      onFocus={(event) => {
-                        if (!suppressInlineEditorMouseUpRef.current) {
-                          return;
-                        }
-                        event.currentTarget.select();
-                      }}
-                      onKeyDown={(event) => {
-                        keepCaretNavigationInsideInlineInput(event);
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          persistEditing();
-                          const colIdx = visibleColumns.indexOf(columnName);
-                          if (
-                            colIdx >= 0 &&
-                            colIdx < visibleColumns.length - 1
-                          ) {
-                            setFocusedCell({
-                              column: visibleColumns[colIdx + 1],
-                              rowKey: `insert:${insertIndex}`,
-                            });
+              className="sticky left-0 z-[1] flex h-full w-12 min-w-12 items-center justify-center border-border border-r bg-background px-2 py-0.5 text-center text-muted-foreground"
+              style={{ maxWidth: 48, minWidth: 48, width: 48 }}
+            >
+              N
+            </TableCell>
+            {virtualColumns.map((virtualColumn) => {
+              const columnName = visibleColumns[virtualColumn.index];
+              if (!columnName) {
+                return null;
+              }
+              const isEditing =
+                editingCell?.source === "insert" &&
+                editingCell.insertIndex === insertIndex &&
+                editingCell.column === columnName;
+              const value = row[columnName];
+              const isFocusedInsert =
+                focusedCell?.rowKey === `insert:${insertIndex}` &&
+                focusedCell?.column === columnName;
+              return (
+                <TableCell
+                  className={`group/cell absolute top-0 flex h-full items-center truncate border-border border-r px-2 py-0.5 align-middle font-mono last:border-r-0 ${isFocusedInsert ? "bg-primary/5 ring-2 ring-primary/40 ring-inset" : ""}`}
+                  data-column={columnName}
+                  key={`insert:${insertIndex}:${columnName}`}
+                  onClick={() =>
+                    setFocusedCell({
+                      column: columnName,
+                      rowKey: `insert:${insertIndex}`,
+                    })
+                  }
+                  onDoubleClick={() =>
+                    beginEditInsertCell(insertIndex, columnName)
+                  }
+                  style={{
+                    left: 48 + virtualColumn.start,
+                    maxWidth: virtualColumn.size,
+                    minWidth: virtualColumn.size,
+                    width: virtualColumn.size,
+                  }}
+                >
+                  {isEditing ? (
+                    <div className="relative">
+                      <span className="invisible block whitespace-nowrap">
+                        {normalizeDisplay(value)}
+                      </span>
+                      <Input
+                        className="!text-xs md:!text-xs absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono leading-4 shadow-none focus-visible:ring-0"
+                        onBlur={() => persistEditing()}
+                        onChange={(event) => {
+                          setEditingValue(event.target.value);
+                          loadFkOptionsDebounced(
+                            columnName,
+                            event.target.value
+                          );
+                        }}
+                        onFocus={(event) => {
+                          if (!suppressInlineEditorMouseUpRef.current) {
+                            return;
                           }
+                          event.currentTarget.select();
+                        }}
+                        onKeyDown={(event) => {
+                          keepCaretNavigationInsideInlineInput(event);
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            persistEditing();
+                            const colIdx = visibleColumns.indexOf(columnName);
+                            if (
+                              colIdx >= 0 &&
+                              colIdx < visibleColumns.length - 1
+                            ) {
+                              setFocusedCell({
+                                column: visibleColumns[colIdx + 1],
+                                rowKey: `insert:${insertIndex}`,
+                              });
+                            }
+                          }
+                          if (event.key === "Escape") {
+                            cancelEditing();
+                          }
+                        }}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onMouseUp={(event) => {
+                          if (!suppressInlineEditorMouseUpRef.current) {
+                            return;
+                          }
+                          event.preventDefault();
+                          suppressInlineEditorMouseUpRef.current = false;
+                        }}
+                        value={editingValue}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <span
+                        className={`block select-text truncate whitespace-nowrap ${value === null || value === undefined ? "text-muted-foreground/60 italic" : ""}`}
+                      >
+                        {normalizeDisplay(value)}
+                      </span>
+                      <CellExpandPopover
+                        column={columnMap[columnName]}
+                        columnName={columnName}
+                        initialValue={value}
+                        onSave={(rawText) =>
+                          applyExpandedEditToInsert(
+                            insertIndex,
+                            columnName,
+                            rawText
+                          )
                         }
-                        if (event.key === "Escape") {
-                          cancelEditing();
+                        trigger={
+                          <button
+                            aria-label={`Expand ${columnName}`}
+                            className={`absolute top-1/2 right-1 flex h-5 w-5 -translate-y-1/2 select-none items-center justify-center rounded border bg-background/95 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/cell:opacity-100 data-[popup-open]:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
+                            onClick={(event) => event.stopPropagation()}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            title="Expand (open editor)"
+                            type="button"
+                          >
+                            <UiIcon
+                              className="h-3 w-3"
+                              name="arrows-maximize"
+                            />
+                          </button>
                         }
-                      }}
-                      onMouseDown={(event) => event.stopPropagation()}
-                      onMouseUp={(event) => {
-                        if (!suppressInlineEditorMouseUpRef.current) {
-                          return;
-                        }
-                        event.preventDefault();
-                        suppressInlineEditorMouseUpRef.current = false;
-                      }}
-                      value={editingValue}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <span
-                      className={`block select-text truncate whitespace-nowrap ${value === null || value === undefined ? "text-muted-foreground/60 italic" : ""}`}
-                    >
-                      {normalizeDisplay(value)}
-                    </span>
-                    <CellExpandPopover
-                      column={columnMap[columnName]}
-                      columnName={columnName}
-                      initialValue={value}
-                      onSave={(rawText) =>
-                        applyExpandedEditToInsert(
-                          insertIndex,
-                          columnName,
-                          rawText
-                        )
-                      }
-                      trigger={
-                        <button
-                          aria-label={`Expand ${columnName}`}
-                          className={`absolute top-1/2 right-1 flex h-5 w-5 -translate-y-1/2 select-none items-center justify-center rounded border bg-background/95 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/cell:opacity-100 data-[popup-open]:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
-                          onClick={(event) => event.stopPropagation()}
-                          onMouseDown={(event) => event.stopPropagation()}
-                          title="Expand (open editor)"
-                          type="button"
-                        >
-                          <UiIcon className="h-3 w-3" name="arrows-maximize" />
-                        </button>
-                      }
-                    />
-                  </>
-                )}
-              </TableCell>
-            );
-          })}
-          {rightColumnSpacer > 0 ? (
-            <TableCell
-              aria-hidden="true"
-              className="border-0 bg-background p-0"
-              style={{ width: rightColumnSpacer }}
-            />
-          ) : null}
-        </TableRow>
-      ))}
+                      />
+                    </>
+                  )}
+                </TableCell>
+              );
+            })}
+          </TableRow>
+        );
+      })}
 
-      {visibleEffectiveRows.map(({ row, rowKey, index }) => {
+      {visibleEffectiveRows.map(({ row, rowKey, index, virtualIndex }) => {
+        const virtualRow = virtualRowsByIndex.get(virtualIndex);
+        if (!virtualRow) {
+          return null;
+        }
         const isSelected = selectedRowKeys.has(rowKey);
         const isRowUpdated = !!draftUpdates[rowKey];
         const selectionCellBackground = isSelected
@@ -220,7 +229,7 @@ export function TableEditorGridRows({
           : "bg-background";
         return (
           <TableRow
-            className={`group/row ${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : index % 2 === 1 ? "bg-muted/30" : ""}`}
+            className={`absolute top-0 left-0 block ${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : index % 2 === 1 ? "bg-muted/30" : ""} group/row`}
             data-row-selection-scope="row"
             key={rowKey}
             onClick={(e) => handleRowClick(rowKey, index, e)}
@@ -238,9 +247,15 @@ export function TableEditorGridRows({
               });
             }}
             onMouseLeave={scheduleHoverClear}
+            style={{
+              contain: "layout style",
+              height: virtualRow.size,
+              top: virtualRow.start,
+              width: "100%",
+            }}
           >
             <TableCell
-              className={`sticky left-0 z-[1] w-12 min-w-12 border-border border-r px-2 ${selectionCellBackground}`}
+              className={`sticky left-0 z-[1] flex h-full w-12 min-w-12 items-center border-border border-r px-2 ${selectionCellBackground}`}
               onClick={(e) => e.stopPropagation()}
               style={{ maxWidth: 48, minWidth: 48, width: 48 }}
             >
@@ -251,13 +266,6 @@ export function TableEditorGridRows({
                 />
               </div>
             </TableCell>
-            {leftColumnSpacer > 0 ? (
-              <TableCell
-                aria-hidden="true"
-                className="border-0 bg-background p-0"
-                style={{ width: leftColumnSpacer }}
-              />
-            ) : null}
             {virtualColumns.map((virtualColumn) => {
               const columnName = visibleColumns[virtualColumn.index];
               if (!columnName) {
@@ -275,11 +283,11 @@ export function TableEditorGridRows({
               const fk = findFkForColumn(columnName);
               const isNull =
                 effectiveValue === null || effectiveValue === undefined;
-              const width = resolveColumnWidth(columnName);
 
               return (
                 <TableCell
-                  className={`group/cell relative h-7 truncate border-border border-r px-2 py-0.5 align-middle font-mono last:border-r-0 ${isFocused ? "bg-primary/5 ring-2 ring-primary/40 ring-inset" : ""}`}
+                  className={`group/cell absolute top-0 flex h-full items-center truncate border-border border-r px-2 py-0.5 align-middle font-mono last:border-r-0 ${isFocused ? "bg-primary/5 ring-2 ring-primary/40 ring-inset" : ""}`}
+                  data-column={columnName}
                   key={`${rowKey}:${columnName}`}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -288,7 +296,12 @@ export function TableEditorGridRows({
                   onDoubleClick={() =>
                     beginEditExistingCell(rowKey, row, columnName)
                   }
-                  style={{ maxWidth: width, minWidth: width, width }}
+                  style={{
+                    left: 48 + virtualColumn.start,
+                    maxWidth: virtualColumn.size,
+                    minWidth: virtualColumn.size,
+                    width: virtualColumn.size,
+                  }}
                   title={getCellTitle(effectiveValue)}
                 >
                   {isEditing ? (
@@ -455,30 +468,14 @@ export function TableEditorGridRows({
                 </TableCell>
               );
             })}
-            {rightColumnSpacer > 0 ? (
-              <TableCell
-                aria-hidden="true"
-                className="border-0 bg-background p-0"
-                style={{ width: rightColumnSpacer }}
-              />
-            ) : null}
           </TableRow>
         );
       })}
-      {bottomSpacerHeight > 0 && (
-        <tr aria-hidden="true" className="border-0">
-          <td
-            className="border-0 p-0"
-            colSpan={columnSpan}
-            style={{ height: bottomSpacerHeight }}
-          />
-        </tr>
-      )}
       {totalVirtualRows === 0 && (
-        <TableRow className="hover:bg-transparent">
+        <TableRow className="block hover:bg-transparent">
           <TableCell
-            className="border-r-0 py-8 text-center text-muted-foreground/70"
-            colSpan={Math.max(columnSpan, 1)}
+            className="flex border-r-0 py-8 text-center text-muted-foreground/70"
+            style={{ width: tableWidth }}
           >
             No rows found on this page.
           </TableCell>
@@ -486,4 +483,4 @@ export function TableEditorGridRows({
       )}
     </TableBody>
   );
-}
+});

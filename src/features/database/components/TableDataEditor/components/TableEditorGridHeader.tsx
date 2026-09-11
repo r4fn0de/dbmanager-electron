@@ -11,21 +11,23 @@ export function TableEditorGridHeader({
   totalColumnWidth,
   sort,
   columnMap,
-  resolveColumnWidth,
   onSortColumn,
   handleResizeMouseDown,
 }: TableEditorGridHeaderProps) {
-  const leftColumnSpacer = virtualColumns[0]?.start ?? 0;
-  const lastVirtualColumn = virtualColumns.at(-1);
-  const rightColumnSpacer = lastVirtualColumn
-    ? totalColumnWidth - lastVirtualColumn.end
-    : totalColumnWidth;
+  const tableWidth = totalColumnWidth + 48;
 
   return (
-    <TableHeader className="sticky top-0 z-10 border-border border-b-2 bg-muted/40">
-      <TableRow className="hover:bg-transparent">
+    <TableHeader
+      className="sticky top-0 z-10 block h-8 border-border border-b-2 bg-muted/40"
+      style={{ minWidth: tableWidth, width: "100%" }}
+    >
+      <TableRow
+        className="relative block h-8 hover:bg-transparent"
+        style={{ minWidth: tableWidth, width: "100%" }}
+      >
         <TableHead
-          className="sticky left-0 z-[5] h-8 w-12 min-w-12 border-border border-r bg-background px-2 py-1 text-center"
+          className="sticky top-0 left-0 z-[5] flex h-8 w-12 min-w-12 items-center justify-center border-border border-r bg-background px-2 py-1 text-center"
+          scope="col"
           style={{ maxWidth: 48, minWidth: 48, width: 48 }}
         >
           <div className="flex items-center justify-center">
@@ -47,13 +49,6 @@ export function TableEditorGridHeader({
             )}
           </div>
         </TableHead>
-        {leftColumnSpacer > 0 ? (
-          <TableHead
-            aria-hidden="true"
-            className="border-0 bg-background p-0"
-            style={{ width: leftColumnSpacer }}
-          />
-        ) : null}
         {virtualColumns.map((virtualColumn) => {
           const columnName = visibleColumns[virtualColumn.index];
           if (!columnName) {
@@ -62,12 +57,18 @@ export function TableEditorGridHeader({
           const sorted =
             sort[0]?.column === columnName ? sort[0].direction : null;
           const column = columnMap[columnName];
-          const width = resolveColumnWidth(columnName);
           return (
             <TableHead
-              className="group relative h-8 border-border border-r bg-background px-2 py-1 transition-colors last:border-r-0 hover:bg-muted/60"
+              className="absolute top-0 flex h-8 items-center border-border border-r bg-background px-2 py-1 transition-colors last:border-r-0 hover:bg-muted/60"
+              data-column={columnName}
               key={columnName}
-              style={{ maxWidth: width, minWidth: width, width }}
+              scope="col"
+              style={{
+                left: 48 + virtualColumn.start,
+                maxWidth: virtualColumn.size,
+                minWidth: virtualColumn.size,
+                width: virtualColumn.size,
+              }}
             >
               <button
                 className="h-full w-full select-none overflow-hidden pr-2 text-left"
@@ -116,13 +117,6 @@ export function TableEditorGridHeader({
             </TableHead>
           );
         })}
-        {rightColumnSpacer > 0 ? (
-          <TableHead
-            aria-hidden="true"
-            className="border-0 bg-background p-0"
-            style={{ width: rightColumnSpacer }}
-          />
-        ) : null}
       </TableRow>
     </TableHeader>
   );

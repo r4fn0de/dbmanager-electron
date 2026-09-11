@@ -42,10 +42,10 @@ export interface TableEditorGridRowsProps {
     options?: { selectAllOnFocus?: boolean }
   ) => void;
   beginEditInsertCell: (insertIndex: number, columnName: string) => void;
-  bottomSpacerHeight: number;
   cancelEditing: () => void;
   cancelPendingHoverClear: () => void;
   columnMap: Record<string, SchemaColumn>;
+  draftInsertCount: number;
   draftUpdates: Record<string, RowUpdateDraft>;
   editingCell: EditingCell | null;
   editingValue: string;
@@ -88,15 +88,17 @@ export interface TableEditorGridRowsProps {
   }) => void;
   suppressInlineEditorMouseUpRef: React.RefObject<boolean>;
   tableSchema: string;
-  topSpacerHeight: number;
   totalColumnWidth: number;
+  totalRowHeight: number;
   totalVirtualRows: number;
   virtualColumns: VirtualItem[];
+  virtualRows: VirtualItem[];
   visibleColumns: string[];
   visibleDraftInserts: Array<{ row: RowRecord; insertIndex: number }>;
   visibleEffectiveRows: Array<{
     row: RowRecord;
     rowKey: string;
     index: number;
+    virtualIndex: number;
   }>;
 }

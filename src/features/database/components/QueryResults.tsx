@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -367,18 +368,33 @@ function VirtualizedQueryResultsTable({
     getScrollElement: () => scrollRef.current,
     overscan: 10,
   });
-  const columnVirtualizer = useVirtualizer({
-    count: result.columns.length,
-    estimateSize: (index) =>
-      getQueryResultColumnWidth(result.columns[index]?.type_name ?? ""),
-    getScrollElement: () => scrollRef.current,
-    horizontal: true,
-    overscan: 3,
-  });
   const virtualRows = rowVirtualizer.getVirtualItems();
-  const virtualColumns = columnVirtualizer.getVirtualItems();
-  const tableWidth =
-    QUERY_RESULT_ROW_NUMBER_WIDTH + columnVirtualizer.getTotalSize();
+  // Single source of truth for column geometry: cumulative offsets derived
+  // from the same widths used for rendering. A horizontal column virtualizer
+  // was caching `size`/`start` by index and going stale when the result set
+  // changed, desyncing `left` from the rendered width and stacking cells.
+  // Column counts are small, so render all columns and virtualize rows only.
+  const columnWidths = useMemo(
+    () =>
+      result.columns.map((column) =>
+        getQueryResultColumnWidth(column?.type_name ?? "")
+      ),
+    [result.columns]
+  );
+  const columnOffsets = useMemo(() => {
+    const offsets: number[] = new Array(columnWidths.length);
+    let start = 0;
+    for (let i = 0; i < columnWidths.length; i++) {
+      offsets[i] = start;
+      start += columnWidths[i] ?? 0;
+    }
+    return offsets;
+  }, [columnWidths]);
+  const totalColumnsWidth = useMemo(
+    () => columnWidths.reduce((total, width) => total + width, 0),
+    [columnWidths]
+  );
+  const tableWidth = QUERY_RESULT_ROW_NUMBER_WIDTH + totalColumnsWidth;
   const tableHeight =
     QUERY_RESULT_HEADER_HEIGHT + rowVirtualizer.getTotalSize();
 
@@ -404,19 +420,20 @@ function VirtualizedQueryResultsTable({
             >
               #
             </th>
-            {virtualColumns.map((virtualColumn) => {
-              const column = result.columns[virtualColumn.index];
+            {result.columns.map((column, columnIndex) => {
               if (!column) {
                 return null;
               }
               return (
                 <th
                   className="absolute top-0 flex h-8 items-center gap-1.5 overflow-hidden border-border/30 border-r px-3 font-medium"
-                  key={column.name}
+                  key={`${column.name}-${columnIndex}`}
                   scope="col"
                   style={{
-                    left: QUERY_RESULT_ROW_NUMBER_WIDTH + virtualColumn.start,
-                    width: virtualColumn.size,
+                    left:
+                      QUERY_RESULT_ROW_NUMBER_WIDTH +
+                      (columnOffsets[columnIndex] ?? 0),
+                    width: columnWidths[columnIndex] ?? 0,
                   }}
                 >
                   <span className="truncate text-muted-foreground text-xs">
@@ -461,23 +478,25 @@ function VirtualizedQueryResultsTable({
                 >
                   {virtualRow.index + 1}
                 </td>
-                {virtualColumns.map((virtualColumn) => {
-                  const column = result.columns[virtualColumn.index];
+                {result.columns.map((column, columnIndex) => {
                   if (!column) {
                     return null;
                   }
-                  const cell = row[virtualColumn.index];
+                  const cell = row[columnIndex];
                   return (
                     <QueryResultCell
                       cell={cell}
-                      cellKey={`${virtualRow.index}-${virtualColumn.index}`}
+                      cellKey={`${virtualRow.index}-${columnIndex}`}
                       column={column}
-                      columnIndex={virtualColumn.index}
+                      columnIndex={columnIndex}
                       copiedCell={copiedCell}
-                      key={`${virtualRow.key}-${virtualColumn.key}`}
+                      key={`${virtualRow.key}-${columnIndex}`}
                       onCopyCell={onCopyCell}
                       rowIndex={virtualRow.index}
-                      virtualColumn={virtualColumn}
+                      virtualColumn={{
+                        size: columnWidths[columnIndex] ?? 0,
+                        start: columnOffsets[columnIndex] ?? 0,
+                      }}
                     />
                   );
                 })}

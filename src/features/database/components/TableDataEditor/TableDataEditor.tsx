@@ -54,6 +54,7 @@ import { cn } from "@/lib/utils";
 import { TableEditorDialogs } from "./components/TableEditorDialogs";
 import { TableEditorFooter } from "./components/TableEditorFooter";
 import { TableEditorGrid } from "./components/TableEditorGrid";
+import { useRowVirtualization } from "./hooks/useRowVirtualization";
 import { TableEditorRowDetailsOverlay } from "./components/TableEditorRowDetailsOverlay";
 import type {
   DeleteDraft,
@@ -75,60 +76,60 @@ function getDefaultColumnWidth(column: SchemaColumn): number {
   const type = column.data_type.toLowerCase();
   const udt = (column.udt_name ?? "").toLowerCase();
 
-  // Larguras compactas estilo Neon/Supabase - baseadas no conteúdo típico
+  // Larguras confortáveis para IDs e valores longos, alinhadas ao grid do Conar.
   if (/(^|_)id$/.test(name) || /(^|_)id_/.test(name)) {
-    return 140;
-  }
-  if (/(bool)/.test(type)) {
-    return 80;
-  }
-  if (/(timestamp|timestamptz)/.test(type)) {
-    return 170;
-  }
-  if (/(date)/.test(type)) {
-    return 100;
-  }
-  if (/(time)/.test(type)) {
-    return 90;
-  }
-  if (/(uuid)/.test(type)) {
     return 220;
   }
-  if (/(json|jsonb)/.test(type)) {
-    return 200;
+  if (/(bool)/.test(type)) {
+    return 100;
   }
-  if (/(int|serial|smallint)/.test(type)) {
-    return 90;
+  if (/(timestamp|timestamptz)/.test(type)) {
+    return 220;
   }
-  if (/(bigint)/.test(type)) {
-    return 120;
-  }
-  if (/(numeric|decimal)/.test(type)) {
-    return 120;
-  }
-  if (/(double|real|float)/.test(type)) {
-    return 110;
-  }
-  if (/(text|varchar|char)/.test(type)) {
-    return 150;
-  }
-  if (/(bytea)/.test(type)) {
-    return 180;
-  }
-  if (/(inet|cidr)/.test(type)) {
+  if (/(date)/.test(type)) {
     return 130;
   }
-  if (/(macaddr)/.test(type)) {
+  if (/(time)/.test(type)) {
+    return 120;
+  }
+  if (/(uuid)/.test(type)) {
+    return 240;
+  }
+  if (/(json|jsonb)/.test(type)) {
+    return 240;
+  }
+  if (/(int|serial|smallint)/.test(type)) {
     return 110;
   }
-  if (type === "array" || udt.startsWith("_") || type.endsWith("[]")) {
-    return 180;
-  }
-  if (type === "user-defined" || type === "USER-DEFINED".toLowerCase()) {
+  if (/(bigint)/.test(type)) {
     return 140;
   }
+  if (/(numeric|decimal)/.test(type)) {
+    return 150;
+  }
+  if (/(double|real|float)/.test(type)) {
+    return 140;
+  }
+  if (/(text|varchar|char)/.test(type)) {
+    return 200;
+  }
+  if (/(bytea)/.test(type)) {
+    return 220;
+  }
+  if (/(inet|cidr)/.test(type)) {
+    return 180;
+  }
+  if (/(macaddr)/.test(type)) {
+    return 160;
+  }
+  if (type === "array" || udt.startsWith("_") || type.endsWith("[]")) {
+    return 220;
+  }
+  if (type === "user-defined" || type === "USER-DEFINED".toLowerCase()) {
+    return 200;
+  }
 
-  return 120;
+  return 180;
 }
 function formatTableTotal(total: number, isEstimated = false): string {
   if (total < 0) {
@@ -324,6 +325,8 @@ function TableDataEditorInner(
 
   // Column resizing
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const visibleColumnsRef = useRef(visibleColumns);
+  visibleColumnsRef.current = visibleColumns;
   const resizeRef = useRef<{
     column: string;
     startX: number;
@@ -332,7 +335,6 @@ function TableDataEditorInner(
   const pendingResizeRef = useRef<{ column: string; width: number } | null>(
     null
   );
-  const resizePreviewCellRef = useRef<HTMLElement | null>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   // Keyboard navigation – focused cell
@@ -656,19 +658,13 @@ function TableDataEditorInner(
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Pagination keeps the rendered row set bounded to the current page.
-  const visibleDraftInserts = useMemo(
-    () =>
-      draftInserts.map((row, insertIndex) => ({
-        insertIndex,
-        row,
-      })),
-    [draftInserts]
-  );
-  const visibleEffectiveRows = effectiveRows;
-  const totalVirtualRows = visibleDraftInserts.length + visibleEffectiveRows.length;
-  const topSpacerHeight = 0;
-  const bottomSpacerHeight = 0;
+  const {
+    totalRowHeight,
+    totalVirtualRows,
+    virtualItems: virtualRows,
+    visibleDraftInserts,
+    visibleEffectiveRows,
+  } = useRowVirtualization(draftInserts, effectiveRows, scrollRef);
 
   const dirtyCounts = useMemo(
     () => ({
@@ -766,7 +762,7 @@ function TableDataEditorInner(
 
   const resolveColumnWidth = useCallback(
     (columnName: string) =>
-      columnWidths[columnName] ?? defaultColumnWidths[columnName] ?? 200,
+      columnWidths[columnName] ?? defaultColumnWidths[columnName] ?? 240,
     [columnWidths, defaultColumnWidths]
   );
 
@@ -1496,9 +1492,6 @@ function TableDataEditorInner(
         startWidth: currentWidth,
         startX: event.clientX,
       };
-      resizePreviewCellRef.current = (
-        event.currentTarget as HTMLElement
-      ).parentElement;
 
       const handleMouseMove = (e: MouseEvent) => {
         const resizeState = resizeRef.current;
@@ -1511,30 +1504,47 @@ function TableDataEditorInner(
           column: resizeState.column,
           width: newWidth,
         };
-        const previewCell = resizePreviewCellRef.current;
-        if (!previewCell) {
-          return;
+        // Live preview straight on the DOM: recompute every column offset
+        // with the in-progress width so the dragged column grows AND all
+        // columns to its right shift during the drag — no React re-render,
+        // so it stays at frame rate. Widths are committed to state on mouse
+        // up, which then re-renders with the final geometry.
+        const container = scrollRef.current;
+        if (container) {
+          let left = 48;
+          const geometry = new Map<string, { left: number; width: number }>();
+          for (const name of visibleColumnsRef.current) {
+            const width =
+              name === resizeState.column
+                ? newWidth
+                : (columnWidthsRef.current[name] ??
+                  defaultColumnWidthsRef.current[name] ??
+                  240);
+            geometry.set(name, { left, width });
+            left += width;
+          }
+          for (const cell of container.querySelectorAll("[data-column]")) {
+            const element = cell as HTMLElement;
+            const geo = geometry.get(element.dataset.column ?? "");
+            if (!geo) {
+              continue;
+            }
+            const px = `${geo.width}px`;
+            element.style.left = `${geo.left}px`;
+            element.style.width = px;
+            element.style.minWidth = px;
+            element.style.maxWidth = px;
+          }
         }
-        const width = `${newWidth}px`;
-        previewCell.style.maxWidth = width;
-        previewCell.style.minWidth = width;
-        previewCell.style.width = width;
       };
       let isFinished = false;
-      const cleanup = (preservePreviewStyle = false) => {
+      const cleanup = () => {
         if (isFinished) {
           return;
         }
         isFinished = true;
-        const previewCell = resizePreviewCellRef.current;
-        if (!preservePreviewStyle && previewCell) {
-          previewCell.style.removeProperty("max-width");
-          previewCell.style.removeProperty("min-width");
-          previewCell.style.removeProperty("width");
-        }
         resizeRef.current = null;
         pendingResizeRef.current = null;
-        resizePreviewCellRef.current = null;
         document.removeEventListener("mousemove", handleMouseMove);
         document.removeEventListener("mouseup", handleMouseUp);
         window.removeEventListener("blur", handleMouseUp);
@@ -1557,7 +1567,7 @@ function TableDataEditorInner(
             };
           });
         }
-        cleanup(true);
+        cleanup();
       };
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
@@ -2356,10 +2366,10 @@ function TableDataEditorInner(
             applyExpandedEditToRow={applyExpandedEditToRow}
             beginEditExistingCell={beginEditExistingCell}
             beginEditInsertCell={beginEditInsertCell}
-            bottomSpacerHeight={bottomSpacerHeight}
             cancelEditing={cancelEditing}
             cancelPendingHoverClear={cancelPendingHoverClear}
             columnMap={columnMap}
+            draftInsertCount={draftInserts.length}
             draftUpdates={draftUpdates}
             editingCell={editingCell}
             editingValue={editingValue}
@@ -2414,8 +2424,9 @@ function TableDataEditorInner(
             suppressInlineEditorMouseUpRef={suppressInlineEditorMouseUpRef}
             tableSchema={table.schema}
             toggleSelectAll={toggleSelectAll}
-            topSpacerHeight={topSpacerHeight}
+            totalRowHeight={totalRowHeight}
             totalVirtualRows={totalVirtualRows}
+            virtualRows={virtualRows}
             visibleColumns={visibleColumns}
             visibleDraftInserts={visibleDraftInserts}
             visibleEffectiveRows={visibleEffectiveRows}
