@@ -1,0 +1,23 @@
+src/components/ui/ReIcon.tsx
+  h_6400716131bbc6 1-347
+src/features/database/components/DatabaseNavSidebar.tsx
+  h_6400716131bbc6 15,24,40,45-46,50-52,54,58,60,64-66,68,72,74,78,80,87-89,91,95-97,99,103-105,107,207,212,248,253-254,273,275-276,303,305
+  h_6400716131bbc6 48-49,53,55-57,59,61-63,67,69-71,73,75-77,79,81,85-86,90,92-94,98,100-102,106,108,186,208,211,249-252,255,274,277,304,306
+bun.lock
+  h_6400716131bbc6 79,2640-2641
+package.json
+  h_6400716131bbc6 74
+src/tests/unit/components/ui/reicon.test.tsx
+  h_6400716131bbc6 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "872eeb265b7e65d199ef2600aa42d5f61d6e222f",
+  "prompts": {},
+  "humans": {
+    "h_6400716131bbc6": {
+      "author": "Rafael Porto <rafaelporto45rt5@proton.me>"
+    }
+  }
+}
