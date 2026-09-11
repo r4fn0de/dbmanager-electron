@@ -42,6 +42,7 @@ import {
   aiIsConfigured,
   aiRemoveCustomModel,
   aiRemoveCustomProvider,
+  aiRenameCustomModel,
   aiSetApiKey,
   aiSetCustomProviderApiKey,
   aiTableSearch,
@@ -109,6 +110,7 @@ export const ai = {
   removeCustomModel: aiRemoveCustomModel,
   removeCustomProvider: aiRemoveCustomProvider,
   removeFeedback: removeFeedbackHandler,
+  renameCustomModel: aiRenameCustomModel,
   // Feedback
   saveFeedback: saveFeedbackHandler,
   searchMemory: searchMemoryHandler,

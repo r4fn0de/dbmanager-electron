@@ -228,6 +228,26 @@ describe("custom models on custom providers", () => {
     expect(info.customProviders[0]?.customModels).toEqual([]);
   });
 
+  test("renames a custom model and updates the active selection", () => {
+    const created = config.addCustomProvider({
+      baseURL: "http://localhost:1234/v1",
+      defaultModel: "old-model",
+      label: "Rename models",
+    });
+    config.addCustomModel(created.id, "old-model");
+    config.updateAiSettings({ provider: created.id, model: "old-model" });
+
+    config.renameCustomModel(created.id, "old-model", "new-model");
+
+    expect(config.getAiSettings().model).toBe("new-model");
+    expect(config.getProvidersInfo().customProviders[0]?.customModels).toEqual([
+      { id: "new-model", isCustom: true, label: "new-model" },
+    ]);
+    expect(connectionsStore.getDefaultConnection()).toMatchObject({
+      defaultModelId: "new-model",
+    });
+  });
+
   test("rejects unknown provider refs", () => {
     expect(() => config.addCustomModel("custom:nope", "m")).toThrow(
       /Invalid AI provider/

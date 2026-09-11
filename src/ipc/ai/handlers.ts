@@ -22,6 +22,7 @@ import {
   isAiConfigured,
   removeCustomModel,
   removeCustomProvider,
+  renameCustomModel,
   setApiKey,
   setCustomProviderApiKey,
   updateAiSettings,
@@ -433,7 +434,7 @@ ${input.tables.join(", ")}${contextSection}`,
   });
 
 // ---------------------------------------------------------------------------
-// Custom models — add / remove user-defined model IDs per provider
+// Custom models — add / remove / rename user-defined model IDs per provider
 // ---------------------------------------------------------------------------
 
 export const aiAddCustomModel = os
@@ -473,6 +474,33 @@ export const aiRemoveCustomModel = os
           error instanceof Error
             ? error.message
             : "Failed to remove custom model",
+      });
+    }
+    return getProvidersInfo();
+  });
+
+export const aiRenameCustomModel = os
+  .input(
+    z.object({
+      newModelId: z.string().min(1),
+      oldModelId: z.string().min(1),
+      // Built-in name or `custom:<id>` — validated in config.
+      provider: z.string().min(1),
+    })
+  )
+  .handler(async ({ input }) => {
+    try {
+      renameCustomModel(
+        input.provider,
+        input.oldModelId,
+        input.newModelId
+      );
+    } catch (error) {
+      throw new ORPCError("BAD_REQUEST", {
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to rename custom model",
       });
     }
     return getProvidersInfo();

@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 import type { StickToBottomContext } from "use-stick-to-bottom";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { MariaDb } from "@/components/icons/MariaDb";
@@ -38,6 +39,10 @@ import {
 import { FeedbackBar } from "@/components/ui/feedback-bar";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import {
   PromptInput,
   PromptInputActions,
   PromptInputTextarea,
@@ -57,7 +62,7 @@ import type { DatabaseType } from "@/ipc/db/types";
 import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import { cn } from "@/lib/utils";
 import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
-import { getAiSettings } from "../hooks/ai-actions";
+import { getAiSettings, updateAiSettings } from "../hooks/ai-actions";
 import {
   type AiChatMessage,
   type TextPart,
@@ -1169,18 +1174,55 @@ export function AiChatPanel({
   const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
 
   const [providerIsLocal, setProviderIsLocal] = useState(false);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [isLoadingModelSettings, setIsLoadingModelSettings] = useState(true);
+  const [isSavingModel, setIsSavingModel] = useState(false);
 
-  useEffect(() => {
-    getAiSettings().then((providersInfo) => {
-      const custom = (providersInfo.customProviders ?? []).find(
-        (p) => p.id === providersInfo.current.provider
+  const loadAiModelSettings = useCallback(async () => {
+    try {
+      const providersInfo = await getAiSettings();
+      const currentProvider = providersInfo.providers.find(
+        (providerInfo) =>
+          providerInfo.name === providersInfo.current.provider
       );
+      const custom = (providersInfo.customProviders ?? []).find(
+        (providerInfo) => providerInfo.id === providersInfo.current.provider
+      );
+      const entries = [
+        ...(currentProvider?.models ?? []),
+        ...(currentProvider?.customModels ?? []),
+        ...(custom?.customModels ?? []),
+      ];
+      const nextModelOptions = [
+        ...new Set(
+          entries
+            .map((entry) => entry.id.trim())
+            .filter((modelId) => modelId.length > 0)
+        ),
+      ];
+      const currentModel = providersInfo.current.model.trim();
+      if (currentModel && !nextModelOptions.includes(currentModel)) {
+        nextModelOptions.unshift(currentModel);
+      }
+
       setProviderIsLocal(
         providersInfo.current.provider === "ollama" ||
           (custom?.isLocal ?? false)
       );
-    });
+      setModelOptions(nextModelOptions);
+      setSelectedModel(currentModel);
+    } catch {
+      setModelOptions([]);
+      setSelectedModel("");
+    } finally {
+      setIsLoadingModelSettings(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadAiModelSettings();
+  }, [loadAiModelSettings]);
 
   const {
     messages,
@@ -1376,8 +1418,30 @@ export function AiChatPanel({
     [handleMentionKeyDown, mentionState.activeIndex, handleMentionSelect]
   );
 
+  const handleModelChange = useCallback(
+    async (modelId: string) => {
+      const nextModelId = modelId.trim();
+      if (!nextModelId || nextModelId === selectedModel) {
+        return;
+      }
+
+      setIsSavingModel(true);
+      try {
+        await updateAiSettings({ model: nextModelId });
+        await loadAiModelSettings();
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to select model"
+        );
+      } finally {
+        setIsSavingModel(false);
+      }
+    },
+    [loadAiModelSettings, selectedModel]
+  );
+
   const handleSubmit = useCallback(() => {
-    if (!input.trim() || isLoading) {
+    if (!input.trim() || !selectedModel.trim() || isLoading) {
       return;
     }
 
@@ -1454,6 +1518,7 @@ export function AiChatPanel({
     clearMentions();
   }, [
     input,
+    selectedModel,
     isLoading,
     sendMessage,
     closeMention,
@@ -1462,6 +1527,7 @@ export function AiChatPanel({
     showTableContextChip,
     contextPreview?.selectionPreview,
     contextPreview?.errorPreview,
+    connections,
     contextPreview?.tablePreview,
     selectedMentions,
     clearMentions,
@@ -1984,6 +2050,32 @@ export function AiChatPanel({
               />
             </div>
             <PromptInputActions className="justify-end gap-2 pt-1 pr-0.5 pb-1.5 pl-2">
+              <NativeSelect
+                aria-label="AI model"
+                className="w-36 max-w-[45%] shrink-0"
+                disabled={
+                  isLoading ||
+                  isLoadingModelSettings ||
+                  isSavingModel ||
+                  modelOptions.length === 0
+                }
+                onChange={(event) => void handleModelChange(event.target.value)}
+                size="sm"
+                title={selectedModel || "Select AI model"}
+                value={selectedModel}
+              >
+                {modelOptions.length === 0 ? (
+                  <NativeSelectOption disabled value="">
+                    Select model
+                  </NativeSelectOption>
+                ) : (
+                  modelOptions.map((modelId) => (
+                    <NativeSelectOption key={modelId} value={modelId}>
+                      {modelId}
+                    </NativeSelectOption>
+                  ))
+                )}
+              </NativeSelect>
               {isLoading ? (
                 <Button
                   className="h-7 w-7 rounded-full border border-border/30 bg-background/50 text-muted-foreground backdrop-blur-sm transition-[background,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-background/70 hover:text-foreground active:scale-[0.96] dark:border-border/20 dark:bg-background/40 dark:hover:bg-background/60"
@@ -1997,7 +2089,7 @@ export function AiChatPanel({
               ) : (
                 <Button
                   className="h-7 w-7 rounded-full bg-primary/85 text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] transition-[background,color,transform,opacity,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-primary active:scale-[0.96] disabled:bg-muted/50 disabled:text-muted-foreground/50 disabled:shadow-none dark:bg-primary/75 dark:disabled:bg-muted/30 dark:disabled:text-muted-foreground/40 dark:hover:bg-primary"
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || !selectedModel.trim()}
                   onClick={handleSubmit}
                   size="icon-sm"
                   type="button"

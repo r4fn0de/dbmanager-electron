@@ -472,6 +472,22 @@ export async function removeCustomModel(
   }
 }
 
+export async function renameCustomModel(
+  provider: string,
+  oldModelId: string,
+  newModelId: string
+): Promise<AiProvidersInfo> {
+  try {
+    return await ipc.client.ai.renameCustomModel({
+      newModelId,
+      oldModelId,
+      provider,
+    });
+  } catch (err) {
+    throw new Error(extractAiErrorMessage(err, "Failed to rename custom model"));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Custom providers — user-saved named endpoints
 // ---------------------------------------------------------------------------

@@ -14,7 +14,11 @@ import {
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type {
@@ -36,6 +40,7 @@ import {
   getPrivacySettings,
   removeCustomModel,
   removeCustomProvider,
+  renameCustomModel,
   setAiApiKey,
   setCustomProviderApiKey,
   updateAiSettings,
@@ -120,11 +125,9 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
           (p) => p.name === provider.name
         )?.hasApiKey;
         const baseURL =
-          provider.name === "openai-compatible"
-            ? settings.current.openaiCompatibleBaseURL
-            : provider.name === "ollama"
-              ? settings.current.ollamaBaseURL
-              : undefined;
+          provider.name === "ollama"
+            ? settings.current.ollamaBaseURL
+            : undefined;
         const models = await fetchProviderModels(
           provider.name,
           apiKey ? undefined : undefined, // API key not sent from renderer for security
@@ -197,8 +200,6 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     () =>
       (settings?.current.provider === "ollama" && ollamaStatus.detected) ||
       (settings?.providers.some((p) => p.hasApiKey) ?? false) ||
-      (settings?.current.provider === "openai-compatible" &&
-        (settings.current.openaiCompatibleBaseURL?.trim().length ?? 0) > 0) ||
       (settings?.customProviders.some(
         (p) => p.id === settings.current.provider && p.baseURL.trim().length > 0
       ) ??
@@ -271,14 +272,6 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     [loadSettings]
   );
 
-  const handleSaveBaseUrl = useCallback(
-    async (url: string) => {
-      await updateAiSettings({ openaiCompatibleBaseURL: url });
-      await loadSettings();
-    },
-    [loadSettings]
-  );
-
   const handleSaveOllamaBaseUrl = useCallback(
     async (url: string) => {
       await updateAiSettings({ ollamaBaseURL: url });
@@ -298,11 +291,9 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
           return;
         }
         const baseURL =
-          providerName === "openai-compatible"
-            ? settings?.current.openaiCompatibleBaseURL
-            : providerName === "ollama"
-              ? settings?.current.ollamaBaseURL
-              : undefined;
+          providerName === "ollama"
+            ? settings?.current.ollamaBaseURL
+            : undefined;
         const models = await fetchProviderModels(
           providerName,
           undefined,
@@ -490,6 +481,48 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     }
   }, []);
 
+  const handleRenameCustomModel = useCallback(
+    async (
+      providerId: string,
+      oldModelId: string,
+      newModelId: string,
+      isCustom: boolean
+    ) => {
+      try {
+        let next = isCustom
+          ? await renameCustomModel(providerId, oldModelId, newModelId)
+          : await addCustomModel(providerId, newModelId);
+
+        if (!isCustom) {
+          setCustomDiscovered((prev) => ({
+            ...prev,
+            [providerId]: (prev[providerId] ?? []).map((model) =>
+              model.id === oldModelId
+                ? { ...model, id: newModelId, isCustom: true }
+                : model
+            ),
+          }));
+
+          if (
+            next.current.provider === providerId &&
+            next.current.model === oldModelId
+          ) {
+            await updateAiSettings({ model: newModelId });
+            next = await getAiSettings();
+          }
+        }
+
+        setSettings(next);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to rename model"
+        );
+        throw err;
+      }
+    },
+    []
+  );
+
   const handleDiscoverCustomModels = useCallback(
     async (custom: AiCustomProviderInfo) => {
       setSavingModelsFor(custom.id);
@@ -567,133 +600,111 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
               </p>
             </div>
           </div>
-          <AiSettingsStatus configured={configured} settings={settings} />
         </div>
       )}
 
-      <Tabs className="flex min-h-0 flex-1 flex-col" defaultValue="providers">
-        <TabsList className="mx-6 mt-2 w-fit">
-          <TabsTrigger value="providers">Providers</TabsTrigger>
-          <TabsTrigger value="custom">Custom Providers</TabsTrigger>
-          <TabsTrigger value="privacy">Privacy & Context</TabsTrigger>
-        </TabsList>
-
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <TabsContent className="h-full" value="providers">
-            <ScrollArea className="h-full">
-              <div className="space-y-5 p-6">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {settings.providers.map((provider) => {
-                    const isActive = settings.current.provider === provider.name;
-                    const Icon = PROVIDER_ICONS[provider.name];
-                    const isSavingThis = isSavingProvider && isActive;
-                    return (
-                      <ProviderCard
-                        currentModel={settings.current.model}
-                        icon={Icon}
-                        isActive={isActive}
-                        isFetchingModels={savingModelsFor === provider.name}
-                        isSaving={isSavingThis}
-                        key={provider.name}
-                        ollamaBaseURL={settings.current.ollamaBaseURL ?? ""}
-                        ollamaChecking={ollamaStatus.checking}
-                        ollamaDetected={ollamaStatus.detected}
-                        ollamaModels={ollamaStatus.models}
-                        onModelChange={(model: string) => handleModelChange(model)}
-                        onProviderChange={() => handleProviderChange(provider.name)}
-                        onRefreshModels={() => handleRefreshModels(provider.name)}
-                        onRefreshOllama={handleRefreshOllama}
-                        onRemoveApiKey={() => handleRemoveApiKey(provider.name)}
-                        onSaveApiKey={(key: string) =>
-                          handleSaveApiKey(provider.name, key)
-                        }
-                        onSaveBaseUrl={(url: string) => handleSaveBaseUrl(url)}
-                        onSaveOllamaBaseUrl={(url: string) =>
-                          handleSaveOllamaBaseUrl(url)
-                        }
-                        openaiCompatibleBaseURL={
-                          settings.current.openaiCompatibleBaseURL
-                        }
-                        provider={provider}
-                        providerModels={getMergedModels(provider.name)}
-                      />
-                    );
-                  })}
-                </div>
-                <MissingConfigWarning
-                  ollamaDetected={ollamaStatus.detected}
-                  settings={settings}
-                />
-              </div>
-            </ScrollArea>
-          </TabsContent>
-
-          <TabsContent className="h-full" value="custom">
-            <CustomProvidersPanel
-              currentModel={settings.current.model}
-              currentProvider={settings.current.provider}
-              customs={settings.customProviders ?? []}
-              discovered={customDiscovered}
-              fetchingModelsFor={savingModelsFor}
-              isSavingProvider={isSavingProvider}
-              onAddModel={async (id, modelId) => {
-                try {
-                  setSettings(await addCustomModel(id, modelId));
-                } catch (err) {
-                  toast.error(
-                    err instanceof Error ? err.message : "Failed to add model"
-                  );
-                }
-              }}
-              onAddNew={() => setCustomDialogOpen(true)}
-              onDelete={(id) => handleRemoveCustomProvider(id)}
-              onDiscover={(custom) => handleDiscoverCustomModels(custom)}
-              onModelChange={(model: string) => handleModelChange(model)}
-              onRefreshStatus={(custom) => checkCustomStatus(custom)}
-              onRemoveModel={async (id, modelId) => {
-                try {
-                  setSettings(await removeCustomModel(id, modelId));
-                } catch (err) {
-                  toast.error(
-                    err instanceof Error ? err.message : "Failed to remove model"
-                  );
-                }
-              }}
-              onSaveKey={(id: string, key: string) =>
-                handleCustomKeySave(id, key)
-              }
-              onSelect={(custom) => handleCustomProviderChange(custom)}
-              onUpdate={async (id, patch) => {
-                try {
-                  setSettings(await updateCustomProvider(id, patch));
-                } catch (err) {
-                  toast.error(
-                    err instanceof Error ? err.message : "Failed to update provider"
-                  );
-                }
-              }}
-              onUseModel={(custom, modelId) =>
-                handleCustomProviderChange(custom, modelId)
-              }
-              statuses={customStatuses}
-            />
-          </TabsContent>
-
-          <TabsContent className="h-full" value="privacy">
-            <ScrollArea className="h-full">
-              <div className="p-6">
-                <PrivacySettingsSection
-                  currentProvider={settings.current.provider}
-                  onPresetChange={handlePrivacyPreset}
-                  onToggle={handlePrivacyToggle}
-                  privacyPreset={privacyPreset}
-                  privacySettings={privacySettings}
-                  providerLabel={currentProviderLabel}
-                />
-              </div>
-            </ScrollArea>
-          </TabsContent>
+      <Tabs className="gap-4" defaultValue="providers">
+        <div className="sticky top-0 z-10 bg-background pb-1">
+          <TabsList>
+            <TabsTrigger value="providers">Providers</TabsTrigger>
+            <TabsTrigger value="custom">Custom Providers</TabsTrigger>
+            <TabsTrigger value="privacy">Privacy & Context</TabsTrigger>
+          </TabsList>
         </div>
+
+        <TabsContent value="providers">
+          <AiSettingsStatus configured={configured} />
+          <ProvidersPanel
+            currentModel={settings.current.model}
+            currentProvider={settings.current.provider}
+            getMergedModels={getMergedModels}
+            isFetchingModelsFor={savingModelsFor}
+            isSavingProvider={isSavingProvider}
+            ollamaBaseURL={settings.current.ollamaBaseURL ?? ""}
+            ollamaChecking={ollamaStatus.checking}
+            ollamaDetected={ollamaStatus.detected}
+            ollamaModels={ollamaStatus.models}
+            onModelChange={handleModelChange}
+            onProviderChange={handleProviderChange}
+            onRefreshModels={handleRefreshModels}
+            onRefreshOllama={handleRefreshOllama}
+            onRemoveApiKey={handleRemoveApiKey}
+            onSaveApiKey={handleSaveApiKey}
+            onSaveOllamaBaseUrl={handleSaveOllamaBaseUrl}
+            providers={settings.providers}
+          />
+          <MissingConfigWarning
+            ollamaDetected={ollamaStatus.detected}
+            settings={settings}
+          />
+        </TabsContent>
+
+        <TabsContent value="custom">
+          <CustomProvidersPanel
+            currentModel={settings.current.model}
+            currentProvider={settings.current.provider}
+            customs={settings.customProviders ?? []}
+            discovered={customDiscovered}
+            fetchingModelsFor={savingModelsFor}
+            isSavingProvider={isSavingProvider}
+            onAddModel={async (id, modelId) => {
+              try {
+                setSettings(await addCustomModel(id, modelId));
+              } catch (err) {
+                toast.error(
+                  err instanceof Error ? err.message : "Failed to add model"
+                );
+              }
+            }}
+            onAddNew={() => setCustomDialogOpen(true)}
+            onDelete={(id) => handleRemoveCustomProvider(id)}
+            onDiscover={(custom) => handleDiscoverCustomModels(custom)}
+            onModelChange={(model: string) => handleModelChange(model)}
+            onRefreshStatus={(custom) => checkCustomStatus(custom)}
+            onRemoveModel={async (id, modelId) => {
+              try {
+                setSettings(await removeCustomModel(id, modelId));
+              } catch (err) {
+                toast.error(
+                  err instanceof Error ? err.message : "Failed to remove model"
+                );
+              }
+            }}
+            onRenameModel={(id, oldModelId, newModelId, isCustom) =>
+              handleRenameCustomModel(id, oldModelId, newModelId, isCustom)
+            }
+            onSaveKey={(id: string, key: string) =>
+              handleCustomKeySave(id, key)
+            }
+            onSelect={(custom) => handleCustomProviderChange(custom)}
+            onUpdate={async (id, patch) => {
+              try {
+                setSettings(await updateCustomProvider(id, patch));
+              } catch (err) {
+                toast.error(
+                  err instanceof Error
+                    ? err.message
+                    : "Failed to update provider"
+                );
+              }
+            }}
+            onUseModel={(custom, modelId) =>
+              handleCustomProviderChange(custom, modelId)
+            }
+            statuses={customStatuses}
+          />
+        </TabsContent>
+
+        <TabsContent value="privacy">
+          <PrivacySettingsSection
+            currentProvider={settings.current.provider}
+            onPresetChange={handlePrivacyPreset}
+            onToggle={handlePrivacyToggle}
+            privacyPreset={privacyPreset}
+            privacySettings={privacySettings}
+            providerLabel={currentProviderLabel}
+          />
+        </TabsContent>
       </Tabs>
 
       <CustomProviderDialog
@@ -705,13 +716,7 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
   );
 }
 
-function AiSettingsStatus({
-  configured,
-  settings,
-}: {
-  configured: boolean;
-  settings: AiProvidersInfo;
-}) {
+function AiSettingsStatus({ configured }: { configured: boolean }) {
   return (
     <AnimatePresence mode="wait">
       {configured ? (
@@ -756,12 +761,6 @@ function MissingConfigWarning({
   if (!currentProvider?.requiresApiKey || currentProvider.hasApiKey) {
     return null;
   }
-  if (
-    currentProvider.name === "openai-compatible" &&
-    settings.current.openaiCompatibleBaseURL.trim()
-  ) {
-    return null;
-  }
   if (currentProvider.name === "ollama" && ollamaDetected) {
     return null;
   }
@@ -782,9 +781,175 @@ function MissingConfigWarning({
   );
 }
 
-interface ProviderCardProps {
+interface ProvidersPanelProps {
   currentModel: string;
-  icon: React.ElementType | undefined;
+  currentProvider: string;
+  getMergedModels: (providerName: AiProviderName) => AiModelEntry[];
+  isFetchingModelsFor: string | null;
+  isSavingProvider: boolean;
+  ollamaBaseURL: string;
+  ollamaChecking: boolean;
+  ollamaDetected: boolean;
+  ollamaModels: string[];
+  onModelChange: (model: string) => Promise<void>;
+  onProviderChange: (providerName: AiProviderName) => Promise<void>;
+  onRefreshModels: (providerName: AiProviderName) => Promise<void>;
+  onRefreshOllama: () => Promise<void>;
+  onRemoveApiKey: (provider: AiProviderName) => Promise<void>;
+  onSaveApiKey: (provider: AiProviderName, key: string) => Promise<void>;
+  onSaveOllamaBaseUrl: (url: string) => Promise<void>;
+  providers: AiProvidersInfo["providers"];
+}
+
+/**
+ * Master/detail layout for the built-in providers: a compact rail on the left
+ * lists every provider, and the pane on the right holds the config for the
+ * selected one. Selecting a provider only *views* it — switching the active
+ * provider is an explicit action, so browsing never silently changes which
+ * model the app is using.
+ */
+function ProvidersPanel({
+  providers,
+  currentProvider,
+  currentModel,
+  isSavingProvider,
+  isFetchingModelsFor,
+  getMergedModels,
+  ollamaBaseURL,
+  ollamaDetected,
+  ollamaModels,
+  ollamaChecking,
+  onProviderChange,
+  onModelChange,
+  onSaveApiKey,
+  onRemoveApiKey,
+  onSaveOllamaBaseUrl,
+  onRefreshOllama,
+  onRefreshModels,
+}: ProvidersPanelProps) {
+  const [selectedName, setSelectedName] = useState<AiProviderName | null>(null);
+  const selected =
+    providers.find((p) => p.name === selectedName) ??
+    providers.find((p) => p.name === currentProvider) ??
+    providers[0] ??
+    null;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/70">
+      <div className="flex min-h-[360px]">
+        <div className="w-40 shrink-0 border-border/50 border-r p-2">
+          <p className="select-none px-2 pt-1 pb-1.5 font-medium text-[11px] text-muted-foreground/60 uppercase tracking-wider">
+            Built-in
+          </p>
+          <div className="space-y-0.5">
+            {providers.map((provider) => {
+              const ProviderIcon = PROVIDER_ICONS[provider.name];
+              const isSelected = selected?.name === provider.name;
+              const isActive = currentProvider === provider.name;
+              return (
+                <button
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                    isSelected
+                      ? "bg-muted/70 font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  )}
+                  key={provider.name}
+                  onClick={() => setSelectedName(provider.name)}
+                  type="button"
+                >
+                  <ProviderIcon className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {provider.label}
+                  </span>
+                  {isActive ? (
+                    <span
+                      aria-label="Active provider"
+                      className="size-1.5 shrink-0 rounded-full bg-primary"
+                    />
+                  ) : provider.hasApiKey ? (
+                    <UiIcon
+                      className="size-3 shrink-0 text-emerald-500"
+                      name="circle-check"
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1 p-4">
+          {selected ? (
+            <ProviderDetail
+              currentModel={currentModel}
+              isActive={currentProvider === selected.name}
+              isFetchingModels={isFetchingModelsFor === selected.name}
+              isSaving={isSavingProvider}
+              key={selected.name}
+              ollamaBaseURL={ollamaBaseURL}
+              ollamaChecking={ollamaChecking}
+              ollamaDetected={ollamaDetected}
+              ollamaModels={ollamaModels}
+              onModelChange={onModelChange}
+              onRefreshModels={() => onRefreshModels(selected.name)}
+              onRefreshOllama={onRefreshOllama}
+              onRemoveApiKey={() => onRemoveApiKey(selected.name)}
+              onSaveApiKey={(key) => onSaveApiKey(selected.name, key)}
+              onSaveOllamaBaseUrl={onSaveOllamaBaseUrl}
+              onSelectProvider={() => onProviderChange(selected.name)}
+              provider={selected}
+              providerModels={getMergedModels(selected.name)}
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SaveButton({
+  disabled,
+  isSaving,
+  onSave,
+  saved,
+}: {
+  disabled?: boolean;
+  isSaving: boolean;
+  onSave: () => void;
+  saved: boolean;
+}) {
+  let label: React.ReactNode = "Save";
+  if (isSaving) {
+    label = <UiIcon className="size-3 animate-spin" name="loader" />;
+  } else if (saved) {
+    label = (
+      <span className="flex items-center gap-1">
+        <UiIcon className="size-3" name="check" />
+        Saved!
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      className={cn(
+        "h-8 shrink-0 gap-1.5 px-3 text-xs shadow-sm transition-[background-color,color,box-shadow] duration-200 ease-out",
+        saved &&
+          "bg-emerald-500 text-white hover:bg-emerald-500/90 hover:text-white"
+      )}
+      disabled={disabled || isSaving || saved}
+      onClick={onSave}
+      size="sm"
+      type="button"
+    >
+      {label}
+    </Button>
+  );
+}
+
+interface ProviderDetailProps {
+  currentModel: string;
   isActive: boolean;
   isFetchingModels: boolean;
   isSaving: boolean;
@@ -792,153 +957,159 @@ interface ProviderCardProps {
   ollamaChecking: boolean;
   ollamaDetected: boolean;
   ollamaModels: string[];
-  onModelChange: (model: string) => void;
-  onProviderChange: () => void;
-  onRefreshModels: () => void;
+  onModelChange: (model: string) => Promise<void>;
+  onRefreshModels: () => Promise<void>;
   onRefreshOllama: () => Promise<void>;
-  onRemoveApiKey: () => void;
-  onSaveApiKey: (key: string) => void;
-  onSaveBaseUrl: (url: string) => void;
-  onSaveOllamaBaseUrl: (url: string) => void;
-  openaiCompatibleBaseURL: string;
-  provider: NonNullable<AiProvidersInfo["providers"][number]>;
+  onRemoveApiKey: () => Promise<void>;
+  onSaveApiKey: (key: string) => Promise<void>;
+  onSaveOllamaBaseUrl: (url: string) => Promise<void>;
+  onSelectProvider: () => Promise<void>;
+  provider: AiProvidersInfo["providers"][number];
   providerModels: AiModelEntry[];
 }
 
-function ProviderCard({
+function ProviderDetail({
   provider,
   isActive,
-  icon: Icon,
   isSaving,
-  ollamaDetected,
-  ollamaModels,
-  ollamaChecking,
   providerModels,
   isFetchingModels,
   currentModel,
-  openaiCompatibleBaseURL,
   ollamaBaseURL,
-  onProviderChange,
+  ollamaDetected,
+  ollamaModels,
+  ollamaChecking,
+  onSelectProvider,
   onModelChange,
   onSaveApiKey,
   onRemoveApiKey,
-  onSaveBaseUrl,
   onSaveOllamaBaseUrl,
   onRefreshOllama,
   onRefreshModels,
-}: ProviderCardProps) {
-  // Per-card local state
+}: ProviderDetailProps) {
+  const ProviderIcon = PROVIDER_ICONS[provider.name];
+
+  // Every text field keeps a local draft and only writes on an explicit
+  // action (Save button or Enter). Persisting straight from `onChange` would
+  // round-trip to the main process on every keystroke.
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
-  const [_isSavingKey, setIsSavingKey] = useState(false);
-  const [baseUrlInput, setBaseUrlInput] = useState("");
-  const [_isSavingBaseUrl, setIsSavingBaseUrl] = useState(false);
-  const [modelSaved, setModelSaved] = useState(false);
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [keySaved, setKeySaved] = useState(false);
+
+  const [ollamaUrlInput, setOllamaUrlInput] = useState(ollamaBaseURL);
+
+  const [modelInput, setModelInput] = useState(currentModel);
   const [isSavingModel, setIsSavingModel] = useState(false);
+  const [modelSaved, setModelSaved] = useState(false);
 
-  // Sync inputs from global state when this card becomes active
-  useEffect(() => {
-    if (isActive) {
-      setBaseUrlInput(openaiCompatibleBaseURL);
-    }
-  }, [isActive, openaiCompatibleBaseURL]);
+  const flashSaved = (reset: (value: boolean) => void) => {
+    reset(true);
+    setTimeout(() => reset(false), 2000);
+  };
 
-  const _handleSaveKey = async () => {
-    if (!apiKeyInput.trim()) {
+  const handleSaveKey = async () => {
+    const key = apiKeyInput.trim();
+    if (!key) {
       return;
     }
     setIsSavingKey(true);
     try {
-      await onSaveApiKey(apiKeyInput.trim());
+      await onSaveApiKey(key);
       setApiKeyInput("");
       setShowApiKey(false);
+      flashSaved(setKeySaved);
     } finally {
       setIsSavingKey(false);
     }
   };
 
-  const handleModelSave = async () => {
-    if (!currentModel.trim()) {
+  const handleSaveOllamaUrl = async () => {
+    const next = ollamaUrlInput.trim();
+    if (next === ollamaBaseURL.trim()) {
+      return;
+    }
+    await onSaveOllamaBaseUrl(next);
+  };
+
+  const handleSaveModel = async () => {
+    const next = modelInput.trim();
+    if (!next) {
       return;
     }
     setIsSavingModel(true);
     try {
-      await onModelChange(currentModel.trim());
-      setModelSaved(true);
-      setTimeout(() => setModelSaved(false), 2000);
+      await onModelChange(next);
+      flashSaved(setModelSaved);
     } finally {
       setIsSavingModel(false);
     }
   };
 
-  const handleBaseUrlSave = async () => {
-    if (!baseUrlInput.trim()) {
-      return;
-    }
-    setIsSavingBaseUrl(true);
-    try {
-      await onSaveBaseUrl(baseUrlInput.trim());
-    } finally {
-      setIsSavingBaseUrl(false);
+  const handleFieldEnter = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+    save: () => Promise<void>
+  ) => {
+    if (event.key === "Enter") {
+      void save();
     }
   };
 
-  const handleOllamaBaseBlur = async () => {
-    if (ollamaBaseURL.trim()) {
-      await onSaveOllamaBaseUrl(ollamaBaseURL.trim());
-    }
-  };
+  // `apiKeyFormat` is the reliable signal: only Ollama ships without one.
+  const showApiKeyField =
+    provider.requiresApiKey || Boolean(provider.apiKeyFormat);
+  const usesModelSelect =
+    provider.name === "ollama" || provider.name === "openai";
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-xl border transition-colors duration-150 ease-out",
-        isActive
-          ? "border-primary/30 bg-primary/[0.08] ring-1 ring-primary/20"
-          : "border-border/70 bg-transparent hover:border-muted-foreground/30 hover:bg-muted/[0.02]"
-      )}
-    >
-      {/* Provider header — always visible for selection */}
-      <button
-        className={cn(
-          "flex w-full select-none items-center justify-between px-3.5 py-3 text-left font-medium text-sm active:scale-[0.97]",
-          isActive
-            ? "text-primary"
-            : "text-muted-foreground hover:text-foreground"
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <ProviderIcon className="size-5 shrink-0" />
+          <span className="truncate font-medium text-sm">{provider.label}</span>
+        </div>
+        {isActive ? (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 font-medium text-[11px] text-primary">
+            <span className="size-1.5 rounded-full bg-primary" />
+            Active
+          </span>
+        ) : (
+          <Button
+            className="h-7 shrink-0 gap-1.5 px-2.5 text-xs"
+            disabled={isSaving}
+            onClick={onSelectProvider}
+            size="sm"
+            type="button"
+          >
+            {isSaving ? (
+              <UiIcon className="size-3 animate-spin" name="loader" />
+            ) : null}
+            Use this provider
+          </Button>
         )}
-        disabled={isSaving}
-        onClick={onProviderChange}
-        type="button"
-      >
-        <div className="flex items-center gap-3">
-          {Icon && <Icon className="size-5 shrink-0" />}
-          <span>{provider.label}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {isSaving && (
-            <UiIcon className="size-3.5 animate-spin" name="loader" />
-          )}
-          {!isActive && provider.hasApiKey && (
-            <UiIcon className="size-3 text-emerald-400" name="circle-check" />
-          )}
-        </div>
-      </button>
+      </div>
 
-      {/* Expanded config — only shown when active */}
-      {isActive && (
-        <div className="space-y-4 border-border/50 border-t px-4 py-3">
-          {/* API Key */}
-          <div className="space-y-2">
-            <Label className="font-medium text-muted-foreground text-xs">
-              API Key
-            </Label>
-            <div className="relative">
+      <Separator />
+
+      {showApiKeyField && (
+        <div className="space-y-2">
+          <Label className="font-medium text-muted-foreground text-xs">
+            API Key
+            {!provider.requiresApiKey && (
+              <span className="ml-1.5 font-normal text-muted-foreground/70">
+                optional
+              </span>
+            )}
+          </Label>
+          <div className="flex gap-1.5">
+            <div className="relative min-w-0 flex-1">
               <Input
                 autoCapitalize="off"
                 autoComplete="off"
                 autoCorrect="off"
                 className="h-8 bg-background pr-8 font-mono text-xs"
                 onChange={(e) => setApiKeyInput(e.target.value)}
+                onKeyDown={(e) => handleFieldEnter(e, handleSaveKey)}
                 placeholder={
                   provider.hasApiKey
                     ? "Key saved — enter new to replace"
@@ -949,217 +1120,176 @@ function ProviderCard({
                 value={apiKeyInput}
               />
               <button
+                aria-label={showApiKey ? "Hide API key" : "Show API key"}
                 className="absolute top-1/2 right-2.5 -translate-y-1/2 select-none text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setShowApiKey(!showApiKey)}
                 type="button"
               >
-                {showApiKey ? (
-                  <UiIcon className="size-3" name="eye-off" />
-                ) : (
-                  <UiIcon className="size-3" name="eye" />
-                )}
+                <UiIcon
+                  className="size-3"
+                  name={showApiKey ? "eye-off" : "eye"}
+                />
               </button>
             </div>
-            {provider.hasApiKey && (
-              <div className="flex items-center gap-3">
-                <p className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
-                  <UiIcon className="size-3" name="circle-check" />
-                  API key is set
-                </p>
-                <Button
-                  className="h-7 px-2 text-muted-foreground text-xs hover:text-destructive"
-                  onClick={onRemoveApiKey}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Remove
-                </Button>
-              </div>
-            )}
+            <SaveButton
+              disabled={!apiKeyInput.trim()}
+              isSaving={isSavingKey}
+              onSave={handleSaveKey}
+              saved={keySaved}
+            />
           </div>
-
-          {/* Base URL for OpenAI-compatible */}
-          {provider.name === "openai-compatible" && (
-            <div className="space-y-2">
-              <Label className="font-medium text-muted-foreground text-xs">
-                Base URL
-              </Label>
-              <Input
-                className="h-8 bg-background font-mono text-xs"
-                onBlur={handleBaseUrlSave}
-                onChange={(e) => setBaseUrlInput(e.target.value)}
-                placeholder="http://localhost:1234/v1"
-                type="url"
-                value={baseUrlInput}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Ex:{" "}
-                <code className="text-foreground/60">
-                  http://localhost:1234/v1
-                </code>
+          {provider.hasApiKey && (
+            <div className="flex items-center gap-3">
+              <p className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
+                <UiIcon className="size-3" name="circle-check" />
+                API key is set
               </p>
-            </div>
-          )}
-
-          {/* Base URL for Ollama (configurable) */}
-          {provider.name === "ollama" && (
-            <div className="space-y-2">
-              <Label className="font-medium text-muted-foreground text-xs">
-                Ollama Base URL (leave empty for localhost)
-              </Label>
-              <Input
-                className="h-8 bg-background font-mono text-xs"
-                onBlur={handleOllamaBaseBlur}
-                onChange={(e) => onSaveOllamaBaseUrl(e.target.value)}
-                placeholder="http://localhost:11434"
-                type="url"
-                value={ollamaBaseURL}
-              />
-            </div>
-          )}
-
-          {/* Ollama detection status */}
-          {provider.name === "ollama" && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs">
-                {ollamaDetected ? (
-                  <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                    <UiIcon className="size-3" name="circle-check" />
-                    Ollama detected ({ollamaModels.length} models)
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                    <UiIcon className="size-3" name="alert-circle" />
-                    Ollama not running
-                  </span>
-                )}
-                <Button
-                  className="ml-auto h-6 px-2 text-xs"
-                  disabled={ollamaChecking}
-                  onClick={onRefreshOllama}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  {ollamaChecking ? (
-                    <UiIcon className="size-3 animate-spin" name="loader" />
-                  ) : (
-                    <UiIcon className="size-3" name="refresh" />
-                  )}
-                  Refresh
-                </Button>
-              </div>
-
-              {!ollamaDetected && (
-                <p className="text-[11px] text-muted-foreground">
-                  Install Ollama from{" "}
-                  <code className="text-foreground/60">ollama.com</code> and run{" "}
-                  <code className="text-foreground/60">ollama serve</code> to
-                  get started.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Model selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="font-medium text-muted-foreground text-xs">
-                Model
-              </Label>
-              {providerModels.length > 0 && (
-                <Button
-                  className="h-5 px-1.5 text-[10px]"
-                  disabled={isFetchingModels}
-                  onClick={onRefreshModels}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  {isFetchingModels ? (
-                    <UiIcon className="size-2.5 animate-spin" name="loader" />
-                  ) : (
-                    <UiIcon className="size-2.5" name="refresh" />
-                  )}
-                  Refresh
-                </Button>
-              )}
-            </div>
-
-            {provider.name === "openai-compatible" ||
-            provider.name === "anthropic" ||
-            provider.name === "google" ? (
-              <div className="flex gap-1.5">
-                <Input
-                  autoCapitalize="off"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  className="h-8 flex-1 bg-background font-mono text-xs"
-                  onChange={(e) => onModelChange(e.target.value)}
-                  placeholder={provider.defaultModel || "Enter model ID"}
-                  spellCheck="false"
-                  value={currentModel}
-                />
-                <Button
-                  className={`h-8 shrink-0 gap-1.5 px-3 text-xs shadow-sm transition-[background-color,color,box-shadow] duration-200 ease-out ${
-                    modelSaved
-                      ? "bg-emerald-500 text-white hover:bg-emerald-500/90 hover:text-white"
-                      : ""
-                  }}`}
-                  disabled={isSavingModel || !currentModel.trim() || modelSaved}
-                  onClick={handleModelSave}
-                  size="sm"
-                  type="button"
-                >
-                  {isSavingModel ? (
-                    <UiIcon className="size-3 animate-spin" name="loader" />
-                  ) : modelSaved ? (
-                    <span className="flex items-center gap-1">
-                      <UiIcon className="size-3" name="check" />
-                      Saved!
-                    </span>
-                  ) : (
-                    "Save"
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <select
-                className="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-xs"
-                onChange={(e) => onModelChange(e.target.value)}
-                value={currentModel}
+              <Button
+                className="h-7 px-2 text-muted-foreground text-xs hover:text-destructive"
+                onClick={onRemoveApiKey}
+                size="sm"
+                type="button"
+                variant="ghost"
               >
-                <option disabled value="">
-                  Select a model
-                </option>
-                {providerModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {providerModels.length > 0 &&
-              provider.name !== "openai-compatible" &&
-              provider.name !== "anthropic" &&
-              provider.name !== "google" && (
-                <p className="text-[11px] text-muted-foreground">
-                  {providerModels.length} models available from {provider.label}
-                </p>
-              )}
-          </div>
+                Remove
+              </Button>
+            </div>
+          )}
         </div>
       )}
+
+      {provider.name === "ollama" && (
+        <div className="space-y-2">
+          <Label className="font-medium text-muted-foreground text-xs">
+            Ollama Base URL
+          </Label>
+          <Input
+            className="h-8 bg-background font-mono text-xs"
+            onBlur={handleSaveOllamaUrl}
+            onChange={(e) => setOllamaUrlInput(e.target.value)}
+            onKeyDown={(e) => handleFieldEnter(e, handleSaveOllamaUrl)}
+            placeholder="http://localhost:11434"
+            type="url"
+            value={ollamaUrlInput}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Leave empty to use the default localhost address.
+          </p>
+          <div className="flex items-center gap-2 text-xs">
+            {ollamaDetected ? (
+              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <UiIcon className="size-3" name="circle-check" />
+                Ollama detected ({ollamaModels.length} models)
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                <UiIcon className="size-3" name="alert-circle" />
+                Ollama not running
+              </span>
+            )}
+            <Button
+              className="ml-auto h-6 gap-1.5 px-2 text-xs"
+              disabled={ollamaChecking}
+              onClick={onRefreshOllama}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {ollamaChecking ? (
+                <UiIcon className="size-3 animate-spin" name="loader" />
+              ) : (
+                <UiIcon className="size-3" name="refresh" />
+              )}
+              Refresh
+            </Button>
+          </div>
+          {!ollamaDetected && (
+            <p className="text-[11px] text-muted-foreground">
+              Install Ollama from{" "}
+              <code className="text-foreground/60">ollama.com</code> and run{" "}
+              <code className="text-foreground/60">ollama serve</code> to get
+              started.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="font-medium text-muted-foreground text-xs">
+            Model
+          </Label>
+          {providerModels.length > 0 && (
+            <Button
+              className="h-6 gap-1.5 px-2 text-[10px]"
+              disabled={isFetchingModels}
+              onClick={onRefreshModels}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {isFetchingModels ? (
+                <UiIcon className="size-2.5 animate-spin" name="loader" />
+              ) : (
+                <UiIcon className="size-2.5" name="refresh" />
+              )}
+              Refresh
+            </Button>
+          )}
+        </div>
+
+        {usesModelSelect ? (
+          <NativeSelect
+            className="w-full"
+            onChange={(e) => onModelChange(e.target.value)}
+            size="sm"
+            value={currentModel}
+          >
+            <NativeSelectOption disabled value="">
+              Select a model
+            </NativeSelectOption>
+            {providerModels.map((model) => (
+              <NativeSelectOption key={model.id} value={model.id}>
+                {model.label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        ) : (
+          <div className="flex gap-1.5">
+            <Input
+              autoCapitalize="off"
+              autoComplete="off"
+              autoCorrect="off"
+              className="h-8 min-w-0 flex-1 bg-background font-mono text-xs"
+              onChange={(e) => setModelInput(e.target.value)}
+              onKeyDown={(e) => handleFieldEnter(e, handleSaveModel)}
+              placeholder={provider.defaultModel || "Enter model ID"}
+              spellCheck="false"
+              value={modelInput}
+            />
+            <SaveButton
+              disabled={!modelInput.trim()}
+              isSaving={isSavingModel}
+              onSave={handleSaveModel}
+              saved={modelSaved}
+            />
+          </div>
+        )}
+
+        {providerModels.length > 0 && usesModelSelect && (
+          <p className="text-[11px] text-muted-foreground">
+            {providerModels.length} models available from {provider.label}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
 
 interface CustomStatus {
   checking: boolean;
-  reachable: boolean | null;
   models: number;
+  reachable: boolean | null;
 }
 
 interface CustomProvidersPanelProps {
@@ -1176,6 +1306,12 @@ interface CustomProvidersPanelProps {
   onModelChange: (model: string) => void;
   onRefreshStatus: (custom: AiCustomProviderInfo) => void;
   onRemoveModel: (id: string, modelId: string) => void;
+  onRenameModel: (
+    id: string,
+    oldModelId: string,
+    newModelId: string,
+    isCustom: boolean
+  ) => Promise<void>;
   onSaveKey: (id: string, key: string) => void;
   onSelect: (custom: AiCustomProviderInfo) => void;
   onUpdate: (
@@ -1240,6 +1376,7 @@ function CustomProvidersPanel({
   onUpdate,
   onAddModel,
   onRemoveModel,
+  onRenameModel,
   onDelete,
   onAddNew,
 }: CustomProvidersPanelProps) {
@@ -1329,6 +1466,14 @@ function CustomProvidersPanel({
               onModelChange={onModelChange}
               onRefreshStatus={() => onRefreshStatus(selected)}
               onRemoveModel={(modelId) => onRemoveModel(selected.id, modelId)}
+              onRenameModel={(oldModelId, newModelId, isCustom) =>
+                onRenameModel(
+                  selected.id,
+                  oldModelId,
+                  newModelId,
+                  isCustom
+                )
+              }
               onSaveKey={(key) => onSaveKey(selected.id, key)}
               onSelect={() => onSelect(selected)}
               onUpdate={(patch) => onUpdate(selected.id, patch)}
@@ -1365,6 +1510,7 @@ function CustomProviderDetail({
   onUpdate,
   onAddModel,
   onRemoveModel,
+  onRenameModel,
   onDelete,
 }: {
   custom: AiCustomProviderInfo;
@@ -1387,6 +1533,11 @@ function CustomProviderDetail({
   }) => void;
   onAddModel: (modelId: string) => void;
   onRemoveModel: (modelId: string) => void;
+  onRenameModel: (
+    oldModelId: string,
+    newModelId: string,
+    isCustom: boolean
+  ) => Promise<void>;
   onDelete: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
@@ -1398,6 +1549,37 @@ function CustomProviderDetail({
   const [newModel, setNewModel] = useState("");
   const [manualModel, setManualModel] = useState(custom.defaultModel);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editingModelId, setEditingModelId] = useState<string | null>(null);
+  const [editingModelValue, setEditingModelValue] = useState("");
+  const [savingModelId, setSavingModelId] = useState<string | null>(null);
+
+  const beginModelEdit = (modelId: string) => {
+    setEditingModelId(modelId);
+    setEditingModelValue(modelId);
+  };
+
+  const cancelModelEdit = () => {
+    setEditingModelId(null);
+    setEditingModelValue("");
+  };
+
+  const saveModelEdit = async (modelId: string, isCustom: boolean) => {
+    const nextModelId = editingModelValue.trim();
+    if (!nextModelId || nextModelId === modelId) {
+      cancelModelEdit();
+      return;
+    }
+
+    setSavingModelId(modelId);
+    try {
+      await onRenameModel(modelId, nextModelId, isCustom);
+      cancelModelEdit();
+    } catch {
+      // The parent displays the actionable error message.
+    } finally {
+      setSavingModelId(null);
+    }
+  };
 
   useEffect(() => {
     if (!confirmingDelete) {
@@ -1651,6 +1833,8 @@ function CustomProviderDetail({
             <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
               {models.map((m) => {
                 const isCurrent = isActive && currentModel === m.id;
+                const isEditing = editingModelId === m.id;
+                const isSaving = savingModelId === m.id;
                 return (
                   <div
                     className={cn(
@@ -1660,34 +1844,92 @@ function CustomProviderDetail({
                     )}
                     key={m.id}
                   >
-                    <button
-                      className="min-w-0 flex-1 select-none truncate py-0.5 text-left font-mono text-xs"
-                      onClick={() => {
-                        if (isCurrent) {
-                          return;
-                        }
-                        onUseModel(m.id);
-                      }}
-                      title={isCurrent ? "Current model" : "Use this model"}
-                      type="button"
-                    >
-                      {m.id}
-                    </button>
-                    {isCurrent ? (
-                      <UiIcon
-                        className="size-3 shrink-0 text-emerald-500"
-                        name="check"
-                      />
-                    ) : m.added ? (
-                      <button
-                        aria-label={`Remove ${m.id}`}
-                        className="flex size-5 shrink-0 select-none items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-all hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                        onClick={() => onRemoveModel(m.id)}
-                        type="button"
-                      >
-                        <UiIcon className="size-3" name="x" />
-                      </button>
-                    ) : null}
+                    {isEditing ? (
+                      <>
+                        <Input
+                          autoFocus
+                          className="h-7 min-w-0 flex-1 font-mono text-xs"
+                          disabled={isSaving}
+                          onChange={(event) =>
+                            setEditingModelValue(event.target.value)
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              void saveModelEdit(m.id, m.added);
+                            }
+                            if (event.key === "Escape") {
+                              cancelModelEdit();
+                            }
+                          }}
+                          spellCheck="false"
+                          value={editingModelValue}
+                        />
+                        <button
+                          aria-label={`Save ${m.id}`}
+                          className="flex size-5 shrink-0 items-center justify-center rounded text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-400"
+                          disabled={isSaving || !editingModelValue.trim()}
+                          onClick={() => void saveModelEdit(m.id, m.added)}
+                          type="button"
+                        >
+                          {isSaving ? (
+                            <UiIcon
+                              className="size-3 animate-spin"
+                              name="loader"
+                            />
+                          ) : (
+                            <UiIcon className="size-3" name="check" />
+                          )}
+                        </button>
+                        <button
+                          aria-label={`Cancel editing ${m.id}`}
+                          className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                          disabled={isSaving}
+                          onClick={cancelModelEdit}
+                          type="button"
+                        >
+                          <UiIcon className="size-3" name="x" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="min-w-0 flex-1 select-none truncate py-0.5 text-left font-mono text-xs"
+                          onClick={() => {
+                            if (isCurrent) {
+                              return;
+                            }
+                            onUseModel(m.id);
+                          }}
+                          title={isCurrent ? "Current model" : "Use this model"}
+                          type="button"
+                        >
+                          {m.id}
+                        </button>
+                        <button
+                          aria-label={`Edit ${m.id}`}
+                          className="flex size-5 shrink-0 select-none items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-all hover:bg-muted/60 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                          onClick={() => beginModelEdit(m.id)}
+                          type="button"
+                        >
+                          <UiIcon className="size-3" name="pencil" />
+                        </button>
+                        {isCurrent ? (
+                          <UiIcon
+                            className="size-3 shrink-0 text-emerald-500"
+                            name="check"
+                          />
+                        ) : m.added ? (
+                          <button
+                            aria-label={`Remove ${m.id}`}
+                            className="flex size-5 shrink-0 select-none items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-all hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                            onClick={() => onRemoveModel(m.id)}
+                            type="button"
+                          >
+                            <UiIcon className="size-3" name="x" />
+                          </button>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 );
               })}

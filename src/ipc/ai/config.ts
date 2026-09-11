@@ -136,8 +136,98 @@ function migrateAiConnections(): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Retired providers
+// ---------------------------------------------------------------------------
+
+/**
+ * `openai-compatible` is no longer offered in the provider picker: saved custom
+ * providers cover the same ground with a better flow (named endpoints,
+ * reachability checks, per-provider keys).
+ *
+ * The provider *type* stays in `PROVIDERS` because every custom provider is
+ * persisted as one — only the redundant built-in entry is hidden from the UI.
+ */
+const RETIRED_AI_PROVIDER = "openai-compatible";
+
+/** Valid provider types that are deliberately not offered in the settings UI. */
+const HIDDEN_PROVIDER_NAMES: ReadonlySet<string> = new Set([
+  RETIRED_AI_PROVIDER,
+]);
+
+/** Label used when materialising a custom provider out of the retired entry. */
+const RETIRED_PROVIDER_LABEL = "OpenAI-Compatible";
+
+/** Pick a custom-provider label that no saved provider is already using. */
+function nextAvailableCustomLabel(base: string): string {
+  const taken = new Set(getCustomProviders().map((p) => p.label.toLowerCase()));
+  if (!taken.has(base.toLowerCase())) {
+    return base;
+  }
+  for (let suffix = 2; suffix <= 99; suffix += 1) {
+    const candidate = `${base} ${suffix}`;
+    if (!taken.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return `${base} (${taken.size + 1})`;
+}
+
+/**
+ * Move anyone still pointing at the retired entry onto an equivalent custom
+ * provider, carrying over their endpoint, API key and custom models.
+ *
+ * Runs at most once: after it succeeds `provider` holds a custom id, so the
+ * guard below stops matching.
+ */
+function migrateRetiredProvider(): void {
+  if (store.get("provider", defaults.provider) !== RETIRED_AI_PROVIDER) {
+    return;
+  }
+
+  const baseURL = normalizeBaseURL(
+    store.get("openaiCompatibleBaseURL", defaults.openaiCompatibleBaseURL)
+  );
+  if (!(baseURL && isValidHttpUrl(baseURL))) {
+    // Nothing usable to carry over — fall back to the default provider.
+    store.set("model", defaults.model);
+    store.set("provider", defaults.provider);
+    return;
+  }
+
+  const target =
+    getCustomProviders().find((p) => normalizeBaseURL(p.baseURL) === baseURL) ??
+    addCustomProvider({
+      baseURL,
+      defaultModel: store.get("model", defaults.model),
+      label: nextAvailableCustomLabel(RETIRED_PROVIDER_LABEL),
+    });
+
+  const apiKeys = getStoredApiKeys();
+  const retiredKey = (apiKeys[RETIRED_AI_PROVIDER] ?? "").trim();
+  if (retiredKey) {
+    apiKeys[target.id] = retiredKey;
+  }
+  delete apiKeys[RETIRED_AI_PROVIDER];
+  setStoredApiKeys(apiKeys);
+
+  const customModels = { ...store.get("customModels", defaults.customModels) };
+  const retiredModels = customModels[RETIRED_AI_PROVIDER] ?? [];
+  if (retiredModels.length > 0) {
+    customModels[target.id] = [
+      ...new Set([...(customModels[target.id] ?? []), ...retiredModels]),
+    ];
+    delete customModels[RETIRED_AI_PROVIDER];
+    store.set("customModels", customModels);
+  }
+
+  store.set("provider", target.id);
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
+}
+
 // Migrate before any caller can resolve a model or settings response. The
 // legacy fields remain the compatibility source of truth for existing APIs.
+migrateRetiredProvider();
 migrateAiConnections();
 
 // ---------------------------------------------------------------------------
@@ -627,6 +717,7 @@ export async function checkProviderEndpoint(
 
 /** Get the current AI settings */
 export function getAiSettings(): AiSettings {
+  migrateRetiredProvider();
   migrateAiConnections();
   return {
     apiKeys: getStoredApiKeys(),
@@ -756,6 +847,46 @@ export function removeCustomModel(provider: string, modelId: string): void {
   }
 }
 
+/** Rename a custom model ID for a provider. */
+export function renameCustomModel(
+  provider: string,
+  previousModelId: string,
+  nextModelId: string
+): void {
+  if (!isProviderRef(provider)) {
+    throw new Error(`Invalid AI provider '${provider}'.`);
+  }
+
+  const previousId = previousModelId.trim();
+  const nextId = nextModelId.trim();
+  if (!previousId || !nextId) {
+    throw new Error("Model ID must not be empty.");
+  }
+  if (previousId === nextId) {
+    return;
+  }
+
+  const all = store.get("customModels", {});
+  const list: string[] = all[provider] ?? [];
+  if (!list.includes(previousId)) {
+    throw new Error(`Custom model '${previousId}' was not found.`);
+  }
+  if (list.includes(nextId)) {
+    throw new Error(`Model '${nextId}' already exists for this provider.`);
+  }
+
+  all[provider] = list.map((modelId) =>
+    modelId === previousId ? nextId : modelId
+  );
+  store.set("customModels", all);
+
+  const settings = getLegacySettingsSnapshot();
+  if (settings.provider === provider && settings.model === previousId) {
+    store.set("model", nextId);
+  }
+  syncLegacyAiSettings(getLegacySettingsSnapshot());
+}
+
 /** Resolve a LanguageModel for one saved AI connection profile. */
 export function getModelForConnection(
   connectionId: string,
@@ -828,27 +959,29 @@ export function getProvidersInfo() {
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
     ollamaDetected: settings.ollamaDetected,
     ollamaModels: settings.ollamaModels,
-    providers: Object.entries(PROVIDERS).map(([name, entry]) => {
-      const custom = settings.customModels[name] ?? [];
-      const customModelEntries: AiModelEntry[] = custom.map((id) => ({
-        id,
-        isCustom: true,
-        label: id,
-      }));
-      return {
-        allowCustomModel: entry.allowCustomModel,
-        apiKeyFormat: entry.apiKeyFormat
-          ? { placeholder: entry.apiKeyFormat.placeholder }
-          : undefined,
-        customModels: customModelEntries,
-        defaultModel: entry.defaultModel,
-        hasApiKey: !!settings.apiKeys[name]?.trim(),
-        label: entry.label,
-        models: [],
-        name: name as AiProviderName,
-        requiresApiKey: entry.requiresApiKey,
-      };
-    }),
+    providers: Object.entries(PROVIDERS)
+      .filter(([name]) => !HIDDEN_PROVIDER_NAMES.has(name))
+      .map(([name, entry]) => {
+        const custom = settings.customModels[name] ?? [];
+        const customModelEntries: AiModelEntry[] = custom.map((id) => ({
+          id,
+          isCustom: true,
+          label: id,
+        }));
+        return {
+          allowCustomModel: entry.allowCustomModel,
+          apiKeyFormat: entry.apiKeyFormat
+            ? { placeholder: entry.apiKeyFormat.placeholder }
+            : undefined,
+          customModels: customModelEntries,
+          defaultModel: entry.defaultModel,
+          hasApiKey: !!settings.apiKeys[name]?.trim(),
+          label: entry.label,
+          models: [],
+          name: name as AiProviderName,
+          requiresApiKey: entry.requiresApiKey,
+        };
+      }),
   };
 }
 
