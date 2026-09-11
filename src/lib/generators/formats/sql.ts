@@ -1,12 +1,17 @@
-import type { DatabaseType, SchemaColumn, SchemaForeignKey, SchemaIndex } from "@/ipc/db/types";
+import type {
+  DatabaseType,
+  SchemaColumn,
+  SchemaForeignKey,
+  SchemaIndex,
+} from "@/ipc/db/types";
+import type { GeneratorFormat } from "../utils";
 import {
+  filterExplicitIndexes,
   getColumnType,
   groupIndexes,
-  filterExplicitIndexes,
-  quoteIdentifier,
   qualifiedName,
+  quoteIdentifier,
 } from "../utils";
-import type { GeneratorFormat } from "../utils";
 
 // ---------------------------------------------------------------------------
 // SQL Schema Generator
@@ -15,10 +20,14 @@ import type { GeneratorFormat } from "../utils";
 function buildColumnParts(
   col: SchemaColumn,
   dialect: DatabaseType,
-  primaryKeyColumns: string[],
+  _primaryKeyColumns: string[]
 ): string {
   const parts: string[] = [];
-  const typeDef = getColumnType(col.data_type, "sql" as GeneratorFormat, dialect);
+  const typeDef = getColumnType(
+    col.data_type,
+    "sql" as GeneratorFormat,
+    dialect
+  );
   parts.push(`${quoteIdentifier(col.name, dialect)} ${typeDef}`);
 
   // Auto-increment detection
@@ -26,9 +35,10 @@ function buildColumnParts(
   const isAutoIncrement =
     isSerial ||
     (col.column_default &&
-      (/nextval/i.test(col.column_default) || /auto_increment/i.test(col.column_default)));
+      (/nextval/i.test(col.column_default) ||
+        /auto_increment/i.test(col.column_default)));
 
-  if (!col.is_nullable && !isSerial) {
+  if (!(col.is_nullable || isSerial)) {
     parts.push("NOT NULL");
   }
 
@@ -45,7 +55,7 @@ function buildColumnParts(
 
 function buildForeignKeyLine(
   fk: SchemaForeignKey,
-  dialect: DatabaseType,
+  dialect: DatabaseType
 ): string {
   const ref = fk.referenced_schema
     ? qualifiedName(fk.referenced_schema, fk.referenced_table, dialect)
@@ -57,15 +67,17 @@ function appendIndexStatements(
   indexes: SchemaIndex[],
   schema: string,
   table: string,
-  dialect: DatabaseType,
+  dialect: DatabaseType
 ): string[] {
   const lines: string[] = [];
-  const nonUnique = indexes.filter((i) => !i.is_unique && !i.is_primary);
+  const nonUnique = indexes.filter((i) => !(i.is_unique || i.is_primary));
 
   for (const idx of nonUnique) {
-    const cols = idx.column_names.map((c) => quoteIdentifier(c, dialect)).join(", ");
+    const cols = idx.column_names
+      .map((c) => quoteIdentifier(c, dialect))
+      .join(", ");
     lines.push(
-      `CREATE INDEX ${quoteIdentifier(idx.name, dialect)} ON ${qualifiedName(schema, table, dialect)} (${cols});`,
+      `CREATE INDEX ${quoteIdentifier(idx.name, dialect)} ON ${qualifiedName(schema, table, dialect)} (${cols});`
     );
   }
 
@@ -93,16 +105,24 @@ export function generateSchemaSQL(params: {
 
   // Primary key constraint
   if (primaryKey && primaryKey.column_names.length > 0) {
-    const pkCols = primaryKey.column_names.map((c) => quoteIdentifier(c, dialect)).join(", ");
+    const pkCols = primaryKey.column_names
+      .map((c) => quoteIdentifier(c, dialect))
+      .join(", ");
     colLines.push(`  PRIMARY KEY (${pkCols})`);
   }
 
   // Unique constraints (non-primary)
   const groupedIndexes = groupIndexes(indexes, table);
-  const explicitIndexes = filterExplicitIndexes(groupedIndexes, columns, dialect);
+  const explicitIndexes = filterExplicitIndexes(
+    groupedIndexes,
+    columns,
+    dialect
+  );
   for (const idx of explicitIndexes) {
     if (idx.isUnique) {
-      const idxCols = idx.columns.map((c) => quoteIdentifier(c, dialect)).join(", ");
+      const idxCols = idx.columns
+        .map((c) => quoteIdentifier(c, dialect))
+        .join(", ");
       colLines.push(`  UNIQUE (${idxCols})`);
     }
   }
@@ -119,7 +139,12 @@ export function generateSchemaSQL(params: {
   lines.push(");");
 
   // Index statements
-  const indexStatements = appendIndexStatements(indexes, schema, table, dialect);
+  const indexStatements = appendIndexStatements(
+    indexes,
+    schema,
+    table,
+    dialect
+  );
   if (indexStatements.length > 0) {
     lines.push("");
     lines.push(...indexStatements);

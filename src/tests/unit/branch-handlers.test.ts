@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { BranchInfo } from "@/ipc/db/types";
 
 // ── Mocks ────────────────────────────────────────────────────────────
@@ -10,14 +10,14 @@ import type { BranchInfo } from "@/ipc/db/types";
 // vi.hoisted ensures the mock object is available inside vi.mock factories,
 // which are hoisted above all other code by Vitest.
 const mockLocalDbManager = vi.hoisted(() => ({
-  listBranches: vi.fn(),
   createBranch: vi.fn(),
   deleteBranch: vi.fn(),
-  switchBranch: vi.fn(),
   getBranchInfo: vi.fn(),
-  renameBranch: vi.fn(),
-  previewDeleteBranch: vi.fn(),
+  listBranches: vi.fn(),
   mergeBranchSchema: vi.fn(),
+  previewDeleteBranch: vi.fn(),
+  renameBranch: vi.fn(),
+  switchBranch: vi.fn(),
 }));
 
 vi.mock("@/ipc/db/local-db-manager", () => ({
@@ -32,9 +32,9 @@ vi.mock("@/ipc/db/connection-store", () => ({
 }));
 
 vi.mock("@/ipc/ai/schema-cache", () => ({
-  invalidateTableCache: vi.fn(),
-  invalidateSchemaCache: vi.fn(),
   invalidateConnectionCache: vi.fn(),
+  invalidateSchemaCache: vi.fn(),
+  invalidateTableCache: vi.fn(),
   recordDdlOperation: vi.fn(),
 }));
 
@@ -48,8 +48,8 @@ vi.mock("@/ipc/db/registry", () => ({
   driverRegistry: {
     get: vi.fn(() => ({
       buildConnectionString: vi.fn(() => "postgresql://localhost:5432/test"),
-      defaultPort: 5432,
       defaultDatabase: "postgres",
+      defaultPort: 5432,
       defaultUsername: "postgres",
     })),
   },
@@ -58,20 +58,23 @@ vi.mock("@/ipc/db/registry", () => ({
 
 vi.mock("crypto", async (importOriginal) => {
   const actual = await importOriginal<typeof import("crypto")>();
-  return { ...actual, randomUUID: vi.fn(() => "00000000-0000-0000-0000-000000000001") };
+  return {
+    ...actual,
+    randomUUID: vi.fn(() => "00000000-0000-0000-0000-000000000001"),
+  };
 });
 
 // ── Import after mocks ──────────────────────────────────────────────
 
 import {
-  listBranches,
   createBranch,
   deleteBranch,
-  switchBranch,
   getBranchInfo,
-  previewDeleteBranch,
+  listBranches,
   mergeBranchSchema,
+  previewDeleteBranch,
   renameBranch,
+  switchBranch,
 } from "@/ipc/db/handlers";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -85,13 +88,16 @@ import {
  * setting up a full IPC MessagePort bridge.
  */
 function getHandler(
-  procedure: unknown,
+  procedure: unknown
 ): (ctx: { input: unknown; context: unknown }) => Promise<unknown> {
   const orpc = (procedure as Record<string, unknown>)["~orpc"];
-  if (!orpc || typeof (orpc as Record<string, unknown>).handler !== "function") {
+  if (
+    !orpc ||
+    typeof (orpc as Record<string, unknown>).handler !== "function"
+  ) {
     throw new Error(
       "Could not extract handler from oRPC procedure. " +
-        "The '~orpc' internal structure may have changed in @orpc/server.",
+        "The '~orpc' internal structure may have changed in @orpc/server."
     );
   }
   return (orpc as Record<string, unknown>).handler as (ctx: {
@@ -102,16 +108,16 @@ function getHandler(
 
 /** A minimal BranchInfo for test assertions. */
 function mockBranchInfo(
-  overrides: Partial<BranchInfo> & { id: string },
+  overrides: Partial<BranchInfo> & { id: string }
 ): BranchInfo {
   return {
-    name: "main",
-    databaseName: "testdb",
     connectionString: "postgresql://postgres:postgres@localhost:5432/testdb",
-    parentId: "db-001",
     createdAt: "2025-01-01T00:00:00.000Z",
-    isMain: true,
+    databaseName: "testdb",
     isActive: true,
+    isMain: true,
+    name: "main",
+    parentId: "db-001",
     ...overrides,
   };
 }
@@ -130,12 +136,25 @@ describe("Branch oRPC handlers", () => {
 
     test("returns branches from localDbManager.listBranches", async () => {
       const branches = [
-        mockBranchInfo({ id: "db-001", name: "main", isMain: true, isActive: true }),
-        mockBranchInfo({ id: "branch-001", name: "feature-x", isMain: false, isActive: false }),
+        mockBranchInfo({
+          id: "db-001",
+          isActive: true,
+          isMain: true,
+          name: "main",
+        }),
+        mockBranchInfo({
+          id: "branch-001",
+          isActive: false,
+          isMain: false,
+          name: "feature-x",
+        }),
       ];
       mockLocalDbManager.listBranches.mockResolvedValue(branches);
 
-      const result = await handler({ input: { localDbId: "db-001" }, context: {} });
+      const result = await handler({
+        context: {},
+        input: { localDbId: "db-001" },
+      });
 
       expect(mockLocalDbManager.listBranches).toHaveBeenCalledWith("db-001");
       expect(result).toEqual(branches);
@@ -143,15 +162,15 @@ describe("Branch oRPC handlers", () => {
 
     test("wraps errors in ORPCError with sanitized message", async () => {
       mockLocalDbManager.listBranches.mockRejectedValue(
-        new Error("Local database missing not found"),
+        new Error("Local database missing not found")
       );
 
       await expect(
-        handler({ input: { localDbId: "missing" }, context: {} }),
+        handler({ context: {}, input: { localDbId: "missing" } })
       ).rejects.toThrow("Local database missing not found");
 
       try {
-        await handler({ input: { localDbId: "missing" }, context: {} });
+        await handler({ context: {}, input: { localDbId: "missing" } });
       } catch (err) {
         expect((err as any).code).toBe("BAD_REQUEST");
       }
@@ -159,15 +178,17 @@ describe("Branch oRPC handlers", () => {
 
     test("sanitizes credentials in error messages", async () => {
       mockLocalDbManager.listBranches.mockRejectedValue(
-        new Error("Connection to postgresql://admin:s3cret@localhost:5432 failed"),
+        new Error(
+          "Connection to postgresql://admin:s3cret@localhost:5432 failed"
+        )
       );
 
       await expect(
-        handler({ input: { localDbId: "db-001" }, context: {} }),
+        handler({ context: {}, input: { localDbId: "db-001" } })
       ).rejects.toThrow("[CONNECTION_STRING]");
 
       try {
-        await handler({ input: { localDbId: "db-001" }, context: {} });
+        await handler({ context: {}, input: { localDbId: "db-001" } });
       } catch (err) {
         expect((err as any).message).not.toContain("s3cret");
       }
@@ -177,7 +198,7 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.listBranches.mockRejectedValue("string error");
 
       await expect(
-        handler({ input: { localDbId: "db-001" }, context: {} }),
+        handler({ context: {}, input: { localDbId: "db-001" } })
       ).rejects.toThrow("Failed to list branches");
     });
   });
@@ -189,30 +210,30 @@ describe("Branch oRPC handlers", () => {
 
     test("delegates to localDbManager.createBranch with all fields", async () => {
       const branch = mockBranchInfo({
-        id: "branch-001",
-        name: "feature-x",
-        isMain: false,
-        isActive: false,
         databaseName: "br_feature_x_0001",
+        id: "branch-001",
+        isActive: false,
+        isMain: false,
+        name: "feature-x",
       });
       mockLocalDbManager.createBranch.mockResolvedValue(branch);
 
       const input = {
-        localDbId: "db-001",
-        parentBranchId: "db-001",
-        name: "feature-x",
-        description: "A new feature",
         dataTables: [{ schema: "public", table: "users" }],
+        description: "A new feature",
+        localDbId: "db-001",
+        name: "feature-x",
+        parentBranchId: "db-001",
       };
 
-      const result = await handler({ input, context: {} });
+      const result = await handler({ context: {}, input });
 
       expect(mockLocalDbManager.createBranch).toHaveBeenCalledWith({
-        localDbId: "db-001",
-        parentBranchId: "db-001",
-        name: "feature-x",
-        description: "A new feature",
         dataTables: [{ schema: "public", table: "users" }],
+        description: "A new feature",
+        localDbId: "db-001",
+        name: "feature-x",
+        parentBranchId: "db-001",
       });
       expect(result).toEqual(branch);
     });
@@ -220,9 +241,9 @@ describe("Branch oRPC handlers", () => {
     test("passes undefined optional fields as-is", async () => {
       const branch = mockBranchInfo({
         id: "branch-001",
-        name: "feature-y",
-        isMain: false,
         isActive: false,
+        isMain: false,
+        name: "feature-y",
       });
       mockLocalDbManager.createBranch.mockResolvedValue(branch);
 
@@ -231,56 +252,56 @@ describe("Branch oRPC handlers", () => {
         name: "feature-y",
       };
 
-      await handler({ input, context: {} });
+      await handler({ context: {}, input });
 
       expect(mockLocalDbManager.createBranch).toHaveBeenCalledWith({
-        localDbId: "db-001",
-        parentBranchId: undefined,
-        name: "feature-y",
-        description: undefined,
         dataTables: undefined,
+        description: undefined,
+        localDbId: "db-001",
+        name: "feature-y",
+        parentBranchId: undefined,
       });
     });
 
     test("passes empty dataTables array for schema-only branch", async () => {
       const branch = mockBranchInfo({
         id: "branch-002",
-        name: "schema-only",
-        isMain: false,
         isActive: false,
+        isMain: false,
+        name: "schema-only",
       });
       mockLocalDbManager.createBranch.mockResolvedValue(branch);
 
       const input = {
+        dataTables: [],
         localDbId: "db-001",
         name: "schema-only",
-        dataTables: [],
       };
 
-      await handler({ input, context: {} });
+      await handler({ context: {}, input });
 
       expect(mockLocalDbManager.createBranch).toHaveBeenCalledWith({
-        localDbId: "db-001",
-        parentBranchId: undefined,
-        name: "schema-only",
-        description: undefined,
         dataTables: [],
+        description: undefined,
+        localDbId: "db-001",
+        name: "schema-only",
+        parentBranchId: undefined,
       });
     });
 
     test("distinguishes empty array from undefined dataTables in handler input", async () => {
       const branch = mockBranchInfo({
         id: "branch-003",
-        name: "test-branch",
-        isMain: false,
         isActive: false,
+        isMain: false,
+        name: "test-branch",
       });
       mockLocalDbManager.createBranch.mockResolvedValue(branch);
 
       // Call with dataTables: [] — should pass [] through, not undefined
       await handler({
-        input: { localDbId: "db-001", name: "test-branch", dataTables: [] },
         context: {},
+        input: { dataTables: [], localDbId: "db-001", name: "test-branch" },
       });
 
       const callArgs = mockLocalDbManager.createBranch.mock.calls[0][0];
@@ -290,15 +311,18 @@ describe("Branch oRPC handlers", () => {
 
     test("wraps errors in ORPCError with sanitized message", async () => {
       mockLocalDbManager.createBranch.mockRejectedValue(
-        new Error('Branch "main" already exists'),
+        new Error('Branch "main" already exists')
       );
 
       await expect(
-        handler({ input: { localDbId: "db-001", name: "main" }, context: {} }),
+        handler({ context: {}, input: { localDbId: "db-001", name: "main" } })
       ).rejects.toThrow('Branch "main" already exists');
 
       try {
-        await handler({ input: { localDbId: "db-001", name: "main" }, context: {} });
+        await handler({
+          context: {},
+          input: { localDbId: "db-001", name: "main" },
+        });
       } catch (err) {
         expect((err as any).code).toBe("BAD_REQUEST");
       }
@@ -306,15 +330,21 @@ describe("Branch oRPC handlers", () => {
 
     test("sanitizes password= patterns in error messages", async () => {
       mockLocalDbManager.createBranch.mockRejectedValue(
-        new Error("Failed with password=mysecretpassword in config"),
+        new Error("Failed with password=mysecretpassword in config")
       );
 
       await expect(
-        handler({ input: { localDbId: "db-001", name: "feature" }, context: {} }),
+        handler({
+          context: {},
+          input: { localDbId: "db-001", name: "feature" },
+        })
       ).rejects.toThrow("password=[REDACTED]");
 
       try {
-        await handler({ input: { localDbId: "db-001", name: "feature" }, context: {} });
+        await handler({
+          context: {},
+          input: { localDbId: "db-001", name: "feature" },
+        });
       } catch (err) {
         expect((err as any).message).not.toContain("mysecretpassword");
       }
@@ -324,7 +354,10 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.createBranch.mockRejectedValue(null);
 
       await expect(
-        handler({ input: { localDbId: "db-001", name: "feature" }, context: {} }),
+        handler({
+          context: {},
+          input: { localDbId: "db-001", name: "feature" },
+        })
       ).rejects.toThrow("Failed to create branch");
     });
   });
@@ -338,25 +371,34 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.deleteBranch.mockResolvedValue(undefined);
 
       const result = await handler({
-        input: { localDbId: "db-001", branchId: "branch-001" },
         context: {},
+        input: { branchId: "branch-001", localDbId: "db-001" },
       });
 
-      expect(mockLocalDbManager.deleteBranch).toHaveBeenCalledWith("db-001", "branch-001");
+      expect(mockLocalDbManager.deleteBranch).toHaveBeenCalledWith(
+        "db-001",
+        "branch-001"
+      );
       expect(result).toBeUndefined();
     });
 
     test("wraps errors in ORPCError", async () => {
       mockLocalDbManager.deleteBranch.mockRejectedValue(
-        new Error("Cannot delete the main branch"),
+        new Error("Cannot delete the main branch")
       );
 
       await expect(
-        handler({ input: { localDbId: "db-001", branchId: "db-001" }, context: {} }),
+        handler({
+          context: {},
+          input: { branchId: "db-001", localDbId: "db-001" },
+        })
       ).rejects.toThrow("Cannot delete the main branch");
 
       try {
-        await handler({ input: { localDbId: "db-001", branchId: "db-001" }, context: {} });
+        await handler({
+          context: {},
+          input: { branchId: "db-001", localDbId: "db-001" },
+        });
       } catch (err) {
         expect((err as any).code).toBe("BAD_REQUEST");
       }
@@ -364,15 +406,21 @@ describe("Branch oRPC handlers", () => {
 
     test("sanitizes :password@ patterns in error messages", async () => {
       mockLocalDbManager.deleteBranch.mockRejectedValue(
-        new Error("Failed with :secretpass@host connection"),
+        new Error("Failed with :secretpass@host connection")
       );
 
       await expect(
-        handler({ input: { localDbId: "db-001", branchId: "branch-001" }, context: {} }),
+        handler({
+          context: {},
+          input: { branchId: "branch-001", localDbId: "db-001" },
+        })
       ).rejects.toThrow(":[REDACTED]@");
 
       try {
-        await handler({ input: { localDbId: "db-001", branchId: "branch-001" }, context: {} });
+        await handler({
+          context: {},
+          input: { branchId: "branch-001", localDbId: "db-001" },
+        });
       } catch (err) {
         expect((err as any).message).not.toContain("secretpass");
       }
@@ -382,7 +430,10 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.deleteBranch.mockRejectedValue(42);
 
       await expect(
-        handler({ input: { localDbId: "db-001", branchId: "branch-001" }, context: {} }),
+        handler({
+          context: {},
+          input: { branchId: "branch-001", localDbId: "db-001" },
+        })
       ).rejects.toThrow("Failed to delete branch");
     });
   });
@@ -395,32 +446,41 @@ describe("Branch oRPC handlers", () => {
     test("delegates to localDbManager.switchBranch", async () => {
       const branch = mockBranchInfo({
         id: "branch-001",
-        name: "feature-x",
-        isMain: false,
         isActive: true,
+        isMain: false,
+        name: "feature-x",
       });
       mockLocalDbManager.switchBranch.mockResolvedValue(branch);
 
       const result = await handler({
-        input: { localDbId: "db-001", branchId: "branch-001" },
         context: {},
+        input: { branchId: "branch-001", localDbId: "db-001" },
       });
 
-      expect(mockLocalDbManager.switchBranch).toHaveBeenCalledWith("db-001", "branch-001");
+      expect(mockLocalDbManager.switchBranch).toHaveBeenCalledWith(
+        "db-001",
+        "branch-001"
+      );
       expect(result).toEqual(branch);
     });
 
     test("wraps errors in ORPCError", async () => {
       mockLocalDbManager.switchBranch.mockRejectedValue(
-        new Error("Branch nonexistent not found"),
+        new Error("Branch nonexistent not found")
       );
 
       await expect(
-        handler({ input: { localDbId: "db-001", branchId: "nonexistent" }, context: {} }),
+        handler({
+          context: {},
+          input: { branchId: "nonexistent", localDbId: "db-001" },
+        })
       ).rejects.toThrow("Branch nonexistent not found");
 
       try {
-        await handler({ input: { localDbId: "db-001", branchId: "nonexistent" }, context: {} });
+        await handler({
+          context: {},
+          input: { branchId: "nonexistent", localDbId: "db-001" },
+        });
       } catch (err) {
         expect((err as any).code).toBe("BAD_REQUEST");
       }
@@ -430,7 +490,10 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.switchBranch.mockRejectedValue(undefined);
 
       await expect(
-        handler({ input: { localDbId: "db-001", branchId: "branch-001" }, context: {} }),
+        handler({
+          context: {},
+          input: { branchId: "branch-001", localDbId: "db-001" },
+        })
       ).rejects.toThrow("Failed to switch branch");
     });
   });
@@ -442,34 +505,43 @@ describe("Branch oRPC handlers", () => {
 
     test("delegates to localDbManager.getBranchInfo", async () => {
       const branch = mockBranchInfo({
-        id: "branch-001",
-        name: "feature-x",
-        isMain: false,
-        isActive: false,
         databaseName: "br_feature_x_0001",
+        id: "branch-001",
+        isActive: false,
+        isMain: false,
+        name: "feature-x",
       });
       mockLocalDbManager.getBranchInfo.mockResolvedValue(branch);
 
       const result = await handler({
-        input: { localDbId: "db-001", branchId: "branch-001" },
         context: {},
+        input: { branchId: "branch-001", localDbId: "db-001" },
       });
 
-      expect(mockLocalDbManager.getBranchInfo).toHaveBeenCalledWith("db-001", "branch-001");
+      expect(mockLocalDbManager.getBranchInfo).toHaveBeenCalledWith(
+        "db-001",
+        "branch-001"
+      );
       expect(result).toEqual(branch);
     });
 
     test("wraps errors in ORPCError", async () => {
       mockLocalDbManager.getBranchInfo.mockRejectedValue(
-        new Error("Branch missing not found"),
+        new Error("Branch missing not found")
       );
 
       await expect(
-        handler({ input: { localDbId: "db-001", branchId: "missing" }, context: {} }),
+        handler({
+          context: {},
+          input: { branchId: "missing", localDbId: "db-001" },
+        })
       ).rejects.toThrow("Branch missing not found");
 
       try {
-        await handler({ input: { localDbId: "db-001", branchId: "missing" }, context: {} });
+        await handler({
+          context: {},
+          input: { branchId: "missing", localDbId: "db-001" },
+        });
       } catch (err) {
         expect((err as any).code).toBe("BAD_REQUEST");
       }
@@ -479,7 +551,10 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.getBranchInfo.mockRejectedValue(new Error());
 
       await expect(
-        handler({ input: { localDbId: "db-001", branchId: "branch-001" }, context: {} }),
+        handler({
+          context: {},
+          input: { branchId: "branch-001", localDbId: "db-001" },
+        })
       ).rejects.toThrow("Failed to get branch info");
     });
   });
@@ -492,41 +567,53 @@ describe("Branch oRPC handlers", () => {
     test("delegates to localDbManager.renameBranch", async () => {
       const branch = mockBranchInfo({
         id: "branch-001",
-        name: "renamed-feature",
-        isMain: false,
         isActive: false,
+        isMain: false,
+        name: "renamed-feature",
       });
       mockLocalDbManager.renameBranch.mockResolvedValue(branch);
 
       const result = await handler({
-        input: { localDbId: "db-001", branchId: "branch-001", newName: "renamed-feature" },
         context: {},
+        input: {
+          branchId: "branch-001",
+          localDbId: "db-001",
+          newName: "renamed-feature",
+        },
       });
 
       expect(mockLocalDbManager.renameBranch).toHaveBeenCalledWith(
         "db-001",
         "branch-001",
-        "renamed-feature",
+        "renamed-feature"
       );
       expect(result).toEqual(branch);
     });
 
     test("wraps errors in ORPCError", async () => {
       mockLocalDbManager.renameBranch.mockRejectedValue(
-        new Error("Cannot rename the main branch"),
+        new Error("Cannot rename the main branch")
       );
 
       await expect(
         handler({
-          input: { localDbId: "db-001", branchId: "db-001", newName: "renamed" },
           context: {},
-        }),
+          input: {
+            branchId: "db-001",
+            localDbId: "db-001",
+            newName: "renamed",
+          },
+        })
       ).rejects.toThrow("Cannot rename the main branch");
 
       try {
         await handler({
-          input: { localDbId: "db-001", branchId: "db-001", newName: "renamed" },
           context: {},
+          input: {
+            branchId: "db-001",
+            localDbId: "db-001",
+            newName: "renamed",
+          },
         });
       } catch (err) {
         expect((err as any).code).toBe("BAD_REQUEST");
@@ -535,20 +622,28 @@ describe("Branch oRPC handlers", () => {
 
     test("wraps name collision errors in ORPCError", async () => {
       mockLocalDbManager.renameBranch.mockRejectedValue(
-        new Error('Branch "feature-y" already exists'),
+        new Error('Branch "feature-y" already exists')
       );
 
       await expect(
         handler({
-          input: { localDbId: "db-001", branchId: "branch-001", newName: "feature-y" },
           context: {},
-        }),
+          input: {
+            branchId: "branch-001",
+            localDbId: "db-001",
+            newName: "feature-y",
+          },
+        })
       ).rejects.toThrow('Branch "feature-y" already exists');
 
       try {
         await handler({
-          input: { localDbId: "db-001", branchId: "branch-001", newName: "feature-y" },
           context: {},
+          input: {
+            branchId: "branch-001",
+            localDbId: "db-001",
+            newName: "feature-y",
+          },
         });
       } catch (err) {
         expect((err as any).code).toBe("BAD_REQUEST");
@@ -560,9 +655,13 @@ describe("Branch oRPC handlers", () => {
 
       await expect(
         handler({
-          input: { localDbId: "db-001", branchId: "branch-001", newName: "new" },
           context: {},
-        }),
+          input: {
+            branchId: "branch-001",
+            localDbId: "db-001",
+            newName: "new",
+          },
+        })
       ).rejects.toThrow("Failed to rename branch");
     });
   });
@@ -572,12 +671,25 @@ describe("Branch oRPC handlers", () => {
 
     test("delegates to localDbManager.previewDeleteBranch", async () => {
       const preview = {
-        branchesToDelete: [mockBranchInfo({ id: "branch-001", name: "feature-x", isMain: false, isActive: false })],
+        branchesToDelete: [
+          mockBranchInfo({
+            id: "branch-001",
+            isActive: false,
+            isMain: false,
+            name: "feature-x",
+          }),
+        ],
         count: 1,
       };
       mockLocalDbManager.previewDeleteBranch.mockResolvedValue(preview);
-      const result = await handler({ input: { localDbId: "db-001", branchId: "branch-001" }, context: {} });
-      expect(mockLocalDbManager.previewDeleteBranch).toHaveBeenCalledWith("db-001", "branch-001");
+      const result = await handler({
+        context: {},
+        input: { branchId: "branch-001", localDbId: "db-001" },
+      });
+      expect(mockLocalDbManager.previewDeleteBranch).toHaveBeenCalledWith(
+        "db-001",
+        "branch-001"
+      );
       expect(result).toEqual(preview);
     });
   });
@@ -586,22 +698,26 @@ describe("Branch oRPC handlers", () => {
     const handler = getHandler(mergeBranchSchema);
 
     test("delegates to localDbManager.mergeBranchSchema", async () => {
-      const mergeResult = { statements: ["CREATE TABLE x(id int);"], applied: 1, errors: [] };
+      const mergeResult = {
+        applied: 1,
+        errors: [],
+        statements: ["CREATE TABLE x(id int);"],
+      };
       mockLocalDbManager.mergeBranchSchema.mockResolvedValue(mergeResult);
       const result = await handler({
+        context: {},
         input: {
+          dryRun: false,
           localDbId: "db-001",
           sourceBranchId: "branch-a",
           targetBranchId: "branch-b",
-          dryRun: false,
         },
-        context: {},
       });
       expect(mockLocalDbManager.mergeBranchSchema).toHaveBeenCalledWith({
+        dryRun: false,
         localDbId: "db-001",
         sourceBranchId: "branch-a",
         targetBranchId: "branch-b",
-        dryRun: false,
       });
       expect(result).toEqual(mergeResult);
     });
@@ -611,13 +727,16 @@ describe("Branch oRPC handlers", () => {
 
   describe("credential sanitization across all handlers", () => {
     const connectionStrError = new Error(
-      "Failed with postgresql://admin:s3cret@db.example.com:5432/mydb",
+      "Failed with postgresql://admin:s3cret@db.example.com:5432/mydb"
     );
 
     test("listBranches sanitizes connection strings", async () => {
       mockLocalDbManager.listBranches.mockRejectedValue(connectionStrError);
       try {
-        await getHandler(listBranches)({ input: { localDbId: "db-001" }, context: {} });
+        await getHandler(listBranches)({
+          context: {},
+          input: { localDbId: "db-001" },
+        });
       } catch (err) {
         expect((err as any).message).toContain("[CONNECTION_STRING]");
         expect((err as any).message).not.toContain("s3cret");
@@ -628,8 +747,8 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.createBranch.mockRejectedValue(connectionStrError);
       try {
         await getHandler(createBranch)({
-          input: { localDbId: "db-001", name: "x" },
           context: {},
+          input: { localDbId: "db-001", name: "x" },
         });
       } catch (err) {
         expect((err as any).message).toContain("[CONNECTION_STRING]");
@@ -641,8 +760,8 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.deleteBranch.mockRejectedValue(connectionStrError);
       try {
         await getHandler(deleteBranch)({
-          input: { localDbId: "db-001", branchId: "b1" },
           context: {},
+          input: { branchId: "b1", localDbId: "db-001" },
         });
       } catch (err) {
         expect((err as any).message).toContain("[CONNECTION_STRING]");
@@ -654,8 +773,8 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.switchBranch.mockRejectedValue(connectionStrError);
       try {
         await getHandler(switchBranch)({
-          input: { localDbId: "db-001", branchId: "b1" },
           context: {},
+          input: { branchId: "b1", localDbId: "db-001" },
         });
       } catch (err) {
         expect((err as any).message).toContain("[CONNECTION_STRING]");
@@ -667,8 +786,8 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.getBranchInfo.mockRejectedValue(connectionStrError);
       try {
         await getHandler(getBranchInfo)({
-          input: { localDbId: "db-001", branchId: "b1" },
           context: {},
+          input: { branchId: "b1", localDbId: "db-001" },
         });
       } catch (err) {
         expect((err as any).message).toContain("[CONNECTION_STRING]");
@@ -680,8 +799,8 @@ describe("Branch oRPC handlers", () => {
       mockLocalDbManager.renameBranch.mockRejectedValue(connectionStrError);
       try {
         await getHandler(renameBranch)({
-          input: { localDbId: "db-001", branchId: "b1", newName: "new" },
           context: {},
+          input: { branchId: "b1", localDbId: "db-001", newName: "new" },
         });
       } catch (err) {
         expect((err as any).message).toContain("[CONNECTION_STRING]");

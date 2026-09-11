@@ -1,7 +1,6 @@
 function renderBootstrapError(error: unknown): void {
-  const message = error instanceof Error
-    ? `${error.name}: ${error.message}`
-    : String(error);
+  const message =
+    error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
   console.error("[renderer] bootstrap failed:", error);
 

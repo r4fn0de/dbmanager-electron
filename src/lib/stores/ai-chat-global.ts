@@ -5,51 +5,54 @@ import type { DatabaseType } from "@/ipc/db/types";
 export interface AiChatContextPreview {
   connectionLabel: string;
   dbType: DatabaseType;
-  selectionPreview?: string;
   errorPreview?: string;
+  selectionPreview?: string;
   tablePreview?: string;
 }
 
 export interface AiChatCurrentContext {
-  mode: "global" | "sql-editor";
   connectionId: string | null;
   connectionLabel: string;
-  dbType: DatabaseType;
-  schemaContext?: string;
   contextPreview?: AiChatContextPreview;
+  dbType: DatabaseType;
+  mode: "global" | "sql-editor";
+  schemaContext?: string;
   updatedAt: string;
 }
 
 interface AiChatGlobalState {
-  isOpen: boolean;
-  panelSize: number;
+  clearSqlContext: (sourceId: string) => void;
+  consumeSqlInsert: () => { key: string; text: string } | null;
   currentContext: AiChatCurrentContext;
   currentSqlContextOwner: string | null;
+  isOpen: boolean;
+  panelSize: number;
   pendingSqlInsert: { key: string; text: string } | null;
+  requestSqlInsert: (text: string) => void;
 
   setOpen: (nextOpen: boolean) => void;
-  toggleOpen: () => void;
   setPanelSize: (nextSize: number) => void;
 
-  setSqlContext: (sourceId: string, context: Omit<AiChatCurrentContext, "mode" | "updatedAt">) => void;
-  clearSqlContext: (sourceId: string) => void;
-  requestSqlInsert: (text: string) => void;
-  consumeSqlInsert: () => { key: string; text: string } | null;
+  setSqlContext: (
+    sourceId: string,
+    context: Omit<AiChatCurrentContext, "mode" | "updatedAt">
+  ) => void;
+  toggleOpen: () => void;
 }
 
 const DEFAULT_CONTEXT: AiChatCurrentContext = {
-  mode: "global",
   connectionId: null,
   connectionLabel: "No connection",
-  dbType: "postgresql",
-  schemaContext: undefined,
   contextPreview: {
     connectionLabel: "No connection",
     dbType: "postgresql",
-    selectionPreview: "",
     errorPreview: "",
+    selectionPreview: "",
     tablePreview: undefined,
   },
+  dbType: "postgresql",
+  mode: "global",
+  schemaContext: undefined,
   updatedAt: new Date(0).toISOString(),
 };
 
@@ -60,20 +63,53 @@ function nowIso() {
 export const useAiChatGlobalStore = create<AiChatGlobalState>()(
   persist(
     (set, get) => ({
-      isOpen: false,
-      panelSize: 30,
+      clearSqlContext: (sourceId) =>
+        set((state) => {
+          if (state.currentSqlContextOwner !== sourceId) {
+            return state;
+          }
+          return {
+            currentContext: {
+              ...DEFAULT_CONTEXT,
+              updatedAt: nowIso(),
+            },
+            currentSqlContextOwner: null,
+          };
+        }),
+
+      consumeSqlInsert: () => {
+        const pending = get().pendingSqlInsert;
+        if (!pending) {
+          return null;
+        }
+        set({ pendingSqlInsert: null });
+        return pending;
+      },
       currentContext: DEFAULT_CONTEXT,
       currentSqlContextOwner: null,
+      isOpen: false,
+      panelSize: 30,
       pendingSqlInsert: null,
 
+      requestSqlInsert: (text) =>
+        set({
+          pendingSqlInsert: {
+            key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            text,
+          },
+        }),
+
       setOpen: (nextOpen) => set({ isOpen: nextOpen }),
-      toggleOpen: () => set((state) => ({ isOpen: !state.isOpen })),
       setPanelSize: (nextSize) =>
-        set({ panelSize: Math.max(15, Math.min(45, Number.isFinite(nextSize) ? nextSize : 30)) }),
+        set({
+          panelSize: Math.max(
+            15,
+            Math.min(45, Number.isFinite(nextSize) ? nextSize : 30)
+          ),
+        }),
 
       setSqlContext: (sourceId, context) =>
         set((state) => ({
-          currentSqlContextOwner: sourceId,
           currentContext: {
             ...state.currentContext,
             ...context,
@@ -87,48 +123,21 @@ export const useAiChatGlobalStore = create<AiChatGlobalState>()(
             mode: "sql-editor",
             updatedAt: nowIso(),
           },
+          currentSqlContextOwner: sourceId,
         })),
-
-      clearSqlContext: (sourceId) =>
-        set((state) => {
-          if (state.currentSqlContextOwner !== sourceId) {
-            return state;
-          }
-          return {
-            currentSqlContextOwner: null,
-            currentContext: {
-              ...DEFAULT_CONTEXT,
-              updatedAt: nowIso(),
-            },
-          };
-        }),
-
-      requestSqlInsert: (text) =>
-        set({
-          pendingSqlInsert: {
-            key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            text,
-          },
-        }),
-
-      consumeSqlInsert: () => {
-        const pending = get().pendingSqlInsert;
-        if (!pending) return null;
-        set({ pendingSqlInsert: null });
-        return pending;
-      },
+      toggleOpen: () => set((state) => ({ isOpen: !state.isOpen })),
     }),
     {
-      name: "ai-chat-global-ui:v1",
-      partialize: (state) => ({
-        isOpen: state.isOpen,
-        panelSize: state.panelSize,
-      }),
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as Partial<AiChatGlobalState>),
         pendingSqlInsert: null,
       }),
-    },
-  ),
+      name: "ai-chat-global-ui:v1",
+      partialize: (state) => ({
+        isOpen: state.isOpen,
+        panelSize: state.panelSize,
+      }),
+    }
+  )
 );

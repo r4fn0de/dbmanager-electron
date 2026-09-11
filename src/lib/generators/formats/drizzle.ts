@@ -1,49 +1,54 @@
-import type { DatabaseType, SchemaColumn, SchemaForeignKey, SchemaIndex } from "@/ipc/db/types";
+import type {
+  DatabaseType,
+  SchemaColumn,
+  SchemaForeignKey,
+  SchemaIndex,
+} from "@/ipc/db/types";
+import type { GeneratorFormat } from "../utils";
 import {
+  camelCase,
+  filterExplicitIndexes,
   getColumnType,
-  toLiteralKey,
+  groupIndexes,
   isValidIdentifier,
   pascalCase,
-  camelCase,
-  groupIndexes,
-  filterExplicitIndexes,
+  toLiteralKey,
 } from "../utils";
-import type { GeneratorFormat } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Dialect config — maps db type → Drizzle table function, imports, etc.
 // ---------------------------------------------------------------------------
 
 interface DrizzleDialectConfig {
-  tableFunc: string;
-  importPath: string;
   dialectImports: string[];
   enumType?: string;
+  importPath: string;
+  tableFunc: string;
 }
 
 const DIALECT_CONFIG: Record<string, DrizzleDialectConfig> = {
-  postgresql: {
-    tableFunc: "pgTable",
-    importPath: "drizzle-orm/pg-core",
-    dialectImports: ["pgTable", "pgEnum"],
-    enumType: "pgEnum",
-  },
-  mysql: {
-    tableFunc: "mysqlTable",
-    importPath: "drizzle-orm/mysql-core",
-    dialectImports: ["mysqlTable", "mysqlEnum"],
-    enumType: "mysqlEnum",
+  clickhouse: {
+    dialectImports: ["clickhouseTable"],
+    importPath: "drizzle-orm/clickhouse-core",
+    tableFunc: "clickhouseTable",
   },
   mariadb: {
-    tableFunc: "mysqlTable",
-    importPath: "drizzle-orm/mysql-core",
     dialectImports: ["mysqlTable", "mysqlEnum"],
     enumType: "mysqlEnum",
+    importPath: "drizzle-orm/mysql-core",
+    tableFunc: "mysqlTable",
   },
-  clickhouse: {
-    tableFunc: "clickhouseTable",
-    importPath: "drizzle-orm/clickhouse-core",
-    dialectImports: ["clickhouseTable"],
+  mysql: {
+    dialectImports: ["mysqlTable", "mysqlEnum"],
+    enumType: "mysqlEnum",
+    importPath: "drizzle-orm/mysql-core",
+    tableFunc: "mysqlTable",
+  },
+  postgresql: {
+    dialectImports: ["pgTable", "pgEnum"],
+    enumType: "pgEnum",
+    importPath: "drizzle-orm/pg-core",
+    tableFunc: "pgTable",
   },
 };
 
@@ -73,7 +78,11 @@ export function generateSchemaDrizzle(params: {
   const colLines: string[] = [];
   for (const col of columns) {
     const key = toLiteralKey(col.name);
-    const drizzleType = getColumnType(col.data_type, "drizzle" as GeneratorFormat, dialect);
+    const drizzleType = getColumnType(
+      col.data_type,
+      "drizzle" as GeneratorFormat,
+      dialect
+    );
 
     // Build modifiers
     const modifiers: string[] = [];
@@ -97,10 +106,10 @@ export function generateSchemaDrizzle(params: {
       // Convert SQL defaults to Drizzle-compatible expressions
       const def = col.column_default;
       if (/^now\(\)$/i.test(def) || /^current_timestamp/i.test(def)) {
-        modifiers.push(".default(sql`now()`)" );
+        modifiers.push(".default(sql`now()`)");
         coreImports.add("sql");
       } else if (/^gen_random_uuid\(\)$/i.test(def)) {
-        modifiers.push(".default(sql`gen_random_uuid()`)" );
+        modifiers.push(".default(sql`gen_random_uuid()`)");
         coreImports.add("sql");
       } else if (/^\d+$/.test(def)) {
         modifiers.push(`.default(${def})`);
@@ -110,17 +119,23 @@ export function generateSchemaDrizzle(params: {
         modifiers.push(`.default(${def})`);
       } else {
         // Complex default — use sql template
-        modifiers.push(`.default(sql\`${def}\`)` );
+        modifiers.push(`.default(sql\`${def}\`)`);
         coreImports.add("sql");
       }
     }
 
-    colLines.push(`  ${key}: ${drizzleType}("${col.name}"${modifiers.length > 0 ? modifiers.join("") : ""}),`);
+    colLines.push(
+      `  ${key}: ${drizzleType}("${col.name}"${modifiers.length > 0 ? modifiers.join("") : ""}),`
+    );
   }
 
   // Extra config (indexes, unique constraints)
   const groupedIndexes = groupIndexes(indexes, table);
-  const explicitIndexes = filterExplicitIndexes(groupedIndexes, columns, dialect);
+  const explicitIndexes = filterExplicitIndexes(
+    groupedIndexes,
+    columns,
+    dialect
+  );
   const configLines: string[] = [];
 
   for (const idx of explicitIndexes) {
@@ -131,7 +146,9 @@ export function generateSchemaDrizzle(params: {
         configLines.push(`    .unique("${idx.name}", { ${idxCols} })`);
       } else {
         // Non-standard column names can't be used as Drizzle property refs — emit comment
-        configLines.push(`    // unique("${idx.name}") on columns: ${idx.columns.join(", ")}`);
+        configLines.push(
+          `    // unique("${idx.name}") on columns: ${idx.columns.join(", ")}`
+        );
       }
     }
   }
@@ -144,7 +161,9 @@ export function generateSchemaDrizzle(params: {
       const idxCols = idx.columns.map((c) => `t.${c}`).join(", ");
       configLines.push(`    .index("${idx.name}", [${idxCols}])`);
     } else {
-      configLines.push(`    // index("${idx.name}") on columns: ${idx.columns.join(", ")}`);
+      configLines.push(
+        `    // index("${idx.name}") on columns: ${idx.columns.join(", ")}`
+      );
     }
   }
 
@@ -173,11 +192,14 @@ export function generateSchemaDrizzle(params: {
   lines.push("");
 
   // Table definition
-  const extraConfig = configLines.length > 0
-    ? `,\n  (t) => [\n${configLines.join("\n")}\n  ]`
-    : "";
+  const extraConfig =
+    configLines.length > 0
+      ? `,\n  (t) => [\n${configLines.join("\n")}\n  ]`
+      : "";
 
-  lines.push(`export const ${varName} = ${config.tableFunc}("${escapedTable}", {`);
+  lines.push(
+    `export const ${varName} = ${config.tableFunc}("${escapedTable}", {`
+  );
   lines.push(colLines.join("\n"));
   lines.push(`}${extraConfig});`);
   lines.push("");

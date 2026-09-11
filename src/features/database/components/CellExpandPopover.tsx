@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import { JsonTreeViewer } from "@/components/ui/json-tree-viewer";
 import { Kbd } from "@/components/ui/kbd";
-import { LazyMonacoEditor } from "./LazyMonacoEditor";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { SchemaColumn } from "@/ipc/db/types";
+import { LazyMonacoEditor } from "./LazyMonacoEditor";
 import {
   classifyColumnKind,
   datetimeLocalToTimestamp,
@@ -23,24 +23,24 @@ import {
   NULL_SENTINEL,
   timestampRawToDatetimeLocal,
   utcIsoToDatetimeLocal,
+  type ValidationResult,
   validateDraft,
   valueToEditableText,
-  type ValidationResult,
 } from "./table-editor-utils";
 
 interface CellExpandPopoverProps {
-  /** Trigger element (normalmente um botão pequeno no canto da célula). */
-  trigger: React.ReactNode;
-  /** Nome da coluna sendo editada — usado no header do popover. */
-  columnName: string;
   /** Definição da coluna — usada para detectar o tipo e montar o editor adequado. */
   column: SchemaColumn | undefined;
+  /** Nome da coluna sendo editada — usado no header do popover. */
+  columnName: string;
   /** Valor atual (cru, como veio do backend). */
   initialValue: unknown;
   /** Chamado ao confirmar. Emite texto cru (ou a string literal "NULL"). */
   onSave: (rawText: string) => void;
   /** Desabilita edição (ex.: sem primary key). O popover ainda abre em read-only. */
   readOnly?: boolean;
+  /** Trigger element (normalmente um botão pequeno no canto da célula). */
+  trigger: React.ReactNode;
 }
 
 export function CellExpandPopover({
@@ -61,7 +61,9 @@ export function CellExpandPopover({
   // Para a maioria dos tipos é exatamente o que o usuário vê;
   // para timestamptz, por exemplo, é sempre a string ISO UTC ("…Z").
   const initialDraft = useMemo(() => {
-    if (isNullNow) return "";
+    if (isNullNow) {
+      return "";
+    }
     if (kind === "timestamptz") {
       return initialToUtcIso(initialValue) ?? "";
     }
@@ -84,7 +86,9 @@ export function CellExpandPopover({
 
   // Autofocus apenas no textarea.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
     const id = requestAnimationFrame(() => {
       textareaRef.current?.focus();
       textareaRef.current?.select();
@@ -97,14 +101,20 @@ export function CellExpandPopover({
   // --------------------------------------------------------------------------
 
   const hasChanges = useMemo(() => {
-    if (isNullDraft !== isNullNow) return true;
-    if (isNullDraft && isNullNow) return false;
+    if (isNullDraft !== isNullNow) {
+      return true;
+    }
+    if (isNullDraft && isNullNow) {
+      return false;
+    }
     return draft !== initialDraft;
   }, [draft, initialDraft, isNullDraft, isNullNow]);
 
   // Valida o draft conforme o tipo (pulamos quando for NULL, que já é válido).
   const validation: ValidationResult = useMemo(() => {
-    if (isNullDraft) return { ok: true };
+    if (isNullDraft) {
+      return { ok: true };
+    }
     return validateDraft(draft, kind, column);
   }, [draft, kind, column, isNullDraft]);
 
@@ -127,7 +137,9 @@ export function CellExpandPopover({
   };
 
   const setToNull = () => {
-    if (!nullable || readOnly) return;
+    if (!nullable || readOnly) {
+      return;
+    }
     setIsNullDraft(true);
     setDraft("");
   };
@@ -157,7 +169,7 @@ export function CellExpandPopover({
   const body = (() => {
     if (isNullDraft) {
       return (
-        <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed bg-muted/30 text-xs italic text-muted-foreground">
+        <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed bg-muted/30 text-muted-foreground text-xs italic">
           NULL
         </div>
       );
@@ -180,22 +192,24 @@ export function CellExpandPopover({
           return (
             <div className="flex flex-col gap-2">
               <JsonTreeViewer
-                value={draft}
                 maxHeight="200px"
-                showViewToggle
                 readOnly={readOnly}
+                showViewToggle
+                value={draft}
               />
               {!readOnly && (
                 <div className="overflow-hidden rounded-md border">
                   <LazyMonacoEditor
-                    height="120px"
                     defaultLanguage="json"
-                    value={draft}
-                    onChange={(value: string | undefined) => updateDraft(value ?? "")}
+                    height="120px"
+                    onChange={(value: string | undefined) =>
+                      updateDraft(value ?? "")
+                    }
                     onMount={(editor) => {
                       editor.onKeyDown((event: monaco.IKeyboardEvent) => {
                         const isCmdEnter =
-                          (event.metaKey || event.ctrlKey) && event.keyCode === 3;
+                          (event.metaKey || event.ctrlKey) &&
+                          event.keyCode === 3;
                         const isEsc = event.keyCode === 9;
                         if (isCmdEnter) {
                           event.preventDefault();
@@ -209,15 +223,16 @@ export function CellExpandPopover({
                       });
                     }}
                     options={{
-                      readOnly,
-                      minimap: { enabled: false },
-                      lineNumbers: "on",
-                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
                       fontSize: 12,
+                      lineNumbers: "on",
+                      minimap: { enabled: false },
+                      readOnly,
+                      scrollBeyondLastLine: false,
                       tabSize: 2,
                       wordWrap: "on",
-                      automaticLayout: true,
                     }}
+                    value={draft}
                   />
                 </div>
               )}
@@ -229,9 +244,8 @@ export function CellExpandPopover({
         return (
           <div className="overflow-hidden rounded-md border">
             <LazyMonacoEditor
-              height="260px"
               defaultLanguage="json"
-              value={draft}
+              height="260px"
               onChange={(value: string | undefined) => updateDraft(value ?? "")}
               onMount={(editor) => {
                 editor.onKeyDown((event: monaco.IKeyboardEvent) => {
@@ -250,15 +264,16 @@ export function CellExpandPopover({
                 });
               }}
               options={{
-                readOnly,
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
+                automaticLayout: true,
                 fontSize: 12,
+                lineNumbers: "on",
+                minimap: { enabled: false },
+                readOnly,
+                scrollBeyondLastLine: false,
                 tabSize: 2,
                 wordWrap: "on",
-                automaticLayout: true,
               }}
+              value={draft}
             />
           </div>
         );
@@ -269,12 +284,13 @@ export function CellExpandPopover({
           <div className="flex flex-col gap-1">
             <div className="overflow-hidden rounded-md border">
               <LazyMonacoEditor
-                height="240px"
                 // `plaintext` porque o valor pode ser literal PG `{1,2,3}`,
                 // que não é JSON válido — syntax highlighting de JSON ficaria vermelho.
                 defaultLanguage="plaintext"
-                value={draft}
-                onChange={(value: string | undefined) => updateDraft(value ?? "")}
+                height="240px"
+                onChange={(value: string | undefined) =>
+                  updateDraft(value ?? "")
+                }
                 onMount={(editor) => {
                   editor.onKeyDown((event: monaco.IKeyboardEvent) => {
                     const isCmdEnter =
@@ -292,15 +308,16 @@ export function CellExpandPopover({
                   });
                 }}
                 options={{
-                  readOnly,
-                  minimap: { enabled: false },
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
                   fontSize: 12,
+                  lineNumbers: "on",
+                  minimap: { enabled: false },
+                  readOnly,
+                  scrollBeyondLastLine: false,
                   tabSize: 2,
                   wordWrap: "on",
-                  automaticLayout: true,
                 }}
+                value={draft}
               />
             </div>
             <p className="font-mono text-[10px] text-muted-foreground">
@@ -321,16 +338,16 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-2">
             <input
-              type="datetime-local"
-              step={1}
-              value={localValue}
+              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => {
                 const iso = datetimeLocalToUtcIso(event.target.value);
                 updateDraft(iso ?? "");
               }}
               onKeyDown={handleKeyDown}
               readOnly={readOnly}
-              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              step={1}
+              type="datetime-local"
+              value={localValue}
             />
             <p className="font-mono text-[10px] text-muted-foreground">
               UTC: {draft || "—"}
@@ -343,16 +360,16 @@ export function CellExpandPopover({
         const localValue = timestampRawToDatetimeLocal(draft);
         return (
           <input
-            type="datetime-local"
-            step={1}
-            value={localValue}
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             onChange={(event) => {
               const ts = datetimeLocalToTimestamp(event.target.value);
               updateDraft(ts ?? "");
             }}
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            step={1}
+            type="datetime-local"
+            value={localValue}
           />
         );
       }
@@ -360,47 +377,45 @@ export function CellExpandPopover({
       case "date":
         return (
           <input
-            type="date"
-            value={initialDate(draft)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            type="date"
+            value={initialDate(draft)}
           />
         );
 
       case "time":
         return (
           <input
-            type="time"
-            step={1}
-            value={initialTime(draft)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            step={1}
+            type="time"
+            value={initialTime(draft)}
           />
         );
 
       case "bool": {
         const current = isNullDraft ? "null" : initialBool(draft);
         const isTrue = current === "true";
-        const isFalse = current === "false";
+        const _isFalse = current === "false";
         return (
           <div className="flex items-center gap-3" onKeyDown={handleKeyDown}>
             {/* Checkbox estilizado */}
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <button
-                type="button"
-                role="switch"
                 aria-checked={isTrue}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isTrue ? "border-primary bg-primary" : "border-input bg-muted"
+                }`}
                 disabled={readOnly}
                 onClick={() => updateDraft(isTrue ? "false" : "true")}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
-                  isTrue
-                    ? "border-primary bg-primary"
-                    : "border-input bg-muted"
-                }`}
+                role="switch"
+                type="button"
               >
                 <span
                   className={`pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-background shadow-sm ring-0 transition-transform ${
@@ -408,15 +423,17 @@ export function CellExpandPopover({
                   }`}
                 />
               </button>
-              <span className={`font-mono text-xs ${isTrue ? "text-primary font-medium" : "text-muted-foreground"}`}>
+              <span
+                className={`font-mono text-xs ${isTrue ? "font-medium text-primary" : "text-muted-foreground"}`}
+              >
                 {isTrue ? "TRUE" : "FALSE"}
               </span>
             </label>
             <button
-              type="button"
-              onClick={() => updateDraft(isTrue ? "false" : "true")}
+              className="rounded-md border border-dashed px-2 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
               disabled={readOnly}
-              className="rounded-md border border-dashed px-2 py-1 font-mono text-[10px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              onClick={() => updateDraft(isTrue ? "false" : "true")}
+              type="button"
             >
               Toggle
             </button>
@@ -428,14 +445,14 @@ export function CellExpandPopover({
       case "numeric":
         return (
           <input
-            type="number"
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             inputMode={kind === "integer" ? "numeric" : "decimal"}
-            step={kind === "integer" ? 1 : "any"}
-            value={initialNumeric(draft)}
             onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            step={kind === "integer" ? 1 : "any"}
+            type="number"
+            value={initialNumeric(draft)}
           />
         );
 
@@ -443,19 +460,16 @@ export function CellExpandPopover({
         return (
           <div className="flex gap-2">
             <input
-              type="text"
-              value={draft}
+              className="flex-1 rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
-              readOnly={readOnly}
               placeholder="00000000-0000-0000-0000-000000000000"
+              readOnly={readOnly}
               spellCheck={false}
-              className="flex-1 rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              type="text"
+              value={draft}
             />
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
               disabled={readOnly}
               onClick={() => {
                 // `crypto.randomUUID` existe em todos os navegadores modernos.
@@ -463,9 +477,12 @@ export function CellExpandPopover({
                   updateDraft(crypto.randomUUID());
                 }
               }}
+              size="sm"
               title="Generate UUID v4"
+              type="button"
+              variant="outline"
             >
-              <Icon name="dice" className="h-3.5 w-3.5" />
+              <Icon className="h-3.5 w-3.5" name="dice" />
               Generate
             </Button>
           </div>
@@ -475,14 +492,14 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-1">
             <textarea
-              ref={textareaRef}
-              value={draft}
+              className="h-[260px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
-              readOnly={readOnly}
-              spellCheck={false}
               placeholder="\x48656c6c6f"
-              className="h-[260px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              readOnly={readOnly}
+              ref={textareaRef}
+              spellCheck={false}
+              value={draft}
             />
             <p className="font-mono text-[10px] text-muted-foreground">
               Hex string. Prefix with <code>\x</code>.
@@ -494,14 +511,14 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-1">
             <input
-              type="text"
-              value={draft}
+              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
+              placeholder="192.168.0.1 or 2001:db8::1/64"
               readOnly={readOnly}
               spellCheck={false}
-              placeholder="192.168.0.1 or 2001:db8::1/64"
-              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              type="text"
+              value={draft}
             />
             <p className="font-mono text-[10px] text-muted-foreground">
               IPv4/IPv6 with optional /prefix.
@@ -513,14 +530,14 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-1">
             <input
-              type="text"
-              value={draft}
+              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
+              placeholder="10.0.0.0/8"
               readOnly={readOnly}
               spellCheck={false}
-              placeholder="10.0.0.0/8"
-              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              type="text"
+              value={draft}
             />
             <p className="font-mono text-[10px] text-muted-foreground">
               Network with required /prefix.
@@ -532,14 +549,14 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-1">
             <input
-              type="text"
-              value={draft}
+              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
+              placeholder="AA:BB:CC:DD:EE:FF"
               readOnly={readOnly}
               spellCheck={false}
-              placeholder="AA:BB:CC:DD:EE:FF"
-              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              type="text"
+              value={draft}
             />
           </div>
         );
@@ -548,14 +565,14 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-1">
             <input
-              type="text"
-              value={draft}
+              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
+              placeholder="1 day 2 hours"
               readOnly={readOnly}
               spellCheck={false}
-              placeholder="1 day 2 hours"
-              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              type="text"
+              value={draft}
             />
             <p className="font-mono text-[10px] text-muted-foreground">
               Postgres interval, e.g. <code>1 day 2 hours</code>,{" "}
@@ -568,14 +585,14 @@ export function CellExpandPopover({
         return (
           <div className="flex flex-col gap-1">
             <input
-              type="text"
-              value={draft}
+              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
+              placeholder={column?.udt_name ?? "enum value"}
               readOnly={readOnly}
               spellCheck={false}
-              placeholder={column?.udt_name ?? "enum value"}
-              className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              type="text"
+              value={draft}
             />
             {column?.udt_name && (
               <p className="font-mono text-[10px] text-muted-foreground">
@@ -584,8 +601,6 @@ export function CellExpandPopover({
             )}
           </div>
         );
-
-      case "text":
       default: {
         // Detecta se parece uma cor hex para mostrar color picker
         const isHexColor = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(draft.trim());
@@ -594,28 +609,30 @@ export function CellExpandPopover({
             {isHexColor && (
               <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5">
                 <input
+                  className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
+                  disabled={readOnly}
+                  onChange={(event) => updateDraft(event.target.value)}
                   type="color"
                   value={draft.trim()}
-                  onChange={(event) => updateDraft(event.target.value)}
-                  disabled={readOnly}
-                  className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
                 />
                 <span
                   className="h-5 w-5 rounded-full border shadow-xs"
                   style={{ backgroundColor: draft.trim() }}
                 />
-                <span className="font-mono text-xs text-muted-foreground">{draft.trim()}</span>
+                <span className="font-mono text-muted-foreground text-xs">
+                  {draft.trim()}
+                </span>
               </div>
             )}
             <textarea
-              ref={textareaRef}
-              value={draft}
+              className="h-[260px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
-              readOnly={readOnly}
-              spellCheck={false}
-              className="h-[260px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               placeholder="empty string"
+              readOnly={readOnly}
+              ref={textareaRef}
+              spellCheck={false}
+              value={draft}
             />
           </div>
         );
@@ -629,25 +646,25 @@ export function CellExpandPopover({
 
   const statusText = readOnly
     ? "Read-only (no primary key)"
-    : !hasChanges
-      ? "No changes"
-      : isNullDraft
+    : hasChanges
+      ? isNullDraft
         ? "Will be set to NULL"
-        : "Unsaved changes";
+        : "Unsaved changes"
+      : "No changes";
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger render={trigger as React.ReactElement} />
       <PopoverContent
-        side="bottom"
         align="start"
-        sideOffset={4}
         className="w-[min(560px,90vw)] gap-0 p-0"
+        side="bottom"
+        sideOffset={4}
       >
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-mono text-xs font-medium">
+              <span className="truncate font-medium font-mono text-xs">
                 {columnName}
               </span>
               {column?.data_type && (
@@ -669,12 +686,12 @@ export function CellExpandPopover({
           <div className="px-3 pt-2">{body}</div>
 
           {/* Mensagem de validação inline — só aparece quando há input + erro. */}
-          {!isNullDraft && !validation.ok && hasChanges && (
+          {!(isNullDraft || validation.ok) && hasChanges && (
             <div
-              role="alert"
               className="mx-3 flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive"
+              role="alert"
             >
-              <Icon name="alert-circle" className="mt-0.5 h-3 w-3 shrink-0" />
+              <Icon className="mt-0.5 h-3 w-3 shrink-0" name="alert-circle" />
               <span className="font-mono leading-4">{validation.message}</span>
             </div>
           )}
@@ -682,43 +699,43 @@ export function CellExpandPopover({
           <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
             <span
               className={`text-[10px] ${
-                !isNullDraft && !validation.ok && hasChanges
+                !(isNullDraft || validation.ok) && hasChanges
                   ? "text-destructive"
                   : "text-muted-foreground"
               }`}
             >
-              {!isNullDraft && !validation.ok && hasChanges
+              {!(isNullDraft || validation.ok) && hasChanges
                 ? "Fix the error to save"
                 : statusText}
             </span>
             <div className="flex items-center gap-1">
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={setToNull}
                 disabled={readOnly || !nullable || isNullDraft}
+                onClick={setToNull}
+                size="sm"
                 title={
                   nullable ? "Set this value to NULL" : "Column is NOT NULL"
                 }
+                type="button"
+                variant="ghost"
               >
-                <Icon name="minus" className="h-3.5 w-3.5" />
+                <Icon className="h-3.5 w-3.5" name="minus" />
                 NULL
               </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={cancel}>
-                <Icon name="x" className="h-3.5 w-3.5" />
+              <Button onClick={cancel} size="sm" type="button" variant="ghost">
+                <Icon className="h-3.5 w-3.5" name="x" />
                 Cancel
               </Button>
               <Button
-                type="button"
-                size="sm"
-                onClick={commit}
                 disabled={!canSave}
+                onClick={commit}
+                size="sm"
                 title={
                   !validation.ok && hasChanges ? validation.message : undefined
                 }
+                type="button"
               >
-                <Icon name="check" className="h-3.5 w-3.5" />
+                <Icon className="h-3.5 w-3.5" name="check" />
                 Save
               </Button>
             </div>

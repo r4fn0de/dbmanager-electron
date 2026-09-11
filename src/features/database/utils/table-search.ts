@@ -12,13 +12,30 @@
 // ── Accent normalization ──────────────────────────────────────────────
 
 const ACCENT_MAP: Record<string, string> = {
-  á: "a", à: "a", ã: "a", â: "a", ä: "a",
-  é: "e", è: "e", ê: "e", ë: "e",
-  í: "i", ì: "i", î: "i", ï: "i",
-  ó: "o", ò: "o", õ: "o", ô: "o", ö: "o",
-  ú: "u", ù: "u", û: "u", ü: "u",
+  à: "a",
+  á: "a",
+  â: "a",
+  ã: "a",
+  ä: "a",
   ç: "c",
+  è: "e",
+  é: "e",
+  ê: "e",
+  ë: "e",
+  ì: "i",
+  í: "i",
+  î: "i",
+  ï: "i",
   ñ: "n",
+  ò: "o",
+  ó: "o",
+  ô: "o",
+  õ: "o",
+  ö: "o",
+  ù: "u",
+  ú: "u",
+  û: "u",
+  ü: "u",
 };
 
 /** Remove diacritics for accent-insensitive comparison. */
@@ -32,63 +49,113 @@ function normalize(text: string): string {
 
 /** Common abbreviations and translations for table name matching. */
 const SYNONYMS: Record<string, string[]> = {
-  user: ["usr", "account", "profile", "usuario", "usuarios", "conta"],
-  usr: ["user", "users", "usuario"],
-  product: ["produto", "produtos", "prod", "item", "items", "artigo"],
-  produto: ["product", "products", "prod", "item", "artigo"],
-  order: ["pedido", "pedidos", "venda", "vendas", "purchase", "purchases", "ordem"],
-  pedido: ["order", "orders", "venda", "purchase", "ordem"],
-  venda: ["order", "orders", "sale", "sales", "pedido", "vendas"],
-  sale: ["venda", "vendas", "order", "orders", "pedido"],
-  customer: ["cliente", "clientes", "client", "clients"],
-  cliente: ["customer", "customers", "client", "clients"],
-  invoice: ["fatura", "faturas", "nota", "notas", "receipt", "receipts", "bill"],
-  fatura: ["invoice", "invoices", "nota", "receipt", "bill"],
-  payment: ["pagamento", "pagamentos", "pay", "pays"],
-  pagamento: ["payment", "payments", "pay"],
-  category: ["categoria", "categorias", "cat", "cats", "group", "groups"],
-  categoria: ["category", "categories", "cat", "group"],
-  employee: ["funcionario", "funcionarios", "staff", "worker", "workers", "trabalhador"],
-  funcionario: ["employee", "employees", "staff", "worker", "trabalhador"],
   address: ["endereco", "enderecos", "location", "locations", "local"],
-  endereco: ["address", "addresses", "location", "local"],
-  session: ["sessao", "sessoes", "sessão"],
-  sessao: ["session", "sessions"],
-  token: ["tokens", "chave", "chaves"],
-  auth: ["authentication", "autenticacao", "autenticação", "login", "logins"],
-  autenticacao: ["auth", "authentication", "login"],
-  log: ["logs", "registro", "registros", "audit", "auditoria"],
-  registro: ["log", "logs", "record", "records", "audit"],
-  config: ["configuration", "configuracao", "configuração", "setting", "settings"],
-  configuracao: ["config", "configuration", "setting"],
-  permission: ["permissao", "permissoes", "permissão", "role", "roles", "acesso"],
-  permissao: ["permission", "permissions", "role", "acesso"],
-  image: ["imagem", "imagens", "photo", "photos", "foto", "fotos", "picture"],
-  imagem: ["image", "images", "photo", "foto", "picture"],
-  document: ["documento", "documentos", "doc", "docs", "arquivo", "file"],
-  documento: ["document", "documents", "doc", "arquivo", "file"],
-  stock: ["estoque", "inventory", "inventario", "estoques"],
-  estoque: ["stock", "stocks", "inventory", "inventario"],
-  price: ["preco", "precos", "preço", "valor", "valores", "cost"],
-  preco: ["price", "prices", "valor", "cost"],
-  store: ["loja", "lojas", "shop", "shops", "warehouse"],
-  loja: ["store", "stores", "shop", "warehouse"],
-  report: ["relatorio", "relatorios", "relatório"],
-  relatorio: ["report", "reports"],
-  task: ["tarefa", "tarefas", "todo", "todos", "job", "jobs"],
-  tarefa: ["task", "tasks", "todo", "job"],
-  project: ["projeto", "projetos", "projecto"],
-  projeto: ["project", "projects"],
-  message: ["mensagem", "mensagens", "msg", "chat", "notification", "notificacao"],
-  mensagem: ["message", "messages", "msg", "chat", "notification"],
-  notification: ["notificacao", "notificacoes", "notificação", "alert", "alerts", "aviso"],
-  notificacao: ["notification", "notifications", "alert", "aviso"],
-  comment: ["comentario", "comentarios", "comentário", "review", "reviews"],
-  comentario: ["comment", "comments", "review"],
-  tag: ["tags", "label", "labels", "etiqueta", "etiquetas", "marca"],
-  etiqueta: ["tag", "tags", "label", "marca"],
   audit: ["auditoria", "auditorias", "audit_log", "audit_trail"],
   auditoria: ["audit", "audits", "audit_log", "audit_trail"],
+  autenticacao: ["auth", "authentication", "login"],
+  auth: ["authentication", "autenticacao", "autenticação", "login", "logins"],
+  categoria: ["category", "categories", "cat", "group"],
+  category: ["categoria", "categorias", "cat", "cats", "group", "groups"],
+  cliente: ["customer", "customers", "client", "clients"],
+  comentario: ["comment", "comments", "review"],
+  comment: ["comentario", "comentarios", "comentário", "review", "reviews"],
+  config: [
+    "configuration",
+    "configuracao",
+    "configuração",
+    "setting",
+    "settings",
+  ],
+  configuracao: ["config", "configuration", "setting"],
+  customer: ["cliente", "clientes", "client", "clients"],
+  document: ["documento", "documentos", "doc", "docs", "arquivo", "file"],
+  documento: ["document", "documents", "doc", "arquivo", "file"],
+  employee: [
+    "funcionario",
+    "funcionarios",
+    "staff",
+    "worker",
+    "workers",
+    "trabalhador",
+  ],
+  endereco: ["address", "addresses", "location", "local"],
+  estoque: ["stock", "stocks", "inventory", "inventario"],
+  etiqueta: ["tag", "tags", "label", "marca"],
+  fatura: ["invoice", "invoices", "nota", "receipt", "bill"],
+  funcionario: ["employee", "employees", "staff", "worker", "trabalhador"],
+  image: ["imagem", "imagens", "photo", "photos", "foto", "fotos", "picture"],
+  imagem: ["image", "images", "photo", "foto", "picture"],
+  invoice: [
+    "fatura",
+    "faturas",
+    "nota",
+    "notas",
+    "receipt",
+    "receipts",
+    "bill",
+  ],
+  log: ["logs", "registro", "registros", "audit", "auditoria"],
+  loja: ["store", "stores", "shop", "warehouse"],
+  mensagem: ["message", "messages", "msg", "chat", "notification"],
+  message: [
+    "mensagem",
+    "mensagens",
+    "msg",
+    "chat",
+    "notification",
+    "notificacao",
+  ],
+  notificacao: ["notification", "notifications", "alert", "aviso"],
+  notification: [
+    "notificacao",
+    "notificacoes",
+    "notificação",
+    "alert",
+    "alerts",
+    "aviso",
+  ],
+  order: [
+    "pedido",
+    "pedidos",
+    "venda",
+    "vendas",
+    "purchase",
+    "purchases",
+    "ordem",
+  ],
+  pagamento: ["payment", "payments", "pay"],
+  payment: ["pagamento", "pagamentos", "pay", "pays"],
+  pedido: ["order", "orders", "venda", "purchase", "ordem"],
+  permissao: ["permission", "permissions", "role", "acesso"],
+  permission: [
+    "permissao",
+    "permissoes",
+    "permissão",
+    "role",
+    "roles",
+    "acesso",
+  ],
+  preco: ["price", "prices", "valor", "cost"],
+  price: ["preco", "precos", "preço", "valor", "valores", "cost"],
+  product: ["produto", "produtos", "prod", "item", "items", "artigo"],
+  produto: ["product", "products", "prod", "item", "artigo"],
+  project: ["projeto", "projetos", "projecto"],
+  projeto: ["project", "projects"],
+  registro: ["log", "logs", "record", "records", "audit"],
+  relatorio: ["report", "reports"],
+  report: ["relatorio", "relatorios", "relatório"],
+  sale: ["venda", "vendas", "order", "orders", "pedido"],
+  sessao: ["session", "sessions"],
+  session: ["sessao", "sessoes", "sessão"],
+  stock: ["estoque", "inventory", "inventario", "estoques"],
+  store: ["loja", "lojas", "shop", "shops", "warehouse"],
+  tag: ["tags", "label", "labels", "etiqueta", "etiquetas", "marca"],
+  tarefa: ["task", "tasks", "todo", "job"],
+  task: ["tarefa", "tarefas", "todo", "todos", "job", "jobs"],
+  token: ["tokens", "chave", "chaves"],
+  user: ["usr", "account", "profile", "usuario", "usuarios", "conta"],
+  usr: ["user", "users", "usuario"],
+  venda: ["order", "orders", "sale", "sales", "pedido", "vendas"],
 };
 
 /** Expand a single word into its synonyms (including the word itself). */
@@ -126,9 +193,9 @@ function extractSegments(name: string): string[] {
 // ── Match scoring ───────────────────────────────────────────────────────
 
 export interface TableSearchMatch {
+  matchType: "exact" | "substring" | "prefix" | "segment" | "synonym";
   name: string;
   score: number;
-  matchType: "exact" | "substring" | "prefix" | "segment" | "synonym";
 }
 
 /**
@@ -139,21 +206,23 @@ function scoreMatch(tableName: string, query: string): TableSearchMatch | null {
   const normalizedName = normalize(tableName);
   const normalizedQuery = normalize(query.trim());
 
-  if (!normalizedQuery) return null;
+  if (!normalizedQuery) {
+    return null;
+  }
 
   // Exact match
   if (normalizedName === normalizedQuery) {
-    return { name: tableName, score: 100, matchType: "exact" };
+    return { matchType: "exact", name: tableName, score: 100 };
   }
 
   // Prefix match (query matches start of table name)
   if (normalizedName.startsWith(normalizedQuery)) {
-    return { name: tableName, score: 80, matchType: "prefix" };
+    return { matchType: "prefix", name: tableName, score: 80 };
   }
 
   // Substring match
   if (normalizedName.includes(normalizedQuery)) {
-    return { name: tableName, score: 60, matchType: "substring" };
+    return { matchType: "substring", name: tableName, score: 60 };
   }
 
   // Segment match — check if query matches any segment of the table name
@@ -161,13 +230,13 @@ function scoreMatch(tableName: string, query: string): TableSearchMatch | null {
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
     if (segment === normalizedQuery) {
-      return { name: tableName, score: 70, matchType: "segment" };
+      return { matchType: "segment", name: tableName, score: 70 };
     }
     if (segment.startsWith(normalizedQuery)) {
-      return { name: tableName, score: 50, matchType: "segment" };
+      return { matchType: "segment", name: tableName, score: 50 };
     }
     if (segment.includes(normalizedQuery)) {
-      return { name: tableName, score: 40, matchType: "segment" };
+      return { matchType: "segment", name: tableName, score: 40 };
     }
   }
 
@@ -178,15 +247,15 @@ function scoreMatch(tableName: string, query: string): TableSearchMatch | null {
     // Check if expanded synonym matches a segment
     for (const segment of segments) {
       if (segment === expanded) {
-        return { name: tableName, score: 30, matchType: "synonym" };
+        return { matchType: "synonym", name: tableName, score: 30 };
       }
       if (segment.startsWith(expanded) || expanded.startsWith(segment)) {
-        return { name: tableName, score: 20, matchType: "synonym" };
+        return { matchType: "synonym", name: tableName, score: 20 };
       }
     }
     // Also check if expanded synonym is a substring of the full name
     if (normalizedName.includes(expanded)) {
-      return { name: tableName, score: 15, matchType: "synonym" };
+      return { matchType: "synonym", name: tableName, score: 15 };
     }
   }
 
@@ -201,9 +270,11 @@ function scoreMatch(tableName: string, query: string): TableSearchMatch | null {
  */
 export function fuzzySearchTables(
   tableNames: string[],
-  query: string,
+  query: string
 ): TableSearchMatch[] {
-  if (!query.trim()) return [];
+  if (!query.trim()) {
+    return [];
+  }
 
   const matches: TableSearchMatch[] = [];
   for (const name of tableNames) {
@@ -227,13 +298,17 @@ export function fuzzySearchTables(
  */
 export function isDescriptiveQuery(
   query: string,
-  tableNames: string[],
+  tableNames: string[]
 ): boolean {
   const trimmed = query.trim();
-  if (!trimmed) return false;
+  if (!trimmed) {
+    return false;
+  }
 
   const words = normalize(trimmed).split(/\s+/);
-  if (words.length >= 3) return true;
+  if (words.length >= 3) {
+    return true;
+  }
 
   // Build a set of all segments from all table names
   const allSegments = new Set<string>();
@@ -246,7 +321,7 @@ export function isDescriptiveQuery(
 
   // If any word doesn't appear in table names/segments, it's descriptive
   const hasNonTableWord = words.some(
-    (word) => word.length > 2 && !allSegments.has(word),
+    (word) => word.length > 2 && !allSegments.has(word)
   );
   return hasNonTableWord;
 }

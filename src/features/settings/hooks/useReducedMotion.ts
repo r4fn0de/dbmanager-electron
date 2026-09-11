@@ -35,8 +35,6 @@ export function useReducedMotion(): boolean {
       legacyMediaQuery.addListener(handler);
       return () => legacyMediaQuery.removeListener?.(handler);
     }
-
-    return undefined;
   }, []);
 
   return reducedMotion;

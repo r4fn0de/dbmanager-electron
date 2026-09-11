@@ -37,12 +37,12 @@ export type AiPermissionPolicy = Partial<
 export interface LegacyAiSettings {
   apiKeys: Record<string, string>;
   customModels: Record<string, string[]>;
+  customProviders?: CustomAiProvider[];
   model: string;
   ollamaBaseURL: string;
   ollamaModels?: string[];
   openaiCompatibleBaseURL: string;
   provider: string;
-  customProviders?: CustomAiProvider[];
 }
 
 export interface CreateAiConnectionInput {
@@ -396,8 +396,12 @@ function getLegacyProvider(legacy: LegacyAiSettings): AiApiProvider {
 }
 
 /** Saved custom provider selected in legacy settings, if any. */
-function getLegacyCustomDef(legacy: LegacyAiSettings): CustomAiProvider | undefined {
-  if (!isCustomAiProviderId(legacy.provider)) return undefined;
+function getLegacyCustomDef(
+  legacy: LegacyAiSettings
+): CustomAiProvider | undefined {
+  if (!isCustomAiProviderId(legacy.provider)) {
+    return;
+  }
   return legacy.customProviders?.find((p) => p.id === legacy.provider);
 }
 
@@ -429,10 +433,7 @@ function getLegacyModels(
 function getCustomBaseUrl(custom: CustomAiProvider): string | undefined {
   try {
     return validateBaseUrl(custom.baseURL);
-  } catch {
-    // Keep an invalid custom URL readable without blocking the migration.
-    return undefined;
-  }
+  } catch {}
 }
 
 function getLegacyBaseUrl(

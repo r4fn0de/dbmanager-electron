@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const memoryStoreMocks = vi.hoisted(() => ({
-  saveMemory: vi.fn(),
-  searchSimilarMemories: vi.fn(),
-  searchMemoriesByText: vi.fn(),
-  getRecentMemories: vi.fn(),
-  getMemoryStats: vi.fn(),
-  clearConnectionMemories: vi.fn(),
   cleanupOldMemories: vi.fn(),
+  clearConnectionMemories: vi.fn(),
   cosineSimilarity: vi.fn(() => 0.9),
+  getMemoryStats: vi.fn(),
+  getRecentMemories: vi.fn(),
+  saveMemory: vi.fn(),
+  searchMemoriesByText: vi.fn(),
+  searchSimilarMemories: vi.fn(),
 }));
 
 const embeddingMocks = vi.hoisted(() => ({
@@ -24,10 +24,13 @@ vi.mock("@/ipc/ai/embedding-service", () => embeddingMocks);
 import { getMemoryContextHandler } from "@/ipc/ai/memory-handlers";
 
 function getHandler(
-  procedure: unknown,
+  procedure: unknown
 ): (ctx: { input: unknown; context: unknown }) => Promise<any> {
   const orpc = (procedure as Record<string, unknown>)["~orpc"];
-  if (!orpc || typeof (orpc as Record<string, unknown>).handler !== "function") {
+  if (
+    !orpc ||
+    typeof (orpc as Record<string, unknown>).handler !== "function"
+  ) {
     throw new Error("Could not extract handler from oRPC procedure");
   }
   return (orpc as Record<string, unknown>).handler as (ctx: {
@@ -56,14 +59,19 @@ describe("memory handlers", () => {
     memoryStoreMocks.getRecentMemories
       .mockReturnValueOnce([])
       .mockReturnValueOnce([
-        { role: "user", content: "find users", messageId: "m1", embedding: new Float32Array(384) },
-        { role: "assistant", content: "SELECT * FROM users", messageId: "m1" },
+        {
+          content: "find users",
+          embedding: new Float32Array(384),
+          messageId: "m1",
+          role: "user",
+        },
+        { content: "SELECT * FROM users", messageId: "m1", role: "assistant" },
       ]);
 
     const handler = getHandler(getMemoryContextHandler);
     const result = await handler({
-      input: { query: "users", similarLimit: 2, recentLimit: 2 },
       context: {},
+      input: { query: "users", recentLimit: 2, similarLimit: 2 },
     });
 
     expect(result.mode).toBe("semantic");
@@ -75,23 +83,23 @@ describe("memory handlers", () => {
 
     memoryStoreMocks.searchMemoriesByText.mockReturnValue([
       {
-        role: "user",
         content: "show orders",
         conversationId: "conv-2",
         messageId: "m7",
+        role: "user",
       },
     ]);
 
     memoryStoreMocks.getRecentMemories
       .mockReturnValueOnce([])
       .mockReturnValueOnce([
-        { role: "assistant", content: "SELECT * FROM orders", messageId: "m7" },
+        { content: "SELECT * FROM orders", messageId: "m7", role: "assistant" },
       ]);
 
     const handler = getHandler(getMemoryContextHandler);
     const result = await handler({
-      input: { query: "orders", similarLimit: 2, recentLimit: 2 },
       context: {},
+      input: { query: "orders", recentLimit: 2, similarLimit: 2 },
     });
 
     expect(result.mode).toBe("text-fallback");

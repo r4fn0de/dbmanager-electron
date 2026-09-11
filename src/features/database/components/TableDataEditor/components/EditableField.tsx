@@ -24,10 +24,10 @@ import { getCellTitle, normalizeDisplay } from "../utils/valueParsers";
 
 interface EditableFieldProps {
   column: SchemaColumn;
-  value: unknown;
-  readOnly?: boolean;
   hasPendingChange?: boolean;
   onSave: (rawText: string) => void;
+  readOnly?: boolean;
+  value: unknown;
 }
 
 export function EditableField({
@@ -45,8 +45,12 @@ export function EditableField({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const initialDraft = useMemo(() => {
-    if (isNullNow) return "";
-    if (kind === "timestamptz") return initialToUtcIso(value) ?? "";
+    if (isNullNow) {
+      return "";
+    }
+    if (kind === "timestamptz") {
+      return initialToUtcIso(value) ?? "";
+    }
     return valueToEditableText(value, kind);
   }, [isNullNow, kind, value]);
 
@@ -61,7 +65,9 @@ export function EditableField({
   }, [initialDraft, isEditing, isNullNow]);
 
   useEffect(() => {
-    if (!isEditing) return;
+    if (!isEditing) {
+      return;
+    }
     const id = requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -72,13 +78,19 @@ export function EditableField({
   }, [isEditing]);
 
   const hasChanges = useMemo(() => {
-    if (isNullDraft !== isNullNow) return true;
-    if (isNullDraft && isNullNow) return false;
+    if (isNullDraft !== isNullNow) {
+      return true;
+    }
+    if (isNullDraft && isNullNow) {
+      return false;
+    }
     return draft !== initialDraft;
   }, [draft, initialDraft, isNullDraft, isNullNow]);
 
   const validation = useMemo(() => {
-    if (isNullDraft) return { ok: true } as const;
+    if (isNullDraft) {
+      return { ok: true } as const;
+    }
     return validateDraft(draft, kind, column);
   }, [column, draft, isNullDraft, kind]);
 
@@ -91,13 +103,17 @@ export function EditableField({
   };
 
   const commit = () => {
-    if (!canSave) return;
+    if (!canSave) {
+      return;
+    }
     onSave(isNullDraft ? NULL_SENTINEL : draft);
     setIsEditing(false);
   };
 
   const setToNull = () => {
-    if (!nullable || readOnly) return;
+    if (!nullable || readOnly) {
+      return;
+    }
     setIsNullDraft(true);
     setDraft("");
   };
@@ -123,7 +139,7 @@ export function EditableField({
     return (
       <div className="space-y-2 rounded-lg border border-border/40 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs font-medium">{column.name}</span>
+          <span className="truncate font-medium text-xs">{column.name}</span>
           <div className="flex items-center gap-2">
             {hasPendingChange && (
               <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600">
@@ -138,7 +154,7 @@ export function EditableField({
 
         <div
           className={`max-h-40 overflow-auto rounded border bg-background px-2 py-1.5 font-mono text-xs ${
-            isNullNow ? "italic text-muted-foreground/70" : ""
+            isNullNow ? "text-muted-foreground/70 italic" : ""
           }`}
           title={getCellTitle(value)}
         >
@@ -148,10 +164,10 @@ export function EditableField({
         {!readOnly && (
           <div className="flex justify-end">
             <Button
+              onClick={() => setIsEditing(true)}
+              size="sm"
               type="button"
               variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(true)}
             >
               Edit
             </Button>
@@ -164,7 +180,7 @@ export function EditableField({
   const body = (() => {
     if (isNullDraft) {
       return (
-        <div className="flex h-[180px] items-center justify-center rounded-md border border-dashed bg-muted/30 text-xs italic text-muted-foreground">
+        <div className="flex h-[180px] items-center justify-center rounded-md border border-dashed bg-muted/30 text-muted-foreground text-xs italic">
           NULL
         </div>
       );
@@ -184,22 +200,22 @@ export function EditableField({
           return (
             <div className="flex flex-col gap-2">
               <JsonTreeViewer
-                value={draft}
                 maxHeight="140px"
-                showViewToggle
                 readOnly={readOnly}
+                showViewToggle
+                value={draft}
               />
               {!readOnly && (
                 <div className="overflow-hidden rounded-md border">
                   <LazyMonacoEditor
-                    height="100px"
                     defaultLanguage="json"
-                    value={draft}
+                    height="100px"
                     onChange={(next) => updateDraft(next ?? "")}
                     onMount={(editor) => {
                       editor.onKeyDown((event: monaco.IKeyboardEvent) => {
                         const isCmdEnter =
-                          (event.metaKey || event.ctrlKey) && event.keyCode === 3;
+                          (event.metaKey || event.ctrlKey) &&
+                          event.keyCode === 3;
                         const isEsc = event.keyCode === 9;
                         if (isCmdEnter) {
                           event.preventDefault();
@@ -213,15 +229,16 @@ export function EditableField({
                       });
                     }}
                     options={{
-                      readOnly,
-                      minimap: { enabled: false },
-                      lineNumbers: "on",
-                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
                       fontSize: 12,
+                      lineNumbers: "on",
+                      minimap: { enabled: false },
+                      readOnly,
+                      scrollBeyondLastLine: false,
                       tabSize: 2,
                       wordWrap: "on",
-                      automaticLayout: true,
                     }}
+                    value={draft}
                   />
                 </div>
               )}
@@ -233,9 +250,8 @@ export function EditableField({
         return (
           <div className="overflow-hidden rounded-md border">
             <LazyMonacoEditor
-              height="180px"
               defaultLanguage="json"
-              value={draft}
+              height="180px"
               onChange={(next) => updateDraft(next ?? "")}
               onMount={(editor) => {
                 editor.onKeyDown((event: monaco.IKeyboardEvent) => {
@@ -254,15 +270,16 @@ export function EditableField({
                 });
               }}
               options={{
-                readOnly,
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
+                automaticLayout: true,
                 fontSize: 12,
+                lineNumbers: "on",
+                minimap: { enabled: false },
+                readOnly,
+                scrollBeyondLastLine: false,
                 tabSize: 2,
                 wordWrap: "on",
-                automaticLayout: true,
               }}
+              value={draft}
             />
           </div>
         );
@@ -271,9 +288,8 @@ export function EditableField({
         return (
           <div className="overflow-hidden rounded-md border">
             <LazyMonacoEditor
-              height="180px"
               defaultLanguage="plaintext"
-              value={draft}
+              height="180px"
               onChange={(next) => updateDraft(next ?? "")}
               onMount={(editor) => {
                 editor.onKeyDown((event: monaco.IKeyboardEvent) => {
@@ -292,67 +308,72 @@ export function EditableField({
                 });
               }}
               options={{
-                readOnly,
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
+                automaticLayout: true,
                 fontSize: 12,
+                lineNumbers: "on",
+                minimap: { enabled: false },
+                readOnly,
+                scrollBeyondLastLine: false,
                 tabSize: 2,
                 wordWrap: "on",
-                automaticLayout: true,
               }}
+              value={draft}
             />
           </div>
         );
       case "timestamptz":
         return (
           <input
-            ref={inputRef}
-            type="datetime-local"
-            step={1}
-            value={utcIsoToDatetimeLocal(draft || null)}
-            onChange={(event) => updateDraft(datetimeLocalToUtcIso(event.target.value) ?? "")}
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            onChange={(event) =>
+              updateDraft(datetimeLocalToUtcIso(event.target.value) ?? "")
+            }
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            ref={inputRef}
+            step={1}
+            type="datetime-local"
+            value={utcIsoToDatetimeLocal(draft || null)}
           />
         );
       case "timestamp":
         return (
           <input
-            ref={inputRef}
-            type="datetime-local"
-            step={1}
-            value={timestampRawToDatetimeLocal(draft)}
-            onChange={(event) => updateDraft(datetimeLocalToTimestamp(event.target.value) ?? "")}
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            onChange={(event) =>
+              updateDraft(datetimeLocalToTimestamp(event.target.value) ?? "")
+            }
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            ref={inputRef}
+            step={1}
+            type="datetime-local"
+            value={timestampRawToDatetimeLocal(draft)}
           />
         );
       case "date":
         return (
           <input
-            ref={inputRef}
-            type="date"
-            value={initialDate(draft)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            ref={inputRef}
+            type="date"
+            value={initialDate(draft)}
           />
         );
       case "time":
         return (
           <input
-            ref={inputRef}
-            type="time"
-            step={1}
-            value={initialTime(draft)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            ref={inputRef}
+            step={1}
+            type="time"
+            value={initialTime(draft)}
           />
         );
       case "bool": {
@@ -360,18 +381,16 @@ export function EditableField({
         const isTrue = current === "true";
         return (
           <div className="flex items-center gap-3" onKeyDown={handleKeyDown}>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <button
-                type="button"
-                role="switch"
                 aria-checked={isTrue}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isTrue ? "border-primary bg-primary" : "border-input bg-muted"
+                }`}
                 disabled={readOnly}
                 onClick={() => updateDraft(isTrue ? "false" : "true")}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
-                  isTrue
-                    ? "border-primary bg-primary"
-                    : "border-input bg-muted"
-                }`}
+                role="switch"
+                type="button"
               >
                 <span
                   className={`pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-background shadow-sm ring-0 transition-transform ${
@@ -379,15 +398,17 @@ export function EditableField({
                   }`}
                 />
               </button>
-              <span className={`font-mono text-xs ${isTrue ? "text-primary font-medium" : "text-muted-foreground"}`}>
+              <span
+                className={`font-mono text-xs ${isTrue ? "font-medium text-primary" : "text-muted-foreground"}`}
+              >
                 {isTrue ? "TRUE" : "FALSE"}
               </span>
             </label>
             <button
-              type="button"
-              onClick={() => updateDraft(isTrue ? "false" : "true")}
+              className="rounded-md border border-dashed px-2 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
               disabled={readOnly}
-              className="rounded-md border border-dashed px-2 py-1 font-mono text-[10px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              onClick={() => updateDraft(isTrue ? "false" : "true")}
+              type="button"
             >
               Toggle
             </button>
@@ -398,43 +419,43 @@ export function EditableField({
       case "numeric":
         return (
           <input
-            ref={inputRef}
-            type="number"
+            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
             inputMode={kind === "integer" ? "numeric" : "decimal"}
-            step={kind === "integer" ? 1 : "any"}
-            value={initialNumeric(draft)}
             onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={handleKeyDown}
             readOnly={readOnly}
-            className="w-full rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+            ref={inputRef}
+            step={kind === "integer" ? 1 : "any"}
+            type="number"
+            value={initialNumeric(draft)}
           />
         );
       case "uuid":
         return (
           <div className="flex gap-2">
             <input
-              ref={inputRef}
-              type="text"
-              value={draft}
+              className="flex-1 rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
-              readOnly={readOnly}
               placeholder="00000000-0000-0000-0000-000000000000"
+              readOnly={readOnly}
+              ref={inputRef}
               spellCheck={false}
-              className="flex-1 rounded-md border bg-background px-2 py-1.5 font-mono text-xs outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              type="text"
+              value={draft}
             />
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
               disabled={readOnly}
               onClick={() => {
                 if (typeof crypto !== "undefined" && crypto.randomUUID) {
                   updateDraft(crypto.randomUUID());
                 }
               }}
+              size="sm"
+              type="button"
+              variant="outline"
             >
-              <Icon name="dice" className="h-3.5 w-3.5" />
+              <Icon className="h-3.5 w-3.5" name="dice" />
               Generate
             </Button>
           </div>
@@ -447,27 +468,29 @@ export function EditableField({
             {isHexColor && (
               <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5">
                 <input
+                  className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
+                  disabled={readOnly}
+                  onChange={(event) => updateDraft(event.target.value)}
                   type="color"
                   value={draft.trim()}
-                  onChange={(event) => updateDraft(event.target.value)}
-                  disabled={readOnly}
-                  className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
                 />
                 <span
                   className="h-5 w-5 rounded-full border shadow-xs"
                   style={{ backgroundColor: draft.trim() }}
                 />
-                <span className="font-mono text-xs text-muted-foreground">{draft.trim()}</span>
+                <span className="font-mono text-muted-foreground text-xs">
+                  {draft.trim()}
+                </span>
               </div>
             )}
             <textarea
-              ref={textareaRef}
-              value={draft}
+              className="h-[180px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleKeyDown}
               readOnly={readOnly}
+              ref={textareaRef}
               spellCheck={false}
-              className="h-[180px] w-full resize-none rounded-md border bg-background p-2 font-mono text-xs leading-5 outline-hidden focus-visible:ring-2 focus-visible:ring-primary/40"
+              value={draft}
             />
           </div>
         );
@@ -478,29 +501,31 @@ export function EditableField({
   return (
     <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/[0.02] px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-xs font-medium">{column.name}</span>
-        <span className="truncate text-[10px] text-muted-foreground">{column.data_type}</span>
+        <span className="truncate font-medium text-xs">{column.name}</span>
+        <span className="truncate text-[10px] text-muted-foreground">
+          {column.data_type}
+        </span>
       </div>
       {body}
-      {!isNullDraft && !validation.ok && hasChanges && (
+      {!(isNullDraft || validation.ok) && hasChanges && (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
           {validation.message}
         </div>
       )}
       <div className="flex items-center justify-end gap-1">
         <Button
+          disabled={readOnly || !nullable || isNullDraft}
+          onClick={setToNull}
+          size="sm"
           type="button"
           variant="ghost"
-          size="sm"
-          onClick={setToNull}
-          disabled={readOnly || !nullable || isNullDraft}
         >
           NULL
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={cancel}>
+        <Button onClick={cancel} size="sm" type="button" variant="ghost">
           Cancel
         </Button>
-        <Button type="button" size="sm" onClick={commit} disabled={!canSave}>
+        <Button disabled={!canSave} onClick={commit} size="sm" type="button">
           Save
         </Button>
       </div>

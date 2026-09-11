@@ -6,19 +6,19 @@
  * No data leaves the machine — 100% privacy.
  */
 
-type FeatureExtractionOutput = {
+interface FeatureExtractionOutput {
   data: Float32Array;
-};
+}
 
 type FeatureExtractionPipeline = (
   input: string | string[],
-  options: { normalize: boolean; pooling: "mean" },
+  options: { normalize: boolean; pooling: "mean" }
 ) => Promise<FeatureExtractionOutput>;
 
 type PipelineFactory = (
   task: "feature-extraction",
   model: string,
-  options: { quantized: boolean },
+  options: { quantized: boolean }
 ) => Promise<FeatureExtractionPipeline>;
 
 // ---------------------------------------------------------------------------
@@ -46,18 +46,22 @@ let pipelineFactory: PipelineFactory | null = null;
  * First call downloads ~90MB model to ~/.cache/transformers.
  */
 async function loadModel(): Promise<FeatureExtractionPipeline> {
-  if (embedder) return embedder;
-  if (loadPromise) return loadPromise;
+  if (embedder) {
+    return embedder;
+  }
+  if (loadPromise) {
+    return loadPromise;
+  }
 
   if (isLoading) {
     return new Promise((resolve, reject) => {
       const check = () => {
         if (embedder) {
           resolve(embedder);
-        } else if (!isLoading) {
-          reject(new Error("Model loading failed"));
-        } else {
+        } else if (isLoading) {
           setTimeout(check, 100);
+        } else {
+          reject(new Error("Model loading failed"));
         }
       };
       check();
@@ -99,8 +103,12 @@ export function isEmbeddingModelReady(): boolean {
  * Get loading status.
  */
 export function getEmbeddingStatus(): "ready" | "loading" | "uninitialized" {
-  if (embedder) return "ready";
-  if (isLoading) return "loading";
+  if (embedder) {
+    return "ready";
+  }
+  if (isLoading) {
+    return "loading";
+  }
   return "uninitialized";
 }
 
@@ -123,8 +131,8 @@ export async function generateEmbedding(text: string): Promise<Float32Array> {
   }
 
   const output = await model(cleanedText, {
-    pooling: "mean",
     normalize: true,
+    pooling: "mean",
   });
 
   // Extract the embedding vector
@@ -132,7 +140,9 @@ export async function generateEmbedding(text: string): Promise<Float32Array> {
 
   // Verify dimensions
   if (embedding.length !== EMBEDDING_DIM) {
-    console.warn(`[Embedding] Unexpected dimension: ${embedding.length}, expected ${EMBEDDING_DIM}`);
+    console.warn(
+      `[Embedding] Unexpected dimension: ${embedding.length}, expected ${EMBEDDING_DIM}`
+    );
   }
 
   return embedding;
@@ -142,15 +152,17 @@ export async function generateEmbedding(text: string): Promise<Float32Array> {
  * Generate embeddings for multiple texts (batch processing).
  * More efficient than calling generateEmbedding multiple times.
  */
-export async function generateEmbeddings(texts: string[]): Promise<Float32Array[]> {
+export async function generateEmbeddings(
+  texts: string[]
+): Promise<Float32Array[]> {
   const model = await loadModel();
 
   // Clean texts
   const cleanedTexts = texts.map((t) => t.trim().slice(0, 512));
 
   const outputs = await model(cleanedTexts, {
-    pooling: "mean",
     normalize: true,
+    pooling: "mean",
   });
 
   // Extract embeddings for each input
@@ -189,7 +201,9 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
     normB += b[i] * b[i];
   }
 
-  if (normA === 0 || normB === 0) return 0;
+  if (normA === 0 || normB === 0) {
+    return 0;
+  }
 
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
@@ -227,13 +241,73 @@ export function findMostSimilar(
  */
 export function extractKeyTerms(text: string): string {
   const stopWords = new Set([
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
-    "been", "being", "have", "has", "had", "do", "does", "did", "will",
-    "would", "could", "should", "may", "might", "must", "can", "this",
-    "that", "these", "those", "i", "you", "he", "she", "it", "we", "they",
-    "me", "him", "her", "us", "them", "my", "your", "his", "her", "its",
-    "our", "their", "what", "which", "who", "when", "where", "why", "how",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "as",
+    "is",
+    "was",
+    "are",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "must",
+    "can",
+    "this",
+    "that",
+    "these",
+    "those",
+    "i",
+    "you",
+    "he",
+    "she",
+    "it",
+    "we",
+    "they",
+    "me",
+    "him",
+    "her",
+    "us",
+    "them",
+    "my",
+    "your",
+    "his",
+    "her",
+    "its",
+    "our",
+    "their",
+    "what",
+    "which",
+    "who",
+    "when",
+    "where",
+    "why",
+    "how",
   ]);
 
   return text
@@ -249,11 +323,14 @@ export function extractKeyTerms(text: string): string {
  * Create a search-optimized version of query text.
  * Enhances schema/table/column references for better retrieval.
  */
-export function optimizeQueryForSearch(text: string, context?: {
-  schema?: string;
-  table?: string;
-  columns?: string[];
-}): string {
+export function optimizeQueryForSearch(
+  text: string,
+  context?: {
+    schema?: string;
+    table?: string;
+    columns?: string[];
+  }
+): string {
   let optimized = text;
 
   // Add context markers if available
@@ -282,7 +359,9 @@ export async function disposeEmbeddingModel(): Promise<void> {
   if (embedder) {
     // Transformers.js doesn't expose dispose officially in types
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (embedder as unknown as { dispose?: () => Promise<void> }).dispose?.();
+    await (
+      embedder as unknown as { dispose?: () => Promise<void> }
+    ).dispose?.();
     embedder = null;
     loadPromise = null;
     isLoading = false;

@@ -1,25 +1,29 @@
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
-import Module from "node:module";
+import Module, { createRequire } from "node:module";
 import { join } from "node:path";
+import type { DriverConnectionConfig } from "./driver";
+import { getPgPool } from "./kysely-factory";
 import type {
   ColumnMeta,
   DatabaseInfo,
   QueryResult,
   TableFilter,
 } from "./types";
-import type { DriverConnectionConfig } from "./driver";
-import { getPgPool } from "./kysely-factory";
 
-type PgField = { name: string; dataTypeID: number };
+interface PgField {
+    name: string;
+    dataTypeID: number 
+}
 
 const runtimeRequire = createRequire(
-  join(process.resourcesPath || process.cwd(), "package.json"),
+  join(process.resourcesPath || process.cwd(), "package.json")
 );
 
 const nodeModule = Module as typeof Module & { _initPaths: () => void };
 
-type PgClientCtor = new (config: Record<string, unknown>) => {
+type PgClientCtor = new (
+  config: Record<string, unknown>
+) => {
   connect: () => Promise<void>;
   query: (sql: string) => Promise<unknown>;
   end: () => Promise<void>;
@@ -28,7 +32,9 @@ let pgClientCtorCached: PgClientCtor | null = null;
 
 function ensureResourcesNodePath(): void {
   const base = process.resourcesPath;
-  if (!base) return;
+  if (!base) {
+    return;
+  }
 
   const current = process.env.NODE_PATH || "";
   const segments = current
@@ -44,7 +50,9 @@ function ensureResourcesNodePath(): void {
 
 function loadPgClientCtor(): PgClientCtor {
   ensureResourcesNodePath();
-  if (pgClientCtorCached) return pgClientCtorCached;
+  if (pgClientCtorCached) {
+    return pgClientCtorCached;
+  }
 
   const base = process.resourcesPath;
   const cwd = process.cwd();
@@ -64,11 +72,15 @@ function loadPgClientCtor(): PgClientCtor {
         mod = runtimeRequire(candidate) as { Client?: PgClientCtor };
       } else {
         const pkgJsonPath = join(candidate, "package.json");
-        if (!existsSync(pkgJsonPath)) continue;
+        if (!existsSync(pkgJsonPath)) {
+          continue;
+        }
         mod = runtimeRequire(candidate) as { Client?: PgClientCtor };
       }
 
-      if (!mod?.Client) continue;
+      if (!mod?.Client) {
+        continue;
+      }
       pgClientCtorCached = mod.Client;
       return mod.Client;
     } catch (err) {
@@ -79,7 +91,7 @@ function loadPgClientCtor(): PgClientCtor {
   throw new Error(
     `Failed to load pg Client constructor. Last error: ${
       lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
+    }`
   );
 }
 
@@ -113,7 +125,9 @@ export function mapPgType(dataTypeID: number): string {
   return typeMap[dataTypeID] || "unknown";
 }
 
-export function buildPgConnectionString(config: DriverConnectionConfig): string {
+export function buildPgConnectionString(
+  config: DriverConnectionConfig
+): string {
   const ensureSslCompat = (value: string): string => {
     try {
       const url = new URL(value);
@@ -127,7 +141,9 @@ export function buildPgConnectionString(config: DriverConnectionConfig): string 
     }
   };
 
-  if (config.url) return ensureSslCompat(config.url);
+  if (config.url) {
+    return ensureSslCompat(config.url);
+  }
 
   const sslMode = (config.ssl_mode || "prefer").toLowerCase();
   const base = `postgresql://${encodeURIComponent(config.username)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${config.database}`;
@@ -139,10 +155,18 @@ export function buildPgConnectionString(config: DriverConnectionConfig): string 
 }
 
 function formatPgUptimeValue(value: unknown): string | undefined {
-  if (value == null) return undefined;
-  if (typeof value === "string") return value.replace(/\.\d+$/, "");
-  if (typeof value === "number") return String(value);
-  if (typeof value !== "object") return String(value);
+  if (value == null) {
+    return;
+  }
+  if (typeof value === "string") {
+    return value.replace(/\.\d+$/, "");
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  if (typeof value !== "object") {
+    return String(value);
+  }
 
   // Some pg parsers return interval as object parts instead of text.
   const parts = value as Record<string, unknown>;
@@ -151,18 +175,24 @@ function formatPgUptimeValue(value: unknown): string | undefined {
   const minutes = Number(parts.minutes ?? 0);
   const seconds = Number(parts.seconds ?? 0);
 
-  if ([days, hours, minutes, seconds].some((n) => Number.isFinite(n) && n !== 0)) {
+  if (
+    [days, hours, minutes, seconds].some((n) => Number.isFinite(n) && n !== 0)
+  ) {
     const hh = String(Math.max(0, Math.trunc(hours))).padStart(2, "0");
     const mm = String(Math.max(0, Math.trunc(minutes))).padStart(2, "0");
     const ss = String(Math.max(0, Math.trunc(seconds))).padStart(2, "0");
-    return days > 0 ? `${days} day${days === 1 ? "" : "s"}, ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+    return days > 0
+      ? `${days} day${days === 1 ? "" : "s"}, ${hh}:${mm}:${ss}`
+      : `${hh}:${mm}:${ss}`;
   }
 
   const raw = String(value);
   return raw === "[object Object]" ? undefined : raw.replace(/\.\d+$/, "");
 }
 
-export async function testPgConnection(connectionString: string): Promise<boolean> {
+export async function testPgConnection(
+  connectionString: string
+): Promise<boolean> {
   try {
     const pool = getPgPool(connectionString);
     const client = await pool.connect();
@@ -173,7 +203,10 @@ export async function testPgConnection(connectionString: string): Promise<boolea
       client.release();
     }
   } catch (err) {
-    const safeConn = connectionString.replace(/:\/\/([^:@]+):([^@]+)@/, "://$1:[REDACTED]@");
+    const safeConn = connectionString.replace(
+      /:\/\/([^:@]+):([^@]+)@/,
+      "://$1:[REDACTED]@"
+    );
     const message = err instanceof Error ? err.message : String(err);
     const host = (() => {
       try {
@@ -194,27 +227,37 @@ export async function testPgConnection(connectionString: string): Promise<boolea
 
     console.error("[pg] testPgConnection failed", {
       connectionString: safeConn,
-      message,
       friendlyMessage,
+      message,
     });
     throw new Error(`PostgreSQL connection test failed: ${friendlyMessage}`);
   }
 }
 
-export async function executePgQuery(connectionString: string, sqlQuery: string, signal?: AbortSignal): Promise<QueryResult> {
+export async function executePgQuery(
+  connectionString: string,
+  sqlQuery: string,
+  signal?: AbortSignal
+): Promise<QueryResult> {
   const pool = getPgPool(connectionString);
   const client = await pool.connect();
   try {
     // pg client.query supports AbortSignal natively — when aborted, the
     // underlying socket is destroyed and the query rejects with an error.
     // The @types/pg doesn't include `signal` in QueryConfig yet, so we cast.
-    const result = await client.query({ text: sqlQuery, signal } as unknown as string);
+    const result = await client.query({
+      signal,
+      text: sqlQuery,
+    } as unknown as string);
 
-    if (!Array.isArray(result.rows) || (result.rows.length === 0 && result.command !== "SELECT")) {
+    if (
+      !Array.isArray(result.rows) ||
+      (result.rows.length === 0 && result.command !== "SELECT")
+    ) {
       return {
         columns: [],
-        rows: [],
         row_count: result.rowCount ?? 0,
+        rows: [],
       };
     }
 
@@ -225,26 +268,30 @@ export async function executePgQuery(connectionString: string, sqlQuery: string,
 
     return {
       columns,
-      rows: result.rows.map((row: Record<string, unknown>) => Object.values(row)),
       row_count: result.rowCount ?? 0,
+      rows: result.rows.map((row: Record<string, unknown>) =>
+        Object.values(row)
+      ),
     };
   } finally {
     client.release();
   }
 }
 
-export async function getPgDatabaseInfo(connectionString: string): Promise<DatabaseInfo> {
+export async function getPgDatabaseInfo(
+  connectionString: string
+): Promise<DatabaseInfo> {
   const pool = getPgPool(connectionString);
   const client = await pool.connect();
   try {
     // Core info — these should always work on any PostgreSQL connection
     const versionResult = await client.query("SELECT version()");
     const encodingResult = await client.query(
-      "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()",
+      "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = current_database()"
     );
     const timezoneResult = await client.query("SHOW timezone");
     const sizeResult = await client.query(
-      "SELECT pg_size_pretty(pg_database_size(current_database()))",
+      "SELECT pg_size_pretty(pg_database_size(current_database()))"
     );
 
     // Extended stats — may fail on restricted/managed environments (Neon, Supabase, etc.)
@@ -274,25 +321,37 @@ export async function getPgDatabaseInfo(connectionString: string): Promise<Datab
           WHERE datname = current_database()
         `);
       const uptimeResult = await client.query(
-        "SELECT now() - pg_postmaster_start_time() AS uptime",
+        "SELECT now() - pg_postmaster_start_time() AS uptime"
       );
       const deadTuplesResult = await client.query(
-        "SELECT sum(n_dead_tup)::bigint AS dead_tuples FROM pg_stat_user_tables",
+        "SELECT sum(n_dead_tup)::bigint AS dead_tuples FROM pg_stat_user_tables"
       );
 
       const stats = statsResult.rows[0] as Record<string, unknown> | undefined;
-      activeConnections = stats?.active_connections != null ? Number(stats.active_connections) : undefined;
-      maxConnections = stats?.max_connections != null ? Number(stats.max_connections) : undefined;
-      cacheHitRatio = stats?.cache_hit_ratio != null ? Number(stats.cache_hit_ratio) : undefined;
-      xactCommit = stats?.xact_commit != null ? Number(stats.xact_commit) : undefined;
-      xactRollback = stats?.xact_rollback != null ? Number(stats.xact_rollback) : undefined;
-      databaseName = stats?.database_name != null ? String(stats.database_name) : undefined;
+      activeConnections =
+        stats?.active_connections == null
+          ? undefined
+          : Number(stats.active_connections);
+      maxConnections =
+        stats?.max_connections == null
+          ? undefined
+          : Number(stats.max_connections);
+      cacheHitRatio =
+        stats?.cache_hit_ratio == null
+          ? undefined
+          : Number(stats.cache_hit_ratio);
+      xactCommit =
+        stats?.xact_commit == null ? undefined : Number(stats.xact_commit);
+      xactRollback =
+        stats?.xact_rollback == null ? undefined : Number(stats.xact_rollback);
+      databaseName =
+        stats?.database_name == null ? undefined : String(stats.database_name);
 
       // Trim microseconds and normalize object intervals to readable text.
       uptime = formatPgUptimeValue(uptimeResult.rows[0]?.uptime);
 
       const rawDeadTuples = deadTuplesResult.rows[0]?.dead_tuples;
-      deadTuples = rawDeadTuples != null ? Number(rawDeadTuples) : undefined;
+      deadTuples = rawDeadTuples == null ? undefined : Number(rawDeadTuples);
     } catch {
       // pg_stat_activity, pg_settings, pg_postmaster_start_time, or pg_stat_user_tables
       // may not be accessible in restricted environments (e.g. managed Postgres).
@@ -300,32 +359,35 @@ export async function getPgDatabaseInfo(connectionString: string): Promise<Datab
     }
 
     return {
-      version: versionResult.rows[0]?.version || "",
-      encoding: encodingResult.rows[0]?.pg_encoding_to_char || "",
-      timezone: timezoneResult.rows[0]?.TimeZone || "",
-      size: sizeResult.rows[0]?.pg_size_pretty || "",
-      uptime,
       activeConnections,
-      maxConnections,
       cacheHitRatio,
+      databaseName,
+      deadTuples,
+      encoding: encodingResult.rows[0]?.pg_encoding_to_char || "",
+      maxConnections,
+      size: sizeResult.rows[0]?.pg_size_pretty || "",
+      timezone: timezoneResult.rows[0]?.TimeZone || "",
+      uptime,
+      version: versionResult.rows[0]?.version || "",
       xactCommit,
       xactRollback,
-      deadTuples,
-      databaseName,
     };
   } finally {
     client.release();
   }
 }
 
-export async function executePgSql(connectionString: string, sql: string): Promise<void> {
+export async function executePgSql(
+  connectionString: string,
+  sql: string
+): Promise<void> {
   const pool = getPgPool(connectionString);
   await pool.query(sql);
 }
 
 export function buildPgWhereClause(
   filters: Array<{ column: string; operator: string; value?: unknown }>,
-  startIdx: number,
+  startIdx: number
 ): { conditions: string[]; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -337,15 +399,17 @@ export function buildPgWhereClause(
 
     switch (f.operator) {
       case "eq":
-        if (f.value == null) conditions.push(`${col} IS NULL`);
-        else {
+        if (f.value == null) {
+          conditions.push(`${col} IS NULL`);
+        } else {
           conditions.push(`${col} = $${idx}`);
           params.push(f.value);
         }
         break;
       case "neq":
-        if (f.value == null) conditions.push(`${col} IS NOT NULL`);
-        else {
+        if (f.value == null) {
+          conditions.push(`${col} IS NOT NULL`);
+        } else {
           conditions.push(`${col} != $${idx}`);
           params.push(f.value);
         }
@@ -400,29 +464,36 @@ export async function listPgRowsRaw(
   page: number,
   pageSize: number,
   sort: Array<{ column: string; direction: "asc" | "desc" }>,
-  filters: Array<{ column: string; operator: string; value?: unknown }>,
-): Promise<{ rows: Record<string, unknown>[]; totalEstimate: number; columns: ColumnMeta[] }> {
+  filters: Array<{ column: string; operator: string; value?: unknown }>
+): Promise<{
+  rows: Record<string, unknown>[];
+  totalEstimate: number;
+  columns: ColumnMeta[];
+}> {
   const pool = getPgPool(connectionString);
   const offset = (page - 1) * pageSize;
 
   const { conditions, params } = buildPgWhereClause(filters ?? [], 3);
-  const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
-  const orderBy = sort && sort.length > 0
-    ? ` ORDER BY ${sort.map((s) => `${pgEscId(s.column)} ${s.direction.toUpperCase()}`).join(", ")}`
-    : "";
+  const where =
+    conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const orderBy =
+    sort && sort.length > 0
+      ? ` ORDER BY ${sort.map((s) => `${pgEscId(s.column)} ${s.direction.toUpperCase()}`).join(", ")}`
+      : "";
 
   const rowsResult = await pool.query(
     `SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}${where}${orderBy} LIMIT $1 OFFSET $2`,
-    [pageSize, offset, ...params],
+    [pageSize, offset, ...params]
   );
 
   const countClause = buildPgWhereClause(filters ?? [], 1);
-  const countWhere = countClause.conditions.length > 0
-    ? ` WHERE ${countClause.conditions.join(" AND ")}`
-    : "";
+  const countWhere =
+    countClause.conditions.length > 0
+      ? ` WHERE ${countClause.conditions.join(" AND ")}`
+      : "";
   const countResult = await pool.query(
     `SELECT COUNT(*) FROM ${pgEscId(schema)}.${pgEscId(table)}${countWhere}`,
-    countClause.params,
+    countClause.params
   );
 
   const columns = rowsResult.fields.map((f: PgField) => ({
@@ -431,15 +502,13 @@ export async function listPgRowsRaw(
   }));
 
   return {
-    rows: rowsResult.rows,
-    totalEstimate: parseInt(countResult.rows[0].count, 10),
     columns,
+    rows: rowsResult.rows,
+    totalEstimate: Number.parseInt(countResult.rows[0].count, 10),
   };
 }
 
-export async function exportSchemaDdl(
-  connectionString: string,
-): Promise<{
+export async function exportSchemaDdl(connectionString: string): Promise<{
   scripts: Array<{
     type: string;
     schema: string;
@@ -451,7 +520,13 @@ export async function exportSchemaDdl(
 }> {
   const pool = getPgPool(connectionString);
 
-  const scripts: Array<{ type: string; schema: string; name: string; sql: string; dependsOn?: string[] }> = [];
+  const scripts: Array<{
+    type: string;
+    schema: string;
+    name: string;
+    sql: string;
+    dependsOn?: string[];
+  }> = [];
 
   const schemasResult = await pool.query(`
     SELECT schema_name
@@ -464,10 +539,10 @@ export async function exportSchemaDdl(
 
   for (const row of schemasResult.rows) {
     scripts.push({
-      type: "schema",
-      schema: row.schema_name,
       name: row.schema_name,
+      schema: row.schema_name,
       sql: `CREATE SCHEMA IF NOT EXISTS "${row.schema_name}";`,
+      type: "schema",
     });
   }
 
@@ -488,18 +563,22 @@ export async function exportSchemaDdl(
   const enumValuesByType = new Map<string, string[]>();
   for (const row of enumResult.rows) {
     const key = `${row.enum_schema}.${row.enum_name}`;
-    if (!enumValuesByType.has(key)) enumValuesByType.set(key, []);
+    if (!enumValuesByType.has(key)) {
+      enumValuesByType.set(key, []);
+    }
     enumValuesByType.get(key)!.push(row.enumlabel);
   }
 
   for (const [enumKey, labels] of enumValuesByType) {
     const [enumSchema, enumName] = enumKey.split(".");
-    const values = labels.map((label) => `'${String(label).replaceAll("'", "''")}'`).join(", ");
+    const values = labels
+      .map((label) => `'${String(label).replaceAll("'", "''")}'`)
+      .join(", ");
     scripts.push({
-      type: "type",
-      schema: enumSchema,
       name: enumName,
+      schema: enumSchema,
       sql: `DO $$ BEGIN CREATE TYPE "${enumSchema}"."${enumName}" AS ENUM (${values}); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      type: "type",
     });
   }
 
@@ -523,16 +602,19 @@ export async function exportSchemaDdl(
   const sequenceScripts = new Map<string, { schema: string; name: string }>();
   for (const row of seqResult.rows) {
     const key = `${row.sequence_schema}.${row.sequence_name}`;
-    sequenceScripts.set(key, { schema: row.sequence_schema, name: row.sequence_name });
+    sequenceScripts.set(key, {
+      name: row.sequence_name,
+      schema: row.sequence_schema,
+    });
   }
 
   for (const seq of sequenceScripts.values()) {
     scripts.push({
-      type: "sequence",
-      schema: seq.schema,
-      name: seq.name,
-      sql: `CREATE SEQUENCE IF NOT EXISTS "${seq.schema}"."${seq.name}";`,
       dependsOn: [],
+      name: seq.name,
+      schema: seq.schema,
+      sql: `CREATE SEQUENCE IF NOT EXISTS "${seq.schema}"."${seq.name}";`,
+      type: "sequence",
     });
   }
 
@@ -570,20 +652,25 @@ export async function exportSchemaDdl(
     ORDER BY c.table_schema, c.table_name, c.ordinal_position
   `);
 
-  const tableColumns = new Map<string, Array<{
-    name: string;
-    is_nullable: string;
-    column_default: string | null;
-    sql_type: string;
-  }>>();
+  const tableColumns = new Map<
+    string,
+    Array<{
+      name: string;
+      is_nullable: string;
+      column_default: string | null;
+      sql_type: string;
+    }>
+  >();
 
   for (const row of tablesResult.rows) {
     const key = `${row.table_schema}.${row.table_name}`;
-    if (!tableColumns.has(key)) tableColumns.set(key, []);
+    if (!tableColumns.has(key)) {
+      tableColumns.set(key, []);
+    }
     tableColumns.get(key)!.push({
-      name: row.column_name,
-      is_nullable: row.is_nullable,
       column_default: row.column_default,
+      is_nullable: row.is_nullable,
+      name: row.column_name,
       sql_type: row.sql_type,
     });
   }
@@ -607,7 +694,9 @@ export async function exportSchemaDdl(
   const tablePrimaryKeys = new Map<string, string[]>();
   for (const row of pkResult.rows) {
     const key = `${row.table_schema}.${row.table_name}`;
-    if (!tablePrimaryKeys.has(key)) tablePrimaryKeys.set(key, []);
+    if (!tablePrimaryKeys.has(key)) {
+      tablePrimaryKeys.set(key, []);
+    }
     tablePrimaryKeys.get(key)!.push(row.column_name);
   }
 
@@ -618,7 +707,9 @@ export async function exportSchemaDdl(
     const columnDefs: string[] = [];
     for (const col of columns) {
       let def = `  "${col.name}" ${col.sql_type}`;
-      if (col.is_nullable === "NO") def += " NOT NULL";
+      if (col.is_nullable === "NO") {
+        def += " NOT NULL";
+      }
       if (col.column_default && !col.column_default.includes("nextval")) {
         def += ` DEFAULT ${col.column_default}`;
       }
@@ -631,10 +722,10 @@ export async function exportSchemaDdl(
     }
 
     scripts.push({
-      type: "table",
-      schema,
       name: tableName,
+      schema,
       sql: `CREATE TABLE IF NOT EXISTS "${schema}"."${tableName}" (\n${columnDefs.join(",\n")}\n);`,
+      type: "table",
     });
   }
 
@@ -655,15 +746,18 @@ export async function exportSchemaDdl(
   for (const row of indexesResult.rows) {
     let sql = row.indexdef;
     if (!sql.includes("IF NOT EXISTS")) {
-      sql = sql.replace("CREATE UNIQUE INDEX", "CREATE UNIQUE INDEX IF NOT EXISTS");
+      sql = sql.replace(
+        "CREATE UNIQUE INDEX",
+        "CREATE UNIQUE INDEX IF NOT EXISTS"
+      );
       sql = sql.replace("CREATE INDEX", "CREATE INDEX IF NOT EXISTS");
     }
 
     scripts.push({
-      type: "index",
-      schema: row.schemaname,
       name: row.indexname,
+      schema: row.schemaname,
       sql: `${sql};`,
+      type: "index",
     });
   }
 
@@ -691,26 +785,32 @@ export async function exportSchemaDdl(
 
   for (const row of fkResult.rows) {
     scripts.push({
-      type: "constraint",
-      schema: row.table_schema,
-      name: row.constraint_name,
-      sql: `ALTER TABLE "${row.table_schema}"."${row.table_name}" ADD CONSTRAINT "${row.constraint_name}" FOREIGN KEY ("${row.column_name}") REFERENCES "${row.foreign_table_schema}"."${row.foreign_table_name}" ("${row.foreign_column_name}");`,
       dependsOn: [`${row.foreign_table_schema}.${row.foreign_table_name}`],
+      name: row.constraint_name,
+      schema: row.table_schema,
+      sql: `ALTER TABLE "${row.table_schema}"."${row.table_name}" ADD CONSTRAINT "${row.constraint_name}" FOREIGN KEY ("${row.column_name}") REFERENCES "${row.foreign_table_schema}"."${row.foreign_table_name}" ("${row.foreign_column_name}");`,
+      type: "constraint",
     });
   }
 
-  const tableRowCounts: Array<{ schema: string; table: string; rowCount: number }> = [];
+  const tableRowCounts: Array<{
+    schema: string;
+    table: string;
+    rowCount: number;
+  }> = [];
   for (const tableKey of tableColumns.keys()) {
     const [schema, tableName] = tableKey.split(".");
     try {
-      const countResult = await pool.query(`SELECT COUNT(*) FROM "${schema}"."${tableName}"`);
+      const countResult = await pool.query(
+        `SELECT COUNT(*) FROM "${schema}"."${tableName}"`
+      );
       tableRowCounts.push({
+        rowCount: Number.parseInt(countResult.rows[0].count, 10),
         schema,
         table: tableName,
-        rowCount: parseInt(countResult.rows[0].count, 10),
       });
     } catch {
-      tableRowCounts.push({ schema, table: tableName, rowCount: 0 });
+      tableRowCounts.push({ rowCount: 0, schema, table: tableName });
     }
   }
 
@@ -722,22 +822,27 @@ export async function exportTableData(
   schema: string,
   table: string,
   batchSize: number,
-  offset: number,
-): Promise<{ rows: Record<string, unknown>[]; columns: string[]; hasMore: boolean; totalExported: number }> {
+  offset: number
+): Promise<{
+  rows: Record<string, unknown>[];
+  columns: string[];
+  hasMore: boolean;
+  totalExported: number;
+}> {
   const pool = getPgPool(connectionString);
 
   const result = await pool.query(
     `SELECT * FROM "${schema}"."${table}" LIMIT $1 OFFSET $2`,
-    [batchSize + 1, offset],
+    [batchSize + 1, offset]
   );
 
   const hasMore = result.rows.length > batchSize;
   const rows = hasMore ? result.rows.slice(0, batchSize) : result.rows;
 
   return {
-    rows,
     columns: result.fields.map((f: PgField) => f.name),
     hasMore,
+    rows,
     totalExported: offset + rows.length,
   };
 }
@@ -745,7 +850,7 @@ export async function exportTableData(
 export async function executeBatchDdl(
   connectionString: string,
   statements: string[],
-  throwOnError: boolean = false,
+  throwOnError = false
 ): Promise<{ errors: Array<{ sql: string; error: string }> }> {
   const pool = getPgPool(connectionString);
   const errors: Array<{ sql: string; error: string }> = [];
@@ -755,7 +860,7 @@ export async function executeBatchDdl(
       await pool.query(sql);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      errors.push({ sql, error: errMsg });
+      errors.push({ error: errMsg, sql });
       if (throwOnError) {
         throw new Error(`DDL execution failed: ${errMsg}\nSQL: ${sql}`);
       }
@@ -767,8 +872,8 @@ export async function executeBatchDdl(
 
 export async function waitForDatabase(
   connectionString: string,
-  maxRetries: number = 20,
-  intervalMs: number = 250,
+  maxRetries = 20,
+  intervalMs = 250
 ): Promise<void> {
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -787,7 +892,7 @@ export async function waitForDatabase(
   }
 
   throw new Error(
-    `Database not ready after ${maxRetries * intervalMs}ms. Connection string: ${connectionString.replace(/:[^:@]+@/, ":****@")}`,
+    `Database not ready after ${maxRetries * intervalMs}ms. Connection string: ${connectionString.replace(/:[^:@]+@/, ":****@")}`
   );
 }
 
@@ -796,9 +901,11 @@ export async function importTableRows(
   schema: string,
   table: string,
   columns: string[],
-  rows: Record<string, unknown>[],
+  rows: Record<string, unknown>[]
 ): Promise<number> {
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) {
+    return 0;
+  }
 
   const pool = getPgPool(connectionString);
   const quotedCols = columns.map((c) => `"${c}"`).join(", ");

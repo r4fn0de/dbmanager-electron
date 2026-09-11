@@ -1,42 +1,74 @@
 import {
-  useState,
-  useMemo,
-  useDeferredValue,
-  useRef,
   useCallback,
+  useDeferredValue,
   useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
-import type { SchemaColumn, TableSort, TableFilter } from "@/ipc/db/types";
+import type { SchemaColumn, TableFilter, TableSort } from "@/ipc/db/types";
 
 function getDefaultColumnWidth(column: SchemaColumn): number {
   const name = column.name.toLowerCase();
   const type = column.data_type.toLowerCase();
   const udt = (column.udt_name ?? "").toLowerCase();
 
-  if (/(^|_)id$/.test(name) || /(^|_)id_/.test(name)) return 140;
-  if (/(bool)/.test(type)) return 80;
-  if (/(timestamp|timestamptz)/.test(type)) return 170;
-  if (/(date)/.test(type)) return 100;
-  if (/(time)/.test(type)) return 90;
-  if (/(uuid)/.test(type)) return 220;
-  if (/(json|jsonb)/.test(type)) return 200;
-  if (/(int|serial|smallint)/.test(type)) return 90;
-  if (/(bigint)/.test(type)) return 120;
-  if (/(numeric|decimal)/.test(type)) return 120;
-  if (/(double|real|float)/.test(type)) return 110;
-  if (/(text|varchar|char)/.test(type)) return 150;
-  if (/(bytea)/.test(type)) return 180;
-  if (/(inet|cidr)/.test(type)) return 130;
-  if (/(macaddr)/.test(type)) return 110;
-  if (type === "array" || udt.startsWith("_") || type.endsWith("[]"))
-    return 180;
-  if (type === "user-defined" || type === "USER-DEFINED".toLowerCase())
+  if (/(^|_)id$/.test(name) || /(^|_)id_/.test(name)) {
     return 140;
+  }
+  if (/(bool)/.test(type)) {
+    return 80;
+  }
+  if (/(timestamp|timestamptz)/.test(type)) {
+    return 170;
+  }
+  if (/(date)/.test(type)) {
+    return 100;
+  }
+  if (/(time)/.test(type)) {
+    return 90;
+  }
+  if (/(uuid)/.test(type)) {
+    return 220;
+  }
+  if (/(json|jsonb)/.test(type)) {
+    return 200;
+  }
+  if (/(int|serial|smallint)/.test(type)) {
+    return 90;
+  }
+  if (/(bigint)/.test(type)) {
+    return 120;
+  }
+  if (/(numeric|decimal)/.test(type)) {
+    return 120;
+  }
+  if (/(double|real|float)/.test(type)) {
+    return 110;
+  }
+  if (/(text|varchar|char)/.test(type)) {
+    return 150;
+  }
+  if (/(bytea)/.test(type)) {
+    return 180;
+  }
+  if (/(inet|cidr)/.test(type)) {
+    return 130;
+  }
+  if (/(macaddr)/.test(type)) {
+    return 110;
+  }
+  if (type === "array" || udt.startsWith("_") || type.endsWith("[]")) {
+    return 180;
+  }
+  if (type === "user-defined" || type === "USER-DEFINED".toLowerCase()) {
+    return 140;
+  }
 
   return 120;
 }
 
-type TableViewState = {
+interface TableViewState {
   page: number;
   pageSize: number;
   sort: TableSort[];
@@ -44,7 +76,7 @@ type TableViewState = {
   filterValue: string;
   visibleColumns: string[];
   columnWidths: Record<string, number>;
-};
+}
 
 interface UseTableViewStateOptions {
   onTableSwitch?: () => void;
@@ -53,13 +85,13 @@ interface UseTableViewStateOptions {
 export function useTableViewState(
   connectionId: string,
   table: { schema: string; name: string; columns: SchemaColumn[] },
-  options?: UseTableViewStateOptions,
+  options?: UseTableViewStateOptions
 ) {
   const tableKey = `${connectionId}::${table.schema}.${table.name}`;
 
   const defaultVisibleColumns = useMemo(
     () => table.columns.map((column) => column.name),
-    [table.columns],
+    [table.columns]
   );
   const defaultFilterColumn = table.columns[0]?.name ?? "";
 
@@ -68,62 +100,64 @@ export function useTableViewState(
 
   const getInitialViewState = (): TableViewState => {
     const saved = viewStateByTableRef.current.get(tableKey);
-    if (saved) return saved;
+    if (saved) {
+      return saved;
+    }
     return {
+      columnWidths: {},
+      filterColumn: defaultFilterColumn,
+      filterValue: "",
       page: 0,
       pageSize: 50,
       sort: [],
-      filterColumn: defaultFilterColumn,
-      filterValue: "",
       visibleColumns: defaultVisibleColumns,
-      columnWidths: {},
     };
   };
 
   const [page, setPage] = useState<number>(() => getInitialViewState().page);
   const [pageSize, setPageSize] = useState<number>(
-    () => getInitialViewState().pageSize,
+    () => getInitialViewState().pageSize
   );
   const [sort, setSort] = useState<TableSort[]>(
-    () => getInitialViewState().sort,
+    () => getInitialViewState().sort
   );
   const [filterColumn, setFilterColumn] = useState<string>(
-    () => getInitialViewState().filterColumn,
+    () => getInitialViewState().filterColumn
   );
   const [filterValue, setFilterValue] = useState<string>(
-    () => getInitialViewState().filterValue,
+    () => getInitialViewState().filterValue
   );
   const [showFilters, setShowFilters] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
-    () => getInitialViewState().visibleColumns,
+    () => getInitialViewState().visibleColumns
   );
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(
-    () => getInitialViewState().columnWidths,
+    () => getInitialViewState().columnWidths
   );
 
   const liveViewStateRef = useRef({
+    columnWidths,
+    filterColumn,
+    filterValue,
     page,
     pageSize,
     sort,
-    filterColumn,
-    filterValue,
     visibleColumns,
-    columnWidths,
   });
   liveViewStateRef.current = {
+    columnWidths,
+    filterColumn,
+    filterValue,
     page,
     pageSize,
     sort,
-    filterColumn,
-    filterValue,
     visibleColumns,
-    columnWidths,
   };
 
   if (previousTableKeyRef.current !== tableKey) {
     viewStateByTableRef.current.set(
       previousTableKeyRef.current,
-      liveViewStateRef.current,
+      liveViewStateRef.current
     );
 
     const saved = viewStateByTableRef.current.get(tableKey);
@@ -153,7 +187,9 @@ export function useTableViewState(
   const deferredFilterValue = useDeferredValue(filterValue);
 
   const serverFilters = useMemo<TableFilter[]>(() => {
-    if (!deferredFilterValue.trim() || !filterColumn) return [];
+    if (!(deferredFilterValue.trim() && filterColumn)) {
+      return [];
+    }
     return [
       {
         column: filterColumn,
@@ -178,7 +214,7 @@ export function useTableViewState(
   const resolveColumnWidth = useCallback(
     (columnName: string) =>
       columnWidths[columnName] ?? defaultColumnWidths[columnName] ?? 200,
-    [columnWidths, defaultColumnWidths],
+    [columnWidths, defaultColumnWidths]
   );
 
   const resetViewStateForTable = useCallback(() => {
@@ -192,24 +228,24 @@ export function useTableViewState(
   }, [defaultFilterColumn, defaultVisibleColumns]);
 
   return {
-    page,
-    setPage,
-    pageSize,
-    setPageSize,
-    sort,
-    setSort,
-    filterColumn,
-    setFilterColumn,
-    filterValue,
-    setFilterValue,
-    showFilters,
-    setShowFilters,
-    visibleColumns,
-    setVisibleColumns,
-    serverFilters,
     columnWidths,
-    setColumnWidths,
-    resolveColumnWidth,
+    filterColumn,
+    filterValue,
+    page,
+    pageSize,
     resetViewStateForTable,
+    resolveColumnWidth,
+    serverFilters,
+    setColumnWidths,
+    setFilterColumn,
+    setFilterValue,
+    setPage,
+    setPageSize,
+    setShowFilters,
+    setSort,
+    setVisibleColumns,
+    showFilters,
+    sort,
+    visibleColumns,
   };
 }

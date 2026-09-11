@@ -1,8 +1,8 @@
-import { useRef, useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { RowRecord } from "../types";
 
 export function useFloatingRowButton(
-  expandedRow: { rowKey: string; row: RowRecord; index: number } | null,
+  expandedRow: { rowKey: string; row: RowRecord; index: number } | null
 ) {
   const hoveredRowAnchorRef = useRef<null | {
     rowKey: string;
@@ -15,7 +15,7 @@ export function useFloatingRowButton(
   }>(null);
   const floatingRowButtonRef = useRef<HTMLButtonElement>(null);
   const hoverClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
+    null
   );
 
   const showFloatingRowButton = useCallback(
@@ -30,17 +30,21 @@ export function useFloatingRowButton(
     }) => {
       hoveredRowAnchorRef.current = payload;
       const button = floatingRowButtonRef.current;
-      if (!button) return;
+      if (!button) {
+        return;
+      }
       button.style.top = `${payload.top}px`;
       button.style.left = `${payload.left}px`;
       button.style.opacity = expandedRow ? "0" : "1";
       button.style.pointerEvents = expandedRow ? "none" : "auto";
     },
-    [expandedRow],
+    [expandedRow]
   );
 
   const cancelPendingHoverClear = useCallback(() => {
-    if (!hoverClearTimeoutRef.current) return;
+    if (!hoverClearTimeoutRef.current) {
+      return;
+    }
     clearTimeout(hoverClearTimeoutRef.current);
     hoverClearTimeoutRef.current = null;
   }, []);
@@ -59,11 +63,11 @@ export function useFloatingRowButton(
   }, [cancelPendingHoverClear]);
 
   return {
-    hoveredRowAnchorRef,
+    cancelPendingHoverClear,
     floatingRowButtonRef,
     hoverClearTimeoutRef,
-    showFloatingRowButton,
-    cancelPendingHoverClear,
+    hoveredRowAnchorRef,
     scheduleHoverClear,
+    showFloatingRowButton,
   };
 }

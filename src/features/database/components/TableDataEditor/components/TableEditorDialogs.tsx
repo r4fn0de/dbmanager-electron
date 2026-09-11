@@ -12,18 +12,18 @@ import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 
 interface TableEditorDialogsProps {
-  tableName: string;
-  selectedRowCount: number;
+  confirmText: string;
+  isTruncating: boolean;
+  onBatchDeleteOpenChange: (open: boolean) => void;
+  onConfirmBatchDelete: () => void;
+  onConfirmTextChange: (value: string) => void;
+  onConfirmTruncate: () => void;
+  onTruncateOpenChange: (open: boolean) => void;
   pendingBatchDelete: boolean;
   pendingTruncate: boolean;
-  confirmText: string;
+  selectedRowCount: number;
+  tableName: string;
   truncateSqlPreview: string;
-  isTruncating: boolean;
-  onConfirmTextChange: (value: string) => void;
-  onBatchDeleteOpenChange: (open: boolean) => void;
-  onTruncateOpenChange: (open: boolean) => void;
-  onConfirmBatchDelete: () => void;
-  onConfirmTruncate: () => void;
 }
 
 export function TableEditorDialogs({
@@ -42,27 +42,31 @@ export function TableEditorDialogs({
 }: TableEditorDialogsProps) {
   return (
     <>
-      <AlertDialog open={pendingBatchDelete} onOpenChange={onBatchDeleteOpenChange}>
+      <AlertDialog
+        onOpenChange={onBatchDeleteOpenChange}
+        open={pendingBatchDelete}
+      >
         <AlertDialogContent className="t-resize">
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm batch delete</AlertDialogTitle>
             <AlertDialogDescription>
-              This will stage deletion of <strong>{selectedRowCount} rows</strong>.
-              Changes are persisted only when you click <strong>Save Changes</strong>.
+              This will stage deletion of{" "}
+              <strong>{selectedRowCount} rows</strong>. Changes are persisted
+              only when you click <strong>Save Changes</strong>.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
             <Input
-              value={confirmText}
               onChange={(event) => onConfirmTextChange(event.target.value)}
               placeholder={`Type ${tableName} to confirm`}
+              value={confirmText}
             />
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={onConfirmBatchDelete}
               disabled={confirmText !== tableName}
+              onClick={onConfirmBatchDelete}
             >
               Stage Delete ({selectedRowCount})
             </AlertDialogAction>
@@ -70,7 +74,7 @@ export function TableEditorDialogs({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={pendingTruncate} onOpenChange={onTruncateOpenChange}>
+      <AlertDialog onOpenChange={onTruncateOpenChange} open={pendingTruncate}>
         <AlertDialogContent className="t-resize">
           <AlertDialogHeader>
             <AlertDialogTitle>Truncate table</AlertDialogTitle>
@@ -80,27 +84,27 @@ export function TableEditorDialogs({
           </AlertDialogHeader>
 
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">SQL preview</p>
-            <pre className="text-[11px] bg-muted rounded-md p-2 overflow-auto">
+            <p className="text-muted-foreground text-xs">SQL preview</p>
+            <pre className="overflow-auto rounded-md bg-muted p-2 text-[11px]">
               {truncateSqlPreview}
             </pre>
             <Input
-              value={confirmText}
               onChange={(event) => onConfirmTextChange(event.target.value)}
               placeholder={`Type ${tableName} to confirm`}
+              value={confirmText}
             />
           </div>
 
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={onConfirmTruncate}
               disabled={confirmText !== tableName || isTruncating}
+              onClick={onConfirmTruncate}
             >
               {isTruncating ? (
-                <UiIcon name="loader" className="h-3.5 w-3.5 animate-spin" />
+                <UiIcon className="h-3.5 w-3.5 animate-spin" name="loader" />
               ) : (
-                <UiIcon name="database" className="h-3.5 w-3.5" />
+                <UiIcon className="h-3.5 w-3.5" name="database" />
               )}
               Truncate
             </AlertDialogAction>
@@ -110,4 +114,3 @@ export function TableEditorDialogs({
     </>
   );
 }
-

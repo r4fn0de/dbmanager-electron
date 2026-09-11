@@ -2,58 +2,78 @@ import type { SchemaColumn, SchemaForeignKey, TableSort } from "@/ipc/db/types";
 import type { RowRecord, RowUpdateDraft } from "../types";
 
 export interface EditingCell {
-  rowKey: string;
   column: string;
-  source: "existing" | "insert";
   insertIndex?: number;
+  rowKey: string;
+  source: "existing" | "insert";
 }
 
 export interface TableEditorGridHeaderProps {
+  columnMap: Record<string, SchemaColumn>;
+  handleResizeMouseDown: (column: string, event: React.MouseEvent) => void;
   isAllSelected: boolean;
   isSomeSelected: boolean;
+  onSortColumn: (columnName: string) => void;
+  resolveColumnWidth: (columnName: string) => number;
+  sort: TableSort[];
   toggleSelectAll: () => void;
   visibleColumns: string[];
-  sort: TableSort[];
-  columnMap: Record<string, SchemaColumn>;
-  resolveColumnWidth: (columnName: string) => number;
-  onSortColumn: (columnName: string) => void;
-  handleResizeMouseDown: (column: string, event: React.MouseEvent) => void;
 }
 
 export interface TableEditorGridRowsProps {
-  topSpacerHeight: number;
-  bottomSpacerHeight: number;
-  visibleColumns: string[];
-  visibleDraftInserts: Array<{ row: RowRecord; insertIndex: number }>;
-  editingCell: EditingCell | null;
-  focusedCell: { rowKey: string; column: string } | null;
-  beginEditInsertCell: (insertIndex: number, columnName: string) => void;
-  setFocusedCell: React.Dispatch<
-    React.SetStateAction<{ rowKey: string; column: string } | null>
-  >;
-  editingValue: string;
-  setEditingValue: React.Dispatch<React.SetStateAction<string>>;
-  loadFkOptionsDebounced: (columnName: string, query: string) => void;
-  persistEditing: (baseRow?: RowRecord) => void;
-  suppressInlineEditorMouseUpRef: React.RefObject<boolean>;
-  keepCaretNavigationInsideInlineInput: (
-    event: React.KeyboardEvent<HTMLInputElement>,
-  ) => void;
-  cancelEditing: () => void;
   applyExpandedEditToInsert: (
     insertIndex: number,
     columnName: string,
-    rawText: string,
+    rawText: string
   ) => void;
-  visibleEffectiveRows: Array<{ row: RowRecord; rowKey: string; index: number }>;
-  selectedRowKeys: Set<string>;
+  applyExpandedEditToRow: (
+    rowKey: string,
+    baseRow: RowRecord,
+    columnName: string,
+    rawText: string
+  ) => void;
+  beginEditExistingCell: (
+    rowKey: string,
+    row: RowRecord,
+    columnName: string,
+    options?: { selectAllOnFocus?: boolean }
+  ) => void;
+  beginEditInsertCell: (insertIndex: number, columnName: string) => void;
+  bottomSpacerHeight: number;
+  cancelEditing: () => void;
+  cancelPendingHoverClear: () => void;
+  columnMap: Record<string, SchemaColumn>;
   draftUpdates: Record<string, RowUpdateDraft>;
+  editingCell: EditingCell | null;
+  editingValue: string;
+  effectiveRowIndexByKey: Map<string, number>;
+  effectiveRowsRef: React.RefObject<
+    Array<{ row: RowRecord; rowKey: string; index: number }>
+  >;
+  findFkForColumn: (column: string) => SchemaForeignKey | undefined;
+  fkOptions: { options: Array<{ label: string; value: unknown }> } | null;
+  focusedCell: { rowKey: string; column: string } | null;
   handleRowClick: (
     rowKey: string,
     index: number,
-    event: React.MouseEvent,
+    event: React.MouseEvent
   ) => void;
-  cancelPendingHoverClear: () => void;
+  isLoadingFk: boolean;
+  keepCaretNavigationInsideInlineInput: (
+    event: React.KeyboardEvent<HTMLInputElement>
+  ) => void;
+  loadFkOptionsDebounced: (columnName: string, query: string) => void;
+  onOpenRelatedTable?: (schema: string, table: string) => void;
+  onToggleRowSelection: (rowKey: string) => void;
+  persistEditing: (baseRow?: RowRecord) => void;
+  primaryKey: string[];
+  resolveColumnWidth: (columnName: string) => number;
+  scheduleHoverClear: () => void;
+  selectedRowKeys: Set<string>;
+  setEditingValue: React.Dispatch<React.SetStateAction<string>>;
+  setFocusedCell: React.Dispatch<
+    React.SetStateAction<{ rowKey: string; column: string } | null>
+  >;
   showFloatingRowButton: (payload: {
     rowKey: string;
     row: RowRecord;
@@ -63,32 +83,15 @@ export interface TableEditorGridRowsProps {
     width: number;
     height: number;
   }) => void;
-  scheduleHoverClear: () => void;
-  onToggleRowSelection: (rowKey: string) => void;
-  findFkForColumn: (column: string) => SchemaForeignKey | undefined;
-  beginEditExistingCell: (
-    rowKey: string,
-    row: RowRecord,
-    columnName: string,
-    options?: { selectAllOnFocus?: boolean },
-  ) => void;
-  resolveColumnWidth: (columnName: string) => number;
-  effectiveRowIndexByKey: Map<string, number>;
-  effectiveRowsRef: React.RefObject<
-    Array<{ row: RowRecord; rowKey: string; index: number }>
-  >;
-  isLoadingFk: boolean;
-  fkOptions: { options: Array<{ label: string; value: unknown }> } | null;
-  onOpenRelatedTable?: (schema: string, table: string) => void;
+  suppressInlineEditorMouseUpRef: React.RefObject<boolean>;
   tableSchema: string;
-  primaryKey: string[];
-  applyExpandedEditToRow: (
-    rowKey: string,
-    baseRow: RowRecord,
-    columnName: string,
-    rawText: string,
-  ) => void;
-  columnMap: Record<string, SchemaColumn>;
+  topSpacerHeight: number;
   totalVirtualRows: number;
+  visibleColumns: string[];
+  visibleDraftInserts: Array<{ row: RowRecord; insertIndex: number }>;
+  visibleEffectiveRows: Array<{
+    row: RowRecord;
+    rowKey: string;
+    index: number;
+  }>;
 }
-

@@ -7,11 +7,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Inline the function to test it without importing the full handlers module
 // (which has heavy Electron/oRPC dependencies)
 function sanitizeErrorMessage(err: unknown, fallback: string): string {
-  if (!(err instanceof Error)) return fallback;
+  if (!(err instanceof Error)) {
+    return fallback;
+  }
   let msg = err.message;
   msg = msg.replace(
     /(?:postgresql|postgres|mysql|mariadb|clickhouse|redis):\/\/[^@\s]+@[\w.-]+:\d+/gi,
-    "[CONNECTION_STRING]",
+    "[CONNECTION_STRING]"
   );
   msg = msg.replace(/password\s*=\s*\S+/gi, "password=[REDACTED]");
   msg = msg.replace(/:\w+@/g, ":[REDACTED]@");
@@ -32,7 +34,7 @@ describe("sanitizeErrorMessage", () => {
 
   it("redacts postgresql connection strings", () => {
     const err = new Error(
-      'connect ECONNREFUSED postgresql://admin:secret123@db.example.com:5432/mydb',
+      "connect ECONNREFUSED postgresql://admin:secret123@db.example.com:5432/mydb"
     );
     const result = sanitizeErrorMessage(err, "fallback");
     expect(result).not.toContain("secret123");
@@ -41,9 +43,7 @@ describe("sanitizeErrorMessage", () => {
   });
 
   it("redacts mysql connection strings", () => {
-    const err = new Error(
-      "Failed mysql://root:password@localhost:3306/testdb",
-    );
+    const err = new Error("Failed mysql://root:password@localhost:3306/testdb");
     const result = sanitizeErrorMessage(err, "fallback");
     expect(result).not.toContain("password");
     expect(result).toContain("[CONNECTION_STRING]");
@@ -65,7 +65,7 @@ describe("sanitizeErrorMessage", () => {
 
   it("handles multiple credentials in one message", () => {
     const err = new Error(
-      "postgres://u:p@h1:5432 and mysql://u2:p2@h2:3306 both failed",
+      "postgres://u:p@h1:5432 and mysql://u2:p2@h2:3306 both failed"
     );
     const result = sanitizeErrorMessage(err, "fallback");
     expect(result).not.toContain(":p@");
@@ -80,12 +80,12 @@ describe("sanitizeErrorMessage", () => {
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
+    clear: vi.fn(() => {
+      store = {};
+    }),
     getItem: vi.fn((key: string) => store[key] ?? null),
     setItem: vi.fn((key: string, value: string) => {
       store[key] = value;
-    }),
-    clear: vi.fn(() => {
-      store = {};
     }),
   };
 })();
@@ -96,7 +96,10 @@ vi.mock("@/constants", () => ({
   LOCAL_STORAGE_KEYS: { LANGUAGE: "app-language", THEME: "app-theme" },
 }));
 
-import { setAppLanguage, updateAppLanguage } from "@/features/shell/actions/language";
+import {
+  setAppLanguage,
+  updateAppLanguage,
+} from "@/features/shell/actions/language";
 
 describe("shell actions — language", () => {
   const mockI18n = {
@@ -110,7 +113,10 @@ describe("shell actions — language", () => {
 
   it("setAppLanguage stores language and updates i18n + document", () => {
     setAppLanguage("pt-BR", mockI18n as any);
-    expect(localStorageMock.setItem).toHaveBeenCalledWith("app-language", "pt-BR");
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      "app-language",
+      "pt-BR"
+    );
     expect(mockI18n.changeLanguage).toHaveBeenCalledWith("pt-BR");
     expect(document.documentElement.lang).toBe("pt-BR");
   });

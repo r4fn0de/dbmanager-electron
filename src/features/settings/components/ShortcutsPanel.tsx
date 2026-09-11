@@ -16,7 +16,7 @@ export function ShortcutsPanel() {
     navigator.platform.toLowerCase().includes("mac");
   const mod = isMac ? "⌘" : "Ctrl";
   const shift = isMac ? "⇧" : "Shift";
-  const opt = isMac ? "⌥" : "Alt";
+  const _opt = isMac ? "⌥" : "Alt";
 
   const sections: ShortcutSection[] = [
     {

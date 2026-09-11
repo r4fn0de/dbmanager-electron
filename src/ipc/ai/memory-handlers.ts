@@ -7,40 +7,39 @@
 import { os } from "@orpc/server";
 import { z } from "zod";
 import {
-  saveMemory,
-  searchSimilarMemories,
-  searchMemoriesByText,
-  getRecentMemories,
-  getMemoryStats,
-  clearConnectionMemories,
-  cleanupOldMemories,
-  cosineSimilarity,
-  type MemoryEntry,
-  type MemorySearchResult,
-} from "./memory-store";
-import {
   generateEmbedding,
   generateEmbeddings,
   getEmbeddingStatus,
   optimizeQueryForSearch,
 } from "./embedding-service";
+import {
+  cleanupOldMemories,
+  clearConnectionMemories,
+  cosineSimilarity,
+  getMemoryStats,
+  getRecentMemories,
+  type MemoryEntry,
+  saveMemory,
+  searchMemoriesByText,
+  searchSimilarMemories,
+} from "./memory-store";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 const MemoryEntrySchema = z.object({
-  id: z.string(),
-  conversationId: z.string(),
-  messageId: z.string(),
   connectionId: z.string().optional(),
-  role: z.enum(["user", "assistant"]),
   content: z.string(),
-  timestamp: z.string(),
+  conversationId: z.string(),
+  id: z.string(),
+  messageId: z.string(),
   metadata: z.string().optional(),
+  role: z.enum(["user", "assistant"]),
+  timestamp: z.string(),
 });
 
-const MemorySearchResultSchema = z.object({
+const _MemorySearchResultSchema = z.object({
   entry: MemoryEntrySchema,
   similarity: z.number(),
 });
@@ -52,12 +51,10 @@ const MemorySearchResultSchema = z.object({
 /**
  * Check if embedding model is loaded and ready.
  */
-export const getEmbeddingStatusHandler = os.handler(async () => {
-  return {
-    status: getEmbeddingStatus(),
-    ready: getEmbeddingStatus() === "ready",
-  };
-});
+export const getEmbeddingStatusHandler = os.handler(async () => ({
+  ready: getEmbeddingStatus() === "ready",
+  status: getEmbeddingStatus(),
+}));
 
 // ---------------------------------------------------------------------------
 // Store Memory
@@ -69,21 +66,21 @@ export const getEmbeddingStatusHandler = os.handler(async () => {
 export const storeMemoryHandler = os
   .input(
     z.object({
-      conversationId: z.string(),
-      messageId: z.string(),
       connectionId: z.string().optional(),
-      role: z.enum(["user", "assistant"]),
       content: z.string(),
+      conversationId: z.string(),
       generateEmbedding: z.boolean().optional().default(true),
+      messageId: z.string(),
       metadata: z
         .object({
           schemaName: z.string().optional(),
+          sqlGenerated: z.boolean().optional(),
           tableName: z.string().optional(),
           toolCalls: z.array(z.string()).optional(),
-          sqlGenerated: z.boolean().optional(),
         })
         .optional(),
-    }),
+      role: z.enum(["user", "assistant"]),
+    })
   )
   .handler(async ({ input }) => {
     let embedding: Float32Array | undefined;
@@ -103,19 +100,19 @@ export const storeMemoryHandler = os
     }
 
     const entry = saveMemory({
-      conversationId: input.conversationId,
-      messageId: input.messageId,
       connectionId: input.connectionId,
-      role: input.role,
       content: input.content,
+      conversationId: input.conversationId,
       embedding,
+      messageId: input.messageId,
       metadata: input.metadata ? JSON.stringify(input.metadata) : undefined,
+      role: input.role,
     });
 
     return {
-      success: true,
-      id: entry.id,
       hasEmbedding: !!embedding,
+      id: entry.id,
+      success: true,
     };
   });
 
@@ -125,27 +122,31 @@ export const storeMemoryHandler = os
 export const storeMemoriesBatchHandler = os
   .input(
     z.object({
+      generateEmbeddings: z.boolean().optional().default(true),
       messages: z.array(
         z.object({
+          connectionId: z.string().optional(),
+          content: z.string(),
           conversationId: z.string(),
           messageId: z.string(),
-          connectionId: z.string().optional(),
-          role: z.enum(["user", "assistant"]),
-          content: z.string(),
           metadata: z.string().optional(),
-        }),
+          role: z.enum(["user", "assistant"]),
+        })
       ),
-      generateEmbeddings: z.boolean().optional().default(true),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     let embeddings: Float32Array[] | undefined;
 
     // Batch generate embeddings if model is ready
-    if (input.generateEmbeddings && getEmbeddingStatus() === "ready" && input.messages.length > 0) {
+    if (
+      input.generateEmbeddings &&
+      getEmbeddingStatus() === "ready" &&
+      input.messages.length > 0
+    ) {
       try {
         const optimizedContents = input.messages.map((m) =>
-          optimizeQueryForSearch(m.content),
+          optimizeQueryForSearch(m.content)
         );
         embeddings = await generateEmbeddings(optimizedContents);
       } catch (err) {
@@ -160,24 +161,24 @@ export const storeMemoriesBatchHandler = os
       const embedding = embeddings?.[i];
 
       const entry = saveMemory({
-        conversationId: msg.conversationId,
-        messageId: msg.messageId,
         connectionId: msg.connectionId,
-        role: msg.role,
         content: msg.content,
+        conversationId: msg.conversationId,
         embedding,
+        messageId: msg.messageId,
         metadata: msg.metadata,
+        role: msg.role,
       });
 
       results.push({
-        id: entry.id,
         hasEmbedding: !!embedding,
+        id: entry.id,
       });
     }
 
     return {
-      success: true,
       stored: results.length,
+      success: true,
       withEmbeddings: results.filter((r) => r.hasEmbedding).length,
     };
   });
@@ -193,48 +194,51 @@ export const storeMemoriesBatchHandler = os
 export const searchMemoryHandler = os
   .input(
     z.object({
-      query: z.string(),
       connectionId: z.string().optional(),
       conversationId: z.string().optional(),
       limit: z.number().optional().default(5),
-      minSimilarity: z.number().optional().default(0.7),
       lookbackHours: z.number().optional(),
-    }),
+      minSimilarity: z.number().optional().default(0.7),
+      query: z.string(),
+    })
   )
   .handler(async ({ input }) => {
     // Try semantic search first if model is ready
     if (getEmbeddingStatus() === "ready") {
       try {
         const queryEmbedding = await generateEmbedding(
-          optimizeQueryForSearch(input.query),
+          optimizeQueryForSearch(input.query)
         );
 
         const results = searchSimilarMemories(queryEmbedding, {
           connectionId: input.connectionId,
           conversationId: input.conversationId,
           limit: input.limit,
-          minSimilarity: input.minSimilarity,
           lookbackHours: input.lookbackHours,
+          minSimilarity: input.minSimilarity,
         });
 
         return {
           method: "semantic",
           results: results.map((r) => ({
             entry: {
-              id: r.entry.id,
-              conversationId: r.entry.conversationId,
-              messageId: r.entry.messageId,
               connectionId: r.entry.connectionId,
-              role: r.entry.role,
               content: r.entry.content,
-              timestamp: r.entry.timestamp,
+              conversationId: r.entry.conversationId,
+              id: r.entry.id,
+              messageId: r.entry.messageId,
               metadata: r.entry.metadata,
+              role: r.entry.role,
+              timestamp: r.entry.timestamp,
             },
             similarity: r.similarity,
           })),
         };
       } catch (err) {
-        console.warn("[Memory] Semantic search failed, falling back to FTS:", err);
+        console.warn(
+          "[Memory] Semantic search failed, falling back to FTS:",
+          err
+        );
       }
     }
 
@@ -248,14 +252,14 @@ export const searchMemoryHandler = os
       method: "text",
       results: results.map((r) => ({
         entry: {
-          id: r.id,
-          conversationId: r.conversationId,
-          messageId: r.messageId,
           connectionId: r.connectionId,
-          role: r.role,
           content: r.content,
-          timestamp: r.timestamp,
+          conversationId: r.conversationId,
+          id: r.id,
+          messageId: r.messageId,
           metadata: r.metadata,
+          role: r.role,
+          timestamp: r.timestamp,
         },
         similarity: 1.0, // FTS doesn't give similarity scores
       })),
@@ -269,17 +273,17 @@ export const searchMemoryHandler = os
 export const getMemoryContextHandler = os
   .input(
     z.object({
-      query: z.string(),
       connectionId: z.string().optional(),
       conversationId: z.string().optional(),
+      query: z.string(),
       recentLimit: z.number().optional().default(5),
       similarLimit: z.number().optional().default(3),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     let mode: "semantic" | "text-fallback" = "text-fallback";
     const context: {
-      recentMessages: Array<Pick<MemoryEntry, "id" | "role" | "content" | "timestamp" | "metadata">>;
+      recentMessages: Pick<MemoryEntry, "id" | "role" | "content" | "timestamp" | "metadata">[];
       similarPastQueries: Array<{
         query: string;
         response: string;
@@ -287,46 +291,48 @@ export const getMemoryContextHandler = os
       }>;
       mode: "semantic" | "text-fallback";
     } = {
+      mode: "text-fallback",
       recentMessages: [],
       similarPastQueries: [],
-      mode: "text-fallback",
     };
 
     // Get recent conversation history
     const recentMemories = getRecentMemories({
       connectionId: input.connectionId,
       conversationId: input.conversationId,
-      limit: input.recentLimit,
       hours: 24, // Last 24 hours
+      limit: input.recentLimit,
     });
 
     context.recentMessages = recentMemories.map((m) => ({
-      id: m.id,
-      role: m.role,
       content: m.content,
-      timestamp: m.timestamp,
+      id: m.id,
       metadata: m.metadata,
+      role: m.role,
+      timestamp: m.timestamp,
     }));
 
     // Get semantically similar past queries
     if (getEmbeddingStatus() === "ready") {
       try {
         const queryEmbedding = await generateEmbedding(
-          optimizeQueryForSearch(input.query),
+          optimizeQueryForSearch(input.query)
         );
 
         const similarResults = searchSimilarMemories(queryEmbedding, {
           connectionId: input.connectionId,
           limit: input.similarLimit * 2, // Get more to pair user+assistant
-          minSimilarity: 0.75,
           lookbackHours: 168, // Last 7 days
+          minSimilarity: 0.75,
         });
 
         // Group by conversation to get user-assistant pairs
         const seenConversations = new Set<string>();
         for (const result of similarResults) {
           const convId = result.entry.conversationId;
-          if (seenConversations.has(convId)) continue;
+          if (seenConversations.has(convId)) {
+            continue;
+          }
 
           // Get the full conversation context
           const conversationMemories = getRecentMemories({
@@ -336,10 +342,15 @@ export const getMemoryContextHandler = os
 
           // Find user query and assistant response
           const userMsg = conversationMemories.find(
-            (m) => m.role === "user" && cosineSimilarity(queryEmbedding, m.embedding || new Float32Array(384)) > 0.7,
+            (m) =>
+              m.role === "user" &&
+              cosineSimilarity(
+                queryEmbedding,
+                m.embedding || new Float32Array(384)
+              ) > 0.7
           );
           const assistantMsg = conversationMemories.find(
-            (m) => m.role === "assistant" && m.messageId === userMsg?.messageId,
+            (m) => m.role === "assistant" && m.messageId === userMsg?.messageId
           );
 
           if (userMsg && assistantMsg) {
@@ -351,7 +362,9 @@ export const getMemoryContextHandler = os
             seenConversations.add(convId);
           }
 
-          if (context.similarPastQueries.length >= input.similarLimit) break;
+          if (context.similarPastQueries.length >= input.similarLimit) {
+            break;
+          }
         }
         mode = "semantic";
       } catch (err) {
@@ -367,7 +380,9 @@ export const getMemoryContextHandler = os
         });
 
         for (const match of textMatches) {
-          if (match.role !== "user") continue;
+          if (match.role !== "user") {
+            continue;
+          }
 
           const pairedConversation = getRecentMemories({
             conversationId: match.conversationId,
@@ -375,9 +390,11 @@ export const getMemoryContextHandler = os
           });
 
           const assistantMatch = pairedConversation.find(
-            (m) => m.role === "assistant" && m.messageId === match.messageId,
+            (m) => m.role === "assistant" && m.messageId === match.messageId
           );
-          if (!assistantMatch) continue;
+          if (!assistantMatch) {
+            continue;
+          }
 
           context.similarPastQueries.push({
             query: match.content,
@@ -385,7 +402,9 @@ export const getMemoryContextHandler = os
             similarity: 0.6,
           });
 
-          if (context.similarPastQueries.length >= input.similarLimit) break;
+          if (context.similarPastQueries.length >= input.similarLimit) {
+            break;
+          }
         }
       } catch (err) {
         console.warn("[Memory] Text fallback search failed:", err);
@@ -404,9 +423,7 @@ export const getMemoryContextHandler = os
 /**
  * Get memory statistics.
  */
-export const getMemoryStatsHandler = os.handler(async () => {
-  return getMemoryStats();
-});
+export const getMemoryStatsHandler = os.handler(async () => getMemoryStats());
 
 /**
  * Clear all memories for a connection.
@@ -415,11 +432,11 @@ export const clearMemoryHandler = os
   .input(
     z.object({
       connectionId: z.string(),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     const deleted = clearConnectionMemories(input.connectionId);
-    return { success: true, deletedCount: deleted };
+    return { deletedCount: deleted, success: true };
   });
 
 /**
@@ -429,11 +446,11 @@ export const cleanupMemoryHandler = os
   .input(
     z.object({
       olderThanDays: z.number().default(30),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     const deleted = cleanupOldMemories(input.olderThanDays);
-    return { success: true, deletedCount: deleted };
+    return { deletedCount: deleted, success: true };
   });
 
 // ---------------------------------------------------------------------------
@@ -448,25 +465,25 @@ export const getRecentHistoryHandler = os
     z.object({
       connectionId: z.string().optional(),
       conversationId: z.string().optional(),
-      limit: z.number().optional().default(10),
       hours: z.number().optional(),
-    }),
+      limit: z.number().optional().default(10),
+    })
   )
   .handler(async ({ input }) => {
     const memories = getRecentMemories({
       connectionId: input.connectionId,
       conversationId: input.conversationId,
-      limit: input.limit,
       hours: input.hours,
+      limit: input.limit,
     });
 
     return {
       messages: memories.map((m) => ({
-        id: m.id,
-        role: m.role,
         content: m.content,
-        timestamp: m.timestamp,
+        id: m.id,
         metadata: m.metadata,
+        role: m.role,
+        timestamp: m.timestamp,
       })),
     };
   });

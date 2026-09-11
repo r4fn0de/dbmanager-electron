@@ -3,14 +3,16 @@ import type { BrowserWindow } from "electron";
 
 class IPCContext {
   mainWindow: BrowserWindow | undefined;
-  private unsavedScopes = new Map<string, boolean>();
+  private readonly unsavedScopes = new Map<string, boolean>();
 
   setMainWindow(window: BrowserWindow) {
     this.mainWindow = window;
   }
 
   setUnsavedScope(scope: string, dirty: boolean) {
-    if (!scope) return;
+    if (!scope) {
+      return;
+    }
     if (dirty) {
       this.unsavedScopes.set(scope, true);
     } else {

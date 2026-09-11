@@ -1,43 +1,43 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Icon } from "@/components/ui/Icon";
-import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { ipc } from "@/ipc/manager";
 import { formatRowCount } from "@/constants";
 import type { BranchInfo, SchemaTableSummary } from "@/ipc/db/types";
+import { ipc } from "@/ipc/manager";
+import { cn } from "@/lib/utils";
 
 export interface CreateBranchInput {
-  name: string;
-  description?: string;
-  parentBranchId?: string;
   dataTables?: Array<{ schema: string; table: string }>;
+  description?: string;
+  name: string;
+  parentBranchId?: string;
 }
 
 interface CreateBranchDialogProps {
-  localDbName: string;
+  activeBranch: BranchInfo | null;
+  branches: BranchInfo[];
   /** Connection ID — used to fetch the schema summary for the data selector. */
   connectionId: string;
-  branches: BranchInfo[];
-  activeBranch: BranchInfo | null;
+  localDbName: string;
   onCreate: (input: CreateBranchInput) => Promise<BranchInfo>;
   /** Optional tooltip label shown on hover over the trigger button. */
   tooltipLabel?: string;
@@ -47,10 +47,10 @@ interface CreateBranchDialogProps {
 type DataMode = "all" | "schema_only" | "selective";
 
 interface TableCheckItem {
-  schema: string;
-  table: string;
   checked: boolean;
   estimatedRowCount: number;
+  schema: string;
+  table: string;
 }
 
 export function CreateBranchDialog({
@@ -65,7 +65,7 @@ export function CreateBranchDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [parentBranchId, setParentBranchId] = useState<string>(
-    activeBranch?.id ?? "",
+    activeBranch?.id ?? ""
   );
   const [dataMode, setDataMode] = useState<DataMode>("all");
   const [tableItems, setTableItems] = useState<TableCheckItem[]>([]);
@@ -76,28 +76,35 @@ export function CreateBranchDialog({
 
   // ── Lazy schema fetch: only when user switches to "selective" mode ─
   useEffect(() => {
-    if (!open || dataMode !== "selective" || hasFetchedSchema) return;
+    if (!open || dataMode !== "selective" || hasFetchedSchema) {
+      return;
+    }
     let cancelled = false;
     setIsLoadingSchema(true);
-    ipc.client.db.getSchemaSummary({ id: connectionId })
+    ipc.client.db
+      .getSchemaSummary({ id: connectionId })
       .then((summary) => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         // Only user tables (skip system schemas)
         const userTables = summary.tables.filter(
           (t: SchemaTableSummary) =>
-            !["information_schema", "pg_catalog", "pg_toast"].includes(t.schema),
+            !["information_schema", "pg_catalog", "pg_toast"].includes(t.schema)
         );
         setTableItems(
           userTables.map((t: SchemaTableSummary) => ({
-            schema: t.schema,
-            table: t.name,
             checked: true,
             estimatedRowCount: t.estimated_row_count,
-          })),
+            schema: t.schema,
+            table: t.name,
+          }))
         );
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setTableItems([]);
       })
       .finally(() => {
@@ -106,7 +113,9 @@ export function CreateBranchDialog({
           setHasFetchedSchema(true);
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, dataMode, connectionId, hasFetchedSchema]);
 
   // Reset schema cache and data mode when dialog closes so next open starts fresh
@@ -121,37 +130,42 @@ export function CreateBranchDialog({
   // ── Table selection helpers ─────────────────────────────────────────
   const checkedCount = useMemo(
     () => tableItems.filter((t) => t.checked).length,
-    [tableItems],
+    [tableItems]
   );
-  const allChecked = tableItems.length > 0 && checkedCount === tableItems.length;
+  const allChecked =
+    tableItems.length > 0 && checkedCount === tableItems.length;
 
   const toggleTable = useCallback((schema: string, table: string) => {
     setTableItems((prev) =>
       prev.map((t) =>
         t.schema === schema && t.table === table
           ? { ...t, checked: !t.checked }
-          : t,
-      ),
+          : t
+      )
     );
   }, []);
 
   const toggleAll = useCallback(() => {
-    setTableItems((prev) =>
-      prev.map((t) => ({ ...t, checked: !allChecked })),
-    );
+    setTableItems((prev) => prev.map((t) => ({ ...t, checked: !allChecked })));
   }, [allChecked]);
 
-  const nameError = name.length > 63
-    ? "Name must be 63 characters or less"
-    : branches.some((b) => b.name === name)
-      ? `Branch "${name}" already exists`
-      : null;
+  const nameError =
+    name.length > 63
+      ? "Name must be 63 characters or less"
+      : branches.some((b) => b.name === name)
+        ? `Branch "${name}" already exists`
+        : null;
 
-  const canCreate = name.length > 0 && !nameError && !isCreating
-    && !(dataMode === "selective" && isLoadingSchema);
+  const canCreate =
+    name.length > 0 &&
+    !nameError &&
+    !isCreating &&
+    !(dataMode === "selective" && isLoadingSchema);
 
   const handleCreate = useCallback(async () => {
-    if (!canCreate) return;
+    if (!canCreate) {
+      return;
+    }
     setIsCreating(true);
     setError(null);
     try {
@@ -164,10 +178,10 @@ export function CreateBranchDialog({
                 .map((t) => ({ schema: t.schema, table: t.table }))
             : undefined; // undefined = copy all data
       await onCreate({
-        name,
-        description: description || undefined,
-        parentBranchId: parentBranchId || undefined,
         dataTables,
+        description: description || undefined,
+        name,
+        parentBranchId: parentBranchId || undefined,
       });
       setOpen(false);
       setName("");
@@ -177,27 +191,37 @@ export function CreateBranchDialog({
     } finally {
       setIsCreating(false);
     }
-  }, [canCreate, name, description, parentBranchId, dataMode, tableItems, onCreate]);
+  }, [
+    canCreate,
+    name,
+    description,
+    parentBranchId,
+    dataMode,
+    tableItems,
+    onCreate,
+  ]);
 
   // Build the trigger element: Button ← DialogTrigger, optionally wrapped
   // in TooltipTrigger for hover labels.
   const triggerElement = (
     <DialogTrigger
       render={
-        <Button variant="ghost" size="icon-xs" className="text-muted-foreground hover:text-foreground" />
+        <Button
+          className="text-muted-foreground hover:text-foreground"
+          size="icon-xs"
+          variant="ghost"
+        />
       }
     >
-      <Icon name="plus" className="size-3.5" />
+      <Icon className="size-3.5" name="plus" />
     </DialogTrigger>
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog onOpenChange={setOpen} open={open}>
       {tooltipLabel ? (
         <Tooltip>
-          <TooltipTrigger
-            render={triggerElement}
-          />
+          <TooltipTrigger render={triggerElement} />
           <TooltipContent side="bottom" sideOffset={4}>
             {tooltipLabel}
           </TooltipContent>
@@ -211,7 +235,7 @@ export function CreateBranchDialog({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon name="plus" className="size-4 text-muted-foreground" />
+            <Icon className="size-4 text-muted-foreground" name="plus" />
             Create Branch
           </DialogTitle>
           <DialogDescription className="select-text">
@@ -223,41 +247,45 @@ export function CreateBranchDialog({
         <div className="space-y-4 py-2">
           {/* Branch name */}
           <div className="space-y-1.5">
-            <Label htmlFor="branch-name" className="text-xs font-medium">
+            <Label className="font-medium text-xs" htmlFor="branch-name">
               Branch name
             </Label>
             <Input
+              className={cn(nameError && "border-destructive")}
               id="branch-name"
+              maxLength={63}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canCreate) {
+                  handleCreate();
+                }
+              }}
               placeholder="e.g., feature/add-uuid-column"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={63}
-              className={cn(nameError && "border-destructive")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && canCreate) handleCreate();
-              }}
             />
             {nameError && (
-              <p className="text-xs text-destructive select-text">{nameError}</p>
+              <p className="select-text text-destructive text-xs">
+                {nameError}
+              </p>
             )}
           </div>
 
           {/* Parent branch */}
           {branches.length > 1 && (
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Branch from</Label>
+              <Label className="font-medium text-xs">Branch from</Label>
               <div className="flex flex-wrap gap-1.5">
                 {branches.map((branch) => (
                   <button
-                    key={branch.id}
-                    type="button"
-                    onClick={() => setParentBranchId(branch.id)}
                     className={cn(
                       "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors",
                       parentBranchId === branch.id
                         ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:border-primary/50 text-muted-foreground",
+                        : "border-border text-muted-foreground hover:border-primary/50"
                     )}
+                    key={branch.id}
+                    onClick={() => setParentBranchId(branch.id)}
+                    type="button"
                   >
                     {branch.isActive && (
                       <span className="size-1.5 rounded-full bg-emerald-500" />
@@ -271,16 +299,17 @@ export function CreateBranchDialog({
 
           {/* Description */}
           <div className="space-y-1.5">
-            <Label htmlFor="branch-description" className="text-xs font-medium">
-              Description <span className="text-muted-foreground">(optional)</span>
+            <Label className="font-medium text-xs" htmlFor="branch-description">
+              Description{" "}
+              <span className="text-muted-foreground">(optional)</span>
             </Label>
             <Textarea
-              id="branch-description"
-              placeholder="What this branch is for..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
               className="resize-none text-sm"
+              id="branch-description"
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What this branch is for..."
+              rows={2}
+              value={description}
             />
           </div>
 
@@ -289,45 +318,45 @@ export function CreateBranchDialog({
 
           {/* Data mode toggle */}
           <div className="space-y-2.5">
-            <Label className="text-xs font-medium">Data to include</Label>
+            <Label className="font-medium text-xs">Data to include</Label>
             <div className="inline-flex w-full rounded-md border border-border bg-muted/30 p-0.5">
               <button
-                type="button"
                 className={cn(
-                  "flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[11px] font-medium transition-colors",
+                  "inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 font-medium text-[11px] transition-colors",
                   dataMode === "all"
                     ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground"
                 )}
                 onClick={() => setDataMode("all")}
+                type="button"
               >
-                <Icon name="database" className="size-3" />
+                <Icon className="size-3" name="database" />
                 All data
               </button>
               <button
-                type="button"
                 className={cn(
-                  "flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[11px] font-medium transition-colors",
+                  "inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 font-medium text-[11px] transition-colors",
                   dataMode === "schema_only"
                     ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground"
                 )}
                 onClick={() => setDataMode("schema_only")}
+                type="button"
               >
-                <Icon name="file-code" className="size-3" />
+                <Icon className="size-3" name="file-code" />
                 Schema only
               </button>
               <button
-                type="button"
                 className={cn(
-                  "flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-[11px] font-medium transition-colors",
+                  "inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 font-medium text-[11px] transition-colors",
                   dataMode === "selective"
                     ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    : "text-muted-foreground hover:text-foreground"
                 )}
                 onClick={() => setDataMode("selective")}
+                type="button"
               >
-                <Icon name="filter" className="size-3" />
+                <Icon className="size-3" name="filter" />
                 Select tables
               </button>
             </div>
@@ -340,36 +369,44 @@ export function CreateBranchDialog({
 
             {dataMode === "schema_only" && (
               <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-                Only schema structure (tables, indexes, constraints) will be included. No row data will be copied.
+                Only schema structure (tables, indexes, constraints) will be
+                included. No row data will be copied.
               </div>
             )}
 
             {dataMode === "selective" && (
-              <>
-                {isLoadingSchema ? (
-                  <div className="flex items-center justify-center py-6 gap-2">
-                    <Icon name="loader" className="size-4 animate-spin text-muted-foreground" />
-                    <span className="text-[11px] text-muted-foreground">Loading tables…</span>
+              isLoadingSchema ? (
+                  <div className="flex items-center justify-center gap-2 py-6">
+                    <Icon
+                      className="size-4 animate-spin text-muted-foreground"
+                      name="loader"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      Loading tables…
+                    </span>
                   </div>
                 ) : tableItems.length === 0 ? (
                   <div className="py-4 text-center">
                     <p className="text-[11px] text-muted-foreground">
                       No user tables found.
                     </p>
-                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/70">
                       This will create a schema-only branch.
                     </p>
                   </div>
                 ) : (
-                  <div className="border rounded-md overflow-hidden">
+                  <div className="overflow-hidden rounded-md border">
                     {/* Select-all header */}
-                    <div className="bg-muted/30 px-3 py-1.5 border-b flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 border-b bg-muted/30 px-3 py-1.5">
                       <Checkbox
-                        id="branch-select-all"
                         checked={allChecked}
+                        id="branch-select-all"
                         onCheckedChange={toggleAll}
                       />
-                      <Label htmlFor="branch-select-all" className="text-[11px] font-medium cursor-pointer flex-1">
+                      <Label
+                        className="flex-1 cursor-pointer font-medium text-[11px]"
+                        htmlFor="branch-select-all"
+                      >
                         Select all
                       </Label>
                       <span className="text-[10px] text-muted-foreground tabular-nums">
@@ -382,22 +419,28 @@ export function CreateBranchDialog({
                       <div className="divide-y divide-border/40">
                         {tableItems.map((t) => (
                           <label
-                            key={`${t.schema}.${t.table}`}
                             className={cn(
-                              "flex items-center gap-2.5 px-3 py-1.5 cursor-pointer transition-colors hover:bg-muted/30",
-                              !t.checked && "text-muted-foreground",
+                              "flex cursor-pointer items-center gap-2.5 px-3 py-1.5 transition-colors hover:bg-muted/30",
+                              !t.checked && "text-muted-foreground"
                             )}
+                            key={`${t.schema}.${t.table}`}
                           >
                             <Checkbox
                               checked={t.checked}
-                              onCheckedChange={() => toggleTable(t.schema, t.table)}
+                              onCheckedChange={() =>
+                                toggleTable(t.schema, t.table)
+                              }
                             />
-                            <span className="flex-1 min-w-0 font-mono text-[11px] truncate">
-                              <span className="text-muted-foreground">{t.schema}.</span>
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
+                              <span className="text-muted-foreground">
+                                {t.schema}.
+                              </span>
                               {t.table}
                             </span>
-                            <span className="text-[10px] text-muted-foreground/60 tabular-nums shrink-0">
-                              {t.estimatedRowCount === 0 ? "—" : formatRowCount(t.estimatedRowCount)}
+                            <span className="shrink-0 text-[10px] text-muted-foreground/60 tabular-nums">
+                              {t.estimatedRowCount === 0
+                                ? "—"
+                                : formatRowCount(t.estimatedRowCount)}
                             </span>
                           </label>
                         ))}
@@ -406,29 +449,33 @@ export function CreateBranchDialog({
 
                     {/* Selection note */}
                     {checkedCount === 0 ? (
-                      <div className="border-t px-3 py-1.5 bg-muted/20">
+                      <div className="border-t bg-muted/20 px-3 py-1.5">
                         <p className="text-[10px] text-muted-foreground leading-relaxed">
-                          No tables selected — only schema structure will be created, no row data will be copied.
+                          No tables selected — only schema structure will be
+                          created, no row data will be copied.
                         </p>
                       </div>
                     ) : checkedCount < tableItems.length ? (
-                      <div className="border-t px-3 py-1.5 bg-muted/20">
+                      <div className="border-t bg-muted/20 px-3 py-1.5">
                         <p className="text-[10px] text-muted-foreground leading-relaxed">
-                          Selected tables will include row data. Unselected tables will be schema-only (empty structure).
+                          Selected tables will include row data. Unselected
+                          tables will be schema-only (empty structure).
                         </p>
                       </div>
                     ) : null}
                   </div>
-                )}
-              </>
+                )
             )}
           </div>
 
           {/* Info note */}
           <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
-            <p className="text-xs text-muted-foreground leading-relaxed">
+            <p className="text-muted-foreground text-xs leading-relaxed">
               The branch will be created as a copy of the{" "}
-              <Badge variant="outline" className="text-[10px] h-4 px-1 font-mono ml-0.5">
+              <Badge
+                className="ml-0.5 h-4 px-1 font-mono text-[10px]"
+                variant="outline"
+              >
                 {branches.find((b) => b.id === parentBranchId)?.name ?? "main"}
               </Badge>{" "}
               branch using PostgreSQL template databases.
@@ -436,13 +483,13 @@ export function CreateBranchDialog({
                 ? " Schema and data are included by default."
                 : dataMode === "schema_only"
                   ? " Schema structure only — no row data will be copied."
-                  : ` ${checkedCount} table${checkedCount !== 1 ? "s" : ""} will include data, the rest will be schema-only.`}
+                  : ` ${checkedCount} table${checkedCount === 1 ? "" : "s"} will include data, the rest will be schema-only.`}
             </p>
           </div>
 
           {/* Error */}
           {error && (
-            <p className="text-xs text-destructive rounded-md bg-destructive/10 px-3 py-2">
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-xs">
               {error}
             </p>
           )}
@@ -451,26 +498,22 @@ export function CreateBranchDialog({
         {/* Actions */}
         <div className="flex justify-end gap-2 pt-2">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setOpen(false)}
             disabled={isCreating}
+            onClick={() => setOpen(false)}
+            size="sm"
+            variant="outline"
           >
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            disabled={!canCreate}
-          >
+          <Button disabled={!canCreate} onClick={handleCreate} size="sm">
             {isCreating ? (
               <>
-                <Icon name="loader" className="size-3.5 animate-spin mr-1.5" />
+                <Icon className="mr-1.5 size-3.5 animate-spin" name="loader" />
                 Creating...
               </>
             ) : (
               <>
-                <Icon name="plus" className="size-3.5 mr-1.5" />
+                <Icon className="mr-1.5 size-3.5" name="plus" />
                 Create Branch
               </>
             )}

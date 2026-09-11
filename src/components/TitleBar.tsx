@@ -1,19 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  ConnectionTabs,
-  useConnectionTabSync,
-} from "@/features/connection";
-import { ThemeToggle } from "@/features/settings";
-import { Settings } from "@/components/icons/Settings";
-import { minimizeWindow, maximizeWindow, closeWindow } from "@/features/shell";
 import { ClickHouse } from "@/components/icons/ClickHouse";
 import { MySql } from "@/components/icons/MySql";
 import { Neon } from "@/components/icons/Neon";
 import { Redis } from "@/components/icons/Redis";
+import { Settings } from "@/components/icons/Settings";
 import { Supabase } from "@/components/icons/Supabase";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +19,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import GooeySvgFilter from "@/components/ui/gooey-svg-filter";
-import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/kbd";
 import {
@@ -33,31 +27,44 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useConnectionsList } from "@/features/connection";
+import {
+  ConnectionTabs,
+  useConnectionsList,
+  useConnectionTabSync,
+} from "@/features/connection";
 import { useLocalDatabases } from "@/features/localDb";
+import { ThemeToggle } from "@/features/settings";
+import { closeWindow, maximizeWindow, minimizeWindow } from "@/features/shell";
+import type { Connection } from "@/ipc/db/types";
+import { useAppearanceStore } from "@/lib/stores/appearance";
+import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
 import {
   buildConnectionTab,
   detectConnectionProvider,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
-import { useAppearanceStore } from "@/lib/stores/appearance";
 import { cn } from "@/lib/utils";
-import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
-import type { Connection } from "@/ipc/db/types";
 
 type Platform = "macos" | "windows" | "linux" | "unknown";
 
 function detectPlatform(): Platform {
   const electronPlatform = window.electron?.platform?.toLowerCase() ?? "";
-  const uaDataPlatform = (
-    navigator as Navigator & { userAgentData?: { platform?: string } }
-  ).userAgentData?.platform?.toLowerCase() ?? "";
+  const uaDataPlatform =
+    (
+      navigator as Navigator & { userAgentData?: { platform?: string } }
+    ).userAgentData?.platform?.toLowerCase() ?? "";
   const uaPlatform = navigator.userAgent.toLowerCase();
   const platform = electronPlatform || uaDataPlatform || uaPlatform;
 
-  if (platform === "darwin" || platform.includes("mac")) return "macos";
-  if (platform === "win32" || platform.includes("win")) return "windows";
-  if (platform === "linux" || platform.includes("linux")) return "linux";
+  if (platform === "darwin" || platform.includes("mac")) {
+    return "macos";
+  }
+  if (platform === "win32" || platform.includes("win")) {
+    return "windows";
+  }
+  if (platform === "linux" || platform.includes("linux")) {
+    return "linux";
+  }
   return "unknown";
 }
 
@@ -82,9 +89,16 @@ function ProviderIcon({
     case "redis":
       return <Redis className={cls} />;
     case "url":
-      return <Icon name="globe" className={`${cls} text-muted-foreground/50`} />;
+      return (
+        <Icon className={`${cls} text-muted-foreground/50`} name="globe" />
+      );
     default:
-      return <Icon name="plug-connected" className={`${cls} text-muted-foreground/50`} />;
+      return (
+        <Icon
+          className={`${cls} text-muted-foreground/50`}
+          name="plug-connected"
+        />
+      );
   }
 }
 
@@ -120,16 +134,16 @@ export function TitleBar() {
   const openTabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
   const unopenedConnections = useMemo(
     () => connections.filter((c) => !openTabIds.has(c.id)),
-    [connections, openTabIds],
+    [connections, openTabIds]
   );
 
   const localUnopened = useMemo(
     () => unopenedConnections.filter((c) => c.is_local),
-    [unopenedConnections],
+    [unopenedConnections]
   );
   const remoteUnopened = useMemo(
     () => unopenedConnections.filter((c) => !c.is_local),
-    [unopenedConnections],
+    [unopenedConnections]
   );
 
   const handleOpenConnection = useCallback(
@@ -138,18 +152,18 @@ export function TitleBar() {
         const localDb = localDbById[connection.id];
         if (!localDb?.running) {
           toast.error(
-            `Local database "${connection.name}" is not running. Start it before opening.`,
+            `Local database "${connection.name}" is not running. Start it before opening.`
           );
           return;
         }
       }
       useConnectionTabsStore.getState().addTab(buildConnectionTab(connection));
       navigate({
-        to: "/database/$connectionId",
         params: { connectionId: connection.id },
+        to: "/database/$connectionId",
       });
     },
-    [localDbById, navigate],
+    [localDbById, navigate]
   );
 
   const handleMinimize = () => {
@@ -170,21 +184,27 @@ export function TitleBar() {
   };
 
   const tabsSlot = (
-    <div className="min-w-0 flex-1 h-full flex items-end gap-0.5 pl-0 draglayer">
-      <GooeySvgFilter id={titlebarGooeyFilterId} strength={5} borderColor="var(--border)" />
-      <div className="no-drag h-full flex items-end">
+    <div className="draglayer flex h-full min-w-0 flex-1 items-end gap-0.5 pl-0">
+      <GooeySvgFilter
+        borderColor="var(--border)"
+        id={titlebarGooeyFilterId}
+        strength={5}
+      />
+      <div className="no-drag flex h-full items-end">
         <ConnectionTabs gooeyFilterId={titlebarGooeyFilterId} />
       </div>
       <DropdownMenu
-        open={isConnectionMenuOpen}
         onOpenChange={(open) => {
           // Only accept close events (Escape, click-outside, etc.).
           // Open requests from the default trigger click are suppressed —
           // left-click navigates home instead; right-click opens the menu
           // directly via onContextMenu.
-          if (open) return;
+          if (open) {
+            return;
+          }
           setIsConnectionMenuOpen(false);
         }}
+        open={isConnectionMenuOpen}
       >
         <TooltipProvider delay={500}>
           <Tooltip open={isConnectionMenuOpen ? false : undefined}>
@@ -193,9 +213,17 @@ export function TitleBar() {
                 <DropdownMenuTrigger
                   render={
                     <motion.button
-                      type="button"
+                      aria-label="Open connections"
+                      className={cn(
+                        "no-drag relative isolate flex h-[37px] shrink-0 items-center justify-center self-end px-3 text-foreground/75 transition-colors duration-150 after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:bg-transparent after:transition-colors after:duration-150 hover:text-foreground/75 dark:text-muted-foreground dark:hover:text-muted-foreground",
+                        themePreset === "neo"
+                          ? "rounded-none after:rounded-none"
+                          : "rounded-md after:rounded-md",
+                        solidBackground
+                          ? "hover:after:bg-muted/65"
+                          : "hover:after:bg-muted/35"
+                      )}
                       layout
-                      whileTap={{ scale: 0.95 }}
                       onClick={() => {
                         if (isConnectionMenuOpen) {
                           setIsConnectionMenuOpen(false);
@@ -209,20 +237,19 @@ export function TitleBar() {
                           setIsConnectionMenuOpen(true);
                         }
                       }}
-                      className={cn(
-                        "shrink-0 h-[37px] px-3 text-foreground/75 hover:text-foreground/75 dark:text-muted-foreground dark:hover:text-muted-foreground transition-colors duration-150 no-drag self-end flex items-center justify-center relative isolate after:absolute after:inset-x-0 after:top-[1px] after:bottom-[4px] after:bg-transparent after:transition-colors after:duration-150",
-                        themePreset === "neo" ? "rounded-none after:rounded-none" : "rounded-md after:rounded-md",
-                        solidBackground ? "hover:after:bg-muted/65" : "hover:after:bg-muted/35",
-                      )}
-                      aria-label="Open connections"
                       transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 25,
                         bounce: 0.1,
+                        damping: 25,
+                        stiffness: 400,
+                        type: "spring",
                       }}
+                      type="button"
+                      whileTap={{ scale: 0.95 }}
                     >
-                      <Icon name="plus" className="h-3.5 w-3.5 -translate-y-[2px]" />
+                      <Icon
+                        className="h-3.5 w-3.5 -translate-y-[2px]"
+                        name="plus"
+                      />
                     </motion.button>
                   }
                 />
@@ -236,21 +263,21 @@ export function TitleBar() {
         </TooltipProvider>
         <DropdownMenuContent
           align="start"
-          sideOffset={6}
           className="w-56 origin-(--transform-origin)"
+          sideOffset={6}
         >
           {remoteUnopened.length > 0 && (
             <DropdownMenuGroup>
               <DropdownMenuLabel>Remote</DropdownMenuLabel>
               {remoteUnopened.map((conn) => (
                 <DropdownMenuItem
+                  className="gap-2"
                   key={conn.id}
                   onClick={() => handleOpenConnection(conn)}
-                  className="gap-2"
                 >
                   <ProviderIcon
-                    provider={detectConnectionProvider(conn)}
                     className="size-3.5 shrink-0"
+                    provider={detectConnectionProvider(conn)}
                   />
                   <span className="truncate text-xs">{conn.name}</span>
                 </DropdownMenuItem>
@@ -267,17 +294,20 @@ export function TitleBar() {
                 const isRunning = localDbById[conn.id]?.running ?? false;
                 return (
                   <DropdownMenuItem
+                    className="gap-2"
                     key={conn.id}
                     onClick={() => handleOpenConnection(conn)}
-                    className="gap-2"
                   >
-                    <Icon name="hard-drive" className="size-3.5 shrink-0 text-emerald-500" />
+                    <Icon
+                      className="size-3.5 shrink-0 text-emerald-500"
+                      name="hard-drive"
+                    />
                     <span className="truncate text-xs">{conn.name}</span>
                     <span
                       className={
                         isRunning
-                          ? "ml-auto text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
-                          : "ml-auto text-[10px] font-medium text-muted-foreground"
+                          ? "ml-auto font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
+                          : "ml-auto font-medium text-[10px] text-muted-foreground"
                       }
                     >
                       {isRunning ? "Running" : "Stopped"}
@@ -296,19 +326,19 @@ export function TitleBar() {
   if (platform === "macos") {
     return (
       <div className="z-50 select-none">
-        <div className="h-10 bg-transparent flex items-center pr-1">
-          <div className="w-[78px] shrink-0 h-full draglayer" />
+        <div className="flex h-10 items-center bg-transparent pr-1">
+          <div className="draglayer h-full w-[78px] shrink-0" />
           {tabsSlot}
-          <div className="ml-auto flex items-center no-drag pl-0">
+          <div className="no-drag ml-auto flex items-center pl-0">
             <button
-              type="button"
               aria-label="Settings"
-              onClick={handleOpenSettings}
               className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground active:scale-[0.97]"
+              onClick={handleOpenSettings}
+              type="button"
             >
               <Settings className="size-4" />
             </button>
-            <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-default" />
+            <ThemeToggle className="inline-flex size-9 cursor-default items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:text-foreground" />
           </div>
         </div>
       </div>
@@ -318,62 +348,62 @@ export function TitleBar() {
   // Windows / Linux: custom window controls
   return (
     <div className="z-50 select-none">
-      <div className="h-7 bg-background/20 backdrop-blur-md flex items-center justify-between">
-        <div className="min-w-0 flex-1 flex items-center gap-2 px-3">
-          <div className="w-4 h-4 rounded bg-primary/20 flex items-center justify-center no-drag">
-            <span className="text-[10px] font-bold text-primary">DB</span>
+      <div className="flex h-7 items-center justify-between bg-background/20 backdrop-blur-md">
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
+          <div className="no-drag flex h-4 w-4 items-center justify-center rounded bg-primary/20">
+            <span className="font-bold text-[10px] text-primary">DB</span>
           </div>
           {tabsSlot}
         </div>
 
-        <div className="flex items-center shrink-0 no-drag">
-          <div className="flex items-center px-0 gap-0.5">
+        <div className="no-drag flex shrink-0 items-center">
+          <div className="flex items-center gap-0.5 px-0">
             <button
-              type="button"
               aria-label="Settings"
-              onClick={handleOpenSettings}
               className="inline-flex size-8 items-center justify-center rounded-none text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground active:scale-[0.97]"
+              onClick={handleOpenSettings}
+              type="button"
             >
               <Settings className="size-4" />
             </button>
-            <ThemeToggle className="inline-flex size-8 items-center justify-center rounded-none text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-default" />
+            <ThemeToggle className="inline-flex size-8 cursor-default items-center justify-center rounded-none text-muted-foreground transition-colors duration-150 hover:text-foreground" />
           </div>
           <Button
-            variant="ghost"
-            size="icon"
+            aria-label="Minimize"
             className={cn(
-              "h-8 w-8 rounded-none no-drag",
-              solidBackground ? "hover:bg-muted/85" : "hover:bg-muted",
+              "no-drag h-8 w-8 rounded-none",
+              solidBackground ? "hover:bg-muted/85" : "hover:bg-muted"
             )}
             onClick={handleMinimize}
-            aria-label="Minimize"
+            size="icon"
+            variant="ghost"
           >
-            <Icon name="minus" className="h-4 w-4" />
+            <Icon className="h-4 w-4" name="minus" />
           </Button>
           <Button
-            variant="ghost"
-            size="icon"
+            aria-label={isMaximized ? "Restore" : "Maximize"}
             className={cn(
-              "h-8 w-8 rounded-none no-drag",
-              solidBackground ? "hover:bg-muted/85" : "hover:bg-muted",
+              "no-drag h-8 w-8 rounded-none",
+              solidBackground ? "hover:bg-muted/85" : "hover:bg-muted"
             )}
             onClick={handleMaximize}
-            aria-label={isMaximized ? "Restore" : "Maximize"}
+            size="icon"
+            variant="ghost"
           >
             {isMaximized ? (
-              <Icon name="copy" className="h-3 w-3 rotate-90" />
+              <Icon className="h-3 w-3 rotate-90" name="copy" />
             ) : (
               <span className="block h-3 w-3 border border-current" />
             )}
           </Button>
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 rounded-none hover:bg-destructive hover:text-destructive-foreground no-drag"
-            onClick={handleClose}
             aria-label="Close"
+            className="no-drag h-8 w-8 rounded-none hover:bg-destructive hover:text-destructive-foreground"
+            onClick={handleClose}
+            size="icon"
+            variant="ghost"
           >
-            <Icon name="x" className="h-4 w-4" />
+            <Icon className="h-4 w-4" name="x" />
           </Button>
         </div>
       </div>

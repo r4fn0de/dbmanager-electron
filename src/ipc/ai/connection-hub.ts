@@ -51,12 +51,14 @@ interface ApiStreamingAdapter
 }
 
 interface HubSession {
+  abortController?: AbortController;
   adapter: ApiStreamingAdapter;
   session: AiStreamingSession;
-  abortController?: AbortController;
 }
 
-function normalizeOptionalId(value: string | null | undefined): string | undefined {
+function normalizeOptionalId(
+  value: string | null | undefined
+): string | undefined {
   const normalized = value?.trim();
   return normalized || undefined;
 }
@@ -67,7 +69,7 @@ function cliConnectionError(connection: AiConnection): Error {
   }
 
   return new Error(
-    `AI connection '${connection.id}' uses CLI agent '${connection.provider}'. CLI streaming is not available yet; select an API connection. The request was not routed to an API connection.`,
+    `AI connection '${connection.id}' uses CLI agent '${connection.provider}'. CLI streaming is not available yet; select an API connection. The request was not routed to an API connection.`
   );
 }
 
@@ -77,7 +79,7 @@ function connectionNotFoundError(connectionId: string): Error {
 
 function noDefaultConnectionError(): Error {
   return new Error(
-    "No AI connection is configured. Create an AI connection in Settings → AI.",
+    "No AI connection is configured. Create an AI connection in Settings → AI."
   );
 }
 
@@ -89,7 +91,9 @@ function noDefaultConnectionError(): Error {
 export class AiConnectionHub {
   private readonly sessions = new Map<string, HubSession>();
 
-  constructor(private readonly apiAdapter: ApiStreamingAdapter = getApiProviderAdapter()) {}
+  constructor(
+    private readonly apiAdapter: ApiStreamingAdapter = getApiProviderAdapter()
+  ) {}
 
   resolve(input: ConnectionHubStartInput = {}): ResolvedAiStreamingConnection {
     const requestedConnectionId = normalizeOptionalId(input.connectionId);
@@ -123,7 +127,9 @@ export class AiConnectionHub {
     };
   }
 
-  async startSession(input: ConnectionHubStartInput = {}): Promise<AiStreamingSession> {
+  async startSession(
+    input: ConnectionHubStartInput = {}
+  ): Promise<AiStreamingSession> {
     const resolved = this.resolve(input);
     const sessionId = normalizeOptionalId(input.sessionId) ?? randomUUID();
     const adapterInput: StartSessionInput = {
@@ -132,9 +138,8 @@ export class AiConnectionHub {
       sessionId,
       ...(input.workspacePath ? { workspacePath: input.workspacePath } : {}),
     };
-    const adapterSession: AgentSession = await this.apiAdapter.startSession(
-      adapterInput,
-    );
+    const adapterSession: AgentSession =
+      await this.apiAdapter.startSession(adapterInput);
     const session: AiStreamingSession = {
       ...resolved,
       sessionId: adapterSession.sessionId,
@@ -155,7 +160,7 @@ export class AiConnectionHub {
   getSessionMetadata(sessionId: string): AiSessionMetadata | undefined {
     const session = this.getSession(sessionId);
     if (!session) {
-      return undefined;
+      return;
     }
 
     return {
@@ -204,7 +209,7 @@ export class AiConnectionHub {
 
   async abortAll(): Promise<void> {
     await Promise.all(
-      [...this.sessions.keys()].map((sessionId) => this.abort(sessionId)),
+      [...this.sessions.keys()].map((sessionId) => this.abort(sessionId))
     );
   }
 }
@@ -221,7 +226,7 @@ export function resetAiConnectionHubForTests(): void {
 }
 
 export function toAiSessionMetadata(
-  session: AiStreamingSession,
+  session: AiStreamingSession
 ): AiSessionMetadata {
   return {
     connectionId: session.connectionId,

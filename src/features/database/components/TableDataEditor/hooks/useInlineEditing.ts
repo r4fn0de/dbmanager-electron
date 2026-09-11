@@ -1,29 +1,30 @@
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import type {
+  FkLookupInput,
   FkLookupResponse,
   SchemaColumn,
   SchemaForeignKey,
+  TableRef,
 } from "@/ipc/db/types";
-import type { TableRef, FkLookupInput } from "@/ipc/db/types";
 import type { RowRecord, RowUpdateDraft } from "../types";
-import { normalizeDisplay, parseByType } from "../utils/valueParsers";
 import type { createTableEditorPerfTracker } from "../utils/performance";
+import { normalizeDisplay, parseByType } from "../utils/valueParsers";
 
 export interface InlineEditingOptions {
   columnMap: Record<string, SchemaColumn>;
-  primaryKey: string[];
   draftInserts: RowRecord[];
-  setDraftInserts: React.Dispatch<React.SetStateAction<RowRecord[]>>;
   draftUpdates: Record<string, RowUpdateDraft>;
-  setDraftUpdates: React.Dispatch<
-    React.SetStateAction<Record<string, RowUpdateDraft>>
-  >;
   findFkForColumn: (column: string) => SchemaForeignKey | undefined;
-  tableFkLookup: (input: FkLookupInput) => Promise<FkLookupResponse>;
-  tableRef: TableRef;
   perfTrackerRef?: React.RefObject<
     ReturnType<typeof createTableEditorPerfTracker>
   >;
+  primaryKey: string[];
+  setDraftInserts: React.Dispatch<React.SetStateAction<RowRecord[]>>;
+  setDraftUpdates: React.Dispatch<
+    React.SetStateAction<Record<string, RowUpdateDraft>>
+  >;
+  tableFkLookup: (input: FkLookupInput) => Promise<FkLookupResponse>;
+  tableRef: TableRef;
 }
 
 export function useInlineEditing(options: InlineEditingOptions) {
@@ -68,11 +69,11 @@ export function useInlineEditing(options: InlineEditingOptions) {
       setIsLoadingFk(true);
       try {
         const response = await tableFkLookup({
-          tableRef,
           column: columnName,
-          query,
           page: 0,
           pageSize: 8,
+          query,
+          tableRef,
         });
         if (requestId === fkLookupRequestIdRef.current) {
           setFkOptions(response);
@@ -87,23 +88,25 @@ export function useInlineEditing(options: InlineEditingOptions) {
         }
       }
     },
-    [findFkForColumn, tableFkLookup, tableRef],
+    [findFkForColumn, tableFkLookup, tableRef]
   );
 
   const loadFkOptionsDebounced = useCallback(
     (columnName: string, query: string) => {
-      if (fkDebounceTimeoutRef.current)
+      if (fkDebounceTimeoutRef.current) {
         clearTimeout(fkDebounceTimeoutRef.current);
+      }
       fkDebounceTimeoutRef.current = setTimeout(() => {
         void loadFkOptions(columnName, query);
       }, 180);
     },
-    [loadFkOptions],
+    [loadFkOptions]
   );
 
   const cancelEditing = useCallback(() => {
-    if (fkDebounceTimeoutRef.current)
+    if (fkDebounceTimeoutRef.current) {
       clearTimeout(fkDebounceTimeoutRef.current);
+    }
     fkLookupRequestIdRef.current += 1;
     setEditingCell(null);
     setEditingValue("");
@@ -116,36 +119,38 @@ export function useInlineEditing(options: InlineEditingOptions) {
       rowKey: string,
       row: RowRecord,
       columnName: string,
-      options?: { selectAllOnFocus?: boolean },
+      _options?: { selectAllOnFocus?: boolean }
     ) => {
-      if (primaryKey.length === 0) return;
+      if (primaryKey.length === 0) {
+        return;
+      }
 
       const draftedValue = draftUpdates[rowKey]?.changes[columnName];
       const currentValue = draftedValue ?? row[columnName];
-      setEditingCell({ rowKey, column: columnName, source: "existing" });
+      setEditingCell({ column: columnName, rowKey, source: "existing" });
       setEditingValue(normalizeDisplay(currentValue));
       void loadFkOptions(columnName, normalizeDisplay(currentValue));
     },
-    [primaryKey, draftUpdates, loadFkOptions],
+    [primaryKey, draftUpdates, loadFkOptions]
   );
 
   const beginEditInsertCell = useCallback(
     (
       insertIndex: number,
       columnName: string,
-      options?: { selectAllOnFocus?: boolean },
+      _options?: { selectAllOnFocus?: boolean }
     ) => {
       const value = draftInserts[insertIndex]?.[columnName];
       setEditingCell({
-        rowKey: `insert:${insertIndex}`,
         column: columnName,
-        source: "insert",
         insertIndex,
+        rowKey: `insert:${insertIndex}`,
+        source: "insert",
       });
       setEditingValue(normalizeDisplay(value ?? ""));
       void loadFkOptions(columnName, normalizeDisplay(value ?? ""));
     },
-    [draftInserts, loadFkOptions],
+    [draftInserts, loadFkOptions]
   );
 
   const keepCaretNavigationInsideInlineInput = useCallback(
@@ -182,14 +187,18 @@ export function useInlineEditing(options: InlineEditingOptions) {
         event.preventDefault();
       }
     },
-    [],
+    []
   );
 
   const persistEditing = useCallback(
     (baseRow?: RowRecord) => {
-      if (!editingCell) return;
+      if (!editingCell) {
+        return;
+      }
       const column = columnMap[editingCell.column];
-      if (!column) return;
+      if (!column) {
+        return;
+      }
       const parsed = parseByType(editingValue, column);
 
       if (editingCell.source === "insert") {
@@ -207,7 +216,9 @@ export function useInlineEditing(options: InlineEditingOptions) {
         return;
       }
 
-      if (!baseRow) return;
+      if (!baseRow) {
+        return;
+      }
 
       const originalValue = baseRow[editingCell.column];
       const unchanged =
@@ -218,10 +229,10 @@ export function useInlineEditing(options: InlineEditingOptions) {
       setDraftUpdates((current) => {
         const next = { ...current };
         const existing = next[editingCell.rowKey] ?? {
-          primaryKey: Object.fromEntries(
-            primaryKey.map((pk) => [pk, baseRow[pk]]),
-          ),
           changes: {},
+          primaryKey: Object.fromEntries(
+            primaryKey.map((pk) => [pk, baseRow[pk]])
+          ),
         };
 
         const changes = { ...existing.changes };
@@ -251,27 +262,27 @@ export function useInlineEditing(options: InlineEditingOptions) {
       setDraftUpdates,
       cancelEditing,
       perfTrackerRef,
-    ],
+    ]
   );
 
   return {
-    editingCell,
-    setEditingCell,
-    editingValue,
-    setEditingValue,
-    fkOptions,
-    setFkOptions,
-    isLoadingFk,
-    setIsLoadingFk,
-    fkLookupRequestIdRef,
-    fkDebounceTimeoutRef,
     beginEditExistingCell,
     beginEditInsertCell,
     cancelEditing,
+    editingCell,
+    editingValue,
+    fkDebounceTimeoutRef,
+    fkLookupRequestIdRef,
+    fkOptions,
+    isLoadingFk,
     keepCaretNavigationInsideInlineInput,
-    persistEditing,
     loadFkOptions,
     loadFkOptionsDebounced,
     pendingEditPerfRowKeyRef,
+    persistEditing,
+    setEditingCell,
+    setEditingValue,
+    setFkOptions,
+    setIsLoadingFk,
   };
 }

@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { BranchMeta, LocalDbEngine } from "@/ipc/db/types";
 
 // ── Mock external dependencies ─────────────────────────────────────────
@@ -8,8 +8,8 @@ import type { BranchMeta, LocalDbEngine } from "@/ipc/db/types";
 
 vi.mock("electron", () => ({
   app: {
-    getPath: vi.fn(() => "/mock-user-data"),
     getAppPath: vi.fn(() => "/mock-app-path"),
+    getPath: vi.fn(() => "/mock-user-data"),
   },
 }));
 
@@ -21,34 +21,42 @@ vi.mock("embedded-postgres", () => {
   };
   return {
     default: vi.fn(() => ({
+      getPgClient: vi.fn(() => mockClient),
       initialise: vi.fn(),
       start: vi.fn(),
       stop: vi.fn(),
-      getPgClient: vi.fn(() => mockClient),
     })),
   };
 });
 
 vi.mock("better-sqlite3", () => ({
   default: vi.fn(() => ({
-    pragma: vi.fn(),
     close: vi.fn(),
+    pragma: vi.fn(),
   })),
 }));
 
 vi.mock("node:crypto", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:crypto")>();
-  return { ...actual, randomUUID: vi.fn(() => "00000000-0000-0000-0000-000000000001") };
+  return {
+    ...actual,
+    randomUUID: vi.fn(() => "00000000-0000-0000-0000-000000000001"),
+  };
 });
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, existsSync: vi.fn(() => true), mkdirSync: vi.fn(), rmSync: vi.fn() };
+  return {
+    ...actual,
+    existsSync: vi.fn(() => true),
+    mkdirSync: vi.fn(),
+    rmSync: vi.fn(),
+  };
 });
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, readFile: vi.fn(), writeFile: vi.fn(), mkdir: vi.fn() };
+  return { ...actual, mkdir: vi.fn(), readFile: vi.fn(), writeFile: vi.fn() };
 });
 
 vi.mock("node:net", async (importOriginal) => {
@@ -63,15 +71,24 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
-  return { ...actual, platform: vi.fn(() => "darwin"), arch: vi.fn(() => "arm64") };
+  return {
+    ...actual,
+    arch: vi.fn(() => "arm64"),
+    platform: vi.fn(() => "darwin"),
+  };
 });
 
 vi.mock("node:module", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:module")>();
-  return { ...actual, createRequire: vi.fn(() => (id: string) => {
-    if (id.includes("package.json")) return { version: "1.0.0" };
-    return {};
-  }) };
+  return {
+    ...actual,
+    createRequire: vi.fn(() => (id: string) => {
+      if (id.includes("package.json")) {
+        return { version: "1.0.0" };
+      }
+      return {};
+    }),
+  };
 });
 
 vi.mock("@/ipc/db/constants", () => ({
@@ -80,30 +97,30 @@ vi.mock("@/ipc/db/constants", () => ({
 
 vi.mock("@/ipc/db/sqlite-driver", () => ({
   buildSqliteConnectionString: vi.fn((path: string) => `sqlite://${path}`),
-  closeDb: vi.fn(),
   closeAllSqliteDbs: vi.fn(),
+  closeDb: vi.fn(),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────
 
-import { LocalDbManager } from "@/ipc/db/local-db-manager";
 import { randomUUID } from "node:crypto";
+import { LocalDbManager } from "@/ipc/db/local-db-manager";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
 /** Shape of the internal LocalDbMeta — only the fields we care about. */
 interface TestMeta {
+  active_branch_id?: string;
+  auto_start: boolean;
+  database_name: string;
+  engine: LocalDbEngine;
+  file_path?: string;
   id: string;
   name: string;
-  database_name: string;
-  username: string;
   password: string;
   port: number;
   postgres_version: string;
-  auto_start: boolean;
-  engine: LocalDbEngine;
-  active_branch_id?: string;
-  file_path?: string;
+  username: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -111,26 +128,26 @@ interface TestMeta {
 /** Create a minimal main branch metadata entry. */
 function mainBranch(localDbId: string, dbName = "testdb"): BranchMeta {
   return {
-    id: localDbId,
-    name: "main",
-    dbName,
-    parentId: localDbId,
     createdAt: "2025-01-01T00:00:00.000Z",
+    dbName,
+    id: localDbId,
     isMain: true,
+    name: "main",
+    parentId: localDbId,
   };
 }
 
 /** Build a test LocalDbMeta entry. */
 function testMeta(overrides: Partial<TestMeta> & { id: string }): TestMeta {
   return {
-    name: "test-db",
+    auto_start: false,
     database_name: "testdb",
-    username: "postgres",
+    engine: "postgresql",
+    name: "test-db",
     password: "postgres",
     port: 5432,
     postgres_version: "16.13.0",
-    auto_start: false,
-    engine: "postgresql",
+    username: "postgres",
     ...overrides,
   };
 }
@@ -139,26 +156,26 @@ function testMeta(overrides: Partial<TestMeta> & { id: string }): TestMeta {
 function addRunningInstance(
   manager: LocalDbManager,
   id: string,
-  metaOverrides: Record<string, unknown> = {},
+  metaOverrides: Record<string, unknown> = {}
 ) {
   const map = (manager as any).runningInstances as Map<string, any>;
   map.set(id, {
+    meta: {
+      database_name: "testdb",
+      engine: "postgresql",
+      id,
+      name: "test-db",
+      password: "postgres",
+      port: 5432,
+      username: "postgres",
+      ...metaOverrides,
+    },
     pg: {
       getPgClient: vi.fn(() => ({
         connect: vi.fn(),
         end: vi.fn(),
         query: vi.fn(),
       })),
-    },
-    meta: {
-      id,
-      name: "test-db",
-      database_name: "testdb",
-      username: "postgres",
-      password: "postgres",
-      port: 5432,
-      engine: "postgresql",
-      ...metaOverrides,
     },
   });
 }
@@ -184,29 +201,29 @@ function wirePersistence(manager: LocalDbManager) {
     metaStore = JSON.parse(JSON.stringify(list));
   });
 
-  (manager as any).loadBranchList = vi.fn(async (localDbId: string) => {
-    return JSON.parse(JSON.stringify(branchStore.get(localDbId) ?? []));
-  });
+  (manager as any).loadBranchList = vi.fn(async (localDbId: string) =>
+    JSON.parse(JSON.stringify(branchStore.get(localDbId) ?? []))
+  );
 
   (manager as any).saveBranchList = vi.fn(
     async (localDbId: string, list: BranchMeta[]) => {
       branchStore.set(localDbId, JSON.parse(JSON.stringify(list)));
-    },
+    }
   );
 
   // Also expose helpers to seed data
   return {
-    setMeta(list: TestMeta[]) {
-      metaStore = JSON.parse(JSON.stringify(list));
-    },
-    setBranches(localDbId: string, branches: BranchMeta[]) {
-      branchStore.set(localDbId, JSON.parse(JSON.stringify(branches)));
+    getBranches(localDbId: string): BranchMeta[] {
+      return branchStore.get(localDbId) ?? [];
     },
     getMeta(): TestMeta[] {
       return metaStore;
     },
-    getBranches(localDbId: string): BranchMeta[] {
-      return branchStore.get(localDbId) ?? [];
+    setBranches(localDbId: string, branches: BranchMeta[]) {
+      branchStore.set(localDbId, JSON.parse(JSON.stringify(branches)));
+    },
+    setMeta(list: TestMeta[]) {
+      metaStore = JSON.parse(JSON.stringify(list));
     },
   };
 }
@@ -240,15 +257,15 @@ describe("LocalDbManager — Branch CRUD", () => {
       const branches = store.getBranches(DB_ID);
       expect(branches).toHaveLength(1);
       expect(branches[0]).toMatchObject({
-        id: DB_ID,
-        name: "main",
         dbName: "testdb",
+        id: DB_ID,
         isMain: true,
+        name: "main",
       });
     });
 
     test("does not duplicate an existing main branch", async () => {
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       await (manager as any).ensureMainBranch(DB_ID);
@@ -271,7 +288,7 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setMeta([]);
 
       await expect(
-        (manager as any).ensureMainBranch("nonexistent"),
+        (manager as any).ensureMainBranch("nonexistent")
       ).rejects.toThrow("Local database nonexistent not found");
     });
   });
@@ -283,20 +300,20 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setMeta([]);
 
       await expect(manager.listBranches("nonexistent")).rejects.toThrow(
-        "Local database nonexistent not found",
+        "Local database nonexistent not found"
       );
     });
 
     test("returns branches with correct isActive flags", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
 
       const branches = await manager.listBranches(DB_ID);
@@ -332,7 +349,7 @@ describe("LocalDbManager — Branch CRUD", () => {
     test("throws if local DB not found", async () => {
       store.setMeta([]);
       await expect(
-        manager.getBranchInfo("nonexistent", "branch-001"),
+        manager.getBranchInfo("nonexistent", "branch-001")
       ).rejects.toThrow("Local database nonexistent not found");
     });
 
@@ -341,34 +358,34 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       await expect(
-        manager.getBranchInfo(DB_ID, "nonexistent-branch"),
+        manager.getBranchInfo(DB_ID, "nonexistent-branch")
       ).rejects.toThrow("Branch nonexistent-branch not found");
     });
 
     test("returns correct branch info with isActive", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
 
       const info = await manager.getBranchInfo(DB_ID, "branch-001");
       expect(info).toMatchObject({
-        id: "branch-001",
-        name: "feature-x",
-        isMain: false,
-        isActive: false,
         databaseName: "br_feature_x_0001",
+        id: "branch-001",
+        isActive: false,
+        isMain: false,
+        name: "feature-x",
       });
     });
 
     test("returns isActive=true for the active branch", async () => {
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       const info = await manager.getBranchInfo(DB_ID, DB_ID);
@@ -383,15 +400,15 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setMeta([]);
 
       await expect(
-        manager.createBranch({ localDbId: "nonexistent", name: "feature-x" }),
+        manager.createBranch({ localDbId: "nonexistent", name: "feature-x" })
       ).rejects.toThrow("Local database nonexistent not found");
     });
 
     test("throws for SQLite local DBs", async () => {
-      store.setMeta([testMeta({ id: DB_ID, engine: "sqlite" })]);
+      store.setMeta([testMeta({ engine: "sqlite", id: DB_ID })]);
 
       await expect(
-        manager.createBranch({ localDbId: DB_ID, name: "feature-x" }),
+        manager.createBranch({ localDbId: DB_ID, name: "feature-x" })
       ).rejects.toThrow("Branching is only supported for PostgreSQL");
     });
 
@@ -405,7 +422,7 @@ describe("LocalDbManager — Branch CRUD", () => {
           localDbId: DB_ID,
           name: "feature-x",
           parentBranchId: "nonexistent-branch",
-        }),
+        })
       ).rejects.toThrow("Parent branch nonexistent-branch not found");
     });
 
@@ -415,7 +432,7 @@ describe("LocalDbManager — Branch CRUD", () => {
       addRunningInstance(manager, DB_ID);
 
       await expect(
-        manager.createBranch({ localDbId: DB_ID, name: "main" }),
+        manager.createBranch({ localDbId: DB_ID, name: "main" })
       ).rejects.toThrow('Branch "main" already exists');
     });
 
@@ -425,30 +442,32 @@ describe("LocalDbManager — Branch CRUD", () => {
       // No running instance added
 
       await expect(
-        manager.createBranch({ localDbId: DB_ID, name: "feature-x" }),
+        manager.createBranch({ localDbId: DB_ID, name: "feature-x" })
       ).rejects.toThrow("Local database must be running to create a branch");
     });
 
     test("creates a branch with correct metadata", async () => {
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
       addRunningInstance(manager, DB_ID);
 
       const result = await manager.createBranch({
+        description: "A test branch",
         localDbId: DB_ID,
         name: "feature-x",
-        description: "A test branch",
       });
 
       expect(result).toMatchObject({
-        name: "feature-x",
-        isMain: false,
-        isActive: false,
-        parentId: DB_ID, // parent defaults to active branch (main)
         description: "A test branch",
+        isActive: false,
+        isMain: false,
+        name: "feature-x",
+        parentId: DB_ID, // parent defaults to active branch (main)
       });
       // ID is a UUID generated by randomUUID — just verify it's a valid UUID format
-      expect(result.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(result.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
       // The sanitized DB name should start with "br_"
       expect(result.databaseName).toMatch(/^br_/);
 
@@ -459,20 +478,20 @@ describe("LocalDbManager — Branch CRUD", () => {
 
     test("defaults parent to active branch when not specified", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: "branch-001" })]);
+      store.setMeta([testMeta({ active_branch_id: "branch-001", id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
       addRunningInstance(manager, DB_ID);
 
       // Use a different UUID for the new branch
       vi.mocked(randomUUID).mockReturnValue(
-        "00000000-0000-0000-0000-000000000002",
+        "00000000-0000-0000-0000-000000000002"
       );
 
       const result = await manager.createBranch({
@@ -485,7 +504,7 @@ describe("LocalDbManager — Branch CRUD", () => {
     });
 
     test("generates a sanitized database name from the branch name", async () => {
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
       addRunningInstance(manager, DB_ID);
 
@@ -506,7 +525,7 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setMeta([]);
 
       await expect(
-        manager.deleteBranch("nonexistent", "branch-001"),
+        manager.deleteBranch("nonexistent", "branch-001")
       ).rejects.toThrow("Local database nonexistent not found");
     });
 
@@ -515,7 +534,7 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       await expect(
-        manager.deleteBranch(DB_ID, "nonexistent-branch"),
+        manager.deleteBranch(DB_ID, "nonexistent-branch")
       ).rejects.toThrow("Branch nonexistent-branch not found");
     });
 
@@ -524,37 +543,37 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       await expect(manager.deleteBranch(DB_ID, DB_ID)).rejects.toThrow(
-        "Cannot delete the main branch",
+        "Cannot delete the main branch"
       );
     });
 
     test("throws when trying to delete the active branch", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: "branch-001" })]);
+      store.setMeta([testMeta({ active_branch_id: "branch-001", id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
 
       await expect(manager.deleteBranch(DB_ID, "branch-001")).rejects.toThrow(
-        "Cannot delete the active branch",
+        "Cannot delete the active branch"
       );
     });
 
     test("deletes a non-main, non-active branch", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
       addRunningInstance(manager, DB_ID);
 
@@ -567,22 +586,22 @@ describe("LocalDbManager — Branch CRUD", () => {
 
     test("cascades delete to child branches", async () => {
       const parentBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
       const childBranch: BranchMeta = {
-        id: "branch-002",
-        name: "feature-x-nested",
-        dbName: "br_feature_x_nested_0002",
-        parentId: "branch-001",
         createdAt: "2025-01-03T00:00:00.000Z",
+        dbName: "br_feature_x_nested_0002",
+        id: "branch-002",
         isMain: false,
+        name: "feature-x-nested",
+        parentId: "branch-001",
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), parentBranch, childBranch]);
       addRunningInstance(manager, DB_ID);
 
@@ -595,28 +614,28 @@ describe("LocalDbManager — Branch CRUD", () => {
 
     test("throws when a child of the branch being deleted is active", async () => {
       const parentBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
       const childBranch: BranchMeta = {
-        id: "branch-002",
-        name: "feature-x-nested",
-        dbName: "br_feature_x_nested_0002",
-        parentId: "branch-001",
         createdAt: "2025-01-03T00:00:00.000Z",
+        dbName: "br_feature_x_nested_0002",
+        id: "branch-002",
         isMain: false,
+        name: "feature-x-nested",
+        parentId: "branch-001",
       };
       // The child branch is the active one
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: "branch-002" })]);
+      store.setMeta([testMeta({ active_branch_id: "branch-002", id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), parentBranch, childBranch]);
       addRunningInstance(manager, DB_ID);
 
       await expect(manager.deleteBranch(DB_ID, "branch-001")).rejects.toThrow(
-        "is active",
+        "is active"
       );
     });
   });
@@ -628,7 +647,7 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setMeta([]);
 
       await expect(
-        manager.switchBranch("nonexistent", "branch-001"),
+        manager.switchBranch("nonexistent", "branch-001")
       ).rejects.toThrow("Local database nonexistent not found");
     });
 
@@ -637,12 +656,12 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       await expect(
-        manager.switchBranch(DB_ID, "nonexistent-branch"),
+        manager.switchBranch(DB_ID, "nonexistent-branch")
       ).rejects.toThrow("Branch nonexistent-branch not found");
     });
 
     test("returns current branch info if already on that branch", async () => {
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       const result = await manager.switchBranch(DB_ID, DB_ID);
@@ -653,22 +672,22 @@ describe("LocalDbManager — Branch CRUD", () => {
 
     test("switches the active branch and persists the change", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
 
       const result = await manager.switchBranch(DB_ID, "branch-001");
 
       expect(result).toMatchObject({
         id: "branch-001",
-        name: "feature-x",
         isActive: true,
+        name: "feature-x",
       });
 
       // Verify persistence: the meta should now have active_branch_id = "branch-001"
@@ -678,14 +697,14 @@ describe("LocalDbManager — Branch CRUD", () => {
 
     test("switching away from main marks main as inactive", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
 
       await manager.switchBranch(DB_ID, "branch-001");
@@ -706,7 +725,7 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setMeta([]);
 
       await expect(
-        manager.renameBranch("nonexistent", "branch-001", "new-name"),
+        manager.renameBranch("nonexistent", "branch-001", "new-name")
       ).rejects.toThrow("Local database nonexistent not found");
     });
 
@@ -715,7 +734,7 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       await expect(
-        manager.renameBranch(DB_ID, "nonexistent-branch", "new-name"),
+        manager.renameBranch(DB_ID, "nonexistent-branch", "new-name")
       ).rejects.toThrow("Branch nonexistent-branch not found");
     });
 
@@ -724,57 +743,57 @@ describe("LocalDbManager — Branch CRUD", () => {
       store.setBranches(DB_ID, [mainBranch(DB_ID)]);
 
       await expect(
-        manager.renameBranch(DB_ID, DB_ID, "renamed-main"),
+        manager.renameBranch(DB_ID, DB_ID, "renamed-main")
       ).rejects.toThrow("Cannot rename the main branch");
     });
 
     test("throws on name collision with another branch", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
       const otherBranch: BranchMeta = {
-        id: "branch-002",
-        name: "feature-y",
-        dbName: "br_feature_y_0002",
-        parentId: DB_ID,
         createdAt: "2025-01-03T00:00:00.000Z",
+        dbName: "br_feature_y_0002",
+        id: "branch-002",
         isMain: false,
+        name: "feature-y",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch, otherBranch]);
 
       await expect(
-        manager.renameBranch(DB_ID, "branch-001", "feature-y"),
+        manager.renameBranch(DB_ID, "branch-001", "feature-y")
       ).rejects.toThrow('Branch "feature-y" already exists');
     });
 
     test("renames a branch successfully", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
 
       const result = await manager.renameBranch(
         DB_ID,
         "branch-001",
-        "renamed-feature",
+        "renamed-feature"
       );
 
       expect(result).toMatchObject({
         id: "branch-001",
-        name: "renamed-feature",
         isMain: false,
+        name: "renamed-feature",
       });
 
       // Verify persistence
@@ -785,20 +804,20 @@ describe("LocalDbManager — Branch CRUD", () => {
 
     test("allows renaming to the same name (no-op)", async () => {
       const featureBranch: BranchMeta = {
-        id: "branch-001",
-        name: "feature-x",
-        dbName: "br_feature_x_0001",
-        parentId: DB_ID,
         createdAt: "2025-01-02T00:00:00.000Z",
+        dbName: "br_feature_x_0001",
+        id: "branch-001",
         isMain: false,
+        name: "feature-x",
+        parentId: DB_ID,
       };
-      store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+      store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
       store.setBranches(DB_ID, [mainBranch(DB_ID), featureBranch]);
 
       const result = await manager.renameBranch(
         DB_ID,
         "branch-001",
-        "feature-x",
+        "feature-x"
       );
 
       // Should succeed (same branch, not a collision)
@@ -824,7 +843,7 @@ describe("LocalDbManager — sanitizeBranchName (via createBranch)", () => {
   });
 
   test("replaces non-alphanumeric chars with underscores", async () => {
-    store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+    store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
     store.setBranches(DB_ID, [mainBranch(DB_ID)]);
     addRunningInstance(manager, DB_ID);
 
@@ -837,7 +856,7 @@ describe("LocalDbManager — sanitizeBranchName (via createBranch)", () => {
   });
 
   test("collapses multiple underscores", async () => {
-    store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+    store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
     store.setBranches(DB_ID, [mainBranch(DB_ID)]);
     addRunningInstance(manager, DB_ID);
 
@@ -850,7 +869,7 @@ describe("LocalDbManager — sanitizeBranchName (via createBranch)", () => {
   });
 
   test("truncates to 63 characters max", async () => {
-    store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+    store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
     store.setBranches(DB_ID, [mainBranch(DB_ID)]);
     addRunningInstance(manager, DB_ID);
 
@@ -864,7 +883,7 @@ describe("LocalDbManager — sanitizeBranchName (via createBranch)", () => {
   });
 
   test("strips leading/trailing underscores from the sanitized part", async () => {
-    store.setMeta([testMeta({ id: DB_ID, active_branch_id: DB_ID })]);
+    store.setMeta([testMeta({ active_branch_id: DB_ID, id: DB_ID })]);
     store.setBranches(DB_ID, [mainBranch(DB_ID)]);
     addRunningInstance(manager, DB_ID);
 

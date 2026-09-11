@@ -1,15 +1,15 @@
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
-import type {
-  Connection,
-  DatabaseInfo,
-  LocalDbInfo,
-  SchemaSummary,
-} from "@/ipc/db/types";
-import { cn } from "@/lib/utils";
+import {
+  type ComponentType,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -17,27 +17,33 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Progress } from "@/components/ui/progress";
 import { DB_TYPE_LABELS, formatRowCount } from "@/constants";
+import type {
+  Connection,
+  DatabaseInfo,
+  LocalDbInfo,
+  SchemaSummary,
+} from "@/ipc/db/types";
+import { cn } from "@/lib/utils";
 
 // ── Props ─────────────────────────────────────────────────────────────
 
 interface DatabaseOverviewProps {
   connection: Connection;
-  schemaSummary: SchemaSummary | null;
-  databaseInfo: DatabaseInfo | null;
-  isLoadingDatabaseInfo: boolean;
-  localDbStatus: LocalDbInfo | null;
-  isLoadingLocalDbStatus: boolean;
-  isTogglingLocalDbStatus: boolean;
-  onNewQuery: () => void;
-  onTestConnection: () => void;
-  onViewTables: () => void;
-  onStartLocalDb: () => Promise<void>;
-  onPauseLocalDb: () => Promise<void>;
   connectionString?: string;
   copyConnectionStringFeedback: null | "copied" | "failed";
+  databaseInfo: DatabaseInfo | null;
+  isLoadingDatabaseInfo: boolean;
+  isLoadingLocalDbStatus: boolean;
+  isTogglingLocalDbStatus: boolean;
+  localDbStatus: LocalDbInfo | null;
   onCopyConnectionString: () => Promise<void> | void;
+  onNewQuery: () => void;
+  onPauseLocalDb: () => Promise<void>;
+  onStartLocalDb: () => Promise<void>;
+  onTestConnection: () => void;
+  onViewTables: () => void;
+  schemaSummary: SchemaSummary | null;
 }
 
 // ── StatCard ──────────────────────────────────────────────────────────
@@ -57,20 +63,18 @@ function StatCard({
   sublabel?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/10 px-3 py-2.5 hover:bg-muted/20 transition-colors">
+    <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/10 px-3 py-2.5 transition-colors hover:bg-muted/20">
       <div className="flex items-center justify-between">
         {Icon && <Icon className="size-3.5 text-muted-foreground/40" />}
         {isLoading ? (
           <Skeleton className="h-4 w-10" />
         ) : (
-          <p className="font-heading text-sm font-semibold tabular-nums leading-none">
+          <p className="font-heading font-semibold text-sm tabular-nums leading-none">
             {value}
           </p>
         )}
       </div>
-      <p className="text-[11px] text-muted-foreground leading-none">
-        {label}
-      </p>
+      <p className="text-[11px] text-muted-foreground leading-none">{label}</p>
       {sublabel && (
         <p className="text-[10px] text-muted-foreground/60 leading-none">
           {sublabel}
@@ -92,8 +96,11 @@ const itemVariants = {
   hidden: { opacity: 0, y: 8 },
   visible: {
     opacity: 1,
+    transition: {
+      duration: 0.22,
+      ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+    },
     y: 0,
-    transition: { duration: 0.22, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] },
   },
 };
 
@@ -128,31 +135,39 @@ export function DatabaseOverview({
 
   // Single-pass memoized derived values — avoids O(n×m) per render from
   // repeated .filter() calls inside .map() for each schema.
-  const { totalSchemas, totalTables, totalEstimatedRows, schemasWithCounts } = useMemo(() => {
-    if (!schemaSummary) return { totalSchemas: 0, totalTables: 0, totalEstimatedRows: 0, schemasWithCounts: [] as { name: string; count: number }[] };
-    let rowsSum = 0;
-    const schemaMap = new Map<string, { count: number }>();
-    for (const schema of schemaSummary.schemas) {
-      schemaMap.set(schema, { count: 0 });
-    }
-    for (const table of schemaSummary.tables) {
-      const entry = schemaMap.get(table.schema);
-      if (entry) {
-        entry.count++;
+  const { totalSchemas, totalTables, totalEstimatedRows, schemasWithCounts } =
+    useMemo(() => {
+      if (!schemaSummary) {
+        return {
+          schemasWithCounts: [] as { name: string; count: number }[],
+          totalEstimatedRows: 0,
+          totalSchemas: 0,
+          totalTables: 0,
+        };
       }
-      rowsSum += table.estimated_row_count;
-    }
-    const counts = schemaSummary.schemas.map((name) => ({
-      name,
-      ...(schemaMap.get(name) ?? { count: 0, rlsCount: 0 }),
-    }));
-    return {
-      totalSchemas: schemaSummary.schemas.length,
-      totalTables: schemaSummary.tables.length,
-      totalEstimatedRows: rowsSum,
-      schemasWithCounts: counts,
-    };
-  }, [schemaSummary]);
+      let rowsSum = 0;
+      const schemaMap = new Map<string, { count: number }>();
+      for (const schema of schemaSummary.schemas) {
+        schemaMap.set(schema, { count: 0 });
+      }
+      for (const table of schemaSummary.tables) {
+        const entry = schemaMap.get(table.schema);
+        if (entry) {
+          entry.count++;
+        }
+        rowsSum += table.estimated_row_count;
+      }
+      const counts = schemaSummary.schemas.map((name) => ({
+        name,
+        ...(schemaMap.get(name) ?? { count: 0, rlsCount: 0 }),
+      }));
+      return {
+        schemasWithCounts: counts,
+        totalEstimatedRows: rowsSum,
+        totalSchemas: schemaSummary.schemas.length,
+        totalTables: schemaSummary.tables.length,
+      };
+    }, [schemaSummary]);
 
   const shortVersion = databaseInfo?.version?.split(" on ")?.[0] ?? null;
   const colorBadge =
@@ -161,7 +176,8 @@ export function DatabaseOverview({
       : null;
   const isLocal = connection.is_local === true;
   const isRunning = localDbStatus?.running ?? false;
-  const engineVersion = connection.engine_version ?? connection.postgres_version;
+  const engineVersion =
+    connection.engine_version ?? connection.postgres_version;
   const dbTypeLabel = DB_TYPE_LABELS[connection.db_type] ?? connection.db_type;
   const displayInfo = useMemo(() => {
     if (connection.url) {
@@ -178,8 +194,11 @@ export function DatabaseOverview({
 
   // Connection usage percentage
   const connectionUsagePct =
-    databaseInfo?.activeConnections != null && databaseInfo?.maxConnections != null
-      ? Math.round((databaseInfo.activeConnections / databaseInfo.maxConnections) * 100)
+    databaseInfo?.activeConnections != null &&
+    databaseInfo?.maxConnections != null
+      ? Math.round(
+          (databaseInfo.activeConnections / databaseInfo.maxConnections) * 100
+        )
       : null;
 
   const handleCopyDisplayInfo = async () => {
@@ -202,30 +221,31 @@ export function DatabaseOverview({
     }
   };
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (displayInfoTooltipTimeoutRef.current) {
         clearTimeout(displayInfoTooltipTimeoutRef.current);
       }
-    };
-  }, []);
+    },
+    []
+  );
 
   const isDisplayInfoTooltipOpen =
     isDisplayInfoHovered || isDisplayInfoTooltipPinned;
 
   return (
     <motion.div
+      animate="visible"
       className="h-full overflow-auto"
       initial="hidden"
-      animate="visible"
       variants={containerVariants}
     >
-      <div className="mx-auto max-w-2xl px-6 py-8 space-y-5">
+      <div className="mx-auto max-w-2xl space-y-5 px-6 py-8">
         {/* ── Header ──────────────────────────────────────────── */}
-        <motion.div variants={itemVariants} className="space-y-2.5">
+        <motion.div className="space-y-2.5" variants={itemVariants}>
           {/* Name row with status */}
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex min-w-0 items-center gap-2.5">
               {colorBadge && (
                 <span
                   className="size-2.5 shrink-0 rounded-full"
@@ -236,7 +256,7 @@ export function DatabaseOverview({
                 />
               )}
               <div className="min-w-0">
-                <h1 className="font-heading text-lg font-semibold tracking-tight truncate select-text">
+                <h1 className="select-text truncate font-heading font-semibold text-lg tracking-tight">
                   {connection.name}
                 </h1>
                 <div className="mt-0.5 flex items-center gap-1.5">
@@ -244,7 +264,9 @@ export function DatabaseOverview({
                     <span
                       className={cn(
                         "inline-block size-1.5 rounded-full",
-                        isLoadingDatabaseInfo ? "bg-amber-500" : "bg-emerald-500"
+                        isLoadingDatabaseInfo
+                          ? "bg-amber-500"
+                          : "bg-emerald-500"
                       )}
                     />
                     {isLoadingDatabaseInfo ? "Loading" : "Connected"}
@@ -252,38 +274,41 @@ export function DatabaseOverview({
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               {/* DB type badge */}
               <Badge
+                className="h-5 select-text px-1.5 font-mono text-[10px]"
                 variant="secondary"
-                className="font-mono text-[10px] h-5 px-1.5 select-text"
               >
                 {dbTypeLabel}
               </Badge>
               {isLocal && (
                 <Badge
+                  className="h-5 select-text px-1.5 font-mono text-[10px]"
                   variant="outline"
-                  className="font-mono text-[10px] h-5 px-1.5 select-text"
                 >
                   LOCAL
                 </Badge>
               )}
               {connection.tag && (
-                <Badge variant="secondary" className="text-[10px] h-5 px-1.5 select-text">
+                <Badge
+                  className="h-5 select-text px-1.5 text-[10px]"
+                  variant="secondary"
+                >
                   {connection.tag}
                 </Badge>
               )}
               {engineVersion && (
                 <Badge
+                  className="h-5 select-text px-1.5 font-mono text-[10px]"
                   variant="secondary"
-                  className="font-mono text-[10px] h-5 px-1.5 select-text"
                 >
                   v{engineVersion}
                 </Badge>
               )}
               <Badge
+                className="h-5 select-text px-1.5 font-mono text-[10px]"
                 variant="outline"
-                className="font-mono text-[10px] h-5 px-1.5 select-text"
               >
                 {connection.ssl_mode}
               </Badge>
@@ -296,11 +321,11 @@ export function DatabaseOverview({
               <TooltipTrigger
                 render={
                   <button
-                    type="button"
+                    className="max-w-full select-none truncate rounded-sm px-1 py-0.5 text-left font-mono text-muted-foreground text-xs transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     onClick={() => void handleCopyDisplayInfo()}
                     onMouseEnter={() => setIsDisplayInfoHovered(true)}
                     onMouseLeave={() => setIsDisplayInfoHovered(false)}
-                    className="max-w-full truncate rounded-sm px-1 py-0.5 text-left font-mono text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background select-none"
+                    type="button"
                   />
                 }
               >
@@ -308,8 +333,8 @@ export function DatabaseOverview({
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={6}>
                 <span
+                  className="fade-in-0 zoom-in-95 inline-block animate-in duration-150"
                   key={displayInfoCopyFeedback ?? "idle"}
-                  className="inline-block animate-in fade-in-0 zoom-in-95 duration-150"
                 >
                   {displayInfoCopyFeedback === "copied"
                     ? "Copied!"
@@ -325,58 +350,58 @@ export function DatabaseOverview({
           <div className="flex items-center gap-1.5 pt-0.5">
             <motion.div whileTap={{ scale: 0.97 }}>
               <Button
-                size="sm"
-                onClick={onNewQuery}
                 className="h-7 gap-1.5 text-xs transition-transform duration-150 active:scale-[0.98]"
+                onClick={onNewQuery}
+                size="sm"
               >
-                <Icon name="terminal" className="size-3.5" />
+                <Icon className="size-3.5" name="terminal" />
                 New query
               </Button>
             </motion.div>
             <motion.div whileTap={{ scale: 0.97 }}>
               <Button
+                className="h-7 gap-1.5 text-xs transition-transform duration-150 active:scale-[0.98]"
+                onClick={onViewTables}
                 size="sm"
                 variant="secondary"
-                onClick={onViewTables}
-                className="h-7 gap-1.5 text-xs transition-transform duration-150 active:scale-[0.98]"
               >
-                <Icon name="table" className="size-3.5" />
+                <Icon className="size-3.5" name="table" />
                 Tables
               </Button>
             </motion.div>
             <motion.div whileTap={{ scale: 0.97 }}>
               <Button
-                size="sm"
-                variant="ghost"
-                onClick={onTestConnection}
                 className="h-7 w-7 p-0 text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                onClick={onTestConnection}
+                size="sm"
                 title="Test connection"
+                variant="ghost"
               >
-                <Icon name="refresh" className="size-3.5" />
+                <Icon className="size-3.5" name="refresh" />
               </Button>
             </motion.div>
             {isLocal && (
               <motion.div whileTap={{ scale: 0.97 }}>
                 <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={isRunning ? onPauseLocalDb : onStartLocalDb}
                   className="h-7 gap-1.5 text-xs transition-transform duration-150 active:scale-[0.98]"
                   disabled={isLoadingLocalDbStatus || isTogglingLocalDbStatus}
+                  onClick={isRunning ? onPauseLocalDb : onStartLocalDb}
+                  size="sm"
+                  variant="ghost"
                 >
                   {isTogglingLocalDbStatus ? (
                     <>
-                      <Icon name="loader" className="size-3 animate-spin" />
+                      <Icon className="size-3 animate-spin" name="loader" />
                       {isRunning ? "Stopping..." : "Starting..."}
                     </>
                   ) : isRunning ? (
                     <>
-                      <Icon name="pause" className="size-3" />
+                      <Icon className="size-3" name="pause" />
                       Pause
                     </>
                   ) : (
                     <>
-                      <Icon name="play" className="size-3" />
+                      <Icon className="size-3" name="play" />
                       Start
                     </>
                   )}
@@ -387,10 +412,10 @@ export function DatabaseOverview({
         </motion.div>
 
         {/* ── Overview stats ─────────────────────────────────── */}
-        <motion.div variants={itemVariants} className="space-y-2.5">
+        <motion.div className="space-y-2.5" variants={itemVariants}>
           <div className="flex items-center gap-2">
-            <Icon name="database" className="size-3.5 text-muted-foreground" />
-            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
+            <Icon className="size-3.5 text-muted-foreground" name="database" />
+            <p className="font-medium text-[11px] text-muted-foreground/90 uppercase tracking-[0.12em]">
               Overview
             </p>
           </div>
@@ -399,41 +424,54 @@ export function DatabaseOverview({
               "grid grid-cols-2 gap-2",
               totalEstimatedRows > 0 && databaseInfo?.activeConnections != null
                 ? "sm:grid-cols-4"
-                : totalEstimatedRows > 0 || databaseInfo?.activeConnections != null
+                : totalEstimatedRows > 0 ||
+                    databaseInfo?.activeConnections != null
                   ? "sm:grid-cols-3"
-                  : "sm:grid-cols-3",
+                  : "sm:grid-cols-3"
             )}
           >
-            <StatCard label="Schemas" value={totalSchemas} icon={(props) => <Icon name="database" {...props} />} />
-            <StatCard label="Tables" value={totalTables} icon={(props) => <Icon name="table" {...props} />} />
+            <StatCard
+              icon={(props) => <Icon name="database" {...props} />}
+              label="Schemas"
+              value={totalSchemas}
+            />
+            <StatCard
+              icon={(props) => <Icon name="table" {...props} />}
+              label="Tables"
+              value={totalTables}
+            />
             {totalEstimatedRows > 0 && (
               <StatCard
+                icon={(props) => <Icon name="list-numbers" {...props} />}
                 label="Est. Rows"
                 value={formatRowCount(totalEstimatedRows)}
-                icon={(props) => <Icon name="list-numbers" {...props} />}
               />
             )}
             {databaseInfo?.activeConnections != null && (
               <StatCard
-                label="Connections"
-                value={databaseInfo.activeConnections}
                 icon={(props) => <Icon name="link" {...props} />}
-                sublabel={databaseInfo.maxConnections ? `of ${databaseInfo.maxConnections}` : undefined}
+                label="Connections"
+                sublabel={
+                  databaseInfo.maxConnections
+                    ? `of ${databaseInfo.maxConnections}`
+                    : undefined
+                }
+                value={databaseInfo.activeConnections}
               />
             )}
             <StatCard
-              label="Size"
-              value={databaseInfo?.size ?? "—"}
               icon={(props) => <Icon name="hard-drive" {...props} />}
               isLoading={isLoadingDatabaseInfo}
+              label="Size"
+              value={databaseInfo?.size ?? "—"}
             />
           </div>
         </motion.div>
 
         {/* ── Server info ─────────────────────────────────────── */}
         {(isLoadingDatabaseInfo || databaseInfo) && (
-          <motion.div variants={itemVariants} className="space-y-2.5">
-            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
+          <motion.div className="space-y-2.5" variants={itemVariants}>
+            <p className="font-medium text-[11px] text-muted-foreground/90 uppercase tracking-[0.12em]">
               Server
             </p>
             {isLoadingDatabaseInfo ? (
@@ -448,26 +486,26 @@ export function DatabaseOverview({
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Version</span>
-                    <span className="font-mono font-medium text-foreground select-text">
+                    <span className="select-text font-medium font-mono text-foreground">
                       {shortVersion ?? databaseInfo.version}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Encoding</span>
-                    <span className="font-mono font-medium text-foreground select-text">
+                    <span className="select-text font-medium font-mono text-foreground">
                       {databaseInfo.encoding}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Timezone</span>
-                    <span className="font-mono font-medium text-foreground select-text">
+                    <span className="select-text font-medium font-mono text-foreground">
                       {databaseInfo.timezone}
                     </span>
                   </div>
                   {databaseInfo.databaseName && (
                     <div className="flex items-center gap-1.5">
                       <span className="text-muted-foreground/60">Database</span>
-                      <span className="font-mono font-medium text-foreground select-text">
+                      <span className="select-text font-medium font-mono text-foreground">
                         {databaseInfo.databaseName}
                       </span>
                     </div>
@@ -475,29 +513,39 @@ export function DatabaseOverview({
                 </div>
 
                 {/* Performance & health stats */}
-                {(databaseInfo.cacheHitRatio != null || connectionUsagePct != null) && (
+                {(databaseInfo.cacheHitRatio != null ||
+                  connectionUsagePct != null) && (
                   <div className="space-y-2.5 rounded-lg border border-border/50 bg-muted/10 p-2.5">
                     {/* Cache hit ratio */}
                     {databaseInfo.cacheHitRatio != null && (
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5">
-                            <Icon name="zap" className="size-3 text-muted-foreground/50" />
-                            <span className="text-muted-foreground/60">Cache hit ratio</span>
+                            <Icon
+                              className="size-3 text-muted-foreground/50"
+                              name="zap"
+                            />
+                            <span className="text-muted-foreground/60">
+                              Cache hit ratio
+                            </span>
                           </div>
-                          <span className={cn(
-                            "font-mono font-medium",
-                            databaseInfo.cacheHitRatio >= 99 ? "text-emerald-500" :
-                            databaseInfo.cacheHitRatio >= 95 ? "text-amber-500" :
-                            "text-destructive"
-                          )}>
+                          <span
+                            className={cn(
+                              "font-medium font-mono",
+                              databaseInfo.cacheHitRatio >= 99
+                                ? "text-emerald-500"
+                                : databaseInfo.cacheHitRatio >= 95
+                                  ? "text-amber-500"
+                                  : "text-destructive"
+                            )}
+                          >
                             {databaseInfo.cacheHitRatio}%
                           </span>
                         </div>
                         <Progress
-                          value={databaseInfo.cacheHitRatio}
-                          max={100}
                           className="h-1"
+                          max={100}
+                          value={databaseInfo.cacheHitRatio}
                         />
                       </div>
                     )}
@@ -507,26 +555,34 @@ export function DatabaseOverview({
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5">
-                            <Icon name="link" className="size-3 text-muted-foreground/50" />
-                            <span className="text-muted-foreground/60">Connection usage</span>
+                            <Icon
+                              className="size-3 text-muted-foreground/50"
+                              name="link"
+                            />
+                            <span className="text-muted-foreground/60">
+                              Connection usage
+                            </span>
                           </div>
-                          <span className={cn(
-                            "font-mono font-medium",
-                            connectionUsagePct >= 90 ? "text-destructive" :
-                            connectionUsagePct >= 70 ? "text-amber-500" :
-                            "text-foreground"
-                          )}>
+                          <span
+                            className={cn(
+                              "font-medium font-mono",
+                              connectionUsagePct >= 90
+                                ? "text-destructive"
+                                : connectionUsagePct >= 70
+                                  ? "text-amber-500"
+                                  : "text-foreground"
+                            )}
+                          >
                             {connectionUsagePct}%
                           </span>
                         </div>
                         <Progress
-                          value={connectionUsagePct}
-                          max={100}
                           className="h-1"
+                          max={100}
+                          value={connectionUsagePct}
                         />
                       </div>
                     )}
-
                   </div>
                 )}
               </div>
@@ -536,10 +592,10 @@ export function DatabaseOverview({
 
         {/* ── Local DB details ────────────────────────────────── */}
         {isLocal && localDbStatus && (
-          <motion.div variants={itemVariants} className="space-y-2.5">
+          <motion.div className="space-y-2.5" variants={itemVariants}>
             <div className="flex items-center gap-2">
-              <Icon name="server" className="size-3.5 text-muted-foreground" />
-              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
+              <Icon className="size-3.5 text-muted-foreground" name="server" />
+              <p className="font-medium text-[11px] text-muted-foreground/90 uppercase tracking-[0.12em]">
                 Local Database
               </p>
             </div>
@@ -547,27 +603,40 @@ export function DatabaseOverview({
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted-foreground/60">Engine</span>
-                  <Badge variant="secondary" className="font-mono text-[10px] h-4 px-1 select-text">
-                    {localDbStatus.engine === "sqlite" ? "SQLite" : "PostgreSQL"}
+                  <Badge
+                    className="h-4 select-text px-1 font-mono text-[10px]"
+                    variant="secondary"
+                  >
+                    {localDbStatus.engine === "sqlite"
+                      ? "SQLite"
+                      : "PostgreSQL"}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-muted-foreground/60">Status</span>
-                  <span className={cn(
-                    "inline-flex items-center gap-1 font-medium",
-                    localDbStatus.running ? "text-emerald-500" : "text-amber-500"
-                  )}>
-                    <span className={cn(
-                      "inline-block size-1.5 rounded-full",
-                      localDbStatus.running ? "bg-emerald-500" : "bg-amber-500"
-                    )} />
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 font-medium",
+                      localDbStatus.running
+                        ? "text-emerald-500"
+                        : "text-amber-500"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block size-1.5 rounded-full",
+                        localDbStatus.running
+                          ? "bg-emerald-500"
+                          : "bg-amber-500"
+                      )}
+                    />
                     {localDbStatus.running ? "Running" : "Stopped"}
                   </span>
                 </div>
                 {localDbStatus.port != null && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground/60">Port</span>
-                    <span className="font-mono font-medium text-foreground select-text">
+                    <span className="select-text font-medium font-mono text-foreground">
                       {localDbStatus.port}
                     </span>
                   </div>
@@ -577,45 +646,51 @@ export function DatabaseOverview({
           </motion.div>
         )}
 
-
-
         {/* ── Schema list ─────────────────────────────────────── */}
         {schemasWithCounts.length > 0 && (
-          <motion.div variants={itemVariants} className="space-y-2.5">
+          <motion.div className="space-y-2.5" variants={itemVariants}>
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/90">
+              <p className="font-medium text-[11px] text-muted-foreground/90 uppercase tracking-[0.12em]">
                 Schemas
               </p>
               <Badge
+                className="h-5 px-1.5 font-mono text-[10px]"
                 variant="secondary"
-                className="font-mono text-[10px] h-5 px-1.5"
               >
                 {schemasWithCounts.length}
               </Badge>
             </div>
-            <div className="divide-y divide-border/50 border-y border-border/50">
+            <div className="divide-y divide-border/50 border-border/50 border-y">
               {schemasWithCounts.map((schema, i) => (
                 <motion.button
-                  key={schema.name}
-                  type="button"
-                  onClick={() => onViewTables()}
+                  animate={{ opacity: 1, x: 0 }}
                   className="group flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset"
                   initial={{ opacity: 0, x: -4 }}
-                  animate={{ opacity: 1, x: 0 }}
+                  key={schema.name}
+                  onClick={() => onViewTables()}
                   transition={{
-                    duration: 0.18,
                     delay: i * 0.03,
-                    ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+                    duration: 0.18,
+                    ease: [0.23, 1, 0.32, 1] as [
+                      number,
+                      number,
+                      number,
+                      number,
+                    ],
                   }}
+                  type="button"
                   whileTap={{ scale: 0.995 }}
                 >
-                  <span className="flex-1 truncate font-medium select-text">
+                  <span className="flex-1 select-text truncate font-medium">
                     {schema.name}
                   </span>
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[11px] text-muted-foreground tabular-nums">
                     {schema.count}
                   </span>
-                  <Icon name="chevron-right" className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
+                  <Icon
+                    className="size-3 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground"
+                    name="chevron-right"
+                  />
                 </motion.button>
               ))}
             </div>

@@ -5,9 +5,10 @@
  * Uses Transformers.js for local embedding generation (100% offline, privacy-first).
  * Enables the AI to "remember" context from previous conversations.
  */
-import { join } from "node:path";
+
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { app } from "electron";
 
 // ---------------------------------------------------------------------------
@@ -15,15 +16,15 @@ import { app } from "electron";
 // ---------------------------------------------------------------------------
 
 export interface MemoryEntry {
-  id: string;
-  conversationId: string;
-  messageId: string;
   connectionId?: string;
-  role: "user" | "assistant";
   content: string;
+  conversationId: string;
   embedding?: Float32Array; // 384-dimensional vector
-  timestamp: string;
+  id: string;
+  messageId: string;
   metadata?: string; // JSON string with extra context
+  role: "user" | "assistant";
+  timestamp: string;
 }
 
 export interface MemorySearchResult {
@@ -33,8 +34,8 @@ export interface MemorySearchResult {
 
 export interface MemoryContext {
   relevantMessages: MemoryEntry[];
-  similarQueries: string[];
   schemaContext?: string;
+  similarQueries: string[];
 }
 
 /**
@@ -57,20 +58,23 @@ export interface MemoryContext {
  */
 function buildSafeFtsQuery(raw: string): string | null {
   const trimmed = raw.trim();
-  if (!trimmed) return null;
+  if (!trimmed) {
+    return null;
+  }
 
-  const tokens = trimmed
-    .toLowerCase()
-    .match(/[\p{L}\p{N}_-]+/gu)
-    ?.map((token) => token.replace(/^-+|-+$/g, "").trim())
-    .filter((token) => token.length > 1)
-    .slice(0, 12) ?? [];
+  const tokens =
+    trimmed
+      .toLowerCase()
+      .match(/[\p{L}\p{N}_-]+/gu)
+      ?.map((token) => token.replace(/^-+|-+$/g, "").trim())
+      .filter((token) => token.length > 1)
+      .slice(0, 12) ?? [];
 
-  if (tokens.length === 0) return null;
+  if (tokens.length === 0) {
+    return null;
+  }
 
-  return tokens
-    .map((token) => `"${token.replace(/"/g, "\"\"")}"`)
-    .join(" OR ");
+  return tokens.map((token) => `"${token.replace(/"/g, '""')}"`).join(" OR ");
 }
 
 // ---------------------------------------------------------------------------
@@ -79,11 +83,11 @@ function buildSafeFtsQuery(raw: string): string | null {
 
 const DB_FILENAME = "ai-memory.db";
 const DB_DIR = "memory";
-const MAX_MEMORY_ENTRIES_GLOBAL = 5_000;
+const MAX_MEMORY_ENTRIES_GLOBAL = 5000;
 const MAX_MEMORY_ENTRIES_PER_CONVERSATION = 200;
 
 const runtimeRequire = createRequire(
-  join(process.resourcesPath || process.cwd(), "package.json"),
+  join(process.resourcesPath || process.cwd(), "package.json")
 );
 const cwdRequire = createRequire(join(process.cwd(), "package.json"));
 
@@ -91,13 +95,17 @@ type BetterSqlite3Ctor = new (...args: any[]) => any;
 let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
 
 function loadBetterSqlite3(): BetterSqlite3Ctor {
-  if (betterSqlite3Cached) return betterSqlite3Cached;
+  if (betterSqlite3Cached) {
+    return betterSqlite3Cached;
+  }
 
   const base = process.resourcesPath;
   const candidates = [
     "better-sqlite3",
     base ? join(base, "node_modules", "better-sqlite3") : null,
-    base ? join(base, "app.asar.unpacked", "node_modules", "better-sqlite3") : null,
+    base
+      ? join(base, "app.asar.unpacked", "node_modules", "better-sqlite3")
+      : null,
     base ? join(base, "better-sqlite3") : null,
   ].filter(Boolean) as string[];
 
@@ -118,17 +126,21 @@ function loadBetterSqlite3(): BetterSqlite3Ctor {
   throw new Error(
     `Failed to load better-sqlite3 in memory-store. Last error: ${
       lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
+    }`
   );
 }
 
 let cachedDbPath: string | null = null;
 
 function getDbPath(): string {
-  if (cachedDbPath) return cachedDbPath;
+  if (cachedDbPath) {
+    return cachedDbPath;
+  }
 
   if (!app) {
-    throw new Error("Electron app not available - cannot initialize memory database");
+    throw new Error(
+      "Electron app not available - cannot initialize memory database"
+    );
   }
 
   const userData = app.getPath("userData");
@@ -228,7 +240,9 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
     normB += b[i] * b[i];
   }
 
-  if (normA === 0 || normB === 0) return 0;
+  if (normA === 0 || normB === 0) {
+    return 0;
+  }
 
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
@@ -255,7 +269,9 @@ function bufferToEmbedding(buffer: Buffer): Float32Array {
  * Save a memory entry with optional embedding.
  */
 export function saveMemory(
-  entry: Omit<MemoryEntry, "id" | "timestamp" | "embedding"> & { embedding?: Float32Array }
+  entry: Omit<MemoryEntry, "id" | "timestamp" | "embedding"> & {
+    embedding?: Float32Array;
+  }
 ): MemoryEntry {
   const database = getDb();
   const id = `${entry.conversationId}_${entry.messageId}_${entry.role}`;
@@ -297,15 +313,15 @@ export function saveMemory(
   enforceMemoryRetention(database);
 
   return {
-    id: row.id,
-    conversationId: row.conversation_id,
-    messageId: row.message_id,
     connectionId: row.connection_id ?? undefined,
-    role: row.role,
     content: row.content,
+    conversationId: row.conversation_id,
     embedding: row.embedding ? bufferToEmbedding(row.embedding) : undefined,
-    timestamp: row.timestamp,
+    id: row.id,
+    messageId: row.message_id,
     metadata: row.metadata ?? undefined,
+    role: row.role,
+    timestamp: row.timestamp,
   };
 }
 
@@ -375,12 +391,15 @@ export function searchSimilarMemories(
 
   if (options?.lookbackHours) {
     // Hours interpolated into SQL - safe since it's a number
-    conditions.push(`timestamp >= datetime('now', '-${options.lookbackHours} hours')`);
+    conditions.push(
+      `timestamp >= datetime('now', '-${options.lookbackHours} hours')`
+    );
   }
 
   conditions.push("embedding IS NOT NULL");
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const whereClause =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   // Get all entries with embeddings
   const stmt = database.prepare(`
@@ -411,15 +430,15 @@ export function searchSimilarMemories(
 
       return {
         entry: {
-          id: row.id,
-          conversationId: row.conversation_id,
-          messageId: row.message_id,
           connectionId: row.connection_id ?? undefined,
-          role: row.role,
           content: row.content,
+          conversationId: row.conversation_id,
           embedding,
-          timestamp: row.timestamp,
+          id: row.id,
+          messageId: row.message_id,
           metadata: row.metadata ?? undefined,
+          role: row.role,
+          timestamp: row.timestamp,
         },
         similarity,
       };
@@ -444,7 +463,9 @@ export function searchMemoriesByText(
   const database = getDb();
   const limit = options?.limit ?? 5;
   const ftsQuery = buildSafeFtsQuery(query);
-  if (!ftsQuery) return [];
+  if (!ftsQuery) {
+    return [];
+  }
 
   // FTS5 MATCH does not support bound parameters — the match expression must be
   // a literal string in the SQL. buildSafeFtsQuery already sanitises the input
@@ -459,7 +480,9 @@ export function searchMemoriesByText(
   `);
 
   const params: unknown[] = [];
-  if (options?.connectionId) params.push(options.connectionId);
+  if (options?.connectionId) {
+    params.push(options.connectionId);
+  }
   params.push(limit);
 
   const rows = stmt.all(...params) as Array<{
@@ -475,29 +498,27 @@ export function searchMemoriesByText(
   }>;
 
   return rows.map((row) => ({
-    id: row.id,
-    conversationId: row.conversation_id,
-    messageId: row.message_id,
     connectionId: row.connection_id ?? undefined,
-    role: row.role,
     content: row.content,
+    conversationId: row.conversation_id,
     embedding: row.embedding ? bufferToEmbedding(row.embedding) : undefined,
-    timestamp: row.timestamp,
+    id: row.id,
+    messageId: row.message_id,
     metadata: row.metadata ?? undefined,
+    role: row.role,
+    timestamp: row.timestamp,
   }));
 }
 
 /**
  * Get recent conversation history for a connection.
  */
-export function getRecentMemories(
-  options: {
-    connectionId?: string;
-    conversationId?: string;
-    limit?: number;
-    hours?: number;
-  }
-): MemoryEntry[] {
+export function getRecentMemories(options: {
+  connectionId?: string;
+  conversationId?: string;
+  limit?: number;
+  hours?: number;
+}): MemoryEntry[] {
   const database = getDb();
   const limit = options.limit ?? 10;
 
@@ -520,7 +541,8 @@ export function getRecentMemories(
     conditions.push(`timestamp >= datetime('now', '-${options.hours} hours')`);
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const whereClause =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const stmt = database.prepare(`
     SELECT * FROM ai_memory
@@ -545,15 +567,15 @@ export function getRecentMemories(
 
   return rows
     .map((row) => ({
-      id: row.id,
-      conversationId: row.conversation_id,
-      messageId: row.message_id,
       connectionId: row.connection_id ?? undefined,
-      role: row.role,
       content: row.content,
+      conversationId: row.conversation_id,
       embedding: row.embedding ? bufferToEmbedding(row.embedding) : undefined,
-      timestamp: row.timestamp,
+      id: row.id,
+      messageId: row.message_id,
       metadata: row.metadata ?? undefined,
+      role: row.role,
+      timestamp: row.timestamp,
     }))
     .reverse(); // Oldest first
 }
@@ -598,7 +620,9 @@ export function clearConnectionMemories(connectionId: string): number {
   ftsStmt.run(connectionId);
 
   // Clear main table
-  const stmt = database.prepare("DELETE FROM ai_memory WHERE connection_id = ?");
+  const stmt = database.prepare(
+    "DELETE FROM ai_memory WHERE connection_id = ?"
+  );
   const result = stmt.run(connectionId);
   return result.changes;
 }
@@ -626,10 +650,12 @@ export function getMemoryStats(): {
   );
 
   return {
+    conversations: (conversationsStmt.get() as { count: number }).count,
+    oldestEntry:
+      (oldestStmt.get() as { timestamp: string } | undefined)?.timestamp ??
+      null,
     totalEntries: (totalStmt.get() as { count: number }).count,
     withEmbeddings: (withEmbeddingsStmt.get() as { count: number }).count,
-    conversations: (conversationsStmt.get() as { count: number }).count,
-    oldestEntry: (oldestStmt.get() as { timestamp: string } | undefined)?.timestamp ?? null,
   };
 }
 

@@ -8,7 +8,22 @@
  * names and result.fields type mapping), plus Kysely for PK/FK introspection.
  * DDL and clone/export operations are delegated to pg-runtime helpers.
  */
-import type { DatabaseType, SslMode, ConstraintInfo, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
+
+// Kysely imports are used via getPgKysely() for schema introspection queries
+import {
+  buildAddColumnSql,
+  buildAlterColumnTypeSql,
+  buildCreateIndexSql,
+  buildCreateSchemaSql,
+  buildCreateTableSql,
+  buildDropColumnSql,
+  buildDropIndexSql,
+  buildDropTableSql,
+  buildRenameColumnSql,
+  buildRenameTableSql,
+  buildSetColumnDefaultSql,
+  buildSetColumnNullableSql,
+} from "./ddl-sql";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getPgKysely, getPgPool } from "./kysely-factory";
 import {
@@ -27,21 +42,14 @@ import {
   testPgConnection,
   waitForDatabase as waitForPgDatabase,
 } from "./pg-runtime";
-// Kysely imports are used via getPgKysely() for schema introspection queries
-import {
-  buildAddColumnSql,
-  buildAlterColumnTypeSql,
-  buildCreateIndexSql,
-  buildCreateSchemaSql,
-  buildCreateTableSql,
-  buildDropColumnSql,
-  buildDropIndexSql,
-  buildDropTableSql,
-  buildRenameColumnSql,
-  buildRenameTableSql,
-  buildSetColumnDefaultSql,
-  buildSetColumnNullableSql,
-} from "./ddl-sql";
+import type {
+  ConstraintInfo,
+  DatabaseType,
+  SchemaEnum,
+  SchemaFunction,
+  SchemaTrigger,
+  SslMode,
+} from "./types";
 
 const DB_TYPE = "postgresql" as DatabaseType;
 
@@ -49,27 +57,451 @@ export { buildPgWhereClause, mapPgType, pgEscId };
 
 export function createPostgresDriver(): DatabaseDriver {
   return {
-    type: DB_TYPE,
-    defaultPort: 5432,
-    defaultDatabase: "postgres",
-    defaultUsername: "postgres",
-    sslModes: ["disable", "prefer", "require", "verify_ca", "verify_full"] as SslMode[],
+    async addColumn(
+      connectionString,
+      schema,
+      table,
+      columnName,
+      dataType,
+      isNullable,
+      defaultExpr,
+      ifNotExists
+    ) {
+      const sql = buildAddColumnSql(
+        DB_TYPE,
+        schema,
+        table,
+        columnName,
+        dataType,
+        isNullable ?? true,
+        defaultExpr,
+        ifNotExists ?? false
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
+
+    async alterColumnType(
+      connectionString,
+      schema,
+      table,
+      columnName,
+      newType,
+      usingExpr
+    ) {
+      const sql = buildAlterColumnTypeSql(
+        DB_TYPE,
+        schema,
+        table,
+        columnName,
+        newType,
+        usingExpr
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
 
     buildConnectionString(config: DriverConnectionConfig): string {
       return buildPgConnectionString(config);
     },
 
-    async testConnection(config) {
-      const connStr = buildPgConnectionString(config);
-      return testPgConnection(connStr);
+    async createIndex(
+      connectionString,
+      schema,
+      table,
+      indexName,
+      columns,
+      unique,
+      ifNotExists
+    ) {
+      const sql = buildCreateIndexSql(
+        DB_TYPE,
+        schema,
+        table,
+        indexName,
+        columns,
+        unique ?? false,
+        ifNotExists ?? false
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
+
+    async createSchema(connectionString, schemaName, ifNotExists) {
+      const sql = buildCreateSchemaSql(
+        DB_TYPE,
+        schemaName,
+        ifNotExists ?? false
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
+
+    // ── DDL ─────────────────────────────────────────────────────────
+
+    async createTable(
+      connectionString,
+      schema,
+      tableName,
+      columns,
+      primaryKeyColumns,
+      ifNotExists
+    ) {
+      const sql = buildCreateTableSql(
+        DB_TYPE,
+        schema,
+        tableName,
+        columns,
+        primaryKeyColumns ?? [],
+        ifNotExists ?? false
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
+    defaultDatabase: "postgres",
+    defaultPort: 5432,
+    defaultUsername: "postgres",
+
+    async dropColumn(
+      connectionString,
+      schema,
+      table,
+      columnName,
+      cascade,
+      ifExists
+    ) {
+      const sql = buildDropColumnSql(
+        DB_TYPE,
+        schema,
+        table,
+        columnName,
+        cascade ?? false,
+        ifExists ?? false
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
+
+    async dropIndex(connectionString, schema, indexName, cascade, ifExists) {
+      const sql = buildDropIndexSql(
+        DB_TYPE,
+        schema,
+        indexName,
+        cascade ?? false,
+        ifExists ?? false
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
+
+    async dropTable(connectionString, schema, tableName, cascade, ifExists) {
+      const sql = buildDropTableSql(
+        DB_TYPE,
+        schema,
+        tableName,
+        cascade ?? false,
+        ifExists ?? false
+      );
+      await executePgSql(connectionString, sql);
+      return sql;
+    },
+
+    async executeBatchDdl(connectionString, statements, throwOnError) {
+      return executePgBatchDdl(connectionString, statements, throwOnError);
     },
 
     async executeQuery(connectionString, sqlQuery, signal) {
       return executePgQuery(connectionString, sqlQuery, signal);
     },
 
+    async explainQuery(connectionString, sql, analyze = false) {
+      const pool = getPgPool(connectionString);
+      const client = await pool.connect();
+      try {
+        // Use JSON format for easier parsing
+        const explainSql = analyze
+          ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`
+          : `EXPLAIN (FORMAT JSON) ${sql}`;
+
+        const result = await client.query(explainSql);
+
+        // PostgreSQL returns JSON array with plan info
+        const planJson = result.rows[0]?.["QUERY PLAN"] ?? result.rows[0];
+        const planText = JSON.stringify(planJson, null, 2);
+
+        // Try to extract cost and row estimates from the plan
+        let totalCost: number | undefined;
+        let estimatedRows: number | undefined;
+        let executionTimeMs: number | undefined;
+
+        if (Array.isArray(planJson) && planJson.length > 0) {
+          const plan = planJson[0].Plan ?? planJson[0];
+          totalCost = plan["Total Cost"] ?? plan["Total Cost"];
+          estimatedRows = plan["Plan Rows"] ?? plan["Actual Rows"];
+          if (plan["Execution Time"]) {
+            executionTimeMs = plan["Execution Time"];
+          }
+        }
+
+        return {
+          estimatedRows,
+          executionTimeMs,
+          hasExecutionStats: analyze,
+          plan: planText,
+          totalCost,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL explainQuery error: ${msg}`);
+      } finally {
+        client.release();
+      }
+    },
+
+    // ── Clone / Export ──────────────────────────────────────────────
+    // These use the pool directly for complex SQL that Kysely doesn't help with.
+
+    async exportSchemaDdl(connectionString) {
+      return exportPgSchemaDdl(connectionString);
+    },
+
+    async exportTableData(connectionString, schema, table, batchSize, offset) {
+      return exportPgTableData(
+        connectionString,
+        schema,
+        table,
+        batchSize,
+        offset
+      );
+    },
+
+    async getConstraints(connectionString, schema, table) {
+      const db = getPgKysely(connectionString);
+
+      try {
+        // Query information_schema for all constraints
+        const constraintRows = await db
+          .withSchema("information_schema")
+          .selectFrom("table_constraints as tc")
+          .innerJoin("key_column_usage as kcu", (join) =>
+            join
+              .onRef("tc.constraint_name", "=", "kcu.constraint_name")
+              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema")
+          )
+          .leftJoin("referential_constraints as rc", (join) =>
+            join
+              .onRef("tc.constraint_name", "=", "rc.constraint_name")
+              .onRef("tc.constraint_schema", "=", "rc.constraint_schema")
+          )
+          .select([
+            "tc.constraint_name",
+            "tc.constraint_type",
+            "kcu.column_name",
+            "rc.unique_constraint_schema as referenced_schema",
+            "rc.unique_constraint_name",
+            "rc.update_rule",
+            "rc.delete_rule",
+          ])
+          .where("tc.table_schema", "=", schema)
+          .where("tc.table_name", "=", table)
+          .execute();
+
+        // Group by constraint name
+        const constraintMap = new Map<string, ConstraintInfo>();
+
+        for (const row of constraintRows) {
+          const typeMap: Record<string, import("./types").ConstraintType> = {
+            CHECK: "check",
+            "FOREIGN KEY": "foreign_key",
+            "PRIMARY KEY": "primary_key",
+            UNIQUE: "unique",
+          };
+
+          const constraintType = typeMap[row.constraint_type] ?? "check";
+
+          if (!constraintMap.has(row.constraint_name)) {
+            constraintMap.set(row.constraint_name, {
+              columns: [],
+              deleteRule: row.delete_rule ?? undefined,
+              name: row.constraint_name,
+              referencedSchema: row.referenced_schema ?? undefined,
+              schema,
+              table,
+              type: constraintType,
+              updateRule: row.update_rule ?? undefined,
+            });
+          }
+
+          const constraint = constraintMap.get(row.constraint_name)!;
+          if (
+            row.column_name &&
+            !constraint.columns.includes(row.column_name)
+          ) {
+            constraint.columns.push(row.column_name);
+          }
+        }
+
+        return Array.from(constraintMap.values());
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `PostgreSQL getConstraints error for ${schema}.${table}: ${msg}`
+        );
+      }
+    },
+
     async getDatabaseInfo(connectionString) {
       return getPgDatabaseInfo(connectionString);
+    },
+
+    async getEnums(connectionString, schema): Promise<SchemaEnum[]> {
+      const pool = getPgPool(connectionString);
+      try {
+        const result = await pool.query(
+          `SELECT t.typname   AS name,
+                  n.nspname   AS schema,
+                  array_agg(e.enumlabel ORDER BY e.enumsortorder) AS values
+           FROM pg_type t
+           JOIN pg_enum e        ON t.oid = e.enumtypid
+           JOIN pg_namespace n   ON t.typnamespace = n.oid
+           WHERE n.nspname = $1
+           GROUP BY t.typname, n.nspname
+           ORDER BY t.typname`,
+          [schema]
+        );
+
+        // Parse PostgreSQL array_agg result — may come as a string like "{val1,val2}"
+        // or as an actual array depending on pg driver version/settings
+        const parsePgArray = (val: unknown): string[] => {
+          if (Array.isArray(val)) {
+            return val.map(String);
+          }
+          if (typeof val === "string") {
+            // PostgreSQL arrays are formatted as {val1,val2,...}
+            // Strip braces and split by comma, handling quoted values
+            const inner = val.replace(/^\{|\}$/g, "");
+            if (!inner) {
+              return [];
+            }
+            // Handle quoted values (e.g., {"value with space"})
+            const match = inner.match(/("[^"]+"|'[^']+'|[^,]+)/g);
+            if (!match) {
+              return [];
+            }
+            return match.map((v) => {
+              const trimmed = v.trim();
+              // Remove surrounding quotes if present
+              if (
+                (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+                (trimmed.startsWith("'") && trimmed.endsWith("'"))
+              ) {
+                return trimmed.slice(1, -1);
+              }
+              return trimmed;
+            });
+          }
+          return [];
+        };
+
+        return result.rows.map((row: Record<string, unknown>) => ({
+          name: String(row.name),
+          schema: String(row.schema),
+          values: parsePgArray(row.values),
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getEnums error for ${schema}: ${msg}`);
+      }
+    },
+
+    async getFunctions(connectionString, schema): Promise<SchemaFunction[]> {
+      const pool = getPgPool(connectionString);
+      try {
+        const result = await pool.query(
+          `SELECT p.proname            AS name,
+                  n.nspname            AS schema,
+                  CASE p.prokind
+                    WHEN 'f' THEN 'function'
+                    WHEN 'p' THEN 'procedure'
+                    ELSE 'function'
+                  END                AS type,
+                  l.lanname            AS language,
+                  pg_get_function_result(p.oid) AS return_type,
+                  p.pronargs           AS argument_count,
+                  pg_get_function_arguments(p.oid) AS arguments,
+                  pg_get_functiondef(p.oid)    AS definition
+           FROM pg_proc p
+           JOIN pg_namespace n ON p.pronamespace = n.oid
+           LEFT JOIN pg_language l ON p.prolang = l.oid
+           WHERE n.nspname = $1
+             AND p.prokind IN ('f', 'p')
+           ORDER BY p.proname`,
+          [schema]
+        );
+        return result.rows.map((row: Record<string, unknown>) => ({
+          argument_count: Number(row.argument_count ?? 0),
+          arguments: row.arguments ? String(row.arguments) : null,
+          definition: row.definition ? String(row.definition) : null,
+          language: row.language ? String(row.language) : null,
+          name: String(row.name),
+          return_type: row.return_type ? String(row.return_type) : null,
+          schema: String(row.schema),
+          type: String(row.type) as "function" | "procedure",
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getFunctions error for ${schema}: ${msg}`);
+      }
+    },
+
+    async getIndexes(connectionString, schema, table) {
+      const db = getPgKysely(connectionString);
+
+      try {
+        // Query pg_catalog for detailed index information
+        const indexRows = await db
+          .withSchema("pg_catalog")
+          .selectFrom("pg_indexes as pi")
+          .innerJoin("pg_class as c", (join) =>
+            join.onRef("c.relname", "=", "pi.indexname")
+          )
+          .innerJoin("pg_namespace as n", (join) =>
+            join
+              .onRef("n.oid", "=", "c.relnamespace")
+              .on("n.nspname", "=", schema)
+          )
+          .select(["pi.indexname", "pi.indexdef"])
+          .where("pi.schemaname", "=", schema)
+          .where("pi.tablename", "=", table)
+          .execute();
+
+        return indexRows.map((row) => {
+          const indexdef = row.indexdef;
+          const isUnique = indexdef.includes("UNIQUE");
+          const isPrimary = indexdef.includes("PRIMARY KEY");
+          const typeMatch = indexdef.match(/USING\s+(\w+)/);
+          const type = typeMatch ? typeMatch[1] : "btree";
+          const columnMatch = indexdef.match(/\(([^)]+)\)/);
+          const columns = columnMatch
+            ? columnMatch[1].split(",").map((c: string) => c.trim())
+            : [];
+
+          return {
+            columns,
+            isPrimary,
+            isUnique,
+            name: row.indexname,
+            schema,
+            table,
+            type,
+          };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `PostgreSQL getIndexes error for ${schema}.${table}: ${msg}`
+        );
+      }
     },
 
     async getSchema(connectionString) {
@@ -124,12 +556,12 @@ export function createPostgresDriver(): DatabaseDriver {
           .innerJoin("key_column_usage as kcu", (join) =>
             join
               .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema")
           )
           .innerJoin("constraint_column_usage as ccu", (join) =>
             join
               .onRef("ccu.constraint_name", "=", "tc.constraint_name")
-              .onRef("ccu.constraint_schema", "=", "tc.constraint_schema"),
+              .onRef("ccu.constraint_schema", "=", "tc.constraint_schema")
           )
           .select([
             "tc.table_schema",
@@ -145,35 +577,61 @@ export function createPostgresDriver(): DatabaseDriver {
           .execute();
 
         // Build tables map
-        const tablesMap = new Map<string, {
-          name: string;
-          schema: string;
-          columns: Array<{ name: string; data_type: string; udt_name: string | null; is_nullable: boolean; column_default: string | null }>;
-          indexes: Array<{ name: string; is_unique: boolean; is_primary: boolean; column_names: string[] }>;
-          foreign_keys: Array<{ name: string; column_name: string; referenced_schema: string | undefined; referenced_table: string; referenced_column: string }>;
-          has_rls: boolean;
-          rls_policies: Array<{ name: string; kind: string; roles: string[]; using_expr: string | null; with_check_expr: string | null }>;
-        }>();
+        const tablesMap = new Map<
+          string,
+          {
+            name: string;
+            schema: string;
+            columns: Array<{
+              name: string;
+              data_type: string;
+              udt_name: string | null;
+              is_nullable: boolean;
+              column_default: string | null;
+            }>;
+            indexes: Array<{
+              name: string;
+              is_unique: boolean;
+              is_primary: boolean;
+              column_names: string[];
+            }>;
+            foreign_keys: Array<{
+              name: string;
+              column_name: string;
+              referenced_schema: string | undefined;
+              referenced_table: string;
+              referenced_column: string;
+            }>;
+            has_rls: boolean;
+            rls_policies: Array<{
+              name: string;
+              kind: string;
+              roles: string[];
+              using_expr: string | null;
+              with_check_expr: string | null;
+            }>;
+          }
+        >();
 
         for (const row of columns) {
           const key = `${row.table_schema}.${row.table_name}`;
           if (!tablesMap.has(key)) {
             tablesMap.set(key, {
-              name: row.table_name,
-              schema: row.table_schema,
               columns: [],
-              indexes: [],
               foreign_keys: [],
               has_rls: false,
+              indexes: [],
+              name: row.table_name,
               rls_policies: [],
+              schema: row.table_schema,
             });
           }
           tablesMap.get(key)!.columns.push({
-            name: row.column_name,
-            data_type: row.data_type,
-            udt_name: row.udt_name ?? null,
-            is_nullable: row.is_nullable === "YES",
             column_default: row.column_default ?? null,
+            data_type: row.data_type,
+            is_nullable: row.is_nullable === "YES",
+            name: row.column_name,
+            udt_name: row.udt_name ?? null,
           });
         }
 
@@ -188,10 +646,10 @@ export function createPostgresDriver(): DatabaseDriver {
               ? columnMatch[1].split(",").map((c: string) => c.trim())
               : [];
             table.indexes.push({
-              name: row.indexname,
-              is_unique: isUnique,
-              is_primary: isPrimary,
               column_names: columnNames,
+              is_primary: isPrimary,
+              is_unique: isUnique,
+              name: row.indexname,
             });
           }
         }
@@ -201,11 +659,11 @@ export function createPostgresDriver(): DatabaseDriver {
           const table = tablesMap.get(key);
           if (table) {
             table.foreign_keys.push({
-              name: `${row.table_name}_${row.column_name}_fkey`,
               column_name: row.column_name,
+              name: `${row.table_name}_${row.column_name}_fkey`,
+              referenced_column: row.foreign_column_name,
               referenced_schema: row.foreign_table_schema ?? undefined,
               referenced_table: row.foreign_table_name,
-              referenced_column: row.foreign_column_name,
             });
           }
         }
@@ -270,16 +728,22 @@ export function createPostgresDriver(): DatabaseDriver {
       return {
         schemas: schemas.map((r) => r.schema_name),
         tables: tablesResult.rows.map((row: Record<string, unknown>) => {
-          const reltuples = Math.max(0, Math.round(Number(row.estimated_row_count ?? 0)));
-          const liveTuples = Math.max(0, Math.round(Number(row.live_tuple_count ?? 0)));
+          const reltuples = Math.max(
+            0,
+            Math.round(Number(row.estimated_row_count ?? 0))
+          );
+          const liveTuples = Math.max(
+            0,
+            Math.round(Number(row.live_tuple_count ?? 0))
+          );
           // Prefer reltuples when available; fall back to n_live_tup when
           // reltuples is 0 (stale stats after CREATE TABLE without ANALYZE).
           const estimatedRowCount = reltuples > 0 ? reltuples : liveTuples;
           return {
+            estimated_row_count: estimatedRowCount,
+            has_rls: Boolean(row.has_rls),
             name: String(row.table_name),
             schema: String(row.table_schema),
-            has_rls: Boolean(row.has_rls),
-            estimated_row_count: estimatedRowCount,
           };
         }),
       };
@@ -321,12 +785,12 @@ export function createPostgresDriver(): DatabaseDriver {
           .innerJoin("key_column_usage as kcu", (join) =>
             join
               .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema")
           )
           .innerJoin("constraint_column_usage as ccu", (join) =>
             join
               .onRef("ccu.constraint_name", "=", "tc.constraint_name")
-              .onRef("ccu.constraint_schema", "=", "tc.constraint_schema"),
+              .onRef("ccu.constraint_schema", "=", "tc.constraint_schema")
           )
           .select([
             "kcu.column_name",
@@ -351,7 +815,13 @@ export function createPostgresDriver(): DatabaseDriver {
         const hasRls = rlsRow?.has_rls === true;
 
         // 5. RLS policies — only if RLS is enabled
-        let rlsPolicies: Array<{ name: string; kind: string; roles: string[]; using_expr: string | null; with_check_expr: string | null }> = [];
+        let rlsPolicies: Array<{
+          name: string;
+          kind: string;
+          roles: string[];
+          using_expr: string | null;
+          with_check_expr: string | null;
+        }> = [];
         if (hasRls) {
           const policyRows = await db
             .withSchema("pg_catalog")
@@ -367,10 +837,16 @@ export function createPostgresDriver(): DatabaseDriver {
             .where("c.relname", "=", table)
             .execute();
 
-          const cmdMap: Record<string, string> = { r: "SELECT", a: "INSERT", w: "UPDATE", d: "DELETE", "*": "ALL" };
+          const cmdMap: Record<string, string> = {
+            "*": "ALL",
+            a: "INSERT",
+            d: "DELETE",
+            r: "SELECT",
+            w: "UPDATE",
+          };
           rlsPolicies = policyRows.map((row) => ({
-            name: String(row.policy_name),
             kind: cmdMap[String(row.policy_cmd)] ?? "UNKNOWN",
+            name: String(row.policy_name),
             roles: [],
             using_expr: null,
             with_check_expr: null,
@@ -387,292 +863,209 @@ export function createPostgresDriver(): DatabaseDriver {
             ? columnMatch[1].split(",").map((c: string) => c.trim())
             : [];
           return {
-            name: (row as unknown as { indexname: string }).indexname,
-            is_unique: isUnique,
-            is_primary: isPrimary,
             column_names: columnNames,
+            is_primary: isPrimary,
+            is_unique: isUnique,
+            name: (row as unknown as { indexname: string }).indexname,
           };
         });
 
         return {
-          name: table,
-          schema,
-          has_rls: hasRls,
           columns: columns.map((c) => ({
-            name: c.column_name,
-            data_type: c.data_type,
-            udt_name: c.udt_name ?? null,
-            is_nullable: c.is_nullable === "YES",
             column_default: c.column_default ?? null,
+            data_type: c.data_type,
+            is_nullable: c.is_nullable === "YES",
+            name: c.column_name,
+            udt_name: c.udt_name ?? null,
           })),
-          indexes: indexResults,
           foreign_keys: foreignKeys.map((fk) => ({
-            name: `${table}_${fk.column_name}_fkey`,
             column_name: fk.column_name,
+            name: `${table}_${fk.column_name}_fkey`,
+            referenced_column: fk.foreign_column_name,
             referenced_schema: fk.foreign_table_schema ?? undefined,
             referenced_table: fk.foreign_table_name,
-            referenced_column: fk.foreign_column_name,
           })),
+          has_rls: hasRls,
+          indexes: indexResults,
+          name: table,
           rls_policies: rlsPolicies,
+          schema,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL table details error for ${schema}.${table}: ${msg}`);
+        throw new Error(
+          `PostgreSQL table details error for ${schema}.${table}: ${msg}`
+        );
       }
     },
 
-    async getIndexes(connectionString, schema, table) {
-      const db = getPgKysely(connectionString);
-
+    async getTableSample(connectionString, schema, table, sampleSize = 100) {
+      const pool = getPgPool(connectionString);
+      const client = await pool.connect();
       try {
-        // Query pg_catalog for detailed index information
-        const indexRows = await db
-          .withSchema("pg_catalog")
-          .selectFrom("pg_indexes as pi")
-          .innerJoin("pg_class as c", (join) =>
-            join.onRef("c.relname", "=", "pi.indexname"),
-          )
-          .innerJoin("pg_namespace as n", (join) =>
-            join.onRef("n.oid", "=", "c.relnamespace").on("n.nspname", "=", schema),
-          )
-          .select(["pi.indexname", "pi.indexdef"])
-          .where("pi.schemaname", "=", schema)
-          .where("pi.tablename", "=", table)
-          .execute();
+        // Get total row count
+        const countResult = await client.query(
+          `SELECT COUNT(*) as cnt FROM ${pgEscId(schema)}.${pgEscId(table)}`
+        );
+        const totalRows = Number.parseInt(
+          countResult.rows[0].cnt as string,
+          10
+        );
 
-        return indexRows.map((row) => {
-          const indexdef = row.indexdef;
-          const isUnique = indexdef.includes("UNIQUE");
-          const isPrimary = indexdef.includes("PRIMARY KEY");
-          const typeMatch = indexdef.match(/USING\s+(\w+)/);
-          const type = typeMatch ? typeMatch[1] : "btree";
-          const columnMatch = indexdef.match(/\(([^)]+)\)/);
-          const columns = columnMatch
-            ? columnMatch[1].split(",").map((c: string) => c.trim())
-            : [];
-
-          return {
-            name: row.indexname,
-            schema,
-            table,
-            columns,
-            isUnique,
-            isPrimary,
-            type,
-          };
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL getIndexes error for ${schema}.${table}: ${msg}`);
-      }
-    },
-
-    async getConstraints(connectionString, schema, table) {
-      const db = getPgKysely(connectionString);
-
-      try {
-        // Query information_schema for all constraints
-        const constraintRows = await db
-          .withSchema("information_schema")
-          .selectFrom("table_constraints as tc")
-          .innerJoin("key_column_usage as kcu", (join) =>
-            join
-              .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-              .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
-          )
-          .leftJoin("referential_constraints as rc", (join) =>
-            join
-              .onRef("tc.constraint_name", "=", "rc.constraint_name")
-              .onRef("tc.constraint_schema", "=", "rc.constraint_schema"),
-          )
-          .select([
-            "tc.constraint_name",
-            "tc.constraint_type",
-            "kcu.column_name",
-            "rc.unique_constraint_schema as referenced_schema",
-            "rc.unique_constraint_name",
-            "rc.update_rule",
-            "rc.delete_rule",
-          ])
-          .where("tc.table_schema", "=", schema)
-          .where("tc.table_name", "=", table)
-          .execute();
-
-        // Group by constraint name
-        const constraintMap = new Map<string, ConstraintInfo>();
-
-        for (const row of constraintRows) {
-          const typeMap: Record<string, import("./types").ConstraintType> = {
-            "PRIMARY KEY": "primary_key",
-            "UNIQUE": "unique",
-            "FOREIGN KEY": "foreign_key",
-            "CHECK": "check",
-          };
-
-          const constraintType = typeMap[row.constraint_type] ?? "check";
-
-          if (!constraintMap.has(row.constraint_name)) {
-            constraintMap.set(row.constraint_name, {
-              name: row.constraint_name,
-              schema,
-              table,
-              type: constraintType,
-              columns: [],
-              referencedSchema: row.referenced_schema ?? undefined,
-              updateRule: row.update_rule ?? undefined,
-              deleteRule: row.delete_rule ?? undefined,
-            });
-          }
-
-          const constraint = constraintMap.get(row.constraint_name)!;
-          if (row.column_name && !constraint.columns.includes(row.column_name)) {
-            constraint.columns.push(row.column_name);
-          }
+        // Get sample rows using TABLESAMPLE for large tables, or random for small
+        let sampleQuery: string;
+        const safeSampleSize = Math.max(1, Math.min(sampleSize, 10_000));
+        if (totalRows > 10_000) {
+          // Use TABLESAMPLE for large tables (if available)
+          sampleQuery = `
+            SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}
+            TABLESAMPLE BERNOULLI (LEAST((${safeSampleSize}::float / ${totalRows}) * 100, 100))
+            LIMIT ${safeSampleSize}
+          `;
+        } else {
+          // Use ORDER BY random() for smaller tables
+          sampleQuery = `
+            SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}
+            ORDER BY RANDOM()
+            LIMIT ${safeSampleSize}
+          `;
         }
 
-        return Array.from(constraintMap.values());
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL getConstraints error for ${schema}.${table}: ${msg}`);
-      }
-    },
+        const sampleResult = await client.query(sampleQuery);
+        const rows = sampleResult.rows;
 
-    async getEnums(connectionString, schema): Promise<SchemaEnum[]> {
-      const pool = getPgPool(connectionString);
-      try {
-        const result = await pool.query(
-          `SELECT t.typname   AS name,
-                  n.nspname   AS schema,
-                  array_agg(e.enumlabel ORDER BY e.enumsortorder) AS values
-           FROM pg_type t
-           JOIN pg_enum e        ON t.oid = e.enumtypid
-           JOIN pg_namespace n   ON t.typnamespace = n.oid
-           WHERE n.nspname = $1
-           GROUP BY t.typname, n.nspname
-           ORDER BY t.typname`,
-          [schema],
-        );
+        // Get column statistics from information_schema and pg_stats
+        const columnStatsQuery = `
+          SELECT
+            c.column_name,
+            c.data_type,
+            c.is_nullable
+          FROM information_schema.columns c
+          WHERE c.table_schema = $1 AND c.table_name = $2
+          ORDER BY c.ordinal_position
+        `;
+        const columnResult = await client.query(columnStatsQuery, [
+          schema,
+          table,
+        ]);
 
-        // Parse PostgreSQL array_agg result — may come as a string like "{val1,val2}"
-        // or as an actual array depending on pg driver version/settings
-        const parsePgArray = (val: unknown): string[] => {
-          if (Array.isArray(val)) return val.map(String);
-          if (typeof val === "string") {
-            // PostgreSQL arrays are formatted as {val1,val2,...}
-            // Strip braces and split by comma, handling quoted values
-            const inner = val.replace(/^\{|\}$/g, "");
-            if (!inner) return [];
-            // Handle quoted values (e.g., {"value with space"})
-            const match = inner.match(/("[^"]+"|'[^']+'|[^,]+)/g);
-            if (!match) return [];
-            return match.map((v) => {
-              const trimmed = v.trim();
-              // Remove surrounding quotes if present
-              if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-                  (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-                return trimmed.slice(1, -1);
+        // Build column statistics
+        const STATS_TIMEOUT_MS = 15_000;
+        const columnStats = await Promise.all(
+          columnResult.rows.map(async (col: Record<string, unknown>) => {
+            const colName = col.column_name as string;
+            const dataType = col.data_type as string;
+            const isNullable = col.is_nullable === "YES";
+
+            const stat: import("./types").ColumnStat = {
+              columnName: colName,
+              dataType,
+            };
+
+            const statsTimeout = new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error("Column stats query timed out")),
+                STATS_TIMEOUT_MS
+              )
+            );
+
+            // Try to get min/max/avg for numeric types
+            if (
+              dataType.includes("int") ||
+              dataType.includes("float") ||
+              dataType.includes("numeric") ||
+              dataType.includes("decimal") ||
+              dataType.includes("double") ||
+              dataType.includes("real")
+            ) {
+              try {
+                const statsResult = await Promise.race([
+                  client.query(
+                    `SELECT
+                    MIN(${pgEscId(colName)}) as min_val,
+                    MAX(${pgEscId(colName)}) as max_val,
+                    AVG(${pgEscId(colName)}::float) as avg_val,
+                    COUNT(DISTINCT ${pgEscId(colName)}) as unique_count,
+                    COUNT(*) FILTER (WHERE ${pgEscId(colName)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
+                  FROM ${pgEscId(schema)}.${pgEscId(table)}`
+                  ),
+                  statsTimeout,
+                ]);
+                const row = statsResult.rows[0];
+                stat.min = row.min_val;
+                stat.max = row.max_val;
+                stat.avg = row.avg_val
+                  ? Number.parseFloat(row.avg_val as string)
+                  : undefined;
+                stat.uniqueCount = Number.parseInt(
+                  row.unique_count as string,
+                  10
+                );
+                stat.nullPercentage = row.null_pct
+                  ? Number.parseFloat(row.null_pct as string)
+                  : isNullable
+                    ? 0
+                    : 0;
+              } catch {
+                // Ignore stats errors (including timeout)
               }
-              return trimmed;
-            });
-          }
-          return [];
+            } else {
+              // For string/categorical columns, get top values
+              try {
+                const [topValuesResult, uniqueResult] = await Promise.race([
+                  Promise.all([
+                    client.query(
+                      `SELECT
+                    ${pgEscId(colName)} as value,
+                    COUNT(*) as count
+                  FROM ${pgEscId(schema)}.${pgEscId(table)}
+                  WHERE ${pgEscId(colName)} IS NOT NULL
+                  GROUP BY ${pgEscId(colName)}
+                  ORDER BY count DESC
+                  LIMIT 5`
+                    ),
+                    client.query(
+                      `SELECT
+                    COUNT(DISTINCT ${pgEscId(colName)}) as unique_count,
+                    COUNT(*) FILTER (WHERE ${pgEscId(colName)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
+                  FROM ${pgEscId(schema)}.${pgEscId(table)}`
+                    ),
+                  ]),
+                  statsTimeout,
+                ]);
+                stat.topValues = topValuesResult.rows.map(
+                  (r: Record<string, unknown>) => ({
+                    count: Number.parseInt(r.count as string, 10),
+                    value: String(r.value),
+                  })
+                );
+                stat.uniqueCount = Number.parseInt(
+                  uniqueResult.rows[0].unique_count as string,
+                  10
+                );
+                stat.nullPercentage = uniqueResult.rows[0].null_pct
+                  ? Number.parseFloat(uniqueResult.rows[0].null_pct as string)
+                  : 0;
+              } catch {
+                // Ignore stats errors (including timeout)
+              }
+            }
+
+            return stat;
+          })
+        );
+
+        return {
+          columnStats,
+          rows,
+          sampleSize: rows.length,
+          totalRows,
         };
-
-        return result.rows.map((row: Record<string, unknown>) => ({
-          name: String(row.name),
-          schema: String(row.schema),
-          values: parsePgArray(row.values),
-        }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL getEnums error for ${schema}: ${msg}`);
-      }
-    },
-
-    async getFunctions(connectionString, schema): Promise<SchemaFunction[]> {
-      const pool = getPgPool(connectionString);
-      try {
-        const result = await pool.query(
-          `SELECT p.proname            AS name,
-                  n.nspname            AS schema,
-                  CASE p.prokind
-                    WHEN 'f' THEN 'function'
-                    WHEN 'p' THEN 'procedure'
-                    ELSE 'function'
-                  END                AS type,
-                  l.lanname            AS language,
-                  pg_get_function_result(p.oid) AS return_type,
-                  p.pronargs           AS argument_count,
-                  pg_get_function_arguments(p.oid) AS arguments,
-                  pg_get_functiondef(p.oid)    AS definition
-           FROM pg_proc p
-           JOIN pg_namespace n ON p.pronamespace = n.oid
-           LEFT JOIN pg_language l ON p.prolang = l.oid
-           WHERE n.nspname = $1
-             AND p.prokind IN ('f', 'p')
-           ORDER BY p.proname`,
-          [schema],
-        );
-        return result.rows.map((row: Record<string, unknown>) => ({
-          name: String(row.name),
-          schema: String(row.schema),
-          type: String(row.type) as "function" | "procedure",
-          language: row.language ? String(row.language) : null,
-          return_type: row.return_type ? String(row.return_type) : null,
-          argument_count: Number(row.argument_count ?? 0),
-          arguments: row.arguments ? String(row.arguments) : null,
-          definition: row.definition ? String(row.definition) : null,
-        }));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL getFunctions error for ${schema}: ${msg}`);
-      }
-    },
-
-    async getTriggers(connectionString, schema): Promise<SchemaTrigger[]> {
-      const pool = getPgPool(connectionString);
-      try {
-        const result = await pool.query(
-          `SELECT t.tgname            AS name,
-                  n.nspname            AS schema,
-                  c.relname            AS table,
-                  CASE
-                    WHEN t.tgtype & 4 = 4 THEN 'INSERT'
-                    WHEN t.tgtype & 8 = 8 THEN 'DELETE'
-                    WHEN t.tgtype & 16 = 16 THEN 'UPDATE'
-                    ELSE 'UNKNOWN'
-                  END                AS event,
-                  CASE
-                    WHEN t.tgtype & 2 = 2 THEN 'AFTER'
-                    WHEN t.tgtype & 1 = 1 THEN 'BEFORE'
-                    WHEN t.tgtype & 64 = 64 THEN 'INSTEAD OF'
-                    ELSE 'UNKNOWN'
-                  END                AS timing,
-                  NOT t.tgenabled      AS enabled,
-                  p.proname            AS function_name,
-                  pg_get_triggerdef(t.oid) AS definition
-           FROM pg_trigger t
-           JOIN pg_class c     ON t.tgrelid = c.oid
-           JOIN pg_namespace n ON c.relnamespace = n.oid
-           LEFT JOIN pg_proc p ON t.tgfoid = p.oid
-           WHERE n.nspname = $1
-             AND NOT t.tgisinternal
-           ORDER BY c.relname, t.tgname`,
-          [schema],
-        );
-        return result.rows.map((row: Record<string, unknown>) => ({
-          name: String(row.name),
-          schema: String(row.schema),
-          table: String(row.table),
-          event: String(row.event),
-          timing: String(row.timing),
-          enabled: !row.enabled, // tgenabled=false means disabled, NOT tgenabled = enabled
-          function_name: row.function_name ? String(row.function_name) : null,
-          definition: row.definition ? String(row.definition) : null,
-        }));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL getTriggers error for ${schema}: ${msg}`);
+        throw new Error(`PostgreSQL getTableSample error: ${msg}`);
+      } finally {
+        client.release();
       }
     },
 
@@ -723,213 +1116,83 @@ export function createPostgresDriver(): DatabaseDriver {
           : Math.round(Number(row?.row_estimate ?? 0));
 
         return {
-          schema,
-          table,
-          rowCount,
-          sizeBytes,
-          sizeFormatted,
-          lastVacuum: row?.last_vacuum?.toString() ?? null,
           lastAnalyze: row?.last_analyze?.toString() ?? null,
           lastAutoanalyze: row?.last_autoanalyze?.toString() ?? null,
+          lastVacuum: row?.last_vacuum?.toString() ?? null,
+          rowCount,
+          schema,
+          sizeBytes,
+          sizeFormatted,
+          table,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL getTableStats error for ${schema}.${table}: ${msg}`);
-      }
-    },
-
-    async explainQuery(connectionString, sql, analyze = false) {
-      const pool = getPgPool(connectionString);
-      const client = await pool.connect();
-      try {
-        // Use JSON format for easier parsing
-        const explainSql = analyze
-          ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${sql}`
-          : `EXPLAIN (FORMAT JSON) ${sql}`;
-
-        const result = await client.query(explainSql);
-
-        // PostgreSQL returns JSON array with plan info
-        const planJson = result.rows[0]?.["QUERY PLAN"] ?? result.rows[0];
-        const planText = JSON.stringify(planJson, null, 2);
-
-        // Try to extract cost and row estimates from the plan
-        let totalCost: number | undefined;
-        let estimatedRows: number | undefined;
-        let executionTimeMs: number | undefined;
-
-        if (Array.isArray(planJson) && planJson.length > 0) {
-          const plan = planJson[0].Plan ?? planJson[0];
-          totalCost = plan["Total Cost"] ?? plan["Total Cost"];
-          estimatedRows = plan["Plan Rows"] ?? plan["Actual Rows"];
-          if (plan["Execution Time"]) {
-            executionTimeMs = plan["Execution Time"];
-          }
-        }
-
-        return {
-          plan: planText,
-          hasExecutionStats: analyze,
-          totalCost,
-          estimatedRows,
-          executionTimeMs,
-        };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL explainQuery error: ${msg}`);
-      } finally {
-        client.release();
-      }
-    },
-
-    async getTableSample(connectionString, schema, table, sampleSize = 100) {
-      const pool = getPgPool(connectionString);
-      const client = await pool.connect();
-      try {
-        // Get total row count
-        const countResult = await client.query(
-          `SELECT COUNT(*) as cnt FROM ${pgEscId(schema)}.${pgEscId(table)}`,
+        throw new Error(
+          `PostgreSQL getTableStats error for ${schema}.${table}: ${msg}`
         );
-        const totalRows = Number.parseInt(countResult.rows[0].cnt as string, 10);
-
-        // Get sample rows using TABLESAMPLE for large tables, or random for small
-        let sampleQuery: string;
-        const safeSampleSize = Math.max(1, Math.min(sampleSize, 10000));
-        if (totalRows > 10000) {
-          // Use TABLESAMPLE for large tables (if available)
-          sampleQuery = `
-            SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}
-            TABLESAMPLE BERNOULLI (LEAST((${safeSampleSize}::float / ${totalRows}) * 100, 100))
-            LIMIT ${safeSampleSize}
-          `;
-        } else {
-          // Use ORDER BY random() for smaller tables
-          sampleQuery = `
-            SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}
-            ORDER BY RANDOM()
-            LIMIT ${safeSampleSize}
-          `;
-        }
-
-        const sampleResult = await client.query(sampleQuery);
-        const rows = sampleResult.rows;
-
-        // Get column statistics from information_schema and pg_stats
-        const columnStatsQuery = `
-          SELECT
-            c.column_name,
-            c.data_type,
-            c.is_nullable
-          FROM information_schema.columns c
-          WHERE c.table_schema = $1 AND c.table_name = $2
-          ORDER BY c.ordinal_position
-        `;
-        const columnResult = await client.query(columnStatsQuery, [schema, table]);
-
-        // Build column statistics
-        const STATS_TIMEOUT_MS = 15_000;
-        const columnStats = await Promise.all(
-          columnResult.rows.map(async (col: Record<string, unknown>) => {
-            const colName = col.column_name as string;
-            const dataType = col.data_type as string;
-            const isNullable = col.is_nullable === "YES";
-
-            const stat: import("./types").ColumnStat = {
-              columnName: colName,
-              dataType: dataType,
-            };
-
-            const statsTimeout = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("Column stats query timed out")), STATS_TIMEOUT_MS),
-            );
-
-            // Try to get min/max/avg for numeric types
-            if (
-              dataType.includes("int") ||
-              dataType.includes("float") ||
-              dataType.includes("numeric") ||
-              dataType.includes("decimal") ||
-              dataType.includes("double") ||
-              dataType.includes("real")
-            ) {
-              try {
-                const statsResult = await Promise.race([
-                  client.query(
-                    `SELECT
-                    MIN(${pgEscId(colName)}) as min_val,
-                    MAX(${pgEscId(colName)}) as max_val,
-                    AVG(${pgEscId(colName)}::float) as avg_val,
-                    COUNT(DISTINCT ${pgEscId(colName)}) as unique_count,
-                    COUNT(*) FILTER (WHERE ${pgEscId(colName)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
-                  FROM ${pgEscId(schema)}.${pgEscId(table)}`
-                  ),
-                  statsTimeout,
-                ]);
-                const row = statsResult.rows[0];
-                stat.min = row.min_val;
-                stat.max = row.max_val;
-                stat.avg = row.avg_val ? Number.parseFloat(row.avg_val as string) : undefined;
-                stat.uniqueCount = Number.parseInt(row.unique_count as string, 10);
-                stat.nullPercentage = row.null_pct ? Number.parseFloat(row.null_pct as string) : isNullable ? 0 : 0;
-              } catch {
-                // Ignore stats errors (including timeout)
-              }
-            } else {
-              // For string/categorical columns, get top values
-              try {
-                const [topValuesResult, uniqueResult] = await Promise.race([
-                  Promise.all([
-                    client.query(
-                      `SELECT
-                    ${pgEscId(colName)} as value,
-                    COUNT(*) as count
-                  FROM ${pgEscId(schema)}.${pgEscId(table)}
-                  WHERE ${pgEscId(colName)} IS NOT NULL
-                  GROUP BY ${pgEscId(colName)}
-                  ORDER BY count DESC
-                  LIMIT 5`
-                    ),
-                    client.query(
-                      `SELECT
-                    COUNT(DISTINCT ${pgEscId(colName)}) as unique_count,
-                    COUNT(*) FILTER (WHERE ${pgEscId(colName)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) as null_pct
-                  FROM ${pgEscId(schema)}.${pgEscId(table)}`
-                    ),
-                  ]),
-                  statsTimeout,
-                ]);
-                stat.topValues = topValuesResult.rows.map((r: Record<string, unknown>) => ({
-                  value: String(r.value),
-                  count: Number.parseInt(r.count as string, 10),
-                }));
-                stat.uniqueCount = Number.parseInt(uniqueResult.rows[0].unique_count as string, 10);
-                stat.nullPercentage = uniqueResult.rows[0].null_pct
-                  ? Number.parseFloat(uniqueResult.rows[0].null_pct as string)
-                  : 0;
-              } catch {
-                // Ignore stats errors (including timeout)
-              }
-            }
-
-            return stat;
-          })
-        );
-
-        return {
-          rows,
-          columnStats,
-          totalRows,
-          sampleSize: rows.length,
-        };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`PostgreSQL getTableSample error: ${msg}`);
-      } finally {
-        client.release();
       }
     },
 
-    async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
+    async getTriggers(connectionString, schema): Promise<SchemaTrigger[]> {
+      const pool = getPgPool(connectionString);
+      try {
+        const result = await pool.query(
+          `SELECT t.tgname            AS name,
+                  n.nspname            AS schema,
+                  c.relname            AS table,
+                  CASE
+                    WHEN t.tgtype & 4 = 4 THEN 'INSERT'
+                    WHEN t.tgtype & 8 = 8 THEN 'DELETE'
+                    WHEN t.tgtype & 16 = 16 THEN 'UPDATE'
+                    ELSE 'UNKNOWN'
+                  END                AS event,
+                  CASE
+                    WHEN t.tgtype & 2 = 2 THEN 'AFTER'
+                    WHEN t.tgtype & 1 = 1 THEN 'BEFORE'
+                    WHEN t.tgtype & 64 = 64 THEN 'INSTEAD OF'
+                    ELSE 'UNKNOWN'
+                  END                AS timing,
+                  NOT t.tgenabled      AS enabled,
+                  p.proname            AS function_name,
+                  pg_get_triggerdef(t.oid) AS definition
+           FROM pg_trigger t
+           JOIN pg_class c     ON t.tgrelid = c.oid
+           JOIN pg_namespace n ON c.relnamespace = n.oid
+           LEFT JOIN pg_proc p ON t.tgfoid = p.oid
+           WHERE n.nspname = $1
+             AND NOT t.tgisinternal
+           ORDER BY c.relname, t.tgname`,
+          [schema]
+        );
+        return result.rows.map((row: Record<string, unknown>) => ({
+          definition: row.definition ? String(row.definition) : null,
+          enabled: !row.enabled, // tgenabled=false means disabled, NOT tgenabled = enabled
+          event: String(row.event),
+          function_name: row.function_name ? String(row.function_name) : null,
+          name: String(row.name),
+          schema: String(row.schema),
+          table: String(row.table),
+          timing: String(row.timing),
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`PostgreSQL getTriggers error for ${schema}: ${msg}`);
+      }
+    },
+
+    async importTableRows(connectionString, schema, table, columns, rows) {
+      return importPgTableRows(connectionString, schema, table, columns, rows);
+    },
+
+    async listRows(
+      connectionString,
+      schema,
+      table,
+      page,
+      pageSize,
+      sort,
+      filters
+    ) {
       const db = getPgKysely(connectionString);
       const rawRows = await listPgRowsRaw(
         connectionString,
@@ -938,7 +1201,7 @@ export function createPostgresDriver(): DatabaseDriver {
         page,
         pageSize,
         sort ?? [],
-        filters ?? [],
+        filters ?? []
       );
 
       // ── PK/FK introspection — Kysely queries against information_schema ──
@@ -948,7 +1211,7 @@ export function createPostgresDriver(): DatabaseDriver {
         .innerJoin("key_column_usage as kcu", (join) =>
           join
             .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-            .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+            .onRef("tc.constraint_schema", "=", "kcu.constraint_schema")
         )
         .select("kcu.column_name")
         .where("tc.constraint_type", "=", "PRIMARY KEY")
@@ -963,12 +1226,12 @@ export function createPostgresDriver(): DatabaseDriver {
         .innerJoin("key_column_usage as kcu", (join) =>
           join
             .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-            .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+            .onRef("tc.constraint_schema", "=", "kcu.constraint_schema")
         )
         .innerJoin("constraint_column_usage as ccu", (join) =>
           join
             .onRef("ccu.constraint_name", "=", "tc.constraint_name")
-            .onRef("ccu.constraint_schema", "=", "tc.constraint_schema"),
+            .onRef("ccu.constraint_schema", "=", "tc.constraint_schema")
         )
         .select([
           "tc.constraint_name as name",
@@ -982,34 +1245,32 @@ export function createPostgresDriver(): DatabaseDriver {
         .where("tc.table_name", "=", table)
         .execute();
       const foreignKeys = fkRows.map((r) => ({
-        name: r.name,
         column_name: r.column_name,
+        name: r.name,
+        referenced_column: r.referenced_column,
         referenced_schema: r.referenced_schema,
         referenced_table: r.referenced_table,
-        referenced_column: r.referenced_column,
       }));
 
       // ── Column metadata — from pg result fields (accurate type mapping) ──
       return {
         columns: rawRows.columns,
-        rows: rawRows.rows,
-        primaryKey,
         foreignKeys,
         pageInfo: { page, pageSize },
+        primaryKey,
+        rows: rawRows.rows,
         totalEstimate: rawRows.totalEstimate,
       };
     },
 
-    // ── DDL ─────────────────────────────────────────────────────────
-
-    async createTable(connectionString, schema, tableName, columns, primaryKeyColumns, ifNotExists) {
-      const sql = buildCreateTableSql(DB_TYPE, schema, tableName, columns, primaryKeyColumns ?? [], ifNotExists ?? false);
-      await executePgSql(connectionString, sql);
-      return sql;
-    },
-
-    async dropTable(connectionString, schema, tableName, cascade, ifExists) {
-      const sql = buildDropTableSql(DB_TYPE, schema, tableName, cascade ?? false, ifExists ?? false);
+    async renameColumn(connectionString, schema, table, oldName, newName) {
+      const sql = buildRenameColumnSql(
+        DB_TYPE,
+        schema,
+        table,
+        oldName,
+        newName
+      );
       await executePgSql(connectionString, sql);
       return sql;
     },
@@ -1020,81 +1281,57 @@ export function createPostgresDriver(): DatabaseDriver {
       return sql;
     },
 
-    async addColumn(connectionString, schema, table, columnName, dataType, isNullable, defaultExpr, ifNotExists) {
-      const sql = buildAddColumnSql(DB_TYPE, schema, table, columnName, dataType, isNullable ?? true, defaultExpr, ifNotExists ?? false);
+    async setColumnDefault(
+      connectionString,
+      schema,
+      table,
+      columnName,
+      defaultExpr
+    ) {
+      const sql = buildSetColumnDefaultSql(
+        DB_TYPE,
+        schema,
+        table,
+        columnName,
+        defaultExpr
+      );
       await executePgSql(connectionString, sql);
       return sql;
     },
 
-    async dropColumn(connectionString, schema, table, columnName, cascade, ifExists) {
-      const sql = buildDropColumnSql(DB_TYPE, schema, table, columnName, cascade ?? false, ifExists ?? false);
+    async setColumnNullable(
+      connectionString,
+      schema,
+      table,
+      columnName,
+      isNullable
+    ) {
+      const sql = buildSetColumnNullableSql(
+        DB_TYPE,
+        schema,
+        table,
+        columnName,
+        isNullable
+      );
       await executePgSql(connectionString, sql);
       return sql;
     },
+    sslModes: [
+      "disable",
+      "prefer",
+      "require",
+      "verify_ca",
+      "verify_full",
+    ] as SslMode[],
 
-    async renameColumn(connectionString, schema, table, oldName, newName) {
-      const sql = buildRenameColumnSql(DB_TYPE, schema, table, oldName, newName);
-      await executePgSql(connectionString, sql);
-      return sql;
+    async testConnection(config) {
+      const connStr = buildPgConnectionString(config);
+      return testPgConnection(connStr);
     },
-
-    async alterColumnType(connectionString, schema, table, columnName, newType, usingExpr) {
-      const sql = buildAlterColumnTypeSql(DB_TYPE, schema, table, columnName, newType, usingExpr);
-      await executePgSql(connectionString, sql);
-      return sql;
-    },
-
-    async setColumnNullable(connectionString, schema, table, columnName, isNullable) {
-      const sql = buildSetColumnNullableSql(DB_TYPE, schema, table, columnName, isNullable);
-      await executePgSql(connectionString, sql);
-      return sql;
-    },
-
-    async setColumnDefault(connectionString, schema, table, columnName, defaultExpr) {
-      const sql = buildSetColumnDefaultSql(DB_TYPE, schema, table, columnName, defaultExpr);
-      await executePgSql(connectionString, sql);
-      return sql;
-    },
-
-    async createIndex(connectionString, schema, table, indexName, columns, unique, ifNotExists) {
-      const sql = buildCreateIndexSql(DB_TYPE, schema, table, indexName, columns, unique ?? false, ifNotExists ?? false);
-      await executePgSql(connectionString, sql);
-      return sql;
-    },
-
-    async dropIndex(connectionString, schema, indexName, cascade, ifExists) {
-      const sql = buildDropIndexSql(DB_TYPE, schema, indexName, cascade ?? false, ifExists ?? false);
-      await executePgSql(connectionString, sql);
-      return sql;
-    },
-
-    async createSchema(connectionString, schemaName, ifNotExists) {
-      const sql = buildCreateSchemaSql(DB_TYPE, schemaName, ifNotExists ?? false);
-      await executePgSql(connectionString, sql);
-      return sql;
-    },
-
-    // ── Clone / Export ──────────────────────────────────────────────
-    // These use the pool directly for complex SQL that Kysely doesn't help with.
-
-    async exportSchemaDdl(connectionString) {
-      return exportPgSchemaDdl(connectionString);
-    },
-
-    async exportTableData(connectionString, schema, table, batchSize, offset) {
-      return exportPgTableData(connectionString, schema, table, batchSize, offset);
-    },
-
-    async executeBatchDdl(connectionString, statements, throwOnError) {
-      return executePgBatchDdl(connectionString, statements, throwOnError);
-    },
+    type: DB_TYPE,
 
     async waitForDatabase(connectionString, maxRetries, intervalMs) {
       return waitForPgDatabase(connectionString, maxRetries, intervalMs);
-    },
-
-    async importTableRows(connectionString, schema, table, columns, rows) {
-      return importPgTableRows(connectionString, schema, table, columns, rows);
     },
   };
 }

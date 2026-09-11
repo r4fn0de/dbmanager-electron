@@ -4,13 +4,13 @@
  * Global chat state with persistent multi-conversation history.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { generateTitle } from "./ai-actions";
 import type { DatabaseType } from "@/ipc/db/types";
 import type {
   AiChatChunkPayload,
   AiRendererApi,
   UserConnectionsContext,
 } from "@/shared/ai/streaming-contracts";
+import { generateTitle } from "./ai-actions";
 
 export interface AiChatContextTag {
   connectionId: string | null;
@@ -22,25 +22,24 @@ export interface AiChatContextTag {
 
 /** A text segment produced by the assistant. */
 export interface TextPart {
-  type: "text";
   text: string;
+  type: "text";
 }
 
 /** A reasoning segment streamed by the model. */
 export interface ReasoningPart {
-  type: "reasoning";
   text: string;
+  type: "reasoning";
 }
 
 /** A source emitted by the model/provider (URL or document reference). */
 export interface SourcePart {
-  type: "source";
   source: unknown;
+  type: "source";
 }
 
 /** A tool invocation within an assistant message (call + optional result). */
 export interface ToolInvocationPart {
-  type: "tool-invocation";
   toolInvocation: {
     toolCallId: string;
     toolName: string;
@@ -54,38 +53,47 @@ export interface ToolInvocationPart {
       warnings?: string[];
     };
   };
+  type: "tool-invocation";
 }
 
 /** Union of all part types that can appear in an assistant message. */
-export type AiChatMessagePart = TextPart | ReasoningPart | SourcePart | ToolInvocationPart;
+export type AiChatMessagePart =
+  | TextPart
+  | ReasoningPart
+  | SourcePart
+  | ToolInvocationPart;
 
 function isToolInvocationOpen(
-  part: AiChatMessagePart,
+  part: AiChatMessagePart
 ): part is ToolInvocationPart {
-  return part.type === "tool-invocation" && part.toolInvocation.state !== "result";
+  return (
+    part.type === "tool-invocation" && part.toolInvocation.state !== "result"
+  );
 }
 
 function findToolInvocationIndex(
   parts: AiChatMessagePart[],
   toolCallId: string | undefined,
-  toolName: string | undefined,
+  toolName: string | undefined
 ): number {
   if (toolCallId) {
     return parts.findIndex(
       (part) =>
-        part.type === "tool-invocation"
-        && part.toolInvocation.toolCallId === toolCallId,
+        part.type === "tool-invocation" &&
+        part.toolInvocation.toolCallId === toolCallId
     );
   }
 
-  if (!toolName) return -1;
+  if (!toolName) {
+    return -1;
+  }
 
   for (let i = parts.length - 1; i >= 0; i -= 1) {
     const part = parts[i];
     if (
-      part?.type === "tool-invocation"
-      && part.toolInvocation.toolName === toolName
-      && part.toolInvocation.state !== "result"
+      part?.type === "tool-invocation" &&
+      part.toolInvocation.toolName === toolName &&
+      part.toolInvocation.state !== "result"
     ) {
       return i;
     }
@@ -95,42 +103,36 @@ function findToolInvocationIndex(
 }
 
 export interface AiChatMessage {
-  id: string;
-  role: "user" | "assistant" | "system";
   /** Legacy flat text content — kept for storage compat and copy operations. */
   content: string;
-  /** Structured parts (AI SDK UIMessage.parts pattern). */
-  parts?: AiChatMessagePart[];
-  createdAt?: string;
-  contextTag?: AiChatContextTag;
   /** Optional context snapshot attached to a user message */
   contextSnapshot?: {
     selectionPreview?: string;
     errorPreview?: string;
     tablePreview?: string;
   };
+  contextTag?: AiChatContextTag;
+  createdAt?: string;
+  id: string;
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
+  /** Structured parts (AI SDK UIMessage.parts pattern). */
+  parts?: AiChatMessagePart[];
+  role: "user" | "assistant" | "system";
 }
 
 export interface AiChatConversation {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
   contextTag?: AiChatContextTag;
+  createdAt: string;
+  id: string;
   messages: AiChatMessage[];
+  title: string;
+  updatedAt: string;
 }
 
 interface UseAiChatOptions {
   /** Current active connection ID from app context (optional in global mode) */
   connectionId: string | null;
-  /** Active database type from app context */
-  dbType: DatabaseType;
-  /** Optional connection label for UI/tagging */
-  connectionLabel?: string;
-  /** Optional schema context to inject into system prompt */
-  schemaContext?: string;
   /** Optional connection metadata (host, port, local vs remote) for AI context */
   connectionInfo?: {
     name: string;
@@ -139,17 +141,33 @@ interface UseAiChatOptions {
     database: string;
     isLocal?: boolean;
   };
+  /** Optional connection label for UI/tagging */
+  connectionLabel?: string;
+  /** Active database type from app context */
+  dbType: DatabaseType;
+  /** Optional schema context to inject into system prompt */
+  schemaContext?: string;
   /** Optional global snapshot of user connections for cross-connection questions */
   userConnectionsContext?: UserConnectionsContext;
 }
 
 interface UseAiChatReturn {
-  messages: AiChatMessage[];
-  conversations: AiChatConversation[];
+  abort: () => void;
   activeConversationId: string | null;
-  isLoading: boolean;
-  error: string | null;
+  /** Approve a pending tool invocation */
+  approveToolCall: (toolCallId: string) => void;
+  clearAllConversations: () => void;
+  clearCurrentConversation: () => void;
   clearError: () => void;
+  clearMessages: () => void;
+  conversations: AiChatConversation[];
+  deleteConversation: (conversationId: string) => void;
+  error: string | null;
+  isLoading: boolean;
+  messages: AiChatMessage[];
+  /** Reject a pending tool invocation */
+  rejectToolCall: (toolCallId: string) => void;
+  selectConversation: (conversationId: string) => void;
   sendMessage: (
     content: string,
     options?: {
@@ -158,19 +176,9 @@ interface UseAiChatReturn {
         errorPreview?: string;
       };
       mentionedConnectionId?: string | null;
-    },
+    }
   ) => void;
-  abort: () => void;
-  clearMessages: () => void;
   startNewConversation: () => void;
-  selectConversation: (conversationId: string) => void;
-  deleteConversation: (conversationId: string) => void;
-  clearAllConversations: () => void;
-  clearCurrentConversation: () => void;
-  /** Approve a pending tool invocation */
-  approveToolCall: (toolCallId: string) => void;
-  /** Reject a pending tool invocation */
-  rejectToolCall: (toolCallId: string) => void;
 }
 
 const AI_CHAT_STORAGE_KEY_V1 = "ai-chat-history:v1";
@@ -183,7 +191,9 @@ const MAX_MODEL_CHARS = 24_000;
 
 function normalizeChatErrorMessage(message: string): string {
   const trimmed = message.trim();
-  if (!trimmed) return "AI stream failed before returning a response.";
+  if (!trimmed) {
+    return "AI stream failed before returning a response.";
+  }
 
   if (/no output generated/i.test(trimmed)) {
     return "AI stream failed before returning output. Check provider/model settings and try again.";
@@ -198,10 +208,10 @@ function settleStreamingMessages(messages: AiChatMessage[]): AiChatMessage[] {
     const wasStreaming = Boolean(msg.isStreaming);
     const normalized = wasStreaming ? { ...msg, isStreaming: false } : msg;
     const isEmptyAssistantPlaceholder =
-      normalized.role === "assistant"
-      && wasStreaming
-      && !normalized.content.trim()
-      && (normalized.parts?.length ?? 0) === 0;
+      normalized.role === "assistant" &&
+      wasStreaming &&
+      !normalized.content.trim() &&
+      (normalized.parts?.length ?? 0) === 0;
 
     if (!isEmptyAssistantPlaceholder) {
       settled.push(normalized);
@@ -211,7 +221,7 @@ function settleStreamingMessages(messages: AiChatMessage[]): AiChatMessage[] {
 }
 
 interface AiChatStorageV1 {
-  version: 1;
+  activeConversationByConnection: Record<string, string>;
   conversationsByConnection: Record<
     string,
     Array<{
@@ -223,21 +233,21 @@ interface AiChatStorageV1 {
       messages: AiChatMessage[];
     }>
   >;
-  activeConversationByConnection: Record<string, string>;
+  version: 1;
 }
 
 interface AiChatStorageV2 {
-  version: 2;
-  conversations: AiChatConversation[];
   activeConversationId: string | null;
+  conversations: AiChatConversation[];
   migratedFromV1?: boolean;
+  version: 2;
 }
 
 const EMPTY_STORAGE_V2: AiChatStorageV2 = {
-  version: 2,
-  conversations: [],
   activeConversationId: null,
+  conversations: [],
   migratedFromV1: false,
+  version: 2,
 };
 
 let messageCounter = 0;
@@ -282,7 +292,9 @@ function toModelContent(message: AiChatMessage): string {
     const snapshot = message.contextSnapshot;
     const contextParts: string[] = [];
     if (snapshot.selectionPreview) {
-      contextParts.push(`[Selected text in editor]\n${snapshot.selectionPreview}`);
+      contextParts.push(
+        `[Selected text in editor]\n${snapshot.selectionPreview}`
+      );
     }
     if (snapshot.errorPreview) {
       contextParts.push(`[Last error in editor]\n${snapshot.errorPreview}`);
@@ -300,16 +312,23 @@ function toModelContent(message: AiChatMessage): string {
 
 function buildModelMessages(messages: AiChatMessage[]) {
   const base = messages
-    .filter((message) => message.role === "user" || message.role === "assistant")
+    .filter(
+      (message) => message.role === "user" || message.role === "assistant"
+    )
     .map((message) => ({
-      role: message.role,
       content: toModelContent(message),
+      role: message.role,
     }))
     .filter((message) => message.content.length > 0);
 
   if (base.length <= MAX_MODEL_MESSAGES) {
-    const totalChars = base.reduce((sum, message) => sum + message.content.length, 0);
-    if (totalChars <= MAX_MODEL_CHARS) return base;
+    const totalChars = base.reduce(
+      (sum, message) => sum + message.content.length,
+      0
+    );
+    if (totalChars <= MAX_MODEL_CHARS) {
+      return base;
+    }
   }
 
   const selected: typeof base = [];
@@ -347,7 +366,9 @@ interface LegacyAiChatMessage extends AiChatMessage {
  * messages that were saved before the parts migration.
  */
 export function ensureParts(message: AiChatMessage): AiChatMessage {
-  if (message.parts && message.parts.length > 0) return message;
+  if (message.parts && message.parts.length > 0) {
+    return message;
+  }
 
   const parts: AiChatMessagePart[] = [];
 
@@ -357,26 +378,26 @@ export function ensureParts(message: AiChatMessage): AiChatMessage {
   if (legacy.toolCalls && legacy.toolCalls.length > 0) {
     for (const tc of legacy.toolCalls) {
       parts.push({
-        type: "tool-invocation",
         toolInvocation: {
-          toolCallId: tc.toolCallId,
-          toolName: tc.toolName,
           args: tc.input,
           result: tc.result,
-          state: tc.result !== undefined ? "result" : "call",
+          state: tc.result === undefined ? "call" : "result",
+          toolCallId: tc.toolCallId,
+          toolName: tc.toolName,
         },
+        type: "tool-invocation",
       });
     }
   }
 
   // Add text part from content if non-empty
   if (message.content) {
-    parts.push({ type: "text", text: message.content });
+    parts.push({ text: message.content, type: "text" });
   }
 
   // Ensure at least one text part for empty assistant messages
   if (parts.length === 0 && message.role === "assistant") {
-    parts.push({ type: "text", text: "" });
+    parts.push({ text: "", type: "text" });
   }
 
   return { ...message, parts };
@@ -384,11 +405,15 @@ export function ensureParts(message: AiChatMessage): AiChatMessage {
 
 function trimConversationMessages(messages: AiChatMessage[]): AiChatMessage[] {
   const normalized = messages.map(toPersistedMessage);
-  if (normalized.length <= MAX_MESSAGES_PER_CONVERSATION) return normalized;
+  if (normalized.length <= MAX_MESSAGES_PER_CONVERSATION) {
+    return normalized;
+  }
   return normalized.slice(normalized.length - MAX_MESSAGES_PER_CONVERSATION);
 }
 
-function withRetention(conversations: AiChatConversation[]): AiChatConversation[] {
+function withRetention(
+  conversations: AiChatConversation[]
+): AiChatConversation[] {
   const normalized = conversations
     .map((conversation) => ({
       ...conversation,
@@ -396,7 +421,9 @@ function withRetention(conversations: AiChatConversation[]): AiChatConversation[
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  if (normalized.length <= MAX_CONVERSATIONS) return normalized;
+  if (normalized.length <= MAX_CONVERSATIONS) {
+    return normalized;
+  }
   return normalized.slice(0, MAX_CONVERSATIONS);
 }
 
@@ -419,16 +446,18 @@ function createEmptyConversation(options: {
 }): AiChatConversation {
   const now = toIsoNow();
   return {
-    id: nextConversationId(),
-    title: DEFAULT_CONVERSATION_TITLE,
-    createdAt: now,
-    updatedAt: now,
     contextTag: createContextTag(options),
+    createdAt: now,
+    id: nextConversationId(),
     messages: [],
+    title: DEFAULT_CONVERSATION_TITLE,
+    updatedAt: now,
   };
 }
 
-function normalizeConversation(conversation: AiChatConversation): AiChatConversation {
+function normalizeConversation(
+  conversation: AiChatConversation
+): AiChatConversation {
   return {
     ...conversation,
     messages: trimConversationMessages(conversation.messages ?? []),
@@ -436,16 +465,23 @@ function normalizeConversation(conversation: AiChatConversation): AiChatConversa
 }
 
 function readStorageV1(): AiChatStorageV1 | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") {
+    return null;
+  }
   try {
     const raw = window.localStorage.getItem(AI_CHAT_STORAGE_KEY_V1);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     const parsed = JSON.parse(raw) as Partial<AiChatStorageV1>;
-    if (parsed.version !== 1) return null;
+    if (parsed.version !== 1) {
+      return null;
+    }
     return {
-      version: 1,
+      activeConversationByConnection:
+        parsed.activeConversationByConnection ?? {},
       conversationsByConnection: parsed.conversationsByConnection ?? {},
-      activeConversationByConnection: parsed.activeConversationByConnection ?? {},
+      version: 1,
     };
   } catch {
     return null;
@@ -454,16 +490,22 @@ function readStorageV1(): AiChatStorageV1 | null {
 
 function migrateV1ToV2(preferredConnectionId: string | null): AiChatStorageV2 {
   const v1 = readStorageV1();
-  if (!v1) return EMPTY_STORAGE_V2;
+  if (!v1) {
+    return EMPTY_STORAGE_V2;
+  }
 
   try {
     const flattened: AiChatConversation[] = [];
     const seenIds = new Set<string>();
 
-    for (const [legacyConnectionId, legacyConversations] of Object.entries(v1.conversationsByConnection)) {
+    for (const [legacyConnectionId, legacyConversations] of Object.entries(
+      v1.conversationsByConnection
+    )) {
       for (const legacyConversation of legacyConversations ?? []) {
         const baseId = legacyConversation.id || nextConversationId();
-        const uniqueId = seenIds.has(baseId) ? `${baseId}-${legacyConnectionId}` : baseId;
+        const uniqueId = seenIds.has(baseId)
+          ? `${baseId}-${legacyConnectionId}`
+          : baseId;
         seenIds.add(uniqueId);
 
         const contextTag: AiChatContextTag = {
@@ -473,17 +515,23 @@ function migrateV1ToV2(preferredConnectionId: string | null): AiChatStorageV2 {
 
         flattened.push(
           normalizeConversation({
-            id: uniqueId,
-            title: legacyConversation.title || DEFAULT_CONVERSATION_TITLE,
-            createdAt: legacyConversation.createdAt || toIsoNow(),
-            updatedAt: legacyConversation.updatedAt || legacyConversation.createdAt || toIsoNow(),
             contextTag,
+            createdAt: legacyConversation.createdAt || toIsoNow(),
+            id: uniqueId,
             messages: (legacyConversation.messages ?? []).map((message) => ({
               ...message,
               contextTag: message.contextTag ?? contextTag,
-              createdAt: message.createdAt ?? legacyConversation.updatedAt ?? legacyConversation.createdAt,
+              createdAt:
+                message.createdAt ??
+                legacyConversation.updatedAt ??
+                legacyConversation.createdAt,
             })),
-          }),
+            title: legacyConversation.title || DEFAULT_CONVERSATION_TITLE,
+            updatedAt:
+              legacyConversation.updatedAt ||
+              legacyConversation.createdAt ||
+              toIsoNow(),
+          })
         );
       }
     }
@@ -491,26 +539,29 @@ function migrateV1ToV2(preferredConnectionId: string | null): AiChatStorageV2 {
     const conversations = withRetention(flattened);
 
     const preferredActive = preferredConnectionId
-      ? v1.activeConversationByConnection[preferredConnectionId] ?? null
+      ? (v1.activeConversationByConnection[preferredConnectionId] ?? null)
       : null;
 
-    const fallbackActive = Object.values(v1.activeConversationByConnection).find((id) =>
-      conversations.some((conversation) => conversation.id === id),
+    const fallbackActive = Object.values(
+      v1.activeConversationByConnection
+    ).find((id) =>
+      conversations.some((conversation) => conversation.id === id)
     );
 
     const activeConversationId =
-      (preferredActive && conversations.some((conversation) => conversation.id === preferredActive)
+      (preferredActive &&
+      conversations.some((conversation) => conversation.id === preferredActive)
         ? preferredActive
-        : null)
-      ?? fallbackActive
-      ?? conversations[0]?.id
-      ?? null;
+        : null) ??
+      fallbackActive ??
+      conversations[0]?.id ??
+      null;
 
     return {
-      version: 2,
-      conversations,
       activeConversationId,
+      conversations,
       migratedFromV1: true,
+      version: 2,
     };
   } catch {
     // Keep v1 intact and start fresh v2 storage if migration fails.
@@ -519,24 +570,31 @@ function migrateV1ToV2(preferredConnectionId: string | null): AiChatStorageV2 {
 }
 
 function readStorageV2(preferredConnectionId: string | null): AiChatStorageV2 {
-  if (typeof window === "undefined") return EMPTY_STORAGE_V2;
+  if (typeof window === "undefined") {
+    return EMPTY_STORAGE_V2;
+  }
 
   try {
     const raw = window.localStorage.getItem(AI_CHAT_STORAGE_KEY_V2);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<AiChatStorageV2>;
       if (parsed.version === 2) {
-        const conversations = withRetention((parsed.conversations ?? []).map(normalizeConversation));
+        const conversations = withRetention(
+          (parsed.conversations ?? []).map(normalizeConversation)
+        );
         const activeConversationId =
-          parsed.activeConversationId && conversations.some((conversation) => conversation.id === parsed.activeConversationId)
+          parsed.activeConversationId &&
+          conversations.some(
+            (conversation) => conversation.id === parsed.activeConversationId
+          )
             ? parsed.activeConversationId
-            : conversations[0]?.id ?? null;
+            : (conversations[0]?.id ?? null);
 
         return {
-          version: 2,
-          conversations,
           activeConversationId,
+          conversations,
           migratedFromV1: Boolean(parsed.migratedFromV1),
+          version: 2,
         };
       }
     }
@@ -548,9 +606,14 @@ function readStorageV2(preferredConnectionId: string | null): AiChatStorageV2 {
 }
 
 function writeStorageV2(storage: AiChatStorageV2): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") {
+    return;
+  }
   try {
-    window.localStorage.setItem(AI_CHAT_STORAGE_KEY_V2, JSON.stringify(storage));
+    window.localStorage.setItem(
+      AI_CHAT_STORAGE_KEY_V2,
+      JSON.stringify(storage)
+    );
   } catch {
     // Ignore storage quota/unavailable scenarios.
   }
@@ -565,7 +628,9 @@ export function useAiChat({
   userConnectionsContext,
 }: UseAiChatOptions): UseAiChatReturn {
   const [conversations, setConversations] = useState<AiChatConversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -577,29 +642,44 @@ export function useAiChat({
   const conversationsRef = useRef<AiChatConversation[]>([]);
   const migratedFromV1Ref = useRef(false);
   const pendingApprovalRef = useRef<
-    Map<string, { chatId: string; toolCallId: string; description: string; preview?: string; warnings?: string[] }>
+    Map<
+      string,
+      {
+        chatId: string;
+        toolCallId: string;
+        description: string;
+        preview?: string;
+        warnings?: string[];
+      }
+    >
   >(new Map());
 
   const messages = useMemo(() => {
-    if (!activeConversationId) return [];
-    const active = conversations.find((conversation) => conversation.id === activeConversationId);
+    if (!activeConversationId) {
+      return [];
+    }
+    const active = conversations.find(
+      (conversation) => conversation.id === activeConversationId
+    );
     return active?.messages.map(ensureParts) ?? [];
   }, [activeConversationId, conversations]);
 
   const updateConversationById = useCallback(
     (
       conversationId: string,
-      updater: (conversation: AiChatConversation) => AiChatConversation,
+      updater: (conversation: AiChatConversation) => AiChatConversation
     ) => {
       setConversations((prev) =>
         withRetention(
           prev.map((conversation) =>
-            conversation.id === conversationId ? updater(conversation) : conversation,
-          ),
-        ),
+            conversation.id === conversationId
+              ? updater(conversation)
+              : conversation
+          )
+        )
       );
     },
-    [],
+    []
   );
 
   const ensureConversation = useCallback(() => {
@@ -609,7 +689,11 @@ export function useAiChat({
       return existing;
     }
 
-    const created = createEmptyConversation({ connectionId, connectionLabel, dbType });
+    const created = createEmptyConversation({
+      connectionId,
+      connectionLabel,
+      dbType,
+    });
     setConversations((prev) => withRetention([created, ...prev]));
     setActiveConversationId(created.id);
     return created;
@@ -627,46 +711,55 @@ export function useAiChat({
   useEffect(() => {
     const ai = (window as any).ai as AiRendererApi | undefined;
     const aiToolApproval = ai?.toolApproval;
-    if (!aiToolApproval) return;
+    if (!aiToolApproval) {
+      return;
+    }
 
     const unsub = aiToolApproval.onRequest((payload) => {
       const { chatId, toolCallId, description, preview, warnings } = payload;
 
       // Only handle if this is for our current chat session
-      if (chatId !== chatIdRef.current) return;
+      if (chatId !== chatIdRef.current) {
+        return;
+      }
 
       const streamConversationId = streamConversationIdRef.current;
-      if (!streamConversationId) return;
+      if (!streamConversationId) {
+        return;
+      }
 
       // Store the approval request for reference
       pendingApprovalRef.current.set(toolCallId, {
         chatId,
-        toolCallId,
         description,
         preview,
+        toolCallId,
         warnings,
       });
 
       // Update the matching tool invocation state to "pending-approval"
       updateConversationById(streamConversationId, (conversation) => {
         const id = assistantIdRef.current;
-        if (!id) return conversation;
+        if (!id) {
+          return conversation;
+        }
         return {
           ...conversation,
-          updatedAt: toIsoNow(),
           messages: conversation.messages.map((msg) => {
-            if (msg.id !== id) return msg;
+            if (msg.id !== id) {
+              return msg;
+            }
             const parts = (msg.parts ?? []).map((part) => {
               if (
-                part.type === "tool-invocation"
-                && part.toolInvocation.toolCallId === toolCallId
+                part.type === "tool-invocation" &&
+                part.toolInvocation.toolCallId === toolCallId
               ) {
                 return {
                   ...part,
                   toolInvocation: {
                     ...part.toolInvocation,
-                    state: "pending-approval" as const,
                     approvalRequest: { description, preview, warnings },
+                    state: "pending-approval" as const,
                   },
                 };
               }
@@ -674,6 +767,7 @@ export function useAiChat({
             });
             return { ...msg, parts };
           }),
+          updatedAt: toIsoNow(),
         };
       });
     });
@@ -688,14 +782,18 @@ export function useAiChat({
     const hydratedConversations = storage.conversations;
 
     if (hydratedConversations.length === 0) {
-      const fresh = createEmptyConversation({ connectionId, connectionLabel, dbType });
+      const fresh = createEmptyConversation({
+        connectionId,
+        connectionLabel,
+        dbType,
+      });
       setConversations([fresh]);
       setActiveConversationId(fresh.id);
       writeStorageV2({
-        version: 2,
-        conversations: [fresh],
         activeConversationId: fresh.id,
+        conversations: [fresh],
         migratedFromV1: storage.migratedFromV1,
+        version: 2,
       });
       migratedFromV1Ref.current = Boolean(storage.migratedFromV1);
       setIsHydrated(true);
@@ -703,12 +801,15 @@ export function useAiChat({
     }
 
     setConversations(hydratedConversations);
-    setActiveConversationId(storage.activeConversationId ?? hydratedConversations[0]?.id ?? null);
+    setActiveConversationId(
+      storage.activeConversationId ?? hydratedConversations[0]?.id ?? null
+    );
     writeStorageV2({
-      version: 2,
+      activeConversationId:
+        storage.activeConversationId ?? hydratedConversations[0]?.id ?? null,
       conversations: hydratedConversations,
-      activeConversationId: storage.activeConversationId ?? hydratedConversations[0]?.id ?? null,
       migratedFromV1: storage.migratedFromV1,
+      version: 2,
     });
     migratedFromV1Ref.current = Boolean(storage.migratedFromV1);
     setIsHydrated(true);
@@ -717,81 +818,107 @@ export function useAiChat({
   }, []);
 
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated) {
+      return;
+    }
     writeStorageV2({
-      version: 2,
+      activeConversationId,
       conversations: conversations.map((conversation) => ({
         ...conversation,
         messages: conversation.messages.map(toStorageMessage),
       })),
-      activeConversationId,
       migratedFromV1: migratedFromV1Ref.current,
+      version: 2,
     });
   }, [isHydrated, conversations, activeConversationId]);
 
   useEffect(() => {
     const aiChat = window.electron?.aiChat;
-    if (!aiChat) return;
+    if (!aiChat) {
+      return;
+    }
 
     const unsubChunk = aiChat.onChunk((chunk: AiChatChunkPayload) => {
-      if (chunk.chatId !== chatIdRef.current) return;
+      if (chunk.chatId !== chatIdRef.current) {
+        return;
+      }
       const streamConversationId = streamConversationIdRef.current;
-      if (!streamConversationId) return;
+      if (!streamConversationId) {
+        return;
+      }
 
       if (chunk.type === "text") {
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
-          if (!id) return conversation;
+          if (!id) {
+            return conversation;
+          }
           return {
             ...conversation,
-            updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
-              if (msg.id !== id) return msg;
+              if (msg.id !== id) {
+                return msg;
+              }
               const parts = [...(msg.parts ?? [])];
               // Append to the last text part, or create a new one
               const lastPart = parts[parts.length - 1];
               if (lastPart?.type === "text") {
-                parts[parts.length - 1] = { ...lastPart, text: lastPart.text + chunk.text };
+                parts[parts.length - 1] = {
+                  ...lastPart,
+                  text: lastPart.text + chunk.text,
+                };
               } else {
-                parts.push({ type: "text", text: chunk.text });
+                parts.push({ text: chunk.text, type: "text" });
               }
               return { ...msg, content: msg.content + chunk.text, parts };
             }),
+            updatedAt: toIsoNow(),
           };
         });
       } else if (chunk.type === "reasoning") {
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
-          if (!id) return conversation;
+          if (!id) {
+            return conversation;
+          }
           return {
             ...conversation,
-            updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
-              if (msg.id !== id) return msg;
+              if (msg.id !== id) {
+                return msg;
+              }
               const parts = [...(msg.parts ?? [])];
               const lastPart = parts[parts.length - 1];
               if (lastPart?.type === "reasoning") {
-                parts[parts.length - 1] = { ...lastPart, text: lastPart.text + chunk.text };
+                parts[parts.length - 1] = {
+                  ...lastPart,
+                  text: lastPart.text + chunk.text,
+                };
               } else {
-                parts.push({ type: "reasoning", text: chunk.text });
+                parts.push({ text: chunk.text, type: "reasoning" });
               }
               return { ...msg, parts };
             }),
+            updatedAt: toIsoNow(),
           };
         });
       } else if (chunk.type === "source") {
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
-          if (!id) return conversation;
+          if (!id) {
+            return conversation;
+          }
           return {
             ...conversation,
-            updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
-              if (msg.id !== id) return msg;
+              if (msg.id !== id) {
+                return msg;
+              }
               const parts = [...(msg.parts ?? [])];
-              parts.push({ type: "source", source: chunk.source });
+              parts.push({ source: chunk.source, type: "source" });
               return { ...msg, parts };
             }),
+            updatedAt: toIsoNow(),
           };
         });
       } else if (chunk.type === "tool-call") {
@@ -800,18 +927,27 @@ export function useAiChat({
         // (race condition: TOOL_APPROVAL_REQUEST IPC can arrive before the
         // tool-call chunk, leaving the approval UI never shown)
         const pendingApproval = pendingApprovalRef.current.get(toolCallId);
-        const initialState = pendingApproval ? "pending-approval" as const : "call" as const;
+        const initialState = pendingApproval
+          ? ("pending-approval" as const)
+          : ("call" as const);
 
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
-          if (!id) return conversation;
+          if (!id) {
+            return conversation;
+          }
           return {
             ...conversation,
-            updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
-              if (msg.id !== id) return msg;
+              if (msg.id !== id) {
+                return msg;
+              }
               const parts = [...(msg.parts ?? [])];
-              const existingIndex = findToolInvocationIndex(parts, chunk.toolCallId, chunk.toolName);
+              const existingIndex = findToolInvocationIndex(
+                parts,
+                chunk.toolCallId,
+                chunk.toolName
+              );
 
               if (existingIndex >= 0) {
                 const existing = parts[existingIndex];
@@ -820,10 +956,12 @@ export function useAiChat({
                     ...existing,
                     toolInvocation: {
                       ...existing.toolInvocation,
-                      toolCallId: existing.toolInvocation.toolCallId || toolCallId,
-                      toolName: chunk.toolName ?? existing.toolInvocation.toolName,
                       args: chunk.input ?? existing.toolInvocation.args,
                       state: initialState,
+                      toolCallId:
+                        existing.toolInvocation.toolCallId || toolCallId,
+                      toolName:
+                        chunk.toolName ?? existing.toolInvocation.toolName,
                       ...(pendingApproval
                         ? {
                             approvalRequest: {
@@ -840,34 +978,50 @@ export function useAiChat({
               }
 
               parts.push({
-                type: "tool-invocation",
                 toolInvocation: {
-                  toolCallId,
-                  toolName: chunk.toolName ?? "tool",
                   args: chunk.input,
                   state: initialState,
-                  ...(pendingApproval ? { approvalRequest: { description: pendingApproval.description, preview: pendingApproval.preview, warnings: pendingApproval.warnings } } : {}),
+                  toolCallId,
+                  toolName: chunk.toolName ?? "tool",
+                  ...(pendingApproval
+                    ? {
+                        approvalRequest: {
+                          description: pendingApproval.description,
+                          preview: pendingApproval.preview,
+                          warnings: pendingApproval.warnings,
+                        },
+                      }
+                    : {}),
                 },
+                type: "tool-invocation",
               });
               return { ...msg, parts };
             }),
+            updatedAt: toIsoNow(),
           };
         });
       } else if (
-        chunk.type === "tool-call-streaming-start"
-        || chunk.type === "tool-call-delta"
+        chunk.type === "tool-call-streaming-start" ||
+        chunk.type === "tool-call-delta"
       ) {
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
-          if (!id) return conversation;
+          if (!id) {
+            return conversation;
+          }
           return {
             ...conversation,
-            updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
-              if (msg.id !== id) return msg;
+              if (msg.id !== id) {
+                return msg;
+              }
 
               const parts = [...(msg.parts ?? [])];
-              const existingToolIndex = findToolInvocationIndex(parts, chunk.toolCallId, chunk.toolName);
+              const existingToolIndex = findToolInvocationIndex(
+                parts,
+                chunk.toolCallId,
+                chunk.toolName
+              );
 
               if (existingToolIndex >= 0) {
                 const existing = parts[existingToolIndex];
@@ -876,51 +1030,71 @@ export function useAiChat({
                     ...existing,
                     toolInvocation: {
                       ...existing.toolInvocation,
-                      toolName: chunk.toolName ?? existing.toolInvocation.toolName,
-                      state: "partial-call",
                       args:
                         chunk.type === "tool-call-delta" && chunk.argsTextDelta
                           ? `${String(existing.toolInvocation.args ?? "")}${chunk.argsTextDelta}`
                           : existing.toolInvocation.args,
+                      state: "partial-call",
+                      toolName:
+                        chunk.toolName ?? existing.toolInvocation.toolName,
                     },
                   };
                 }
               } else {
                 const streamingToolCallId = chunk.toolCallId ?? nextId();
                 // Check if an approval request arrived before this streaming-start chunk
-                const pendingStreamingApproval = pendingApprovalRef.current.get(streamingToolCallId);
-                const streamingInitialState = pendingStreamingApproval ? "pending-approval" as const : "partial-call" as const;
+                const pendingStreamingApproval =
+                  pendingApprovalRef.current.get(streamingToolCallId);
+                const streamingInitialState = pendingStreamingApproval
+                  ? ("pending-approval" as const)
+                  : ("partial-call" as const);
 
                 parts.push({
-                  type: "tool-invocation",
                   toolInvocation: {
-                    toolCallId: streamingToolCallId,
-                    toolName: chunk.toolName ?? "tool",
                     args:
                       chunk.type === "tool-call-delta" && chunk.argsTextDelta
                         ? chunk.argsTextDelta
                         : chunk.input,
                     state: streamingInitialState,
-                    ...(pendingStreamingApproval ? { approvalRequest: { description: pendingStreamingApproval.description, preview: pendingStreamingApproval.preview, warnings: pendingStreamingApproval.warnings } } : {}),
+                    toolCallId: streamingToolCallId,
+                    toolName: chunk.toolName ?? "tool",
+                    ...(pendingStreamingApproval
+                      ? {
+                          approvalRequest: {
+                            description: pendingStreamingApproval.description,
+                            preview: pendingStreamingApproval.preview,
+                            warnings: pendingStreamingApproval.warnings,
+                          },
+                        }
+                      : {}),
                   },
+                  type: "tool-invocation",
                 });
               }
 
               return { ...msg, parts };
             }),
+            updatedAt: toIsoNow(),
           };
         });
       } else if (chunk.type === "tool-result") {
         updateConversationById(streamConversationId, (conversation) => {
           const id = assistantIdRef.current;
-          if (!id) return conversation;
+          if (!id) {
+            return conversation;
+          }
           return {
             ...conversation,
-            updatedAt: toIsoNow(),
             messages: conversation.messages.map((msg) => {
-              if (msg.id !== id) return msg;
+              if (msg.id !== id) {
+                return msg;
+              }
               const parts = [...(msg.parts ?? [])];
-              const resultIndex = findToolInvocationIndex(parts, chunk.toolCallId, chunk.toolName);
+              const resultIndex = findToolInvocationIndex(
+                parts,
+                chunk.toolCallId,
+                chunk.toolName
+              );
               if (resultIndex >= 0) {
                 const current = parts[resultIndex];
                 if (current?.type === "tool-invocation") {
@@ -945,29 +1119,32 @@ export function useAiChat({
                 }
 
                 const key = part.toolInvocation.toolName;
-                if (seenOpenByTool.has(key)) continue;
+                if (seenOpenByTool.has(key)) {
+                  continue;
+                }
                 seenOpenByTool.add(key);
                 deduped.push(part);
               }
               return { ...msg, parts: deduped };
             }),
+            updatedAt: toIsoNow(),
           };
         });
       }
     });
 
     const unsubDone = aiChat.onDone(({ chatId }) => {
-      if (chatId !== chatIdRef.current) return;
+      if (chatId !== chatIdRef.current) {
+        return;
+      }
       const streamConversationId = streamConversationIdRef.current;
 
       if (streamConversationId) {
-        updateConversationById(streamConversationId, (conversation) => {
-          return {
-            ...conversation,
-            updatedAt: toIsoNow(),
-            messages: settleStreamingMessages(conversation.messages),
-          };
-        });
+        updateConversationById(streamConversationId, (conversation) => ({
+          ...conversation,
+          messages: settleStreamingMessages(conversation.messages),
+          updatedAt: toIsoNow(),
+        }));
       }
       setIsLoading(false);
       assistantIdRef.current = null;
@@ -976,7 +1153,9 @@ export function useAiChat({
 
     const unsubError = aiChat.onError(
       ({ chatId, message }: { chatId: string; message: string }) => {
-        if (chatId !== chatIdRef.current) return;
+        if (chatId !== chatIdRef.current) {
+          return;
+        }
         const streamConversationId = streamConversationIdRef.current;
 
         setError(normalizeChatErrorMessage(message));
@@ -986,15 +1165,15 @@ export function useAiChat({
             assistantIdRef.current = null;
             return {
               ...conversation,
-              updatedAt: toIsoNow(),
               messages: settleStreamingMessages(conversation.messages),
+              updatedAt: toIsoNow(),
             };
           });
         } else {
           assistantIdRef.current = null;
         }
         streamConversationIdRef.current = null;
-      },
+      }
     );
 
     return () => {
@@ -1014,9 +1193,11 @@ export function useAiChat({
           tablePreview?: string;
         };
         mentionedConnectionId?: string | null;
-      },
+      }
     ) => {
-      if (!content.trim()) return;
+      if (!content.trim()) {
+        return;
+      }
 
       const aiChat = window.electron?.aiChat;
       if (!aiChat) {
@@ -1031,60 +1212,78 @@ export function useAiChat({
         const created = ensureConversation();
         targetConversationId = created?.id ?? null;
       }
-      if (!targetConversationId) return;
+      if (!targetConversationId) {
+        return;
+      }
 
       const activeConversation = conversationsRef.current.find(
-        (conversation) => conversation.id === targetConversationId,
+        (conversation) => conversation.id === targetConversationId
       );
-      if (!activeConversation) return;
+      if (!activeConversation) {
+        return;
+      }
 
-      const hadUserMessages = activeConversation.messages.some((message) => message.role === "user");
-      const isUntitledConversation = activeConversation.title === DEFAULT_CONVERSATION_TITLE;
-      const contextTag = createContextTag({ connectionId, connectionLabel, dbType });
+      const hadUserMessages = activeConversation.messages.some(
+        (message) => message.role === "user"
+      );
+      const isUntitledConversation =
+        activeConversation.title === DEFAULT_CONVERSATION_TITLE;
+      const contextTag = createContextTag({
+        connectionId,
+        connectionLabel,
+        dbType,
+      });
       const now = toIsoNow();
 
       const userMsg: AiChatMessage = {
+        content: content.trim(),
+        contextSnapshot: options?.contextSnapshot,
+        contextTag,
+        createdAt: now,
         id: nextId(),
         role: "user",
-        content: content.trim(),
-        createdAt: now,
-        contextTag,
-        contextSnapshot: options?.contextSnapshot,
       };
 
       const assistantMsg: AiChatMessage = {
-        id: nextId(),
-        role: "assistant",
         content: "",
-        parts: [],
-        createdAt: now,
         contextTag,
+        createdAt: now,
+        id: nextId(),
         isStreaming: true,
+        parts: [],
+        role: "assistant",
       };
 
       assistantIdRef.current = assistantMsg.id;
       streamConversationIdRef.current = targetConversationId;
       updateConversationById(targetConversationId, (conversation) => ({
         ...conversation,
-        updatedAt: now,
         contextTag: conversation.contextTag ?? contextTag,
-        messages: trimConversationMessages([...conversation.messages, userMsg, assistantMsg]),
+        messages: trimConversationMessages([
+          ...conversation.messages,
+          userMsg,
+          assistantMsg,
+        ]),
+        updatedAt: now,
       }));
       setIsLoading(true);
 
       // Compute model messages from latest in-memory state and keep
       // only the most relevant tail to avoid context dilution.
-      const coreMessages = buildModelMessages([...activeConversation.messages, userMsg]);
+      const coreMessages = buildModelMessages([
+        ...activeConversation.messages,
+        userMsg,
+      ]);
 
       aiChat.start({
         chatId: chatIdRef.current,
         connectionId,
-        mentionedConnectionId: options?.mentionedConnectionId ?? null,
-        dbType,
-        schemaContext,
         connectionInfo,
-        userConnectionsContext,
+        dbType,
+        mentionedConnectionId: options?.mentionedConnectionId ?? null,
         messages: coreMessages,
+        schemaContext,
+        userConnectionsContext,
       });
 
       if (!hadUserMessages && isUntitledConversation) {
@@ -1110,116 +1309,149 @@ export function useAiChat({
         })();
       }
     },
-    [connectionId, connectionLabel, connectionInfo, dbType, ensureConversation, schemaContext, updateConversationById, userConnectionsContext],
+    [
+      connectionId,
+      connectionLabel,
+      connectionInfo,
+      dbType,
+      ensureConversation,
+      schemaContext,
+      updateConversationById,
+      userConnectionsContext,
+    ]
   );
 
   /** Approve a pending tool invocation. */
-  const approveToolCall = useCallback((toolCallId: string) => {
-    const ai = (window as any).ai as AiRendererApi | undefined;
-    const aiToolApproval = ai?.toolApproval;
-    if (!aiToolApproval) return;
+  const approveToolCall = useCallback(
+    (toolCallId: string) => {
+      const ai = (window as any).ai as AiRendererApi | undefined;
+      const aiToolApproval = ai?.toolApproval;
+      if (!aiToolApproval) {
+        return;
+      }
 
-    const entry = pendingApprovalRef.current.get(toolCallId);
-    if (!entry) return;
+      const entry = pendingApprovalRef.current.get(toolCallId);
+      if (!entry) {
+        return;
+      }
 
-    // Send approval response to main process
-    aiToolApproval.respond({
-      chatId: entry.chatId,
-      toolCallId,
-      approved: true,
-    });
-
-    // Update the tool invocation state back to "call" (running)
-    const streamConversationId = streamConversationIdRef.current;
-    if (streamConversationId) {
-      updateConversationById(streamConversationId, (conversation) => {
-        const id = assistantIdRef.current;
-        if (!id) return conversation;
-        return {
-          ...conversation,
-          updatedAt: toIsoNow(),
-          messages: conversation.messages.map((msg) => {
-            if (msg.id !== id) return msg;
-            const parts = (msg.parts ?? []).map((part) => {
-              if (
-                part.type === "tool-invocation"
-                && part.toolInvocation.toolCallId === toolCallId
-              ) {
-                return {
-                  ...part,
-                  toolInvocation: {
-                    ...part.toolInvocation,
-                    state: "call" as const,
-                    approvalRequest: undefined,
-                  },
-                };
-              }
-              return part;
-            });
-            return { ...msg, parts };
-          }),
-        };
+      // Send approval response to main process
+      aiToolApproval.respond({
+        approved: true,
+        chatId: entry.chatId,
+        toolCallId,
       });
-    }
 
-    pendingApprovalRef.current.delete(toolCallId);
-  }, [updateConversationById]);
+      // Update the tool invocation state back to "call" (running)
+      const streamConversationId = streamConversationIdRef.current;
+      if (streamConversationId) {
+        updateConversationById(streamConversationId, (conversation) => {
+          const id = assistantIdRef.current;
+          if (!id) {
+            return conversation;
+          }
+          return {
+            ...conversation,
+            messages: conversation.messages.map((msg) => {
+              if (msg.id !== id) {
+                return msg;
+              }
+              const parts = (msg.parts ?? []).map((part) => {
+                if (
+                  part.type === "tool-invocation" &&
+                  part.toolInvocation.toolCallId === toolCallId
+                ) {
+                  return {
+                    ...part,
+                    toolInvocation: {
+                      ...part.toolInvocation,
+                      approvalRequest: undefined,
+                      state: "call" as const,
+                    },
+                  };
+                }
+                return part;
+              });
+              return { ...msg, parts };
+            }),
+            updatedAt: toIsoNow(),
+          };
+        });
+      }
+
+      pendingApprovalRef.current.delete(toolCallId);
+    },
+    [updateConversationById]
+  );
 
   /** Reject a pending tool invocation. */
-  const rejectToolCall = useCallback((toolCallId: string) => {
-    const ai = (window as any).ai as AiRendererApi | undefined;
-    const aiToolApproval = ai?.toolApproval;
-    if (!aiToolApproval) return;
+  const rejectToolCall = useCallback(
+    (toolCallId: string) => {
+      const ai = (window as any).ai as AiRendererApi | undefined;
+      const aiToolApproval = ai?.toolApproval;
+      if (!aiToolApproval) {
+        return;
+      }
 
-    const entry = pendingApprovalRef.current.get(toolCallId);
-    if (!entry) return;
+      const entry = pendingApprovalRef.current.get(toolCallId);
+      if (!entry) {
+        return;
+      }
 
-    // Send rejection response to main process
-    aiToolApproval.respond({
-      chatId: entry.chatId,
-      toolCallId,
-      approved: false,
-    });
-
-    // Update the tool invocation state back to "call" (will receive error result)
-    const streamConversationId = streamConversationIdRef.current;
-    if (streamConversationId) {
-      updateConversationById(streamConversationId, (conversation) => {
-        const id = assistantIdRef.current;
-        if (!id) return conversation;
-        return {
-          ...conversation,
-          updatedAt: toIsoNow(),
-          messages: conversation.messages.map((msg) => {
-            if (msg.id !== id) return msg;
-            const parts = (msg.parts ?? []).map((part) => {
-              if (
-                part.type === "tool-invocation"
-                && part.toolInvocation.toolCallId === toolCallId
-              ) {
-                return {
-                  ...part,
-                  toolInvocation: {
-                    ...part.toolInvocation,
-                    state: "call" as const,
-                    approvalRequest: undefined,
-                  },
-                };
-              }
-              return part;
-            });
-            return { ...msg, parts };
-          }),
-        };
+      // Send rejection response to main process
+      aiToolApproval.respond({
+        approved: false,
+        chatId: entry.chatId,
+        toolCallId,
       });
-    }
 
-    pendingApprovalRef.current.delete(toolCallId);
-  }, [updateConversationById]);
+      // Update the tool invocation state back to "call" (will receive error result)
+      const streamConversationId = streamConversationIdRef.current;
+      if (streamConversationId) {
+        updateConversationById(streamConversationId, (conversation) => {
+          const id = assistantIdRef.current;
+          if (!id) {
+            return conversation;
+          }
+          return {
+            ...conversation,
+            messages: conversation.messages.map((msg) => {
+              if (msg.id !== id) {
+                return msg;
+              }
+              const parts = (msg.parts ?? []).map((part) => {
+                if (
+                  part.type === "tool-invocation" &&
+                  part.toolInvocation.toolCallId === toolCallId
+                ) {
+                  return {
+                    ...part,
+                    toolInvocation: {
+                      ...part.toolInvocation,
+                      approvalRequest: undefined,
+                      state: "call" as const,
+                    },
+                  };
+                }
+                return part;
+              });
+              return { ...msg, parts };
+            }),
+            updatedAt: toIsoNow(),
+          };
+        });
+      }
+
+      pendingApprovalRef.current.delete(toolCallId);
+    },
+    [updateConversationById]
+  );
 
   const abort = useCallback(() => {
     const aiChat = window.electron?.aiChat;
-    if (!aiChat) return;
+    if (!aiChat) {
+      return;
+    }
     aiChat.abort(chatIdRef.current);
     setIsLoading(false);
     // Clean up stale pending approvals for the aborted stream
@@ -1227,22 +1459,24 @@ export function useAiChat({
     const streamConversationId =
       streamConversationIdRef.current ?? activeConversationIdRef.current;
     if (streamConversationId) {
-      updateConversationById(streamConversationId, (conversation) => {
-        return {
-          ...conversation,
-          updatedAt: toIsoNow(),
-          messages: conversation.messages.map((message) =>
-            message.isStreaming ? { ...message, isStreaming: false } : message,
-          ),
-        };
-      });
+      updateConversationById(streamConversationId, (conversation) => ({
+        ...conversation,
+        messages: conversation.messages.map((message) =>
+          message.isStreaming ? { ...message, isStreaming: false } : message
+        ),
+        updatedAt: toIsoNow(),
+      }));
     }
     assistantIdRef.current = null;
     streamConversationIdRef.current = null;
   }, [updateConversationById]);
 
   const startNewConversation = useCallback(() => {
-    const nextConversation = createEmptyConversation({ connectionId, connectionLabel, dbType });
+    const nextConversation = createEmptyConversation({
+      connectionId,
+      connectionLabel,
+      dbType,
+    });
     chatIdRef.current = `chat-${Date.now()}`;
     setConversations((prev) => withRetention([nextConversation, ...prev]));
     setActiveConversationId(nextConversation.id);
@@ -1250,33 +1484,45 @@ export function useAiChat({
   }, [connectionId, connectionLabel, dbType]);
 
   const selectConversation = useCallback((conversationId: string) => {
-    setActiveConversationId((prev) => (prev === conversationId ? prev : conversationId));
+    setActiveConversationId((prev) =>
+      prev === conversationId ? prev : conversationId
+    );
     setError(null);
   }, []);
 
   const deleteConversation = useCallback(
     (conversationId: string) => {
       setConversations((prev) => {
-        const remaining = prev.filter((conversation) => conversation.id !== conversationId);
+        const remaining = prev.filter(
+          (conversation) => conversation.id !== conversationId
+        );
         if (remaining.length > 0) {
           return remaining;
         }
-        return [createEmptyConversation({ connectionId, connectionLabel, dbType })];
+        return [
+          createEmptyConversation({ connectionId, connectionLabel, dbType }),
+        ];
       });
       setActiveConversationId((prevActiveId) => {
-        if (prevActiveId !== conversationId) return prevActiveId;
+        if (prevActiveId !== conversationId) {
+          return prevActiveId;
+        }
         const remaining = conversationsRef.current.filter(
-          (conversation) => conversation.id !== conversationId,
+          (conversation) => conversation.id !== conversationId
         );
         return remaining[0]?.id ?? null;
       });
       setError(null);
     },
-    [connectionId, connectionLabel, dbType],
+    [connectionId, connectionLabel, dbType]
   );
 
   const clearAllConversations = useCallback(() => {
-    const fresh = createEmptyConversation({ connectionId, connectionLabel, dbType });
+    const fresh = createEmptyConversation({
+      connectionId,
+      connectionLabel,
+      dbType,
+    });
     chatIdRef.current = `chat-${Date.now()}`;
     setConversations([fresh]);
     setActiveConversationId(fresh.id);
@@ -1289,7 +1535,9 @@ export function useAiChat({
 
   const clearCurrentConversation = useCallback(() => {
     const conversationId = activeConversationIdRef.current;
-    if (!conversationId) return;
+    if (!conversationId) {
+      return;
+    }
     chatIdRef.current = `chat-${Date.now()}`;
     setIsLoading(false);
     setError(null);
@@ -1299,9 +1547,9 @@ export function useAiChat({
     streamConversationIdRef.current = null;
     updateConversationById(conversationId, (conversation) => ({
       ...conversation,
+      messages: [],
       title: DEFAULT_CONVERSATION_TITLE,
       updatedAt: toIsoNow(),
-      messages: [],
     }));
   }, [updateConversationById]);
 
@@ -1314,29 +1562,33 @@ export function useAiChat({
   }, []);
 
   useEffect(() => {
-    if (!activeConversationId) return;
-    const exists = conversations.some((conversation) => conversation.id === activeConversationId);
+    if (!activeConversationId) {
+      return;
+    }
+    const exists = conversations.some(
+      (conversation) => conversation.id === activeConversationId
+    );
     if (!exists) {
       setActiveConversationId(conversations[0]?.id ?? null);
     }
   }, [activeConversationId, conversations]);
 
   return {
-    messages,
-    conversations,
-    activeConversationId,
-    isLoading,
-    error,
-    clearError,
-    sendMessage,
     abort,
-    clearMessages,
-    startNewConversation,
-    selectConversation,
-    deleteConversation,
+    activeConversationId,
+    approveToolCall,
     clearAllConversations,
     clearCurrentConversation,
-    approveToolCall,
+    clearError,
+    clearMessages,
+    conversations,
+    deleteConversation,
+    error,
+    isLoading,
+    messages,
     rejectToolCall,
+    selectConversation,
+    sendMessage,
+    startNewConversation,
   };
 }

@@ -1,91 +1,88 @@
 import { ORPCError, os } from "@orpc/server";
-import type {
-  BranchDeletePreview,
-  BranchInfo,
-  Connection,
-  ConstraintInfo,
-  IndexInfo,
-  LocalDbInfo,
-  QueryResult,
-  DatabaseSchema,
-  SchemaSummary,
-  SchemaTableDetails,
-  SchemaEnum,
-  SchemaFunction,
-  SchemaTrigger,
-  TableRowsResponse,
-  SaveChangesResponse,
-  FkLookupResponse,
-  DatabaseInfo,
-  DdlResult,
-  ExportSchemaResult,
-  ExportTableDataResult,
-  MergeBranchSchemaResult,
-  ImportDryRunResult,
-  ExportSchemaIndexesResult,
-} from "./types";
-import { registerQuery, unregisterQuery } from "./active-queries";
+import { randomUUID } from "node:crypto";
 import {
-  connectionInputSchema,
-  executeQuerySchema,
-  getTableDetailsSchema,
-  listRowsInputSchema,
-  saveChangesInputSchema,
-  fkLookupInputSchema,
-  tableTruncateSchema,
-  createTableInputSchema,
-  dropTableInputSchema,
-  renameTableInputSchema,
-  addColumnInputSchema,
-  dropColumnInputSchema,
-  renameColumnInputSchema,
-  alterColumnTypeInputSchema,
-  setColumnNullableInputSchema,
-  setColumnDefaultInputSchema,
-  createIndexInputSchema,
-  dropIndexInputSchema,
-  createSchemaInputSchema,
-  idSchema,
-  createLocalDatabaseSchema,
-  exportTableDataSchema,
-  executeBatchDdlSchema,
-  importTableRowsSchema,
-  waitForDatabaseSchema,
-  schemaDefinitionInputSchema,
-  createBranchSchema,
-  deleteBranchSchema,
-  switchBranchSchema,
-  listBranchesSchema,
-  renameBranchSchema,
-  getBranchInfoSchema,
-  mergeBranchSchemaSchema,
-  previewDeleteBranchSchema,
-  importTableColumnsSchema,
-  importDryRunSchema,
-  createTableFromImportSchema,
-  exportSchemaIndexesSchema,
-} from "./schemas";
-import {
-  loadConnections,
-  saveConnections,
-} from "./connection-store";
-import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
-import { driverRegistry } from "./registry";
-import { localDbManager } from "./local-db-manager";
-import {
-  invalidateTableCache,
-  invalidateSchemaCache,
   invalidateConnectionCache,
+  invalidateSchemaCache,
+  invalidateTableCache,
   recordDdlOperation,
 } from "@/ipc/ai/schema-cache";
+import { registerQuery, unregisterQuery } from "./active-queries";
+import { loadConnections, saveConnections } from "./connection-store";
+import { LOCAL_DB_DEFAULT_PASSWORD } from "./constants";
+import type { DriverConnectionConfig } from "./driver";
+import { localDbManager } from "./local-db-manager";
+import { driverRegistry } from "./registry";
+import {
+  addColumnInputSchema,
+  alterColumnTypeInputSchema,
+  connectionInputSchema,
+  createBranchSchema,
+  createIndexInputSchema,
+  createLocalDatabaseSchema,
+  createSchemaInputSchema,
+  createTableFromImportSchema,
+  createTableInputSchema,
+  deleteBranchSchema,
+  dropColumnInputSchema,
+  dropIndexInputSchema,
+  dropTableInputSchema,
+  executeBatchDdlSchema,
+  executeQuerySchema,
+  exportSchemaIndexesSchema,
+  exportTableDataSchema,
+  fkLookupInputSchema,
+  getBranchInfoSchema,
+  getTableDetailsSchema,
+  idSchema,
+  importDryRunSchema,
+  importTableColumnsSchema,
+  importTableRowsSchema,
+  listBranchesSchema,
+  listRowsInputSchema,
+  mergeBranchSchemaSchema,
+  previewDeleteBranchSchema,
+  renameBranchSchema,
+  renameColumnInputSchema,
+  renameTableInputSchema,
+  saveChangesInputSchema,
+  schemaDefinitionInputSchema,
+  setColumnDefaultInputSchema,
+  setColumnNullableInputSchema,
+  switchBranchSchema,
+  tableTruncateSchema,
+  waitForDatabaseSchema,
+} from "./schemas";
 import {
   tableFkLookupRuntime,
   tableSaveChangesRuntime,
   tableTruncateRuntime,
 } from "./table-data-runtime";
-import { randomUUID } from "crypto";
-import type { DriverConnectionConfig } from "./driver";
-import type { DatabaseType } from "./types";
+import type {
+  BranchDeletePreview,
+  BranchInfo,
+  Connection,
+  ConstraintInfo,
+  DatabaseInfo,
+  DatabaseSchema,
+  DatabaseType,
+  DdlResult,
+  ExportSchemaIndexesResult,
+  ExportSchemaResult,
+  ExportTableDataResult,
+  FkLookupResponse,
+  ImportDryRunResult,
+  IndexInfo,
+  LocalDbInfo,
+  MergeBranchSchemaResult,
+  QueryResult,
+  SaveChangesResponse,
+  SchemaEnum,
+  SchemaFunction,
+  SchemaSummary,
+  SchemaTableDetails,
+  SchemaTrigger,
+  TableRowsResponse,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,10 +95,15 @@ function resolveDbType(connection: Partial<Connection>): DatabaseType {
 
 /** Strip credentials (passwords, connection strings) from error messages before sending to renderer. */
 function sanitizeErrorMessage(err: unknown, fallback: string): string {
-  if (!(err instanceof Error)) return fallback;
+  if (!(err instanceof Error)) {
+    return fallback;
+  }
   let msg = err.message;
   // Remove postgresql://user:password@... patterns
-  msg = msg.replace(/(?:postgresql|postgres|mysql|mariadb|clickhouse|redis):\/\/[^@\s]+@[\w.-]+:\d+/gi, "[CONNECTION_STRING]");
+  msg = msg.replace(
+    /(?:postgresql|postgres|mysql|mariadb|clickhouse|redis):\/\/[^@\s]+@[\w.-]+:\d+/gi,
+    "[CONNECTION_STRING]"
+  );
   // Remove password=... patterns
   msg = msg.replace(/password\s*=\s*\S+/gi, "password=[REDACTED]");
   // Remove :password@ patterns that survived the first pass
@@ -110,10 +112,14 @@ function sanitizeErrorMessage(err: unknown, fallback: string): string {
 }
 
 function maskSecretInUrl(value?: string): string | undefined {
-  if (!value) return value;
+  if (!value) {
+    return value;
+  }
   try {
     const parsed = new URL(value);
-    if (parsed.password) parsed.password = "****";
+    if (parsed.password) {
+      parsed.password = "****";
+    }
     return parsed.toString();
   } catch {
     return value.replace(/:[^:@/]+@/, ":****@");
@@ -123,9 +129,9 @@ function maskSecretInUrl(value?: string): string | undefined {
 function redactConnectionForRenderer(connection: Connection): Connection {
   return {
     ...connection,
+    connection_string: maskSecretInUrl(connection.connection_string),
     password: "",
     url: maskSecretInUrl(connection.url),
-    connection_string: maskSecretInUrl(connection.connection_string),
   };
 }
 
@@ -148,46 +154,63 @@ function formatDriverErrorMessage(err: unknown, fallback: string): string {
     sqlState?: unknown;
   };
 
-  const message = typeof e.message === "string" && e.message.trim()
-    ? e.message.trim()
-    : fallback;
-  const code = typeof e.code === "string"
-    ? e.code
-    : typeof e.sqlState === "string"
-      ? e.sqlState
-      : typeof e.errno === "number"
-        ? String(e.errno)
-        : null;
-  const detail = typeof e.detail === "string" && e.detail.trim() ? e.detail.trim() : null;
-  const hint = typeof e.hint === "string" && e.hint.trim() ? e.hint.trim() : null;
-  const position = typeof e.position === "string" && e.position.trim() ? e.position.trim() : null;
+  const message =
+    typeof e.message === "string" && e.message.trim()
+      ? e.message.trim()
+      : fallback;
+  const code =
+    typeof e.code === "string"
+      ? e.code
+      : typeof e.sqlState === "string"
+        ? e.sqlState
+        : typeof e.errno === "number"
+          ? String(e.errno)
+          : null;
+  const detail =
+    typeof e.detail === "string" && e.detail.trim() ? e.detail.trim() : null;
+  const hint =
+    typeof e.hint === "string" && e.hint.trim() ? e.hint.trim() : null;
+  const position =
+    typeof e.position === "string" && e.position.trim()
+      ? e.position.trim()
+      : null;
 
   const parts: string[] = [];
   parts.push(code ? `[${code}] ${message}` : message);
-  if (detail) parts.push(`Detail: ${detail}`);
-  if (hint) parts.push(`Hint: ${hint}`);
-  if (position) parts.push(`Position: ${position}`);
+  if (detail) {
+    parts.push(`Detail: ${detail}`);
+  }
+  if (hint) {
+    parts.push(`Hint: ${hint}`);
+  }
+  if (position) {
+    parts.push(`Position: ${position}`);
+  }
 
   return sanitizeErrorMessage(parts.join(" | "), fallback);
 }
 
 /** Derive a DriverConnectionConfig from a Connection. */
-function toDriverConfig(connection: Partial<Connection>): DriverConnectionConfig {
+function toDriverConfig(
+  connection: Partial<Connection>
+): DriverConnectionConfig {
   const dbType = resolveDbType(connection);
   const driver = driverRegistry.get(dbType);
   return {
-    host: connection.host ?? "",
-    port: connection.port ?? driver.defaultPort,
     database: connection.database ?? driver.defaultDatabase,
-    username: connection.username ?? driver.defaultUsername,
+    host: connection.host ?? "",
     password: connection.password ?? "",
+    port: connection.port ?? driver.defaultPort,
     ssl_mode: connection.ssl_mode ?? "prefer",
     url: connection.url,
+    username: connection.username ?? driver.defaultUsername,
   };
 }
 
 /** Load a connection by ID and build its connection string via the driver. */
-async function resolveConnectionString(connectionId: string): Promise<{ connection: Connection; connStr: string }> {
+async function resolveConnectionString(
+  connectionId: string
+): Promise<{ connection: Connection; connStr: string }> {
   const connections = await loadConnections();
   const connection = connections.find((c) => c.id === connectionId);
   if (!connection) {
@@ -212,7 +235,9 @@ async function resolveConnectionString(connectionId: string): Promise<{ connecti
   let connStr: string;
 
   if (connection.is_local && dbType === "postgresql") {
-    connStr = await localDbManager.getActiveBranchConnectionString(connection.id);
+    connStr = await localDbManager.getActiveBranchConnectionString(
+      connection.id
+    );
   } else {
     const driver = driverRegistry.get(dbType);
     connStr = driver.buildConnectionString(toDriverConfig(connection));
@@ -237,38 +262,37 @@ export const saveConnection = os
       const existingIndex = connections.findIndex((c) => c.id === input.id);
 
       const dbType: DatabaseType = input.db_type || "postgresql";
-      const driver = driverRegistry.get(dbType);
+      const _driver = driverRegistry.get(dbType);
 
       const existing = existingIndex >= 0 ? connections[existingIndex] : null;
-      const nextPassword = input.password.trim().length > 0
-        ? input.password
-        : (existing?.password ?? "");
-      const nextUrl = isMaskedSecretUrl(input.url)
-        ? existing?.url
-        : input.url;
+      const nextPassword =
+        input.password.trim().length > 0
+          ? input.password
+          : (existing?.password ?? "");
+      const nextUrl = isMaskedSecretUrl(input.url) ? existing?.url : input.url;
       const nextConnectionString = isMaskedSecretUrl(input.connection_string)
         ? existing?.connection_string
         : input.connection_string;
 
       const connection: Connection = {
-        id: input.id || randomUUID(),
-        name: input.name,
-        db_type: dbType,
-        host: input.host,
-        port: input.port,
-        database: input.database,
-        username: input.username,
-        password: nextPassword,
-        ssl_mode: input.ssl_mode,
-        url: nextUrl,
-        is_local: input.is_local,
+        color: input.color,
         connection_string: nextConnectionString,
+        database: input.database,
+        db_type: dbType,
         engine_version: input.engine_version,
+        host: input.host,
+        id: input.id || randomUUID(),
+        is_local: input.is_local,
+        local_auto_start: input.local_auto_start,
+        name: input.name,
+        password: nextPassword,
+        port: input.port,
         // Backward compat: persist postgres_version if it was provided
         postgres_version: input.postgres_version,
+        ssl_mode: input.ssl_mode,
         tag: input.tag,
-        color: input.color,
-        local_auto_start: input.local_auto_start,
+        url: nextUrl,
+        username: input.username,
       };
 
       if (existingIndex >= 0) {
@@ -310,16 +334,19 @@ export const testConnection = os
       const stored = connections.find((c) => c.id === input.id);
       if (stored) {
         const providedPassword = input.password?.trim();
-        const password = providedPassword && providedPassword.length > 0
-          ? input.password
-          : stored.password;
+        const password =
+          providedPassword && providedPassword.length > 0
+            ? input.password
+            : stored.password;
 
         // Only use URL when the current payload explicitly provides a valid,
         // non-masked URL. Otherwise, test the structured host/port fields.
-        const providedUrl = typeof input.url === "string" ? input.url.trim() : "";
-        const url = providedUrl.length > 0 && !isMaskedSecretUrl(providedUrl)
-          ? providedUrl
-          : undefined;
+        const providedUrl =
+          typeof input.url === "string" ? input.url.trim() : "";
+        const url =
+          providedUrl.length > 0 && !isMaskedSecretUrl(providedUrl)
+            ? providedUrl
+            : undefined;
 
         resolvedConfig = toDriverConfig({
           ...stored,
@@ -334,20 +361,21 @@ export const testConnection = os
       const ok = await driver.testConnection(resolvedConfig);
       if (!ok) {
         console.warn("[db] testConnection returned false", {
-          dbType,
-          host: resolvedConfig.host,
-          port: resolvedConfig.port,
           database: resolvedConfig.database,
+          dbType,
           hasUrl: Boolean(resolvedConfig.url),
-          sslMode: resolvedConfig.ssl_mode,
+          host: resolvedConfig.host,
           isLocal: Boolean(input.is_local),
+          port: resolvedConfig.port,
+          sslMode: resolvedConfig.ssl_mode,
         });
         if (dbType === "clickhouse") {
           const sslMode = resolvedConfig.ssl_mode;
           const port = Number(resolvedConfig.port) || 0;
-          const hint = sslMode === "disable"
-            ? "ClickHouse test failed. If your server uses TLS, set SSL Mode to 'Require' and use HTTPS port (usually 8443 or provider-specific)."
-            : "ClickHouse test failed with SSL required. Verify host, port and credentials, and confirm the server accepts HTTPS/native HTTP endpoint.";
+          const hint =
+            sslMode === "disable"
+              ? "ClickHouse test failed. If your server uses TLS, set SSL Mode to 'Require' and use HTTPS port (usually 8443 or provider-specific)."
+              : "ClickHouse test failed with SSL required. Verify host, port and credentials, and confirm the server accepts HTTPS/native HTTP endpoint.";
 
           throw new ORPCError("BAD_REQUEST", {
             message: `${hint} Current config: ssl_mode=${sslMode}, port=${port}.`,
@@ -360,17 +388,19 @@ export const testConnection = os
       }
       return true;
     } catch (err) {
-      if (err instanceof ORPCError) throw err;
+      if (err instanceof ORPCError) {
+        throw err;
+      }
       const message = sanitizeErrorMessage(err, "Connection test failed");
       console.error("[db] testConnection threw", {
-        dbType,
-        host: resolvedConfig.host,
-        port: resolvedConfig.port,
         database: resolvedConfig.database,
+        dbType,
         hasUrl: Boolean(resolvedConfig.url),
-        sslMode: resolvedConfig.ssl_mode,
+        host: resolvedConfig.host,
         isLocal: Boolean(input.is_local),
         message,
+        port: resolvedConfig.port,
+        sslMode: resolvedConfig.ssl_mode,
       });
       throw new ORPCError("BAD_REQUEST", { message });
     }
@@ -388,12 +418,14 @@ export const getConnection = os
 // ---------------------------------------------------------------------------
 
 const MAX_QUERY_ROWS = 50_000;
-const MAX_PAGE_SIZE = 1_000;
+const MAX_PAGE_SIZE = 1000;
 
 export const executeQuery = os
   .input(executeQuerySchema)
   .handler(async ({ input }): Promise<QueryResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
 
     // If requestId is provided, register the query for cancellation support
@@ -411,10 +443,10 @@ export const executeQuery = os
         const totalRowCount = result.rows.length;
         return {
           ...result,
-          rows: result.rows.slice(0, MAX_QUERY_ROWS),
           row_count: MAX_QUERY_ROWS,
-          truncated: true,
+          rows: result.rows.slice(0, MAX_QUERY_ROWS),
           totalRowCount,
+          truncated: true,
         };
       }
       return result;
@@ -454,7 +486,9 @@ export const getSchemaSummary = os
 export const getTableDetails = os
   .input(getTableDetailsSchema)
   .handler(async ({ input }): Promise<SchemaTableDetails> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     return await driver.getTableDetails(connStr, input.schema, input.table);
   });
@@ -462,7 +496,9 @@ export const getTableDetails = os
 export const tableListRows = os
   .input(listRowsInputSchema)
   .handler(async ({ input }): Promise<TableRowsResponse> => {
-    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.tableRef.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     // Clamp pageSize to prevent fetching too many rows at once
     const safePageSize = Math.min(input.pageSize, MAX_PAGE_SIZE);
@@ -473,19 +509,21 @@ export const tableListRows = os
       input.page,
       safePageSize,
       input.sort,
-      input.filters,
+      input.filters
     );
     return {
       ...response,
-      sortAppliedOnServer: input.sort.length > 0,
       filtersAppliedOnServer: input.filters.length > 0,
+      sortAppliedOnServer: input.sort.length > 0,
     };
   });
 
 export const tableSaveChanges = os
   .input(saveChangesInputSchema)
   .handler(async ({ input }): Promise<SaveChangesResponse> => {
-    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.tableRef.connectionId
+    );
     const dbType = resolveDbType(connection);
     return await tableSaveChangesRuntime(dbType, connStr, input);
   });
@@ -493,30 +531,50 @@ export const tableSaveChanges = os
 export const tableTruncate = os
   .input(tableTruncateSchema)
   .handler(async ({ input }): Promise<void> => {
-    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.tableRef.connectionId
+    );
     const dbType = resolveDbType(connection);
     await tableTruncateRuntime(
       dbType,
       connStr,
       input.tableRef.schema,
-      input.tableRef.table,
+      input.tableRef.table
     );
   });
 
 export const tableFkLookup = os
   .input(fkLookupInputSchema)
   .handler(async ({ input }): Promise<FkLookupResponse> => {
-    const { connStr, connection } = await resolveConnectionString(input.tableRef.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.tableRef.connectionId
+    );
     const dbType = resolveDbType(connection);
     const driver = driverRegistry.get(dbType);
     return await tableFkLookupRuntime({
-      dbType,
       connectionString: connStr,
-      input,
+      dbType,
       getTableDetails: (connectionString, schema, table) =>
         driver.getTableDetails(connectionString, schema, table),
-      listRows: (connectionString, schema, table, page, pageSize, sort, filters) =>
-        driver.listRows(connectionString, schema, table, page, pageSize, sort, filters),
+      input,
+      listRows: (
+        connectionString,
+        schema,
+        table,
+        page,
+        pageSize,
+        sort,
+        filters
+      ) =>
+        driver.listRows(
+          connectionString,
+          schema,
+          table,
+          page,
+          pageSize,
+          sort,
+          filters
+        ),
     });
   });
 
@@ -535,7 +593,9 @@ export const getDatabaseInfo = os
 export const createTable = os
   .input(createTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.createTable(
       connStr,
@@ -543,7 +603,7 @@ export const createTable = os
       input.name,
       input.columns,
       input.primaryKeyColumns,
-      input.ifNotExists,
+      input.ifNotExists
     );
     return { sql };
   });
@@ -551,9 +611,17 @@ export const createTable = os
 export const dropTable = os
   .input(dropTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.dropTable(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    const sql = await driver.dropTable(
+      connStr,
+      input.schema,
+      input.name,
+      input.cascade,
+      input.ifExists
+    );
     // Invalidate cache for the dropped table
     invalidateTableCache(input.connectionId, input.schema, input.name);
     recordDdlOperation(input.connectionId, input.schema, input.name);
@@ -563,9 +631,16 @@ export const dropTable = os
 export const renameTable = os
   .input(renameTableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.renameTable(connStr, input.schema, input.oldName, input.newName);
+    const sql = await driver.renameTable(
+      connStr,
+      input.schema,
+      input.oldName,
+      input.newName
+    );
     // Invalidate cache for both old and new table names
     invalidateTableCache(input.connectionId, input.schema, input.oldName);
     invalidateTableCache(input.connectionId, input.schema, input.newName);
@@ -577,7 +652,9 @@ export const renameTable = os
 export const addColumn = os
   .input(addColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.addColumn(
       connStr,
@@ -587,7 +664,7 @@ export const addColumn = os
       input.column.dataType,
       input.column.isNullable,
       input.column.defaultExpr,
-      input.ifNotExists,
+      input.ifNotExists
     );
     // Invalidate cache for the modified table
     invalidateTableCache(input.connectionId, input.schema, input.table);
@@ -598,9 +675,18 @@ export const addColumn = os
 export const dropColumn = os
   .input(dropColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.dropColumn(connStr, input.schema, input.table, input.column, input.cascade, input.ifExists);
+    const sql = await driver.dropColumn(
+      connStr,
+      input.schema,
+      input.table,
+      input.column,
+      input.cascade,
+      input.ifExists
+    );
     // Invalidate cache for the modified table
     invalidateTableCache(input.connectionId, input.schema, input.table);
     recordDdlOperation(input.connectionId, input.schema, input.table);
@@ -610,9 +696,17 @@ export const dropColumn = os
 export const renameColumn = os
   .input(renameColumnInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.renameColumn(connStr, input.schema, input.table, input.oldName, input.newName);
+    const sql = await driver.renameColumn(
+      connStr,
+      input.schema,
+      input.table,
+      input.oldName,
+      input.newName
+    );
     // Invalidate cache for the modified table
     invalidateTableCache(input.connectionId, input.schema, input.table);
     recordDdlOperation(input.connectionId, input.schema, input.table);
@@ -622,9 +716,18 @@ export const renameColumn = os
 export const alterColumnType = os
   .input(alterColumnTypeInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.alterColumnType(connStr, input.schema, input.table, input.column, input.newType, input.usingExpr);
+    const sql = await driver.alterColumnType(
+      connStr,
+      input.schema,
+      input.table,
+      input.column,
+      input.newType,
+      input.usingExpr
+    );
     // Invalidate cache for the modified table
     invalidateTableCache(input.connectionId, input.schema, input.table);
     recordDdlOperation(input.connectionId, input.schema, input.table);
@@ -634,9 +737,17 @@ export const alterColumnType = os
 export const setColumnNullable = os
   .input(setColumnNullableInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.setColumnNullable(connStr, input.schema, input.table, input.column, input.isNullable);
+    const sql = await driver.setColumnNullable(
+      connStr,
+      input.schema,
+      input.table,
+      input.column,
+      input.isNullable
+    );
     // Invalidate cache for the modified table
     invalidateTableCache(input.connectionId, input.schema, input.table);
     recordDdlOperation(input.connectionId, input.schema, input.table);
@@ -646,9 +757,17 @@ export const setColumnNullable = os
 export const setColumnDefault = os
   .input(setColumnDefaultInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.setColumnDefault(connStr, input.schema, input.table, input.column, input.defaultExpr);
+    const sql = await driver.setColumnDefault(
+      connStr,
+      input.schema,
+      input.table,
+      input.column,
+      input.defaultExpr
+    );
     // Invalidate cache for the modified table
     invalidateTableCache(input.connectionId, input.schema, input.table);
     recordDdlOperation(input.connectionId, input.schema, input.table);
@@ -658,10 +777,21 @@ export const setColumnDefault = os
 export const createIndex = os
   .input(createIndexInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const indexName = input.name || `${input.table}_${input.columns.join("_")}_idx`;
-    const sql = await driver.createIndex(connStr, input.schema, input.table, indexName, input.columns, input.unique, input.ifNotExists);
+    const indexName =
+      input.name || `${input.table}_${input.columns.join("_")}_idx`;
+    const sql = await driver.createIndex(
+      connStr,
+      input.schema,
+      input.table,
+      indexName,
+      input.columns,
+      input.unique,
+      input.ifNotExists
+    );
     // Invalidate cache for the modified table (indexes changed)
     invalidateTableCache(input.connectionId, input.schema, input.table);
     recordDdlOperation(input.connectionId, input.schema, input.table);
@@ -671,9 +801,17 @@ export const createIndex = os
 export const dropIndex = os
   .input(dropIndexInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.dropIndex(connStr, input.schema, input.name, input.cascade, input.ifExists);
+    const sql = await driver.dropIndex(
+      connStr,
+      input.schema,
+      input.name,
+      input.cascade,
+      input.ifExists
+    );
     // Invalidate cache for the schema (index might be on any table)
     invalidateSchemaCache(input.connectionId, input.schema);
     recordDdlOperation(input.connectionId, input.schema);
@@ -683,9 +821,15 @@ export const dropIndex = os
 export const createSchema = os
   .input(createSchemaInputSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const sql = await driver.createSchema(connStr, input.name, input.ifNotExists);
+    const sql = await driver.createSchema(
+      connStr,
+      input.name,
+      input.ifNotExists
+    );
     return { sql };
   });
 
@@ -693,9 +837,9 @@ export const createSchema = os
 // Local DB handlers (PostgreSQL-only, unchanged)
 // ---------------------------------------------------------------------------
 
-export const listLocalDatabases = os.handler(async (): Promise<LocalDbInfo[]> => {
-  return await localDbManager.list();
-});
+export const listLocalDatabases = os.handler(
+  async (): Promise<LocalDbInfo[]> => await localDbManager.list()
+);
 
 export const createLocalDatabase = os
   .input(createLocalDatabaseSchema)
@@ -704,16 +848,18 @@ export const createLocalDatabase = os
       const normalizedName = input.name.trim();
       const engine = input.engine ?? "postgresql";
       const isSqlite = engine === "sqlite";
-      const password = isSqlite ? "" : (input.password?.trim() || LOCAL_DB_DEFAULT_PASSWORD);
+      const password = isSqlite
+        ? ""
+        : input.password?.trim() || LOCAL_DB_DEFAULT_PASSWORD;
       const info = await localDbManager.create({
-        name: normalizedName,
-        databaseName: input.databaseName || (isSqlite ? "main" : "postgres"),
-        username: isSqlite ? "" : (input.username || "postgres"),
-        password,
-        port: isSqlite ? 0 : (input.port || 5432),
-        postgresVersion: isSqlite ? "" : (input.postgresVersion || "16.13.0"),
         autoStart: input.autoStart ?? true,
+        databaseName: input.databaseName || (isSqlite ? "main" : "postgres"),
         engine,
+        name: normalizedName,
+        password,
+        port: isSqlite ? 0 : input.port || 5432,
+        postgresVersion: isSqlite ? "" : input.postgresVersion || "16.13.0",
+        username: isSqlite ? "" : input.username || "postgres",
       });
       return info;
     } catch (err) {
@@ -760,9 +906,9 @@ export const deleteLocalDatabase = os
     }
   });
 
-export const findAvailablePort = os.handler(async (): Promise<number> => {
-  return await localDbManager.findAvailablePort();
-});
+export const findAvailablePort = os.handler(
+  async (): Promise<number> => await localDbManager.findAvailablePort()
+);
 
 // ---------------------------------------------------------------------------
 // Clone to Local handlers (PostgreSQL-only, delegated to driver/runtime layer)
@@ -783,24 +929,32 @@ export const exportSchemaDdl = os
 export const exportTableData = os
   .input(exportTableDataSchema)
   .handler(async ({ input }): Promise<ExportTableDataResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     return await driver.exportTableData(
       connStr,
       input.schema,
       input.table,
       input.batchSize,
-      input.offset,
+      input.offset
     );
   });
 
 export const executeBatchDdl = os
   .input(executeBatchDdlSchema)
-  .handler(async ({ input }): Promise<{ errors: Array<{ sql: string; error: string }> }> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
-    const driver = driverRegistry.get(resolveDbType(connection));
-    return await driver.executeBatchDdl(connStr, input.statements);
-  });
+  .handler(
+    async ({
+      input,
+    }): Promise<{ errors: Array<{ sql: string; error: string }> }> => {
+      const { connStr, connection } = await resolveConnectionString(
+        input.connectionId
+      );
+      const driver = driverRegistry.get(resolveDbType(connection));
+      return await driver.executeBatchDdl(connStr, input.statements);
+    }
+  );
 
 export const waitForDatabase = os
   .input(waitForDatabaseSchema)
@@ -809,9 +963,13 @@ export const waitForDatabase = os
     let dbType: DatabaseType = "postgresql";
     try {
       const protocol = new URL(input.connectionString).protocol.toLowerCase();
-      if (protocol === "mysql:") dbType = "mysql";
-      else if (protocol === "mariadb:") dbType = "mariadb";
-      else if (protocol === "clickhouse:" || protocol === "clickhouses:") dbType = "clickhouse";
+      if (protocol === "mysql:") {
+        dbType = "mysql";
+      } else if (protocol === "mariadb:") {
+        dbType = "mariadb";
+      } else if (protocol === "clickhouse:" || protocol === "clickhouses:") {
+        dbType = "clickhouse";
+      }
     } catch {
       // default to postgresql
     }
@@ -819,43 +977,59 @@ export const waitForDatabase = os
     await driver.waitForDatabase(
       input.connectionString,
       input.maxRetries,
-      input.intervalMs,
+      input.intervalMs
     );
   });
 
 export const importTableRows = os
   .input(importTableRowsSchema)
   .handler(async ({ input }): Promise<number> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     return await driver.importTableRows(
       connStr,
       input.schema,
       input.table,
       input.columns,
-      input.rows,
+      input.rows
     );
   });
 export const importTableColumns = os
   .input(importTableColumnsSchema)
   .handler(async ({ input }) => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const details = await driver.getTableDetails(connStr, input.schema, input.table);
+    const details = await driver.getTableDetails(
+      connStr,
+      input.schema,
+      input.table
+    );
     return details.columns.map((column) => ({
-      name: column.name,
       dataType: column.data_type,
       isNullable: column.is_nullable,
+      name: column.name,
     }));
   });
 
 export const importDryRun = os
   .input(importDryRunSchema)
   .handler(async ({ input }): Promise<ImportDryRunResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
-    const tableDetails = await driver.getTableDetails(connStr, input.schema, input.table);
-    const tableColumns = new Map(tableDetails.columns.map((column) => [column.name, column]));
+    const tableDetails = await driver.getTableDetails(
+      connStr,
+      input.schema,
+      input.table
+    );
+    const tableColumns = new Map(
+      tableDetails.columns.map((column) => [column.name, column])
+    );
     const issues: ImportDryRunResult["issues"] = [];
     let validRows = 0;
 
@@ -864,30 +1038,43 @@ export const importDryRun = os
       for (const columnName of input.columns) {
         const column = tableColumns.get(columnName);
         if (!column) {
-          issues.push({ rowIndex, message: `Unknown target column: ${columnName}` });
+          issues.push({
+            message: `Unknown target column: ${columnName}`,
+            rowIndex,
+          });
           isValid = false;
           continue;
         }
         const value = row[columnName];
-        if (!column.is_nullable && (value === null || value === undefined || value === "")) {
-          issues.push({ rowIndex, message: `Column ${columnName} cannot be null` });
+        if (
+          !column.is_nullable &&
+          (value === null || value === undefined || value === "")
+        ) {
+          issues.push({
+            message: `Column ${columnName} cannot be null`,
+            rowIndex,
+          });
           isValid = false;
         }
       }
-      if (isValid) validRows += 1;
+      if (isValid) {
+        validRows += 1;
+      }
     }
 
     return {
-      validRows,
       invalidRows: input.rows.length - validRows,
       issues,
+      validRows,
     };
   });
 
 export const createTableFromImport = os
   .input(createTableFromImportSchema)
   .handler(async ({ input }): Promise<DdlResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     const sql = await driver.createTable(
       connStr,
@@ -898,7 +1085,7 @@ export const createTableFromImport = os
         isPrimaryKey: input.primaryKeyColumns?.includes(column.name),
       })),
       input.primaryKeyColumns,
-      input.ifNotExists,
+      input.ifNotExists
     );
     invalidateTableCache(input.connectionId, input.schema, input.table);
     recordDdlOperation(input.connectionId, input.schema, input.table);
@@ -908,26 +1095,38 @@ export const createTableFromImport = os
 export const exportSchemaIndexes = os
   .input(exportSchemaIndexesSchema)
   .handler(async ({ input }): Promise<ExportSchemaIndexesResult> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     const schemaSummary = await driver.getSchemaSummary(connStr);
     const scopedTables = schemaSummary.tables.filter((table) => {
-      if (table.schema !== input.schema) return false;
+      if (table.schema !== input.schema) {
+        return false;
+      }
       return input.table ? table.name === input.table : true;
     });
 
     const scripts: ExportSchemaIndexesResult["scripts"] = [];
     for (const table of scopedTables) {
-      const indexes = await driver.getIndexes(connStr, table.schema, table.name);
+      const indexes = await driver.getIndexes(
+        connStr,
+        table.schema,
+        table.name
+      );
       for (const index of indexes) {
-        const quotedColumns = index.columns.map((columnName) => `"${columnName}"`).join(", ");
-        const createPrefix = index.isUnique ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
+        const quotedColumns = index.columns
+          .map((columnName) => `"${columnName}"`)
+          .join(", ");
+        const createPrefix = index.isUnique
+          ? "CREATE UNIQUE INDEX"
+          : "CREATE INDEX";
         const sql = `${createPrefix} "${index.name}" ON "${table.schema}"."${table.name}" (${quotedColumns});`;
         scripts.push({
-          type: "index",
-          schema: table.schema,
           name: index.name,
+          schema: table.schema,
           sql,
+          type: "index",
         });
       }
     }
@@ -942,7 +1141,9 @@ export const exportSchemaIndexes = os
 export const getEnums = os
   .input(schemaDefinitionInputSchema)
   .handler(async ({ input }): Promise<SchemaEnum[]> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     return await driver.getEnums(connStr, input.schema);
   });
@@ -950,7 +1151,9 @@ export const getEnums = os
 export const getFunctions = os
   .input(schemaDefinitionInputSchema)
   .handler(async ({ input }): Promise<SchemaFunction[]> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     return await driver.getFunctions(connStr, input.schema);
   });
@@ -958,7 +1161,9 @@ export const getFunctions = os
 export const getTriggers = os
   .input(schemaDefinitionInputSchema)
   .handler(async ({ input }): Promise<SchemaTrigger[]> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     return await driver.getTriggers(connStr, input.schema);
   });
@@ -966,31 +1171,47 @@ export const getTriggers = os
 export const getSchemaConstraints = os
   .input(schemaDefinitionInputSchema)
   .handler(async ({ input }): Promise<ConstraintInfo[]> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     // Get table list for the schema, then aggregate per-table constraints
     const summary = await driver.getSchemaSummary(connStr);
-    const schemaTables = summary.tables.filter((t) => t.schema === input.schema);
+    const schemaTables = summary.tables.filter(
+      (t) => t.schema === input.schema
+    );
     const results = await Promise.allSettled(
-      schemaTables.map((t) => driver.getConstraints(connStr, input.schema, t.name)),
+      schemaTables.map((t) =>
+        driver.getConstraints(connStr, input.schema, t.name)
+      )
     );
     return results
-      .filter((r): r is PromiseFulfilledResult<ConstraintInfo[]> => r.status === "fulfilled")
+      .filter(
+        (r): r is PromiseFulfilledResult<ConstraintInfo[]> =>
+          r.status === "fulfilled"
+      )
       .flatMap((r) => r.value);
   });
 
 export const getSchemaIndexes = os
   .input(schemaDefinitionInputSchema)
   .handler(async ({ input }): Promise<IndexInfo[]> => {
-    const { connStr, connection } = await resolveConnectionString(input.connectionId);
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
     const driver = driverRegistry.get(resolveDbType(connection));
     const summary = await driver.getSchemaSummary(connStr);
-    const schemaTables = summary.tables.filter((t) => t.schema === input.schema);
+    const schemaTables = summary.tables.filter(
+      (t) => t.schema === input.schema
+    );
     const results = await Promise.allSettled(
-      schemaTables.map((t) => driver.getIndexes(connStr, input.schema, t.name)),
+      schemaTables.map((t) => driver.getIndexes(connStr, input.schema, t.name))
     );
     return results
-      .filter((r): r is PromiseFulfilledResult<IndexInfo[]> => r.status === "fulfilled")
+      .filter(
+        (r): r is PromiseFulfilledResult<IndexInfo[]> =>
+          r.status === "fulfilled"
+      )
       .flatMap((r) => r.value);
   });
 
@@ -1015,11 +1236,11 @@ export const createBranch = os
   .handler(async ({ input }): Promise<BranchInfo> => {
     try {
       return await localDbManager.createBranch({
-        localDbId: input.localDbId,
-        parentBranchId: input.parentBranchId,
-        name: input.name,
-        description: input.description,
         dataTables: input.dataTables,
+        description: input.description,
+        localDbId: input.localDbId,
+        name: input.name,
+        parentBranchId: input.parentBranchId,
       });
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
@@ -1056,7 +1277,10 @@ export const getBranchInfo = os
   .input(getBranchInfoSchema)
   .handler(async ({ input }): Promise<BranchInfo> => {
     try {
-      return await localDbManager.getBranchInfo(input.localDbId, input.branchId);
+      return await localDbManager.getBranchInfo(
+        input.localDbId,
+        input.branchId
+      );
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
         message: sanitizeErrorMessage(err, "Failed to get branch info"),
@@ -1068,7 +1292,11 @@ export const renameBranch = os
   .input(renameBranchSchema)
   .handler(async ({ input }): Promise<BranchInfo> => {
     try {
-      return await localDbManager.renameBranch(input.localDbId, input.branchId, input.newName);
+      return await localDbManager.renameBranch(
+        input.localDbId,
+        input.branchId,
+        input.newName
+      );
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
         message: sanitizeErrorMessage(err, "Failed to rename branch"),
@@ -1080,7 +1308,10 @@ export const previewDeleteBranch = os
   .input(previewDeleteBranchSchema)
   .handler(async ({ input }): Promise<BranchDeletePreview> => {
     try {
-      return await localDbManager.previewDeleteBranch(input.localDbId, input.branchId);
+      return await localDbManager.previewDeleteBranch(
+        input.localDbId,
+        input.branchId
+      );
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {
         message: sanitizeErrorMessage(err, "Failed to preview branch delete"),
@@ -1093,10 +1324,10 @@ export const mergeBranchSchema = os
   .handler(async ({ input }): Promise<MergeBranchSchemaResult> => {
     try {
       return await localDbManager.mergeBranchSchema({
+        dryRun: input.dryRun ?? false,
         localDbId: input.localDbId,
         sourceBranchId: input.sourceBranchId,
         targetBranchId: input.targetBranchId,
-        dryRun: input.dryRun ?? false,
       });
     } catch (err) {
       throw new ORPCError("BAD_REQUEST", {

@@ -4,9 +4,10 @@
  * Stores user feedback (thumbs up/down) on AI responses for quality tracking
  * and future model improvement. Data stays local (privacy-first).
  */
-import { join } from "node:path";
+
 import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { app } from "electron";
 
 // ---------------------------------------------------------------------------
@@ -16,25 +17,25 @@ import { app } from "electron";
 export type FeedbackRating = "positive" | "negative" | null;
 
 export interface AiFeedbackEntry {
-  id: string;
-  conversationId: string;
-  messageId: string;
-  connectionId?: string;
-  schemaName?: string;
-  tableName?: string;
-  prompt: string;
-  response: string;
-  rating: "positive" | "negative";
   category?: string; // e.g., "sql_generation", "explanation", "optimization"
   comment?: string; // optional user comment
+  connectionId?: string;
+  conversationId: string;
+  id: string;
+  messageId: string;
+  prompt: string;
+  rating: "positive" | "negative";
+  response: string;
+  schemaName?: string;
+  tableName?: string;
   timestamp: string;
 }
 
 export interface FeedbackStats {
-  total: number;
-  positive: number;
   negative: number;
+  positive: number;
   positiveRate: number;
+  total: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +46,7 @@ const DB_FILENAME = "ai-feedback.db";
 const DB_DIR = "feedback";
 
 const runtimeRequire = createRequire(
-  join(process.resourcesPath || process.cwd(), "package.json"),
+  join(process.resourcesPath || process.cwd(), "package.json")
 );
 const cwdRequire = createRequire(join(process.cwd(), "package.json"));
 
@@ -53,13 +54,17 @@ type BetterSqlite3Ctor = new (...args: any[]) => any;
 let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
 
 function loadBetterSqlite3(): BetterSqlite3Ctor {
-  if (betterSqlite3Cached) return betterSqlite3Cached;
+  if (betterSqlite3Cached) {
+    return betterSqlite3Cached;
+  }
 
   const base = process.resourcesPath;
   const candidates = [
     "better-sqlite3",
     base ? join(base, "node_modules", "better-sqlite3") : null,
-    base ? join(base, "app.asar.unpacked", "node_modules", "better-sqlite3") : null,
+    base
+      ? join(base, "app.asar.unpacked", "node_modules", "better-sqlite3")
+      : null,
     base ? join(base, "better-sqlite3") : null,
   ].filter(Boolean) as string[];
 
@@ -80,18 +85,22 @@ function loadBetterSqlite3(): BetterSqlite3Ctor {
   throw new Error(
     `Failed to load better-sqlite3 in feedback-store. Last error: ${
       lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
+    }`
   );
 }
 
 let cachedDbPath: string | null = null;
 
 function getDbPath(): string {
-  if (cachedDbPath) return cachedDbPath;
+  if (cachedDbPath) {
+    return cachedDbPath;
+  }
 
   // Lazy check for app availability
   if (!app) {
-    throw new Error("Electron app not available - cannot initialize feedback database");
+    throw new Error(
+      "Electron app not available - cannot initialize feedback database"
+    );
   }
 
   const userData = app.getPath("userData");
@@ -121,7 +130,6 @@ function getDb(): any {
 }
 
 function initTables(database: any): void {
-
   database.exec(`
     CREATE TABLE IF NOT EXISTS ai_feedback (
       id TEXT PRIMARY KEY,
@@ -160,7 +168,9 @@ function initTables(database: any): void {
 /**
  * Save or update feedback for an AI response.
  */
-export function saveFeedback(entry: Omit<AiFeedbackEntry, "id" | "timestamp">): AiFeedbackEntry {
+export function saveFeedback(
+  entry: Omit<AiFeedbackEntry, "id" | "timestamp">
+): AiFeedbackEntry {
   const database = getDb();
   const id = `${entry.conversationId}_${entry.messageId}`;
 
@@ -187,7 +197,7 @@ export function saveFeedback(entry: Omit<AiFeedbackEntry, "id" | "timestamp">): 
     entry.response,
     entry.rating,
     entry.category ?? null,
-    entry.comment ?? null,
+    entry.comment ?? null
   ) as AiFeedbackEntry;
 
   return row;
@@ -196,7 +206,10 @@ export function saveFeedback(entry: Omit<AiFeedbackEntry, "id" | "timestamp">): 
 /**
  * Remove feedback for a specific message.
  */
-export function removeFeedback(conversationId: string, messageId: string): boolean {
+export function removeFeedback(
+  conversationId: string,
+  messageId: string
+): boolean {
   const database = getDb();
   const stmt = database.prepare(
     "DELETE FROM ai_feedback WHERE conversation_id = ? AND message_id = ?"
@@ -208,23 +221,33 @@ export function removeFeedback(conversationId: string, messageId: string): boole
 /**
  * Get feedback for a specific message.
  */
-export function getFeedback(conversationId: string, messageId: string): AiFeedbackEntry | null {
+export function getFeedback(
+  conversationId: string,
+  messageId: string
+): AiFeedbackEntry | null {
   const database = getDb();
   const stmt = database.prepare(
     "SELECT * FROM ai_feedback WHERE conversation_id = ? AND message_id = ?"
   );
-  return (stmt.get(conversationId, messageId) as AiFeedbackEntry | undefined) ?? null;
+  return (
+    (stmt.get(conversationId, messageId) as AiFeedbackEntry | undefined) ?? null
+  );
 }
 
 /**
  * Get feedback rating for a specific message (lightweight).
  */
-export function getFeedbackRating(conversationId: string, messageId: string): FeedbackRating {
+export function getFeedbackRating(
+  conversationId: string,
+  messageId: string
+): FeedbackRating {
   const database = getDb();
   const stmt = database.prepare(
     "SELECT rating FROM ai_feedback WHERE conversation_id = ? AND message_id = ?"
   );
-  const row = stmt.get(conversationId, messageId) as { rating: string } | undefined;
+  const row = stmt.get(conversationId, messageId) as
+    | { rating: string }
+    | undefined;
   return row ? (row.rating as FeedbackRating) : null;
 }
 
@@ -261,8 +284,9 @@ export function listFeedback(options?: {
     params.push(options.rating);
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const limitClause = options?.limit ? `LIMIT ? OFFSET ?` : "";
+  const whereClause =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limitClause = options?.limit ? "LIMIT ? OFFSET ?" : "";
   if (options?.limit) {
     params.push(options.limit);
     params.push(options.offset ?? 0);
@@ -300,7 +324,8 @@ export function getFeedbackStats(options?: {
     params.push(options.since);
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const whereClause =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const stmt = database.prepare(`
     SELECT
@@ -322,10 +347,10 @@ export function getFeedbackStats(options?: {
   const negative = row.negative ?? 0;
 
   return {
-    total,
-    positive,
     negative,
+    positive,
     positiveRate: total > 0 ? Math.round((positive / total) * 100) : 0,
+    total,
   };
 }
 
@@ -360,7 +385,9 @@ export function cleanupOldFeedback(olderThanDays: number): number {
  */
 export function exportFeedbackToJson(): string {
   const database = getDb();
-  const stmt = database.prepare("SELECT * FROM ai_feedback ORDER BY timestamp DESC");
+  const stmt = database.prepare(
+    "SELECT * FROM ai_feedback ORDER BY timestamp DESC"
+  );
   const rows = stmt.all() as AiFeedbackEntry[];
   return JSON.stringify(rows, null, 2);
 }

@@ -1,17 +1,14 @@
 import type { DatabaseType, SchemaColumn, SchemaIndex } from "@/ipc/db/types";
-import {
-  getColumnType,
-  toLiteralKey,
-  pascalCase,
-  camelCase,
-  isEnumColumn,
-} from "../utils";
 import type { GeneratorFormat } from "../utils";
+import {
+  camelCase,
+  getColumnType,
+  isEnumColumn,
+  pascalCase,
+  toLiteralKey,
+} from "../utils";
 
-function buildZodType(
-  col: SchemaColumn,
-  dialect: DatabaseType,
-): string {
+function buildZodType(col: SchemaColumn, dialect: DatabaseType): string {
   let zodType = getColumnType(col.data_type, "zod" as GeneratorFormat, dialect);
 
   // Integer-specific: use z.int() for int types

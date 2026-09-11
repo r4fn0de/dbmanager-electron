@@ -9,15 +9,16 @@
  * ClickHouse keeps raw @clickhouse/client-web (no built-in Kysely dialect —
  * all ClickHouse queries stay raw since Kysely doesn't support it natively).
  */
-import { Kysely, PostgresDialect, MysqlDialect } from "kysely";
-import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
-import Module from "node:module";
-import { join } from "node:path";
-import type { Pool as MysqlPool, PoolOptions as MysqlPoolOptions } from "mysql2/promise";
 
-import type { PgDatabase } from "./kysely-types";
-import type { MysqlDatabase } from "./kysely-types";
+import { existsSync } from "node:fs";
+import Module, { createRequire } from "node:module";
+import { join } from "node:path";
+import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
+import type {
+  Pool as MysqlPool,
+  PoolOptions as MysqlPoolOptions,
+} from "mysql2/promise";
+import type { MysqlDatabase, PgDatabase } from "./kysely-types";
 import { closeAllSqliteDbs } from "./sqlite-driver";
 
 const nodeModule = Module as typeof Module & { _initPaths: () => void };
@@ -25,7 +26,7 @@ const nodeModule = Module as typeof Module & { _initPaths: () => void };
 // ---------------------------------------------------------------------------
 
 const runtimeRequire = createRequire(
-  join(process.resourcesPath || process.cwd(), "package.json"),
+  join(process.resourcesPath || process.cwd(), "package.json")
 );
 
 type PgPoolCtor = new (config: Record<string, unknown>) => any;
@@ -33,7 +34,9 @@ let pgPoolCtorCached: PgPoolCtor | null = null;
 
 function ensureResourcesNodePath(): void {
   const base = process.resourcesPath;
-  if (!base) return;
+  if (!base) {
+    return;
+  }
 
   const current = process.env.NODE_PATH || "";
   const segments = current
@@ -49,7 +52,9 @@ function ensureResourcesNodePath(): void {
 
 function loadPgPoolCtor(): PgPoolCtor {
   ensureResourcesNodePath();
-  if (pgPoolCtorCached) return pgPoolCtorCached;
+  if (pgPoolCtorCached) {
+    return pgPoolCtorCached;
+  }
 
   const base = process.resourcesPath;
   const cwd = process.cwd();
@@ -69,11 +74,15 @@ function loadPgPoolCtor(): PgPoolCtor {
         mod = runtimeRequire(candidate) as { Pool?: PgPoolCtor };
       } else {
         const pkgJsonPath = join(candidate, "package.json");
-        if (!existsSync(pkgJsonPath)) continue;
+        if (!existsSync(pkgJsonPath)) {
+          continue;
+        }
         mod = runtimeRequire(candidate) as { Pool?: PgPoolCtor };
       }
 
-      if (!mod?.Pool) continue;
+      if (!mod?.Pool) {
+        continue;
+      }
       pgPoolCtorCached = mod.Pool;
       return mod.Pool;
     } catch (err) {
@@ -84,7 +93,7 @@ function loadPgPoolCtor(): PgPoolCtor {
   throw new Error(
     `Failed to load pg Pool constructor. Last error: ${
       lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
+    }`
   );
 }
 
@@ -106,16 +115,18 @@ const mysqlKyselyInstances = new Map<string, Kysely<MysqlDatabase>>();
 
 export function getPgPool(connectionString: string): any {
   const existing = pgPools.get(connectionString);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   const PgPool = loadPgPoolCtor();
   const pool = new PgPool({
     connectionString,
-    max: 10,
+    connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10_000,
+    max: 10,
   });
 
   // Health check logging
@@ -132,7 +143,9 @@ export function getPgPool(connectionString: string): any {
 /** Get a memoized Kysely instance for PostgreSQL schema introspection queries. */
 export function getPgKysely(connectionString: string): Kysely<PgDatabase> {
   const existing = pgKyselyInstances.get(connectionString);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   const pool = getPgPool(connectionString);
   const db = new Kysely<PgDatabase>({
@@ -143,7 +156,9 @@ export function getPgKysely(connectionString: string): Kysely<PgDatabase> {
 }
 
 /** Close and evict cached PG resources for a single connection string. */
-export async function closePgResources(connectionString: string): Promise<void> {
+export async function closePgResources(
+  connectionString: string
+): Promise<void> {
   const db = pgKyselyInstances.get(connectionString);
   if (db) {
     await db.destroy().catch(() => {});
@@ -162,15 +177,19 @@ export async function closePgResources(connectionString: string): Promise<void> 
 // ---------------------------------------------------------------------------
 
 export async function getMysqlPool(
-  connectionString: string,
+  connectionString: string
 ): Promise<MysqlPool> {
   const existing = mysqlPools.get(connectionString);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   // Coalesce concurrent calls for the same connection string to avoid
   // creating duplicate pools (race condition between cache-check and cache-set).
   const pending = mysqlPoolCreating.get(connectionString);
-  if (pending) return pending;
+  if (pending) {
+    return pending;
+  }
 
   const creation = (async (): Promise<MysqlPool> => {
     const mysql = await import("mysql2/promise");
@@ -181,22 +200,22 @@ export async function getMysqlPool(
     // round-trip on MySQL 8.0+). Explicitly disabling SSL for non-SSL URIs
     // avoids unintended TLS negotiation that can stall the connection.
     const sslEnabled = /[?&]ssl=(true|1|require)/i.test(connectionString);
-    const sslOption = (
-      sslEnabled ? { rejectUnauthorized: false } : false
-    ) as unknown as MysqlPoolOptions["ssl"];
+    const sslOption = (sslEnabled
+      ? { rejectUnauthorized: false }
+      : false) as unknown as MysqlPoolOptions["ssl"];
 
     const pool = mysql.createPool({
-      uri: connectionString,
-      ssl: sslOption,
       connectionLimit: 10,
-      queueLimit: 0,
-      waitForConnections: true,
       // connectTimeout covers the TCP connect phase only.
       // Auth/SSL timeouts are handled in withConnection via Promise.race.
-      connectTimeout: 5_000,
-      enableKeepAlive: true,
-      keepAliveInitialDelay: 5_000,
+      connectTimeout: 5000,
       dateStrings: true,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 5000,
+      queueLimit: 0,
+      ssl: sslOption,
+      uri: connectionString,
+      waitForConnections: true,
     });
 
     mysqlPools.set(connectionString, pool);
@@ -213,9 +232,13 @@ export async function getMysqlPool(
 }
 
 /** Get a memoized Kysely instance for MySQL/MariaDB schema introspection queries. */
-export async function getMysqlKysely(connectionString: string): Promise<Kysely<MysqlDatabase>> {
+export async function getMysqlKysely(
+  connectionString: string
+): Promise<Kysely<MysqlDatabase>> {
   const existing = mysqlKyselyInstances.get(connectionString);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   const pool = await getMysqlPool(connectionString);
   const db = new Kysely<MysqlDatabase>({
@@ -223,7 +246,7 @@ export async function getMysqlKysely(connectionString: string): Promise<Kysely<M
   });
   mysqlKyselyInstances.set(connectionString, db);
   return db;
-}// ---------------------------------------------------------------------------
+} // ---------------------------------------------------------------------------
 // ClickHouse — raw client only (no Kysely dialect)
 // Uses pure HTTP via native fetch (Node.js 22+) instead of @clickhouse/client
 // because @clickhouse/client uses native TCP protocol (port 9000) which many
@@ -232,14 +255,18 @@ export async function getMysqlKysely(connectionString: string): Promise<Kysely<M
 
 /** Minimal interface matching what clickhouse-client.ts expects from a ClickHouse client. */
 interface ClickHouseClient {
+  close(): Promise<void>;
+  exec(params: { query: string }): Promise<void>;
+  insert(params: {
+    table: string;
+    values: Record<string, unknown>[];
+    columns: string[];
+  }): Promise<void>;
+  ping(): Promise<boolean>;
   query(params: { query: string; format?: string }): Promise<{
     json<T>(): Promise<T[]>;
     text(): Promise<string>;
   }>;
-  exec(params: { query: string }): Promise<void>;
-  insert(params: { table: string; values: Record<string, unknown>[]; columns: string[] }): Promise<void>;
-  close(): Promise<void>;
-  ping(): Promise<boolean>;
 }
 
 /**
@@ -257,77 +284,55 @@ function createHttpClickHouseClient(url: string): ClickHouseClient {
   const authHeader = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 
   return {
-    async query(params: { query: string; format?: string }) {
-      const format = params.format || "JSONEachRow";
-      const queryParams = new URLSearchParams({
-        query: params.query,
-        default_format: format,
-        database,
-      });
-
-      const response = await fetch(`${baseUrl}/?${queryParams.toString()}`, {
-        method: "POST",
-        headers: {
-          Authorization: authHeader,
-          "User-Agent": "TarsDB/1.0",
-        },
-        signal: AbortSignal.timeout(30_000),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`ClickHouse HTTP error (${response.status}): ${text || "Unknown error"}`);
-      }
-
-      return {
-        async json<T = Record<string, unknown>>(): Promise<T[]> {
-          const text = await response.text();
-          if (!text.trim()) return [] as unknown as T[];
-          try {
-            return text.split("\n").filter(Boolean).map((line) => JSON.parse(line)) as T[];
-          } catch {
-            return [] as unknown as T[];
-          }
-        },
-        async text(): Promise<string> {
-          return response.text();
-        },
-      };
+    async close() {
+      // HTTP client has no persistent connections to close
     },
 
     async exec(params: { query: string }) {
       const queryParams = new URLSearchParams({
-        query: params.query,
         database,
+        query: params.query,
       });
 
       const response = await fetch(`${baseUrl}/?${queryParams.toString()}`, {
-        method: "POST",
         headers: {
           Authorization: authHeader,
           "User-Agent": "TarsDB/1.0",
         },
+        method: "POST",
         signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`ClickHouse HTTP error (${response.status}): ${text || "Unknown error"}`);
+        throw new Error(
+          `ClickHouse HTTP error (${response.status}): ${text || "Unknown error"}`
+        );
       }
 
       // Drain response body
       await response.text().catch(() => {});
     },
 
-    async insert(params: { table: string; values: Record<string, unknown>[]; columns: string[] }) {
+    async insert(params: {
+      table: string;
+      values: Record<string, unknown>[];
+      columns: string[];
+    }) {
       // Build INSERT query
-      const cols = params.columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(", ");
+      const cols = params.columns
+        .map((c) => `"${c.replace(/"/g, '""')}"`)
+        .join(", ");
       const rowsSql = params.values
         .map((row) => {
           const vals = params.columns.map((col) => {
             const v = row[col];
-            if (v == null) return "NULL";
-            if (typeof v === "number") return String(v);
+            if (v == null) {
+              return "NULL";
+            }
+            if (typeof v === "number") {
+              return String(v);
+            }
             return `'${String(v).replace(/'/g, "''")}'`;
           });
           return `(${vals.join(", ")})`;
@@ -337,50 +342,94 @@ function createHttpClickHouseClient(url: string): ClickHouseClient {
       const sql = `INSERT INTO ${params.table} (${cols}) VALUES ${rowsSql}`;
 
       const queryParams = new URLSearchParams({
-        query: sql,
         database,
+        query: sql,
       });
 
       const response = await fetch(`${baseUrl}/?${queryParams.toString()}`, {
-        method: "POST",
         headers: {
           Authorization: authHeader,
           "User-Agent": "TarsDB/1.0",
         },
+        method: "POST",
         signal: AbortSignal.timeout(60_000),
       });
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`ClickHouse insert error (${response.status}): ${text || "Unknown error"}`);
+        throw new Error(
+          `ClickHouse insert error (${response.status}): ${text || "Unknown error"}`
+        );
       }
 
       await response.text().catch(() => {});
     },
 
-    async close() {
-      // HTTP client has no persistent connections to close
-    },
-
     async ping() {
       const response = await fetch(`${baseUrl}/?query=SELECT+1`, {
-        method: "POST",
         headers: {
           Authorization: authHeader,
           "User-Agent": "TarsDB/1.0",
         },
-        signal: AbortSignal.timeout(5_000),
+        method: "POST",
+        signal: AbortSignal.timeout(5000),
       });
       return response.ok;
+    },
+    async query(params: { query: string; format?: string }) {
+      const format = params.format || "JSONEachRow";
+      const queryParams = new URLSearchParams({
+        database,
+        default_format: format,
+        query: params.query,
+      });
+
+      const response = await fetch(`${baseUrl}/?${queryParams.toString()}`, {
+        headers: {
+          Authorization: authHeader,
+          "User-Agent": "TarsDB/1.0",
+        },
+        method: "POST",
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          `ClickHouse HTTP error (${response.status}): ${text || "Unknown error"}`
+        );
+      }
+
+      return {
+        async json<T = Record<string, unknown>>(): Promise<T[]> {
+          const text = await response.text();
+          if (!text.trim()) {
+            return [] as unknown as T[];
+          }
+          try {
+            return text
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => JSON.parse(line)) as T[];
+          } catch {
+            return [] as unknown as T[];
+          }
+        },
+        async text(): Promise<string> {
+          return response.text();
+        },
+      };
     },
   };
 }
 
 export async function getClickhouseClient(
-  connectionString: string,
+  connectionString: string
 ): Promise<ClickHouseClient> {
   const existing = clickhouseClients.get(connectionString);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   // Normalise protocol: clickhouse:// → http://, clickhouses:// → https://
   let url = connectionString;
@@ -397,7 +446,7 @@ export async function getClickhouseClient(
 }
 
 export async function closeClickhouseClient(
-  connectionString: string,
+  connectionString: string
 ): Promise<void> {
   const existing = clickhouseClients.get(connectionString);
   if (existing) {
@@ -422,7 +471,9 @@ export async function closeAllPools(): Promise<void> {
 
   // Close any raw PG pools that weren't wrapped by a Kysely instance
   for (const [key, pool] of pgPools.entries()) {
-    if (!pgKyselyKeys.has(key)) await pool.end().catch(() => {});
+    if (!pgKyselyKeys.has(key)) {
+      await pool.end().catch(() => {});
+    }
   }
   pgPools.clear();
 
@@ -435,7 +486,9 @@ export async function closeAllPools(): Promise<void> {
 
   // Close any raw MySQL pools that weren't wrapped by a Kysely instance
   for (const [key, pool] of mysqlPools.entries()) {
-    if (!mysqlKyselyKeys.has(key)) await pool.end().catch(() => {});
+    if (!mysqlKyselyKeys.has(key)) {
+      await pool.end().catch(() => {});
+    }
   }
   mysqlPools.clear();
 

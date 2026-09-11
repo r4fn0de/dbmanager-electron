@@ -4,8 +4,8 @@ import {
   buildSmartSqlFromColumnRefs,
   filterItemsTree,
   getStatementRangeAtOffset,
-  makeQualifiedColumnRef,
   makeAliasedColumnRef,
+  makeQualifiedColumnRef,
   makeTableInsertTemplateSql,
   makeTableRef,
   makeTableSelectSql,
@@ -20,28 +20,28 @@ describe("sql editor items utils", () => {
     schemas: ["public", "audit"],
     tables: [
       {
-        schema: "public",
+        columns: [
+          { dataType: "uuid", name: "id" },
+          { dataType: "text", name: "email" },
+        ],
         name: "users",
-        columns: [
-          { name: "id", dataType: "uuid" },
-          { name: "email", dataType: "text" },
-        ],
-      },
-      {
         schema: "public",
-        name: "orders",
-        columns: [
-          { name: "id", dataType: "uuid" },
-          { name: "user_id", dataType: "uuid" },
-        ],
       },
       {
-        schema: "audit",
-        name: "events",
         columns: [
-          { name: "id", dataType: "bigint" },
-          { name: "payload", dataType: "jsonb" },
+          { dataType: "uuid", name: "id" },
+          { dataType: "uuid", name: "user_id" },
         ],
+        name: "orders",
+        schema: "public",
+      },
+      {
+        columns: [
+          { dataType: "bigint", name: "id" },
+          { dataType: "jsonb", name: "payload" },
+        ],
+        name: "events",
+        schema: "audit",
       },
     ],
   };
@@ -52,7 +52,10 @@ describe("sql editor items utils", () => {
     expect(tree[0]?.name).toBe("audit");
     expect(tree[0]?.tables[0]?.name).toBe("events");
     expect(tree[1]?.name).toBe("public");
-    expect(tree[1]?.tables.map((table) => table.name)).toEqual(["orders", "users"]);
+    expect(tree[1]?.tables.map((table) => table.name)).toEqual([
+      "orders",
+      "users",
+    ]);
   });
 
   it("filters by table and column names", () => {
@@ -67,35 +70,33 @@ describe("sql editor items utils", () => {
     expect(columnFiltered).toHaveLength(1);
     expect(columnFiltered[0]?.name).toBe("audit");
     expect(columnFiltered[0]?.tables[0]?.columns).toEqual([
-      { name: "payload", dataType: "jsonb" },
+      { dataType: "jsonb", name: "payload" },
     ]);
   });
 
   it("creates SQL snippets for table and column insertion", () => {
     expect(makeTableSelectSql("public", "users")).toBe(
-      "SELECT *\nFROM public.users\nLIMIT 100;",
+      "SELECT *\nFROM public.users\nLIMIT 100;"
     );
     expect(makeTableRef("public", "users")).toBe("public.users");
     expect(makeTableInsertTemplateSql("public", "users")).toBe(
-      "INSERT INTO public.users (column1, column2)\nVALUES (value1, value2);",
+      "INSERT INTO public.users (column1, column2)\nVALUES (value1, value2);"
     );
     expect(makeTableUpdateTemplateSql("public", "users")).toBe(
-      "UPDATE public.users\nSET column1 = value1\nWHERE condition;",
+      "UPDATE public.users\nSET column1 = value1\nWHERE condition;"
     );
     expect(makeQualifiedColumnRef("public", "users", "email")).toBe(
-      "public.users.email",
+      "public.users.email"
     );
-    expect(makeAliasedColumnRef("users", "email")).toBe(
-      "users.email AS email",
-    );
+    expect(makeAliasedColumnRef("users", "email")).toBe("users.email AS email");
   });
 
   it("parses and normalizes multi-column refs preserving order", () => {
     expect(parseColumnRef("public.users.email")).toEqual({
-      schema: "public",
-      table: "users",
       column: "email",
       qualified: "public.users.email",
+      schema: "public",
+      table: "users",
     });
     expect(parseColumnRef("invalid")).toBeNull();
 
@@ -112,36 +113,36 @@ describe("sql editor items utils", () => {
   });
 
   it("builds single-table SQL for multi-column drag", () => {
-    const sql = buildSmartSqlFromColumnRefs([
-      "public.users.id",
-      "public.users.email",
-    ], schemaCompletionData);
+    const sql = buildSmartSqlFromColumnRefs(
+      ["public.users.id", "public.users.email"],
+      schemaCompletionData
+    );
     expect(sql).toBe("SELECT id, email\nFROM public.users\nLIMIT 100;");
   });
 
   it("builds join SQL when a clear fk relation exists", () => {
-    const sql = buildSmartSqlFromColumnRefs([
-      "public.users.id",
-      "public.users.email",
-      "public.orders.user_id",
-    ], schemaCompletionData);
+    const sql = buildSmartSqlFromColumnRefs(
+      ["public.users.id", "public.users.email", "public.orders.user_id"],
+      schemaCompletionData
+    );
     expect(sql).toBe(
-      "SELECT t1.id AS t1_id, t1.email AS t1_email, t2.user_id AS t2_user_id\nFROM public.users t1\nJOIN public.orders t2 ON t2.user_id = t1.id\nLIMIT 100;",
+      "SELECT t1.id AS t1_id, t1.email AS t1_email, t2.user_id AS t2_user_id\nFROM public.users t1\nJOIN public.orders t2 ON t2.user_id = t1.id\nLIMIT 100;"
     );
   });
 
   it("falls back to separate queries when no safe join is inferable", () => {
-    const sql = buildSmartSqlFromColumnRefs([
-      "public.users.email",
-      "audit.events.payload",
-    ], schemaCompletionData);
+    const sql = buildSmartSqlFromColumnRefs(
+      ["public.users.email", "audit.events.payload"],
+      schemaCompletionData
+    );
     expect(sql).toBe(
-      "SELECT email\nFROM public.users\nLIMIT 100;\n\nSELECT payload\nFROM audit.events\nLIMIT 100;",
+      "SELECT email\nFROM public.users\nLIMIT 100;\n\nSELECT payload\nFROM audit.events\nLIMIT 100;"
     );
   });
 
   it("finds statement range by cursor offset in multi-query sql", () => {
-    const sql = "SELECT id FROM public.users;\n\nSELECT email FROM public.users;";
+    const sql =
+      "SELECT id FROM public.users;\n\nSELECT email FROM public.users;";
     const offsetInSecond = sql.lastIndexOf("email");
     const range = getStatementRangeAtOffset(sql, offsetInSecond);
     expect(range?.text).toBe("SELECT email FROM public.users");
@@ -152,12 +153,12 @@ describe("sql editor items utils", () => {
     const merged = mergeDroppedColumnsIntoStatement(
       statement,
       ["public.users.email"],
-      schemaCompletionData,
+      schemaCompletionData
     );
     expect(merged.merged).toBe(true);
-    expect(merged.sql).toContain("\"t1\".id");
-    expect(merged.sql).toContain("\"t1\".\"email\"");
-    expect(merged.sql).toContain("\"public\".\"users\"");
+    expect(merged.sql).toContain('"t1".id');
+    expect(merged.sql).toContain('"t1"."email"');
+    expect(merged.sql).toContain('"public"."users"');
   });
 
   it("adds join automatically when dropped columns reference related table", () => {
@@ -165,36 +166,38 @@ describe("sql editor items utils", () => {
     const merged = mergeDroppedColumnsIntoStatement(
       statement,
       ["public.orders.user_id"],
-      schemaCompletionData,
+      schemaCompletionData
     );
     expect(merged.merged).toBe(true);
-    expect(merged.sql).toContain("JOIN \"public\".\"orders\"");
+    expect(merged.sql).toContain('JOIN "public"."orders"');
     expect(merged.sql).toContain("ON");
-    expect(merged.sql).toContain("\"t2\".\"user_id\"");
+    expect(merged.sql).toContain('"t2"."user_id"');
   });
 
   it("keeps existing join without duplicating when table already joined", () => {
-    const statement = "SELECT u.id FROM public.users u INNER JOIN public.orders o ON o.user_id = u.id LIMIT 100;";
+    const statement =
+      "SELECT u.id FROM public.users u INNER JOIN public.orders o ON o.user_id = u.id LIMIT 100;";
     const merged = mergeDroppedColumnsIntoStatement(
       statement,
       ["public.orders.id"],
-      schemaCompletionData,
+      schemaCompletionData
     );
     expect(merged.merged).toBe(true);
     expect(merged.sql.match(/JOIN "public"\."orders"/gi)?.length).toBe(1);
-    expect(merged.sql).toContain("\"o\".\"id\"");
+    expect(merged.sql).toContain('"o"."id"');
   });
 
   it("merges inside CTE outer select", () => {
-    const statement = "WITH x AS (SELECT id FROM public.users) SELECT u.id FROM public.users u LIMIT 10;";
+    const statement =
+      "WITH x AS (SELECT id FROM public.users) SELECT u.id FROM public.users u LIMIT 10;";
     const merged = mergeDroppedColumnsIntoStatement(
       statement,
       ["public.users.email"],
-      schemaCompletionData,
+      schemaCompletionData
     );
     expect(merged.merged).toBe(true);
     expect(merged.sql).toContain("WITH");
-    expect(merged.sql).toContain("\"u\".\"email\"");
+    expect(merged.sql).toContain('"u"."email"');
   });
 
   it("appends fallback block when relation is not inferable", () => {
@@ -202,7 +205,7 @@ describe("sql editor items utils", () => {
     const merged = mergeDroppedColumnsIntoStatement(
       statement,
       ["audit.events.payload"],
-      schemaCompletionData,
+      schemaCompletionData
     );
     expect(merged.merged).toBe(true);
     expect(merged.sql).toContain("SELECT id");

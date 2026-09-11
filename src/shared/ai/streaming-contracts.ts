@@ -7,35 +7,28 @@ export type AiStreamSessionMetadata = AiSessionMetadata;
 export type Unsubscribe = () => void;
 
 export interface UserConnectionSummaryItem {
+  dbType: DatabaseType;
   id: string;
   name: string;
-  dbType: DatabaseType;
   provider: string;
   scope: "local" | "remote";
 }
 
 export interface UserConnectionsContext {
-  total: number;
+  byDbType: Array<{ dbType: DatabaseType; count: number }>;
+  byProvider: Array<{ provider: string; count: number }>;
+  connections: UserConnectionSummaryItem[];
   local: number;
   remote: number;
-  byProvider: Array<{ provider: string; count: number }>;
-  byDbType: Array<{ dbType: DatabaseType; count: number }>;
-  connections: UserConnectionSummaryItem[];
+  total: number;
 }
 
 export interface ChatStartInput {
+  /** Selected AI connection profile, when different from the legacy default. */
+  aiConnectionId?: string | null;
   chatId: string;
   /** Active database connection ID; optional for global chat mode. */
   connectionId?: string | null;
-  /** Selected AI connection profile, when different from the legacy default. */
-  aiConnectionId?: string | null;
-  /** Selected model within the AI connection profile. */
-  modelId?: string | null;
-  /** Existing agent/session metadata, retained as optional during migration. */
-  sessionMetadata?: AiSessionMetadata;
-  mentionedConnectionId?: string | null;
-  dbType: DatabaseType;
-  schemaContext?: string;
   connectionInfo?: {
     name: string;
     host: string;
@@ -44,78 +37,100 @@ export interface ChatStartInput {
     isLocal?: boolean;
     branch?: string | null;
   };
-  userConnectionsContext?: UserConnectionsContext;
+  dbType: DatabaseType;
+  mentionedConnectionId?: string | null;
   messages: ModelMessage[];
+  /** Selected model within the AI connection profile. */
+  modelId?: string | null;
   /** Privacy settings for context gating */
   privacySettings?: PrivacySettings;
+  schemaContext?: string;
+  /** Existing agent/session metadata, retained as optional during migration. */
+  sessionMetadata?: AiSessionMetadata;
+  userConnectionsContext?: UserConnectionsContext;
 }
 
 export interface InlineGenerateStartInput {
-  requestId: string;
-  /** Selected AI connection profile, when different from the legacy default. */
-  connectionId?: string | null;
   /** Explicit alias for callers that distinguish AI and database connections. */
   aiConnectionId?: string | null;
+  /** Selected AI connection profile, when different from the legacy default. */
+  connectionId?: string | null;
+  dbType: DatabaseType;
   /** Selected model within the AI connection profile. */
   modelId?: string | null;
-  sessionMetadata?: AiSessionMetadata;
-  dbType: DatabaseType;
   prompt: string;
-  sql?: string;
+  requestId: string;
   schemaContext?: string;
+  sessionMetadata?: AiSessionMetadata;
+  sql?: string;
 }
 
 /** Which context categories the user allows to send to the AI provider. */
 export interface PrivacySettings {
-  /** Include database schema (table names, columns, types). Default: true */
-  schema: boolean;
   /** Include connection metadata (host, port, database name, local/remote). Default: true */
   connectionInfo: boolean;
   /** Include the full user connections inventory. Default: true */
   connectionsList: boolean;
   /** Include memory context (recent messages, similar queries). Default: true */
   memory: boolean;
+  /** Include database schema (table names, columns, types). Default: true */
+  schema: boolean;
 }
 
 /** Predefined privacy presets. */
 export type PrivacyPreset = "full" | "minimal" | "private";
 
 export const PRIVACY_PRESETS: Record<PrivacyPreset, PrivacySettings> = {
-  full: { schema: true, connectionInfo: true, connectionsList: true, memory: true },
-  minimal: { schema: false, connectionInfo: true, connectionsList: false, memory: true },
-  private: { schema: false, connectionInfo: false, connectionsList: false, memory: false },
+  full: {
+    connectionInfo: true,
+    connectionsList: true,
+    memory: true,
+    schema: true,
+  },
+  minimal: {
+    connectionInfo: true,
+    connectionsList: false,
+    memory: true,
+    schema: false,
+  },
+  private: {
+    connectionInfo: false,
+    connectionsList: false,
+    memory: false,
+    schema: false,
+  },
 };
 
 /** Snapshot of what context will be sent, for the preview UI. */
 export interface ContextPreview {
-  schema: { included: boolean; charCount: number; tables: string[] };
   connectionInfo: { included: boolean; summary: string };
   connectionsList: { included: boolean; count: number };
-  memory: { included: boolean };
   /** Whether data will leave the local machine (false for Ollama) */
   dataLeavesMachine: boolean;
+  memory: { included: boolean };
+  schema: { included: boolean; charCount: number; tables: string[] };
 }
 
 export interface AiUsage {
+  cachedInputTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
-  totalTokens?: number;
   reasoningTokens?: number;
-  cachedInputTokens?: number;
+  totalTokens?: number;
 }
 
 export interface AiChatDonePayload extends AiSessionMetadata {
   chatId: string;
   finishReason?: string | null;
-  usage?: AiUsage | null;
   sessionMetadata?: AiSessionMetadata;
+  usage?: AiUsage | null;
 }
 
 export interface AiInlineDonePayload extends AiSessionMetadata {
-  requestId: string;
   finishReason?: string | null;
-  usage?: AiUsage | null;
+  requestId: string;
   sessionMetadata?: AiSessionMetadata;
+  usage?: AiUsage | null;
 }
 
 export interface AiChatErrorPayload extends AiSessionMetadata {
@@ -125,8 +140,8 @@ export interface AiChatErrorPayload extends AiSessionMetadata {
 }
 
 export interface AiInlineErrorPayload extends AiSessionMetadata {
-  requestId: string;
   message: string;
+  requestId: string;
   sessionMetadata?: AiSessionMetadata;
 }
 
@@ -176,24 +191,24 @@ export type AiChatChunkPayload = { chatId: string } & StreamChunkCommon;
 export type AiInlineChunkPayload = { requestId: string } & StreamChunkCommon;
 
 export interface ToolApprovalRequestPayload extends AiSessionMetadata {
-  chatId: string;
-  toolCallId: string;
-  toolName: string;
   args: unknown;
+  chatId: string;
   /** Human-readable description of what the tool will do */
   description: string;
   /** The SQL or command that will be executed (if applicable) */
   preview?: string;
+  toolCallId: string;
+  toolName: string;
   /** Warnings about the proposed action */
   warnings?: string[];
 }
 
 export interface ToolApprovalResponsePayload {
+  approved: boolean;
   chatId: string;
-  toolCallId: string;
   /** Optional for compatibility with older renderer approval responders. */
   sessionId?: string;
-  approved: boolean;
+  toolCallId: string;
 }
 
 export interface AiRendererApi {
@@ -215,7 +230,9 @@ export interface AiRendererApi {
     /** Respond to an approval request — approve or reject the tool call */
     respond: (payload: ToolApprovalResponsePayload) => void;
     /** Listen for approval requests from the main process */
-    onRequest: (listener: (payload: ToolApprovalRequestPayload) => void) => Unsubscribe;
+    onRequest: (
+      listener: (payload: ToolApprovalRequestPayload) => void
+    ) => Unsubscribe;
   };
 }
 
@@ -230,9 +247,9 @@ export type AiProviderName =
 /** A model entry returned by a provider's model-list API or static catalog. */
 export interface AiModelEntry {
   id: string;
-  label: string;
   /** Whether this model was added by the user (custom) */
   isCustom?: boolean;
+  label: string;
 }
 
 /** Prefix for user-saved custom provider IDs (`custom:<uuid>`). */
@@ -240,10 +257,10 @@ export const CUSTOM_AI_PROVIDER_PREFIX = "custom:";
 
 /** A user-saved custom (OpenAI-compatible) AI provider endpoint. No secrets. */
 export interface CustomAiProvider {
-  id: string;
-  label: string;
   baseURL: string;
   defaultModel: string;
+  id: string;
+  label: string;
 }
 
 /** Whether the provider id refers to a user-saved custom provider. */

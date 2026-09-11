@@ -1,11 +1,11 @@
 import type { DatabaseType, SchemaColumn, SchemaIndex } from "@/ipc/db/types";
+import type { GeneratorFormat } from "../utils";
 import {
   getColumnType,
-  toLiteralKey,
-  pascalCase,
   isValidIdentifier,
+  pascalCase,
+  toLiteralKey,
 } from "../utils";
-import type { GeneratorFormat } from "../utils";
 
 export function generateSchemaKysely(params: {
   table: string;
@@ -22,7 +22,11 @@ export function generateSchemaKysely(params: {
 
   for (const col of columns) {
     const key = toLiteralKey(col.name);
-    let tsType = getColumnType(col.data_type, "kysely" as GeneratorFormat, dialect);
+    let tsType = getColumnType(
+      col.data_type,
+      "kysely" as GeneratorFormat,
+      dialect
+    );
 
     // Wrap primary key columns with Generated<>
     if (pkColumns.has(col.name)) {

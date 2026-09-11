@@ -5,49 +5,7 @@
  * - ORPC handlers for request/response operations (settings, fix SQL, etc.)
  * - Direct Electron IPC events for streaming (chat)
  */
-import {
-  aiGetSettings,
-  aiUpdateSettings,
-  aiSetApiKey,
-  aiGetApiKey,
-  aiIsConfigured,
-  aiFixSql,
-  aiUpdateSql,
-  aiEnhancePrompt,
-  aiGenerateTitle,
-  aiFilters,
-  aiTableSearch,
-  aiAddCustomModel,
-  aiRemoveCustomModel,
-  aiAddCustomProvider,
-  aiUpdateCustomProvider,
-  aiRemoveCustomProvider,
-  aiSetCustomProviderApiKey,
-  aiCheckProviderEndpoint,
-  aiDetectOllama,
-  aiGetPrivacySettings,
-  aiUpdatePrivacySettings,
-  aiFetchModels,
-} from "./handlers";
-import {
-  saveFeedbackHandler,
-  getFeedbackHandler,
-  removeFeedbackHandler,
-  listFeedbackHandler,
-  getFeedbackStatsHandler,
-  getNegativeFeedbackHandler,
-} from "./feedback-handlers";
-import {
-  getEmbeddingStatusHandler,
-  storeMemoryHandler,
-  storeMemoriesBatchHandler,
-  searchMemoryHandler,
-  getMemoryContextHandler,
-  getMemoryStatsHandler,
-  clearMemoryHandler,
-  cleanupMemoryHandler,
-  getRecentHistoryHandler,
-} from "./memory-handlers";
+
 import {
   aiCreateConnection,
   aiDeleteConnection,
@@ -60,69 +18,112 @@ import {
   aiTestConnection,
   aiUpdateConnection,
 } from "./connection-handlers";
+import {
+  getFeedbackHandler,
+  getFeedbackStatsHandler,
+  getNegativeFeedbackHandler,
+  listFeedbackHandler,
+  removeFeedbackHandler,
+  saveFeedbackHandler,
+} from "./feedback-handlers";
+import {
+  aiAddCustomModel,
+  aiAddCustomProvider,
+  aiCheckProviderEndpoint,
+  aiDetectOllama,
+  aiEnhancePrompt,
+  aiFetchModels,
+  aiFilters,
+  aiFixSql,
+  aiGenerateTitle,
+  aiGetApiKey,
+  aiGetPrivacySettings,
+  aiGetSettings,
+  aiIsConfigured,
+  aiRemoveCustomModel,
+  aiRemoveCustomProvider,
+  aiSetApiKey,
+  aiSetCustomProviderApiKey,
+  aiTableSearch,
+  aiUpdateCustomProvider,
+  aiUpdatePrivacySettings,
+  aiUpdateSettings,
+  aiUpdateSql,
+} from "./handlers";
+import {
+  cleanupMemoryHandler,
+  clearMemoryHandler,
+  getEmbeddingStatusHandler,
+  getMemoryContextHandler,
+  getMemoryStatsHandler,
+  getRecentHistoryHandler,
+  searchMemoryHandler,
+  storeMemoriesBatchHandler,
+  storeMemoryHandler,
+} from "./memory-handlers";
 
-export { registerAiStreamingHandlers } from "./streaming";
 export { AI_IPC_CHANNELS } from "@/constants";
-export { isAiConfigured, getProvidersInfo } from "./config";
+export { getProvidersInfo, isAiConfigured } from "./config";
+export { registerAiStreamingHandlers } from "./streaming";
 export { createAiTools } from "./tools";
 
 export const ai = {
-  // Settings
-  getSettings: aiGetSettings,
-  updateSettings: aiUpdateSettings,
-  setApiKey: aiSetApiKey,
-  getApiKey: aiGetApiKey,
-  isConfigured: aiIsConfigured,
-  fetchModels: aiFetchModels,
-  // SQL assistance
-  fixSql: aiFixSql,
-  updateSql: aiUpdateSql,
-  enhancePrompt: aiEnhancePrompt,
-  generateTitle: aiGenerateTitle,
-  // Table filters
-  filters: aiFilters,
-  // Table search
-  tableSearch: aiTableSearch,
   // Custom models
   addCustomModel: aiAddCustomModel,
-  removeCustomModel: aiRemoveCustomModel,
   // Custom providers
   addCustomProvider: aiAddCustomProvider,
-  updateCustomProvider: aiUpdateCustomProvider,
-  removeCustomProvider: aiRemoveCustomProvider,
-  setCustomProviderApiKey: aiSetCustomProviderApiKey,
   checkProviderEndpoint: aiCheckProviderEndpoint,
+  cleanupMemory: cleanupMemoryHandler,
+  clearMemory: clearMemoryHandler,
+  createConnection: aiCreateConnection,
+  deleteConnection: aiDeleteConnection,
   // Ollama
   detectOllama: aiDetectOllama,
-  // Privacy
-  getPrivacySettings: aiGetPrivacySettings,
-  updatePrivacySettings: aiUpdatePrivacySettings,
-  // Feedback
-  saveFeedback: saveFeedbackHandler,
-  getFeedback: getFeedbackHandler,
-  removeFeedback: removeFeedbackHandler,
-  listFeedback: listFeedbackHandler,
-  getFeedbackStats: getFeedbackStatsHandler,
-  getNegativeFeedback: getNegativeFeedbackHandler,
+  discoverModels: aiDiscoverModels,
+  enhancePrompt: aiEnhancePrompt,
+  fetchModels: aiFetchModels,
+  // Table filters
+  filters: aiFilters,
+  // SQL assistance
+  fixSql: aiFixSql,
+  generateTitle: aiGenerateTitle,
+  getApiKey: aiGetApiKey,
+  getConnection: aiGetConnection,
   // Memory
   getEmbeddingStatus: getEmbeddingStatusHandler,
-  storeMemory: storeMemoryHandler,
-  storeMemoriesBatch: storeMemoriesBatchHandler,
-  searchMemory: searchMemoryHandler,
+  getFeedback: getFeedbackHandler,
+  getFeedbackStats: getFeedbackStatsHandler,
   getMemoryContext: getMemoryContextHandler,
   getMemoryStats: getMemoryStatsHandler,
-  clearMemory: clearMemoryHandler,
-  cleanupMemory: cleanupMemoryHandler,
+  getNegativeFeedback: getNegativeFeedbackHandler,
+  // Privacy
+  getPrivacySettings: aiGetPrivacySettings,
   getRecentHistory: getRecentHistoryHandler,
+  // Settings
+  getSettings: aiGetSettings,
+  isConfigured: aiIsConfigured,
+  listConnectionModels: aiListConnectionModels,
   // Connection management
   listConnections: aiListConnections,
-  getConnection: aiGetConnection,
-  createConnection: aiCreateConnection,
-  updateConnection: aiUpdateConnection,
-  deleteConnection: aiDeleteConnection,
-  setDefaultModel: aiSetDefaultModel,
+  listFeedback: listFeedbackHandler,
+  removeCustomModel: aiRemoveCustomModel,
+  removeCustomProvider: aiRemoveCustomProvider,
+  removeFeedback: removeFeedbackHandler,
+  // Feedback
+  saveFeedback: saveFeedbackHandler,
+  searchMemory: searchMemoryHandler,
+  setApiKey: aiSetApiKey,
   setConnectionModels: aiSetConnectionModels,
-  listConnectionModels: aiListConnectionModels,
+  setCustomProviderApiKey: aiSetCustomProviderApiKey,
+  setDefaultModel: aiSetDefaultModel,
+  storeMemoriesBatch: storeMemoriesBatchHandler,
+  storeMemory: storeMemoryHandler,
+  // Table search
+  tableSearch: aiTableSearch,
   testConnection: aiTestConnection,
-  discoverModels: aiDiscoverModels,
+  updateConnection: aiUpdateConnection,
+  updateCustomProvider: aiUpdateCustomProvider,
+  updatePrivacySettings: aiUpdatePrivacySettings,
+  updateSettings: aiUpdateSettings,
+  updateSql: aiUpdateSql,
 };

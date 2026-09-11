@@ -5,32 +5,30 @@
  * since ORPC doesn't natively support streaming responses over MessagePort.
  */
 import { ORPCError, os } from "@orpc/server";
-import { z } from "zod";
 import { generateText } from "ai";
+import { z } from "zod";
 import {
-  getAiSettings,
-  updateAiSettings,
-  setApiKey,
-  getApiKey,
-  isAiConfigured,
-  getProvidersInfo,
-  getCurrentModel,
+  type AiProviderName,
   addCustomModel,
-  removeCustomModel,
   addCustomProvider,
-  updateCustomProvider,
-  removeCustomProvider,
-  setCustomProviderApiKey,
   checkProviderEndpoint,
   detectOllama,
-  getPrivacySettings,
-  getPrivacyPreset,
-  updatePrivacySettings,
   fetchProviderModels,
+  getApiKey,
+  getCurrentModel,
+  getPrivacyPreset,
+  getPrivacySettings,
+  getProvidersInfo,
+  isAiConfigured,
+  removeCustomModel,
+  removeCustomProvider,
+  setApiKey,
+  setCustomProviderApiKey,
+  updateAiSettings,
+  updateCustomProvider,
+  updatePrivacySettings,
   validateApiKey,
-  type AiProviderName,
 } from "./config";
-import type { DatabaseType } from "@/ipc/db/types";
 
 // Provider enum used in Zod schemas — keeps DRY across all provider inputs.
 const PROVIDER_ENUM = z.enum([
@@ -45,26 +43,27 @@ const PROVIDER_ENUM = z.enum([
 // Settings handlers
 // ---------------------------------------------------------------------------
 
-export const aiGetSettings = os.handler(async () => {
-  return getProvidersInfo();
-});
+export const aiGetSettings = os.handler(async () => getProvidersInfo());
 
 export const aiUpdateSettings = os
   .input(
     z.object({
+      model: z.string().optional(),
+      ollamaBaseURL: z.string().optional(),
+      openaiCompatibleBaseURL: z.string().optional(),
       // Built-in name or `custom:<id>` — validated in config.
       provider: z.string().optional(),
-      model: z.string().optional(),
-      openaiCompatibleBaseURL: z.string().optional(),
-      ollamaBaseURL: z.string().optional(),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     try {
       return updateAiSettings(input);
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to update AI settings",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to update AI settings",
       });
     }
   });
@@ -72,14 +71,17 @@ export const aiUpdateSettings = os
 export const aiSetApiKey = os
   .input(
     z.object({
-      provider: PROVIDER_ENUM,
       key: z.string(),
-    }),
+      provider: PROVIDER_ENUM,
+    })
   )
   .handler(async ({ input }) => {
     try {
       // Validate API key format before persisting
-      const validation = validateApiKey(input.provider as AiProviderName, input.key);
+      const validation = validateApiKey(
+        input.provider as AiProviderName,
+        input.key
+      );
       if (!validation.valid) {
         throw new ORPCError("BAD_REQUEST", {
           message: validation.error ?? "Invalid API key format",
@@ -88,9 +90,12 @@ export const aiSetApiKey = os
       setApiKey(input.provider as AiProviderName, input.key);
       return { success: true };
     } catch (error) {
-      if (error instanceof ORPCError) throw error;
+      if (error instanceof ORPCError) {
+        throw error;
+      }
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to save AI API key",
+        message:
+          error instanceof Error ? error.message : "Failed to save AI API key",
       });
     }
   });
@@ -99,24 +104,24 @@ export const aiGetApiKey = os
   .input(
     z.object({
       provider: PROVIDER_ENUM,
-    }),
+    })
   )
   .handler(async ({ input }) => {
     try {
       const key = getApiKey(input.provider as AiProviderName);
       // Return masked key for security — only show last 4 chars
-      const masked = key.length > 4 ? `••••${key.slice(-4)}` : key ? "••••" : "";
-      return { provider: input.provider, masked, hasKey: key.length > 0 };
+      const masked =
+        key.length > 4 ? `••••${key.slice(-4)}` : key ? "••••" : "";
+      return { hasKey: key.length > 0, masked, provider: input.provider };
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to read AI API key",
+        message:
+          error instanceof Error ? error.message : "Failed to read AI API key",
       });
     }
   });
 
-export const aiIsConfigured = os.handler(async () => {
-  return isAiConfigured();
-});
+export const aiIsConfigured = os.handler(async () => isAiConfigured());
 
 // ---------------------------------------------------------------------------
 // Model discovery — fetch available models from a provider's API
@@ -125,22 +130,23 @@ export const aiIsConfigured = os.handler(async () => {
 export const aiFetchModels = os
   .input(
     z.object({
-      provider: PROVIDER_ENUM,
       apiKey: z.string().optional(),
       baseURL: z.string().optional(),
-    }),
+      provider: PROVIDER_ENUM,
+    })
   )
   .handler(async ({ input }) => {
     try {
       const models = await fetchProviderModels(
         input.provider as AiProviderName,
         input.apiKey,
-        input.baseURL,
+        input.baseURL
       );
       return { models };
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to fetch models",
+        message:
+          error instanceof Error ? error.message : "Failed to fetch models",
       });
     }
   });
@@ -152,24 +158,24 @@ export const aiFetchModels = os
 export const aiFixSql = os
   .input(
     z.object({
-      sql: z.string().describe("The SQL query that failed"),
-      error: z.string().describe("The error message from execution"),
       dbType: z
         .enum(["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"])
         .describe("The database engine type"),
-    }),
+      error: z.string().describe("The error message from execution"),
+      sql: z.string().describe("The SQL query that failed"),
+    })
   )
   .handler(async ({ input }) => {
     const model = getCurrentModel();
 
     const { text } = await generateText({
       model,
+      prompt: `Fix this SQL query that produced an error:\n\nSQL:\n${input.sql}\n\nError:\n${input.error}`,
       system: `You are an expert SQL troubleshooter for ${input.dbType}.
 Fix the provided SQL to ensure it is valid for ${input.dbType}.
 Maintain the original query's format and styling.
 Return ONLY the corrected SQL — no explanations, no markdown formatting, no greetings.
 If the SQL is already valid, return it unchanged.`,
-      prompt: `Fix this SQL query that produced an error:\n\nSQL:\n${input.sql}\n\nError:\n${input.error}`,
     });
 
     return { sql: text.trim() };
@@ -182,13 +188,13 @@ If the SQL is already valid, return it unchanged.`,
 export const aiUpdateSql = os
   .input(
     z.object({
-      sql: z.string().describe("The original SQL query"),
-      prompt: z.string().describe("What to change in the SQL"),
+      context: z.string().optional().describe("Database schema context"),
       dbType: z
         .enum(["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"])
         .describe("The database engine type"),
-      context: z.string().optional().describe("Database schema context"),
-    }),
+      prompt: z.string().describe("What to change in the SQL"),
+      sql: z.string().describe("The original SQL query"),
+    })
   )
   .handler(async ({ input }) => {
     const model = getCurrentModel();
@@ -218,6 +224,7 @@ SELECT * FROM "user";`;
 
     const { text } = await generateText({
       model,
+      prompt: `Original SQL:\n${input.sql}\n\nChange instruction: ${input.prompt}`,
       system: `You are a senior SQL assistant for ${input.dbType}.
 Output ONLY raw SQL (no explanations, no markdown, no comments).
 
@@ -231,7 +238,6 @@ Generation rules:
 
 If no reliable relationship exists, then use separate queries.
 ${fewShotExamples}${contextSection}`,
-      prompt: `Original SQL:\n${input.sql}\n\nChange instruction: ${input.prompt}`,
     });
 
     return { sql: text.trim() };
@@ -245,19 +251,19 @@ export const aiEnhancePrompt = os
   .input(
     z.object({
       prompt: z.string().describe("The user's rough prompt to refine"),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     const model = getCurrentModel();
 
     const { text } = await generateText({
       model,
+      prompt: input.prompt,
       system: `Refine the given prompt into a clearer, more actionable instruction.
 Fix grammar/typos while maintaining the original intent.
 Keep it concise and actionable — no explanations or greetings.
 Do not add information not provided by the user.
 The prompt may be related to SQL or database operations.`,
-      prompt: input.prompt,
     });
 
     return { prompt: text.trim() };
@@ -270,14 +276,17 @@ The prompt may be related to SQL or database operations.`,
 export const aiGenerateTitle = os
   .input(
     z.object({
-      message: z.string().describe("The first user message to generate a title from"),
-    }),
+      message: z
+        .string()
+        .describe("The first user message to generate a title from"),
+    })
   )
   .handler(async ({ input }) => {
     const model = getCurrentModel();
 
     const { text } = await generateText({
       model,
+      prompt: input.message,
       system: `Generate a concise title for a chat conversation based on the user's first message.
 Rules:
 - Maximum 30 characters
@@ -285,7 +294,6 @@ Rules:
 - Use proper capitalization
 - Output ONLY the title text, nothing else
 - Use the same language as the user's message`,
-      prompt: input.message,
     });
 
     return { title: text.trim() };
@@ -296,22 +304,34 @@ Rules:
 // ---------------------------------------------------------------------------
 
 const SQL_OPERATORS = [
-  "eq", "neq", "contains", "starts_with", "ends_with",
-  "gt", "gte", "lt", "lte", "is_null", "is_not_null",
+  "eq",
+  "neq",
+  "contains",
+  "starts_with",
+  "ends_with",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "is_null",
+  "is_not_null",
 ] as const;
 
 export const aiFilters = os
   .input(
     z.object({
-      prompt: z.string().describe("Natural language description of desired filters"),
       context: z.string().describe("Table schema/column context"),
-    }),
+      prompt: z
+        .string()
+        .describe("Natural language description of desired filters"),
+    })
   )
   .handler(async ({ input }) => {
     const model = getCurrentModel();
 
     const { text } = await generateText({
       model,
+      prompt: input.prompt,
       system: `You are a filter generator. Convert the user's natural language request into structured database filters.
 
 Available operators: ${SQL_OPERATORS.join(", ")}
@@ -328,12 +348,14 @@ Rules:
 
 Table context:
 ${input.context}`,
-      prompt: input.prompt,
     });
 
     try {
       // Try to parse the JSON response
-      const cleaned = text.replace(/^```json?\s*/m, "").replace(/\s*```$/m, "").trim();
+      const cleaned = text
+        .replace(/^```json?\s*/m, "")
+        .replace(/\s*```$/m, "")
+        .trim();
       const parsed = JSON.parse(cleaned);
       return {
         filters: Array.isArray(parsed.filters) ? parsed.filters : [],
@@ -352,12 +374,19 @@ export const aiTableSearch = os
   .input(
     z.object({
       query: z.string().describe("Natural language search query from the user"),
-      tables: z.array(z.string()).describe("List of available table names to search within"),
-      schemaContext: z.string().optional().describe("Optional schema context with column details"),
-    }),
+      schemaContext: z
+        .string()
+        .optional()
+        .describe("Optional schema context with column details"),
+      tables: z
+        .array(z.string())
+        .describe("List of available table names to search within"),
+    })
   )
   .handler(async ({ input }) => {
-    if (input.tables.length === 0) return { matches: [] };
+    if (input.tables.length === 0) {
+      return { matches: [] };
+    }
 
     const model = getCurrentModel();
 
@@ -367,6 +396,7 @@ export const aiTableSearch = os
 
     const { text } = await generateText({
       model,
+      prompt: input.query,
       system: `You are a database table search assistant. Given a list of table names and a user's search query, return the tables that best match the user's intent.
 
 Rules:
@@ -380,17 +410,21 @@ Rules:
 
 Available tables:
 ${input.tables.join(", ")}${contextSection}`,
-      prompt: input.query,
     });
 
     try {
-      const cleaned = text.replace(/^```json?\s*/m, "").replace(/\s*```$/m, "").trim();
+      const cleaned = text
+        .replace(/^```json?\s*/m, "")
+        .replace(/\s*```$/m, "")
+        .trim();
       const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed)) return { matches: [] };
+      if (!Array.isArray(parsed)) {
+        return { matches: [] };
+      }
       // Validate that all returned names actually exist in the input list
       const tableSet = new Set(input.tables);
-      const matches = parsed.filter((name: unknown) =>
-        typeof name === "string" && tableSet.has(name),
+      const matches = parsed.filter(
+        (name: unknown) => typeof name === "string" && tableSet.has(name)
       );
       return { matches: matches.slice(0, 20) as string[] };
     } catch {
@@ -405,17 +439,18 @@ ${input.tables.join(", ")}${contextSection}`,
 export const aiAddCustomModel = os
   .input(
     z.object({
+      modelId: z.string().min(1),
       // Built-in name or `custom:<id>` — validated in config.
       provider: z.string().min(1),
-      modelId: z.string().min(1),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     try {
       addCustomModel(input.provider, input.modelId);
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to add custom model",
+        message:
+          error instanceof Error ? error.message : "Failed to add custom model",
       });
     }
     return getProvidersInfo();
@@ -424,17 +459,20 @@ export const aiAddCustomModel = os
 export const aiRemoveCustomModel = os
   .input(
     z.object({
+      modelId: z.string().min(1),
       // Built-in name or `custom:<id>` — validated in config.
       provider: z.string().min(1),
-      modelId: z.string().min(1),
-    }),
+    })
   )
   .handler(async ({ input }) => {
     try {
       removeCustomModel(input.provider, input.modelId);
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to remove custom model",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to remove custom model",
       });
     }
     return getProvidersInfo();
@@ -445,10 +483,10 @@ export const aiRemoveCustomModel = os
 // ---------------------------------------------------------------------------
 
 const CUSTOM_PROVIDER_INPUT = z.object({
-  label: z.string().min(1).max(60),
-  baseURL: z.string().min(1),
   apiKey: z.string().optional(),
+  baseURL: z.string().min(1),
   defaultModel: z.string().optional(),
+  label: z.string().min(1).max(60),
 });
 
 export const aiAddCustomProvider = os
@@ -459,7 +497,10 @@ export const aiAddCustomProvider = os
       return getProvidersInfo();
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to save custom provider",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to save custom provider",
       });
     }
   });
@@ -467,11 +508,11 @@ export const aiAddCustomProvider = os
 export const aiUpdateCustomProvider = os
   .input(
     z.object({
-      id: z.string().min(1),
-      label: z.string().min(1).max(60).optional(),
       baseURL: z.string().min(1).optional(),
       defaultModel: z.string().optional(),
-    }),
+      id: z.string().min(1),
+      label: z.string().min(1).max(60).optional(),
+    })
   )
   .handler(async ({ input }) => {
     try {
@@ -479,7 +520,10 @@ export const aiUpdateCustomProvider = os
       return getProvidersInfo();
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to update custom provider",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to update custom provider",
       });
     }
   });
@@ -492,7 +536,10 @@ export const aiRemoveCustomProvider = os
       return getProvidersInfo();
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to remove custom provider",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to remove custom provider",
       });
     }
   });
@@ -505,7 +552,10 @@ export const aiSetCustomProviderApiKey = os
       return getProvidersInfo();
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to save custom provider key",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to save custom provider key",
       });
     }
   });
@@ -521,7 +571,8 @@ export const aiCheckProviderEndpoint = os
       return await checkProviderEndpoint(input.baseURL);
     } catch (error) {
       throw new ORPCError("BAD_REQUEST", {
-        message: error instanceof Error ? error.message : "Failed to check endpoint",
+        message:
+          error instanceof Error ? error.message : "Failed to check endpoint",
       });
     }
   });
@@ -530,38 +581,34 @@ export const aiCheckProviderEndpoint = os
 // Ollama detection
 // ---------------------------------------------------------------------------
 
-export const aiDetectOllama = os.handler(async () => {
-  return detectOllama();
-});
+export const aiDetectOllama = os.handler(async () => detectOllama());
 
 // ---------------------------------------------------------------------------
 // Privacy settings
 // ---------------------------------------------------------------------------
 
-export const aiGetPrivacySettings = os.handler(async () => {
-  return {
-    settings: getPrivacySettings(),
-    preset: getPrivacyPreset(),
-  };
-});
+export const aiGetPrivacySettings = os.handler(async () => ({
+  preset: getPrivacyPreset(),
+  settings: getPrivacySettings(),
+}));
 
 export const aiUpdatePrivacySettings = os
   .input(
     z.object({
+      preset: z.enum(["full", "minimal", "private"]).nullable().optional(),
       settings: z
         .object({
-          schema: z.boolean().optional(),
           connectionInfo: z.boolean().optional(),
           connectionsList: z.boolean().optional(),
           memory: z.boolean().optional(),
+          schema: z.boolean().optional(),
         })
         .optional(),
-      preset: z.enum(["full", "minimal", "private"]).nullable().optional(),
-    }),
+    })
   )
-  .handler(async ({ input }) => {
-    return updatePrivacySettings(
+  .handler(async ({ input }) =>
+    updatePrivacySettings(
       input.settings ?? {},
-      input.preset as "full" | "minimal" | "private" | null | undefined,
-    );
-  });
+      input.preset as "full" | "minimal" | "private" | null | undefined
+    )
+  );

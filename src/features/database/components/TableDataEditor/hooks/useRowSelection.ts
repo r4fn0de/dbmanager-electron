@@ -1,5 +1,5 @@
-import { useState, useRef, useMemo, useCallback } from "react";
-import type { DeleteDraft, RowRecord } from "../types";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { DeleteDraft } from "../types";
 import { quoteIdentifier, quoteValue } from "../utils/sqlHelpers";
 import type { EffectiveRow } from "../utils/tableDataTransforms";
 
@@ -14,18 +14,18 @@ export function useRowSelection(
   focusedCell: { rowKey: string; column: string } | null,
   setFocusedCell: React.Dispatch<
     React.SetStateAction<{ rowKey: string; column: string } | null>
-  >,
+  >
 ) {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
   const lastClickedRowRef = useRef<{ rowKey: string; index: number } | null>(
-    null,
+    null
   );
 
   const allVisibleRowKeys = useMemo(
     () => new Set(effectiveRows.map((r) => r.rowKey)),
-    [effectiveRows],
+    [effectiveRows]
   );
 
   const isAllSelected =
@@ -49,7 +49,7 @@ export function useRowSelection(
       const target = event.target as HTMLElement;
       if (
         target.closest(
-          "input,textarea,select,button,a,[contenteditable='true']",
+          "input,textarea,select,button,a,[contenteditable='true']"
         )
       ) {
         return;
@@ -62,49 +62,64 @@ export function useRowSelection(
           .map((r) => r.rowKey);
         setSelectedRowKeys((prev) => {
           const next = new Set(prev);
-          for (const key of rangeKeys) next.add(key);
+          for (const key of rangeKeys) {
+            next.add(key);
+          }
           return next;
         });
       } else if (event.metaKey || event.ctrlKey) {
         setSelectedRowKeys((prev) => {
           const next = new Set(prev);
-          if (next.has(rowKey)) next.delete(rowKey);
-          else next.add(rowKey);
+          if (next.has(rowKey)) {
+            next.delete(rowKey);
+          } else {
+            next.add(rowKey);
+          }
           return next;
         });
       } else {
         setSelectedRowKeys((prev) => {
-          if (prev.size === 1 && prev.has(rowKey)) return new Set();
+          if (prev.size === 1 && prev.has(rowKey)) {
+            return new Set();
+          }
           return new Set([rowKey]);
         });
       }
-      lastClickedRowRef.current = { rowKey, index };
+      lastClickedRowRef.current = { index, rowKey };
     },
-    [effectiveRows],
+    [effectiveRows]
   );
 
   const clearSelectionOnOutsideClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement;
-      if (target.closest('[data-row-selection-scope="row"]')) return;
-      if (!focusedCell) return;
+      if (target.closest('[data-row-selection-scope="row"]')) {
+        return;
+      }
+      if (!focusedCell) {
+        return;
+      }
       setFocusedCell(null);
     },
-    [focusedCell, setFocusedCell],
+    [focusedCell, setFocusedCell]
   );
 
   const batchDeleteSelected = useCallback(() => {
-    if (primaryKey.length === 0) return;
+    if (primaryKey.length === 0) {
+      return;
+    }
     const toDelete: Record<string, DeleteDraft> = {};
     const effectiveRowsByKey = new Map(
-      effectiveRows.map((entry) => [entry.rowKey, entry]),
+      effectiveRows.map((entry) => [entry.rowKey, entry])
     );
     for (const rowKey of selectedRowKeys) {
       const entry = effectiveRowsByKey.get(rowKey);
-      if (!entry) continue;
+      if (!entry) {
+        continue;
+      }
       const row = entry.row;
       const pk = Object.fromEntries(
-        primaryKey.map((column) => [column, row[column]]),
+        primaryKey.map((column) => [column, row[column]])
       );
       const whereSql = primaryKey
         .map((column) => {
@@ -115,8 +130,8 @@ export function useRowSelection(
         })
         .join(" AND ");
       toDelete[rowKey] = {
-        rowKey,
         primaryKey: pk,
+        rowKey,
         sqlPreview: `DELETE FROM ${quoteIdentifier(tableSchema)}.${quoteIdentifier(tableName)} WHERE ${whereSql};`,
       };
     }
@@ -134,22 +149,25 @@ export function useRowSelection(
   const toggleRowSelection = useCallback((rowKey: string) => {
     setSelectedRowKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(rowKey)) next.delete(rowKey);
-      else next.add(rowKey);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+      }
       return next;
     });
   }, []);
 
   return {
-    selectedRowKeys,
-    setSelectedRowKeys,
-    lastClickedRowRef,
-    isAllSelected,
-    isSomeSelected,
-    toggleSelectAll,
-    handleRowClick,
-    toggleRowSelection,
     batchDeleteSelected,
     clearSelectionOnOutsideClick,
+    handleRowClick,
+    isAllSelected,
+    isSomeSelected,
+    lastClickedRowRef,
+    selectedRowKeys,
+    setSelectedRowKeys,
+    toggleRowSelection,
+    toggleSelectAll,
   };
 }

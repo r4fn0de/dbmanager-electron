@@ -1,22 +1,37 @@
 import type { SchemaColumn } from "@/ipc/db/types";
 
 export function normalizeDisplay(value: unknown): string {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "object") return JSON.stringify(value);
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
   return String(value);
 }
 
 export function getCellTitle(value: unknown): string | undefined {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return undefined;
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
 }
 
 export function compareSortValues(a: unknown, b: unknown): number {
-  if (a === b) return 0;
-  if (a === null || a === undefined) return 1;
-  if (b === null || b === undefined) return -1;
+  if (a === b) {
+    return 0;
+  }
+  if (a === null || a === undefined) {
+    return 1;
+  }
+  if (b === null || b === undefined) {
+    return -1;
+  }
 
   if (typeof a === "number" && typeof b === "number") {
     return a - b;
@@ -36,26 +51,37 @@ export function compareSortValues(a: unknown, b: unknown): number {
 
 export function parseByType(raw: string, column: SchemaColumn): unknown {
   const trimmed = raw.trim();
-  if (trimmed.length === 0 || trimmed.toUpperCase() === "NULL") return null;
+  if (trimmed.length === 0 || trimmed.toUpperCase() === "NULL") {
+    return null;
+  }
 
   const dataType = column.data_type.toLowerCase();
 
   if (/(^|[^a-z])bool/.test(dataType)) {
-    if (trimmed.toLowerCase() === "true") return true;
-    if (trimmed.toLowerCase() === "false") return false;
+    if (trimmed.toLowerCase() === "true") {
+      return true;
+    }
+    if (trimmed.toLowerCase() === "false") {
+      return false;
+    }
   }
 
-  if (/(^|[^a-z])(int|serial|smallint|bigint)/.test(dataType)) {
-    if (/^-?\d+$/.test(trimmed)) {
-      const n = Number(trimmed);
-      if (Number.isSafeInteger(n)) return n;
-      return trimmed;
+  if (
+    /(^|[^a-z])(int|serial|smallint|bigint)/.test(dataType) &&
+    /^-?\d+$/.test(trimmed)
+  ) {
+    const n = Number(trimmed);
+    if (Number.isSafeInteger(n)) {
+      return n;
     }
+    return trimmed;
   }
 
   if (/(double|real|float)/.test(dataType)) {
     const asNumber = Number(trimmed);
-    if (Number.isFinite(asNumber)) return asNumber;
+    if (Number.isFinite(asNumber)) {
+      return asNumber;
+    }
   }
 
   if (/(numeric|decimal)/.test(dataType)) {

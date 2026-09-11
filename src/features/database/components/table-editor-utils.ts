@@ -20,25 +20,57 @@ export type ColumnKind =
   | "color"
   | "text";
 
-export function classifyColumnKind(column: SchemaColumn | undefined): ColumnKind {
-  if (!column) return "text";
+export function classifyColumnKind(
+  column: SchemaColumn | undefined
+): ColumnKind {
+  if (!column) {
+    return "text";
+  }
   const t = column.data_type.toLowerCase();
   const udt = (column.udt_name ?? "").toLowerCase();
 
-  if (t === "array" || udt.startsWith("_") || t.endsWith("[]")) return "array";
-  if (t.includes("json")) return "json";
-  if (t.includes("timestamp with time zone") || t === "timestamptz") return "timestamptz";
-  if (t.includes("timestamp")) return "timestamp";
-  if (t === "date") return "date";
-  if (t.startsWith("time ") || t === "time" || t.includes("time with")) return "time";
-  if (t === "boolean" || t === "bool") return "bool";
-  if (t === "uuid") return "uuid";
-  if (t === "bytea") return "bytea";
-  if (t === "interval") return "interval";
-  if (t === "inet") return "inet";
-  if (t === "cidr") return "cidr";
-  if (t === "macaddr" || t === "macaddr8") return "macaddr";
-  if (t === "user-defined") return "enum";
+  if (t === "array" || udt.startsWith("_") || t.endsWith("[]")) {
+    return "array";
+  }
+  if (t.includes("json")) {
+    return "json";
+  }
+  if (t.includes("timestamp with time zone") || t === "timestamptz") {
+    return "timestamptz";
+  }
+  if (t.includes("timestamp")) {
+    return "timestamp";
+  }
+  if (t === "date") {
+    return "date";
+  }
+  if (t.startsWith("time ") || t === "time" || t.includes("time with")) {
+    return "time";
+  }
+  if (t === "boolean" || t === "bool") {
+    return "bool";
+  }
+  if (t === "uuid") {
+    return "uuid";
+  }
+  if (t === "bytea") {
+    return "bytea";
+  }
+  if (t === "interval") {
+    return "interval";
+  }
+  if (t === "inet") {
+    return "inet";
+  }
+  if (t === "cidr") {
+    return "cidr";
+  }
+  if (t === "macaddr" || t === "macaddr8") {
+    return "macaddr";
+  }
+  if (t === "user-defined") {
+    return "enum";
+  }
 
   if (
     t.includes("int") ||
@@ -64,7 +96,9 @@ export function classifyColumnKind(column: SchemaColumn | undefined): ColumnKind
 export const NULL_SENTINEL = "NULL";
 
 export function valueToEditableText(value: unknown, kind: ColumnKind): string {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined) {
+    return "";
+  }
 
   if (kind === "json" || kind === "array") {
     if (typeof value === "object") {
@@ -88,18 +122,28 @@ export function valueToEditableText(value: unknown, kind: ColumnKind): string {
 }
 
 export function initialToUtcIso(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined) {
+    return null;
+  }
   const s = String(value).trim();
-  if (!s) return null;
+  if (!s) {
+    return null;
+  }
   const ms = Date.parse(s);
-  if (Number.isNaN(ms)) return null;
+  if (Number.isNaN(ms)) {
+    return null;
+  }
   return new Date(ms).toISOString();
 }
 
 export function utcIsoToDatetimeLocal(iso: string | null): string {
-  if (!iso) return "";
+  if (!iso) {
+    return "";
+  }
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
   const pad = (n: number) => String(n).padStart(2, "0");
   const yyyy = d.getFullYear();
   const mm = pad(d.getMonth() + 1);
@@ -111,57 +155,89 @@ export function utcIsoToDatetimeLocal(iso: string | null): string {
 }
 
 export function datetimeLocalToUtcIso(local: string): string | null {
-  if (!local) return null;
+  if (!local) {
+    return null;
+  }
   const d = new Date(local);
-  if (Number.isNaN(d.getTime())) return null;
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
   return d.toISOString();
 }
 
 export function timestampRawToDatetimeLocal(value: unknown): string {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined) {
+    return "";
+  }
   const s = String(value).trim();
-  if (!s) return "";
+  if (!s) {
+    return "";
+  }
   const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/);
-  if (!m) return "";
+  if (!m) {
+    return "";
+  }
   const datePart = m[1];
   const timePart = m[2].length === 5 ? `${m[2]}:00` : m[2];
   return `${datePart}T${timePart}`;
 }
 
 export function datetimeLocalToTimestamp(local: string): string | null {
-  if (!local) return null;
+  if (!local) {
+    return null;
+  }
   const [d, t] = local.split("T");
-  if (!d || !t) return null;
+  if (!(d && t)) {
+    return null;
+  }
   const time = t.length === 5 ? `${t}:00` : t;
   return `${d} ${time}`;
 }
 
 export function initialDate(value: unknown): string {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined) {
+    return "";
+  }
   const s = String(value).trim();
   const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
   return m ? m[1] : "";
 }
 
 export function initialTime(value: unknown): string {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined) {
+    return "";
+  }
   const s = String(value).trim();
   const m = s.match(/^(\d{2}:\d{2}(?::\d{2})?)/);
-  if (!m) return "";
+  if (!m) {
+    return "";
+  }
   return m[1].length === 5 ? `${m[1]}:00` : m[1];
 }
 
 export function initialBool(value: unknown): "true" | "false" | "null" {
-  if (value === true) return "true";
-  if (value === false) return "false";
-  if (value === "true" || value === "t" || value === "TRUE") return "true";
-  if (value === "false" || value === "f" || value === "FALSE") return "false";
+  if (value === true) {
+    return "true";
+  }
+  if (value === false) {
+    return "false";
+  }
+  if (value === "true" || value === "t" || value === "TRUE") {
+    return "true";
+  }
+  if (value === "false" || value === "f" || value === "FALSE") {
+    return "false";
+  }
   return "null";
 }
 
 export function initialNumeric(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "number") return String(value);
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
   return String(value).trim();
 }
 
@@ -179,22 +255,26 @@ export const INTERVAL_TEXT_RE =
   /^(\s*-?\d+(\.\d+)?\s+(year|years|month|months|week|weeks|day|days|hour|hours|minute|minutes|second|seconds|millisecond|milliseconds|microsecond|microseconds)\s*)+$/i;
 
 export const INT_RANGE: Record<string, { min: bigint; max: bigint }> = {
-  smallint: { min: -32768n, max: 32767n },
-  int2: { min: -32768n, max: 32767n },
-  integer: { min: -2147483648n, max: 2147483647n },
-  int: { min: -2147483648n, max: 2147483647n },
-  int4: { min: -2147483648n, max: 2147483647n },
-  bigint: { min: -9223372036854775808n, max: 9223372036854775807n },
-  int8: { min: -9223372036854775808n, max: 9223372036854775807n },
+  bigint: { max: 9223372036854775807n, min: -9223372036854775808n },
+  int: { max: 2147483647n, min: -2147483648n },
+  int2: { max: 32767n, min: -32768n },
+  int4: { max: 2147483647n, min: -2147483648n },
+  int8: { max: 9223372036854775807n, min: -9223372036854775808n },
+  integer: { max: 2147483647n, min: -2147483648n },
+  smallint: { max: 32767n, min: -32768n },
 };
 
 export function intRangeFor(
-  column: SchemaColumn | undefined,
+  column: SchemaColumn | undefined
 ): { min: bigint; max: bigint } | null {
-  if (!column) return null;
+  if (!column) {
+    return null;
+  }
   const t = column.data_type.toLowerCase();
   for (const [key, range] of Object.entries(INT_RANGE)) {
-    if (t === key || t.indexOf(key) !== -1) return range;
+    if (t === key || t.indexOf(key) !== -1) {
+      return range;
+    }
   }
   return null;
 }
@@ -202,12 +282,22 @@ export function intRangeFor(
 export function isValidIp(raw: string, allowCidr: boolean): boolean {
   const [address, prefix] = raw.split("/");
   if (prefix !== undefined) {
-    if (!allowCidr) return false;
-    if (!/^\d+$/.test(prefix)) return false;
+    if (!allowCidr) {
+      return false;
+    }
+    if (!/^\d+$/.test(prefix)) {
+      return false;
+    }
     const p = Number(prefix);
-    if (Number.isNaN(p)) return false;
-    if (IPV4_RE.test(address)) return p >= 0 && p <= 32;
-    if (IPV6_RE.test(address)) return p >= 0 && p <= 128;
+    if (Number.isNaN(p)) {
+      return false;
+    }
+    if (IPV4_RE.test(address)) {
+      return p >= 0 && p <= 32;
+    }
+    if (IPV6_RE.test(address)) {
+      return p >= 0 && p <= 128;
+    }
     return false;
   }
   return IPV4_RE.test(address) || IPV6_RE.test(address);
@@ -215,7 +305,9 @@ export function isValidIp(raw: string, allowCidr: boolean): boolean {
 
 export function isValidPgArrayLiteral(raw: string): boolean {
   const s = raw.trim();
-  if (!s.startsWith("{") || !s.endsWith("}")) return false;
+  if (!(s.startsWith("{") && s.endsWith("}"))) {
+    return false;
+  }
 
   let depth = 0;
   let inQuotes = false;
@@ -233,10 +325,17 @@ export function isValidPgArrayLiteral(raw: string): boolean {
       inQuotes = !inQuotes;
       continue;
     }
-    if (inQuotes) continue;
-    if (ch === "{") depth += 1;
-    else if (ch === "}") depth -= 1;
-    if (depth < 0) return false;
+    if (inQuotes) {
+      continue;
+    }
+    if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+    }
+    if (depth < 0) {
+      return false;
+    }
   }
   return depth === 0 && !inQuotes;
 }
@@ -244,144 +343,212 @@ export function isValidPgArrayLiteral(raw: string): boolean {
 export function validateDraft(
   draft: string,
   kind: ColumnKind,
-  column: SchemaColumn | undefined,
+  column: SchemaColumn | undefined
 ): ValidationResult {
   const raw = draft;
   const trimmed = draft.trim();
 
   switch (kind) {
     case "uuid":
-      if (!trimmed) return { ok: false, message: "UUID required" };
+      if (!trimmed) {
+        return { message: "UUID required", ok: false };
+      }
       if (!UUID_RE.test(trimmed)) {
-        return { ok: false, message: "Invalid UUID (expected 8-4-4-4-12 hex)" };
+        return { message: "Invalid UUID (expected 8-4-4-4-12 hex)", ok: false };
       }
       return { ok: true };
     case "bytea": {
-      if (!trimmed) return { ok: true };
+      if (!trimmed) {
+        return { ok: true };
+      }
       const hexMatch = trimmed.match(/^\\?\\x([0-9a-f]*)$/i);
       if (!hexMatch) {
-        return { ok: false, message: "Bytea must start with \\x followed by hex digits" };
+        return {
+          message: "Bytea must start with \\x followed by hex digits",
+          ok: false,
+        };
       }
       const hex = hexMatch[1];
       if (hex.length % 2 !== 0) {
-        return { ok: false, message: "Hex payload must have an even number of digits" };
+        return {
+          message: "Hex payload must have an even number of digits",
+          ok: false,
+        };
       }
       return { ok: true };
     }
     case "json":
-      if (!trimmed) return { ok: false, message: "JSON required" };
+      if (!trimmed) {
+        return { message: "JSON required", ok: false };
+      }
       try {
         JSON.parse(raw);
         return { ok: true };
       } catch (err) {
         const detail = err instanceof Error ? err.message : "invalid JSON";
-        return { ok: false, message: `Invalid JSON: ${detail}` };
+        return { message: `Invalid JSON: ${detail}`, ok: false };
       }
     case "array":
-      if (!trimmed) return { ok: false, message: "Array required" };
+      if (!trimmed) {
+        return { message: "Array required", ok: false };
+      }
       if (trimmed.startsWith("[")) {
         try {
           const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) return { ok: false, message: "JSON must be an array" };
+          if (!Array.isArray(parsed)) {
+            return { message: "JSON must be an array", ok: false };
+          }
           return { ok: true };
         } catch (err) {
           const detail = err instanceof Error ? err.message : "invalid JSON";
-          return { ok: false, message: `Invalid JSON array: ${detail}` };
+          return { message: `Invalid JSON array: ${detail}`, ok: false };
         }
       }
       if (trimmed.startsWith("{")) {
-        if (!isValidPgArrayLiteral(trimmed)) return { ok: false, message: "Invalid Postgres array literal" };
+        if (!isValidPgArrayLiteral(trimmed)) {
+          return { message: "Invalid Postgres array literal", ok: false };
+        }
         return { ok: true };
       }
-      return { ok: false, message: "Array must start with `[` (JSON) or `{` (Postgres literal)" };
+      return {
+        message: "Array must start with `[` (JSON) or `{` (Postgres literal)",
+        ok: false,
+      };
     case "integer": {
-      if (!trimmed) return { ok: false, message: "Integer required" };
-      if (!/^-?\d+$/.test(trimmed)) return { ok: false, message: "Must be an integer (no decimals)" };
+      if (!trimmed) {
+        return { message: "Integer required", ok: false };
+      }
+      if (!/^-?\d+$/.test(trimmed)) {
+        return { message: "Must be an integer (no decimals)", ok: false };
+      }
       const range = intRangeFor(column);
       if (range) {
         try {
           const n = BigInt(trimmed);
           if (n < range.min || n > range.max) {
             return {
-              ok: false,
               message: `Out of range for ${column?.data_type ?? "integer"} (${range.min}..${range.max})`,
+              ok: false,
             };
           }
         } catch {
-          return { ok: false, message: "Invalid integer literal" };
+          return { message: "Invalid integer literal", ok: false };
         }
       }
       return { ok: true };
     }
     case "numeric":
-      if (!trimmed) return { ok: false, message: "Number required" };
+      if (!trimmed) {
+        return { message: "Number required", ok: false };
+      }
       if (!/^-?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$/.test(trimmed)) {
-        return { ok: false, message: "Not a valid number" };
+        return { message: "Not a valid number", ok: false };
       }
       return { ok: true };
     case "bool":
-      if (trimmed === "true" || trimmed === "false") return { ok: true };
-      return { ok: false, message: "Pick TRUE or FALSE" };
+      if (trimmed === "true" || trimmed === "false") {
+        return { ok: true };
+      }
+      return { message: "Pick TRUE or FALSE", ok: false };
     case "timestamptz": {
-      if (!trimmed) return { ok: false, message: "Timestamp required" };
+      if (!trimmed) {
+        return { message: "Timestamp required", ok: false };
+      }
       const ms = Date.parse(trimmed);
-      if (Number.isNaN(ms)) return { ok: false, message: "Invalid timestamp" };
+      if (Number.isNaN(ms)) {
+        return { message: "Invalid timestamp", ok: false };
+      }
       return { ok: true };
     }
     case "timestamp":
-      if (!trimmed) return { ok: false, message: "Timestamp required" };
-      if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
-        return { ok: false, message: "Expected YYYY-MM-DD HH:MM:SS" };
+      if (!trimmed) {
+        return { message: "Timestamp required", ok: false };
+      }
+      if (
+        !/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)
+      ) {
+        return { message: "Expected YYYY-MM-DD HH:MM:SS", ok: false };
       }
       return { ok: true };
     case "date": {
-      if (!trimmed) return { ok: false, message: "Date required" };
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return { ok: false, message: "Expected YYYY-MM-DD" };
+      if (!trimmed) {
+        return { message: "Date required", ok: false };
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return { message: "Expected YYYY-MM-DD", ok: false };
+      }
       const ms = Date.parse(`${trimmed}T00:00:00Z`);
-      if (Number.isNaN(ms)) return { ok: false, message: "Invalid date" };
+      if (Number.isNaN(ms)) {
+        return { message: "Invalid date", ok: false };
+      }
       return { ok: true };
     }
     case "time": {
-      if (!trimmed) return { ok: false, message: "Time required" };
-      if (!/^\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) return { ok: false, message: "Expected HH:MM[:SS]" };
+      if (!trimmed) {
+        return { message: "Time required", ok: false };
+      }
+      if (!/^\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
+        return { message: "Expected HH:MM[:SS]", ok: false };
+      }
       const [h, m, s] = trimmed.split(":").map((v) => Number(v));
       if (h > 23 || m > 59 || (s !== undefined && s >= 60)) {
-        return { ok: false, message: "Time components out of range" };
+        return { message: "Time components out of range", ok: false };
       }
       return { ok: true };
     }
     case "inet":
-      if (!trimmed) return { ok: false, message: "IP address required" };
+      if (!trimmed) {
+        return { message: "IP address required", ok: false };
+      }
       if (!isValidIp(trimmed, true)) {
-        return { ok: false, message: "Expected IPv4/IPv6 with optional /prefix" };
+        return {
+          message: "Expected IPv4/IPv6 with optional /prefix",
+          ok: false,
+        };
       }
       return { ok: true };
     case "cidr":
-      if (!trimmed) return { ok: false, message: "CIDR required" };
-      if (!trimmed.includes("/")) return { ok: false, message: "CIDR requires a /prefix" };
+      if (!trimmed) {
+        return { message: "CIDR required", ok: false };
+      }
+      if (!trimmed.includes("/")) {
+        return { message: "CIDR requires a /prefix", ok: false };
+      }
       if (!isValidIp(trimmed, true)) {
-        return { ok: false, message: "Expected network/prefix (e.g. 10.0.0.0/8)" };
+        return {
+          message: "Expected network/prefix (e.g. 10.0.0.0/8)",
+          ok: false,
+        };
       }
       return { ok: true };
     case "macaddr":
-      if (!trimmed) return { ok: false, message: "MAC address required" };
-      if (!MACADDR_RE.test(trimmed)) return { ok: false, message: "Expected AA:BB:CC:DD:EE:FF" };
+      if (!trimmed) {
+        return { message: "MAC address required", ok: false };
+      }
+      if (!MACADDR_RE.test(trimmed)) {
+        return { message: "Expected AA:BB:CC:DD:EE:FF", ok: false };
+      }
       return { ok: true };
     case "interval":
-      if (!trimmed) return { ok: false, message: "Interval required" };
+      if (!trimmed) {
+        return { message: "Interval required", ok: false };
+      }
       if (
         /^P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$/i.test(
-          trimmed,
+          trimmed
         )
       ) {
         return { ok: true };
       }
-      if (INTERVAL_TEXT_RE.test(trimmed)) return { ok: true };
-      return { ok: false, message: "Expected `1 day 2 hours`, `P1DT2H`, etc." };
+      if (INTERVAL_TEXT_RE.test(trimmed)) {
+        return { ok: true };
+      }
+      return { message: "Expected `1 day 2 hours`, `P1DT2H`, etc.", ok: false };
     case "enum":
-      if (!trimmed) return { ok: false, message: "Enum value required" };
+      if (!trimmed) {
+        return { message: "Enum value required", ok: false };
+      }
       return { ok: true };
-    case "text":
     default:
       return { ok: true };
   }

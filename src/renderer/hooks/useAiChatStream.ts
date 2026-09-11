@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { startChatStream, type StartedChatStream } from "@/renderer/lib/ai-streaming-client";
+import {
+  type StartedChatStream,
+  startChatStream,
+} from "@/renderer/lib/ai-streaming-client";
 import type {
   AiChatChunkPayload,
   AiChatDonePayload,
@@ -9,19 +12,19 @@ import type {
 
 export interface AiToolEvent {
   kind: "call" | "result";
-  timestamp: number;
   payload: AiChatChunkPayload;
+  timestamp: number;
 }
 
 export interface UseAiChatStreamState {
-  status: "idle" | "streaming" | "done" | "error" | "aborted";
-  text: string;
-  reasoning: string;
   error: string | null;
   finishReason: string | null;
-  usage: AiChatDonePayload["usage"] | null;
-  toolEvents: AiToolEvent[];
   isStreaming: boolean;
+  reasoning: string;
+  status: "idle" | "streaming" | "done" | "error" | "aborted";
+  text: string;
+  toolEvents: AiToolEvent[];
+  usage: AiChatDonePayload["usage"] | null;
 }
 
 export interface UseAiChatStreamOptions {
@@ -31,31 +34,35 @@ export interface UseAiChatStreamOptions {
 }
 
 export interface UseAiChatStreamResult extends UseAiChatStreamState {
-  start: (input: ChatStartInput) => Promise<AiChatDonePayload>;
   abort: () => void;
   reset: () => void;
   setText: React.Dispatch<React.SetStateAction<string>>;
+  start: (input: ChatStartInput) => Promise<AiChatDonePayload>;
 }
 
 const initialState: UseAiChatStreamState = {
-  status: "idle",
-  text: "",
-  reasoning: "",
   error: null,
   finishReason: null,
-  usage: null,
-  toolEvents: [],
   isStreaming: false,
+  reasoning: "",
+  status: "idle",
+  text: "",
+  toolEvents: [],
+  usage: null,
 };
 
 function isAbortLikeError(error: unknown): boolean {
-  if (!error) return false;
-  if (error instanceof Error && error.name === "AbortError") return true;
+  if (!error) {
+    return false;
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
   return String(error).toLowerCase().includes("abort");
 }
 
 export function useAiChatStream(
-  options: UseAiChatStreamOptions = {},
+  options: UseAiChatStreamOptions = {}
 ): UseAiChatStreamResult {
   const streamRef = useRef<StartedChatStream | null>(null);
   const mountedRef = useRef(true);
@@ -68,18 +75,21 @@ export function useAiChatStream(
   const [usage, setUsage] = useState<AiChatDonePayload["usage"] | null>(null);
   const [toolEvents, setToolEvents] = useState<AiToolEvent[]>([]);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       mountedRef.current = false;
       streamRef.current?.abort();
       streamRef.current?.dispose();
       streamRef.current = null;
-    };
-  }, []);
+    },
+    []
+  );
 
   const abort = useCallback(() => {
     const current = streamRef.current;
-    if (!current) return;
+    if (!current) {
+      return;
+    }
 
     current.abort();
     current.dispose();
@@ -94,7 +104,9 @@ export function useAiChatStream(
     streamRef.current?.dispose();
     streamRef.current = null;
 
-    if (!mountedRef.current) return;
+    if (!mountedRef.current) {
+      return;
+    }
 
     setStatus(initialState.status);
     setText(initialState.text);
@@ -122,7 +134,9 @@ export function useAiChatStream(
       const stream = startChatStream({
         input,
         onChunk(chunk) {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) {
+            return;
+          }
           options.onChunk?.(chunk);
 
           if (
@@ -132,7 +146,7 @@ export function useAiChatStream(
           ) {
             setToolEvents((prev) => [
               ...prev,
-              { kind: "call", timestamp: Date.now(), payload: chunk },
+              { kind: "call", payload: chunk, timestamp: Date.now() },
             ]);
             return;
           }
@@ -140,20 +154,14 @@ export function useAiChatStream(
           if (chunk.type === "tool-result") {
             setToolEvents((prev) => [
               ...prev,
-              { kind: "result", timestamp: Date.now(), payload: chunk },
+              { kind: "result", payload: chunk, timestamp: Date.now() },
             ]);
           }
         },
-        onText(_delta, fullText) {
-          if (!mountedRef.current) return;
-          setText(fullText);
-        },
-        onReasoning(fullReasoningDelta) {
-          if (!mountedRef.current) return;
-          setReasoning((prev) => prev + fullReasoningDelta);
-        },
         onDone(payload, fullText) {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) {
+            return;
+          }
           setStatus("done");
           setText(fullText);
           setFinishReason(payload.finishReason ?? null);
@@ -161,10 +169,24 @@ export function useAiChatStream(
           options.onDone?.(payload, fullText);
         },
         onError(payload) {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) {
+            return;
+          }
           setStatus("error");
           setError(payload.message);
           options.onError?.(payload);
+        },
+        onReasoning(fullReasoningDelta) {
+          if (!mountedRef.current) {
+            return;
+          }
+          setReasoning((prev) => prev + fullReasoningDelta);
+        },
+        onText(_delta, fullText) {
+          if (!mountedRef.current) {
+            return;
+          }
+          setText(fullText);
         },
       });
 
@@ -193,11 +215,25 @@ export function useAiChatStream(
         stream.dispose();
       }
     },
-    [abort, options],
+    [abort, options]
   );
 
   return useMemo(
     () => ({
+      abort,
+      error,
+      finishReason,
+      isStreaming: status === "streaming",
+      reasoning,
+      reset,
+      setText,
+      start,
+      status,
+      text,
+      toolEvents,
+      usage,
+    }),
+    [
       status,
       text,
       reasoning,
@@ -205,12 +241,9 @@ export function useAiChatStream(
       finishReason,
       usage,
       toolEvents,
-      isStreaming: status === "streaming",
       start,
       abort,
       reset,
-      setText,
-    }),
-    [status, text, reasoning, error, finishReason, usage, toolEvents, start, abort, reset],
+    ]
   );
 }

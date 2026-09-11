@@ -1,15 +1,9 @@
-import type { DdlScript } from "@/ipc/db/types";
 import * as XLSX from "xlsx";
+import type { DdlScript } from "@/ipc/db/types";
 
 export type ExportFormat = "sql" | "csv" | "json" | "markdown" | "xlsx";
 
 export interface ExportLayerPayload {
-  metadata: {
-    scope: "table" | "schema";
-    schema: string;
-    table?: string;
-    generatedAt: string;
-  };
   layers: {
     schema: DdlScript[];
     indexes: DdlScript[];
@@ -20,23 +14,44 @@ export interface ExportLayerPayload {
       rows: Record<string, unknown>[];
     }>;
   };
+  metadata: {
+    scope: "table" | "schema";
+    schema: string;
+    table?: string;
+    generatedAt: string;
+  };
 }
 
-export function buildExportFileName(payload: ExportLayerPayload, format: ExportFormat): string {
-  const suffix = payload.metadata.scope === "table" ? `${payload.metadata.schema}.${payload.metadata.table}` : payload.metadata.schema;
-  const ext = format === "markdown" ? "md" : format === "xlsx" ? "xlsx" : format;
+export function buildExportFileName(
+  payload: ExportLayerPayload,
+  format: ExportFormat
+): string {
+  const suffix =
+    payload.metadata.scope === "table"
+      ? `${payload.metadata.schema}.${payload.metadata.table}`
+      : payload.metadata.schema;
+  const ext =
+    format === "markdown" ? "md" : format === "xlsx" ? "xlsx" : format;
   return `db-export-${suffix}.${ext}`;
 }
 
 function toSqlLiteral(value: unknown): string {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "NULL";
+  }
+  if (typeof value === "boolean") {
+    return value ? "TRUE" : "FALSE";
+  }
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
 function toCsvValue(value: unknown): string {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined) {
+    return "";
+  }
   const raw = String(value);
   if (raw.includes(",") || raw.includes('"') || raw.includes("\n")) {
     return `"${raw.replaceAll('"', '""')}"`;
@@ -44,21 +59,34 @@ function toCsvValue(value: unknown): string {
   return raw;
 }
 
-export function serializeExport(payload: ExportLayerPayload, format: ExportFormat): string {
+export function serializeExport(
+  payload: ExportLayerPayload,
+  format: ExportFormat
+): string {
   if (format === "json") {
     return JSON.stringify(payload, null, 2);
   }
 
   if (format === "sql") {
     const chunks: string[] = [];
-    for (const script of payload.layers.schema) chunks.push(script.sql.endsWith(";") ? script.sql : `${script.sql};`);
-    for (const script of payload.layers.indexes) chunks.push(script.sql.endsWith(";") ? script.sql : `${script.sql};`);
+    for (const script of payload.layers.schema) {
+      chunks.push(script.sql.endsWith(";") ? script.sql : `${script.sql};`);
+    }
+    for (const script of payload.layers.indexes) {
+      chunks.push(script.sql.endsWith(";") ? script.sql : `${script.sql};`);
+    }
 
     for (const dataSet of payload.layers.data) {
       for (const row of dataSet.rows) {
-        const columns = dataSet.columns.map((column) => `"${column}"`).join(", ");
-        const values = dataSet.columns.map((column) => toSqlLiteral(row[column])).join(", ");
-        chunks.push(`INSERT INTO "${dataSet.schema}"."${dataSet.table}" (${columns}) VALUES (${values});`);
+        const columns = dataSet.columns
+          .map((column) => `"${column}"`)
+          .join(", ");
+        const values = dataSet.columns
+          .map((column) => toSqlLiteral(row[column]))
+          .join(", ");
+        chunks.push(
+          `INSERT INTO "${dataSet.schema}"."${dataSet.table}" (${columns}) VALUES (${values});`
+        );
       }
     }
 
@@ -71,7 +99,9 @@ export function serializeExport(payload: ExportLayerPayload, format: ExportForma
       chunks.push(`# ${dataSet.schema}.${dataSet.table}`);
       chunks.push(dataSet.columns.join(","));
       for (const row of dataSet.rows) {
-        chunks.push(dataSet.columns.map((column) => toCsvValue(row[column])).join(","));
+        chunks.push(
+          dataSet.columns.map((column) => toCsvValue(row[column])).join(",")
+        );
       }
       chunks.push("");
     }
@@ -79,11 +109,13 @@ export function serializeExport(payload: ExportLayerPayload, format: ExportForma
   }
 
   const lines: string[] = [
-    `# Database export`,
-    ``,
+    "# Database export",
+    "",
     `- Scope: ${payload.metadata.scope}`,
     `- Schema: ${payload.metadata.schema}`,
-    payload.metadata.table ? `- Table: ${payload.metadata.table}` : "- Table: all",
+    payload.metadata.table
+      ? `- Table: ${payload.metadata.table}`
+      : "- Table: all",
     `- Generated at: ${payload.metadata.generatedAt}`,
     "",
     "## Schema",
@@ -113,13 +145,16 @@ export function serializeExport(payload: ExportLayerPayload, format: ExportForma
   return lines.join("\n");
 }
 
-export function serializeExportToXlsx(payload: ExportLayerPayload): ArrayBuffer {
+export function serializeExportToXlsx(
+  payload: ExportLayerPayload
+): ArrayBuffer {
   const workbook = XLSX.utils.book_new();
 
   for (const dataSet of payload.layers.data) {
-    const sheetName = dataSet.table.length > 31
-      ? `${dataSet.table.slice(0, 28)}...`
-      : dataSet.table;
+    const sheetName =
+      dataSet.table.length > 31
+        ? `${dataSet.table.slice(0, 28)}...`
+        : dataSet.table;
 
     const rows: unknown[][] = [dataSet.columns];
     for (const row of dataSet.rows) {
@@ -130,7 +165,7 @@ export function serializeExportToXlsx(payload: ExportLayerPayload): ArrayBuffer 
     XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
   }
 
-  const result = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+  const result = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
   const buffer = new Uint8Array(result as number[]).buffer;
   return buffer;
 }

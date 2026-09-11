@@ -1,8 +1,8 @@
-import { Sun } from "@/components/icons/Sun";
-import { Moon } from "@/components/icons/Moon";
-import { useTheme } from "next-themes";
 import { AnimatePresence, motion } from "motion/react";
+import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
+import { Moon } from "@/components/icons/Moon";
+import { Sun } from "@/components/icons/Sun";
 
 // Hydration-safe mounted check — avoids the useEffect + useState pattern
 // that causes an extra render cycle. useSyncExternalStore with a
@@ -14,15 +14,18 @@ function useHydrated() {
   return useSyncExternalStore(
     emptySubscribe,
     () => true,
-    () => false,
+    () => false
   );
 }
 
 const ICON_MOTION = {
-  initial: { opacity: 0, scale: 0.85, rotate: -20 },
-  animate: { opacity: 1, scale: 1, rotate: 0 },
-  exit: { opacity: 0, scale: 0.85, rotate: 20 },
-  transition: { duration: 0.18, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] },
+  animate: { opacity: 1, rotate: 0, scale: 1 },
+  exit: { opacity: 0, rotate: 20, scale: 0.85 },
+  initial: { opacity: 0, rotate: -20, scale: 0.85 },
+  transition: {
+    duration: 0.18,
+    ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+  },
 };
 
 interface ThemeToggleProps {
@@ -35,11 +38,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
 
   if (!mounted) {
     return (
-      <button
-        type="button"
-        className={className}
-        disabled
-      >
+      <button className={className} disabled type="button">
         <Sun className="size-4" />
       </button>
     );
@@ -47,26 +46,30 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
 
   return (
     <motion.button
-      type="button"
-      whileTap={{ scale: 0.97 }}
-      transition={{ duration: 0.1 }}
       className={className}
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-      title={resolvedTheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      title={
+        resolvedTheme === "dark"
+          ? "Switch to light theme"
+          : "Switch to dark theme"
+      }
+      transition={{ duration: 0.1 }}
+      type="button"
+      whileTap={{ scale: 0.97 }}
     >
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence initial={false} mode="wait">
         {resolvedTheme === "dark" ? (
           <motion.div
-            key="sun"
             className="flex items-center justify-center"
+            key="sun"
             {...ICON_MOTION}
           >
             <Sun className="size-4" />
           </motion.div>
         ) : (
           <motion.div
-            key="moon"
             className="flex items-center justify-center"
+            key="moon"
             {...ICON_MOTION}
           >
             <Moon className="size-4" />

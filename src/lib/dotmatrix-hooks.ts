@@ -31,7 +31,11 @@ export interface UseCyclePhaseOptions {
   speed?: number;
 }
 
-export function useCyclePhase({ active, cycleMsBase, speed = 1 }: UseCyclePhaseOptions): number {
+export function useCyclePhase({
+  active,
+  cycleMsBase,
+  speed = 1,
+}: UseCyclePhaseOptions): number {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
@@ -47,7 +51,7 @@ export function useCyclePhase({ active, cycleMsBase, speed = 1 }: UseCyclePhaseO
     let rafId = 0;
 
     const tick = (now: number) => {
-      const elapsed = ((now - start) % cycleMs + cycleMs) % cycleMs;
+      const elapsed = (((now - start) % cycleMs) + cycleMs) % cycleMs;
       setPhase(elapsed / cycleMs);
       rafId = requestAnimationFrame(tick);
     };
@@ -62,9 +66,9 @@ export function useCyclePhase({ active, cycleMsBase, speed = 1 }: UseCyclePhaseO
 interface UseSteppedCycleOptions {
   active: boolean;
   cycleMsBase: number;
-  steps: number;
-  speed?: number;
   idleStep?: number;
+  speed?: number;
+  steps: number;
 }
 
 type FrameListener = (now: number) => void;
@@ -106,7 +110,7 @@ export function useSteppedCycle({
   cycleMsBase,
   steps,
   speed = 1,
-  idleStep = 0
+  idleStep = 0,
 }: UseSteppedCycleOptions): number {
   const safeSteps = Math.max(1, Math.floor(steps));
   const safeSpeed = speed > 0 ? speed : 1;
@@ -156,15 +160,15 @@ interface UseDotMatrixPhasesOptions {
 }
 
 interface DotMatrixPhasesResult {
-  phase: DotMatrixPhase;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
+  phase: DotMatrixPhase;
 }
 
 export function useDotMatrixPhases({
   animated = false,
   hoverAnimated = false,
-  speed = 1
+  speed = 1,
 }: UseDotMatrixPhasesOptions): DotMatrixPhasesResult {
   const safeSpeed = speed > 0 ? speed : 1;
   const autoRun = Boolean(animated && !hoverAnimated);
@@ -211,13 +215,17 @@ export function useDotMatrixPhases({
     setHoverPhase("idle");
   }, [hoverAnimated, autoRun, clearTimers]);
 
-  const phase: DotMatrixPhase = autoRun ? "loadingRipple" : hoverAnimated ? hoverPhase : "idle";
+  const phase: DotMatrixPhase = autoRun
+    ? "loadingRipple"
+    : hoverAnimated
+      ? hoverPhase
+      : "idle";
 
   return useMemo(
     () => ({
-      phase,
       onMouseEnter,
-      onMouseLeave
+      onMouseLeave,
+      phase,
     }),
     [phase, onMouseEnter, onMouseLeave]
   );

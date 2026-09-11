@@ -10,8 +10,8 @@ function resolveAppBranding(): {
   if (inDevelopment) {
     return {
       baseName: APP_BASE_NAME,
-      stageLabel: "DEV",
       displayName: `${APP_BASE_NAME} (DEV)`,
+      stageLabel: "DEV",
     };
   }
 

@@ -15,10 +15,7 @@ const TabPage = memo(function TabPage({
 }) {
   return (
     <div className={isActive ? "h-full" : "hidden"}>
-      <DatabasePageContent
-        connectionId={connectionId}
-        isActive={isActive}
-      />
+      <DatabasePageContent connectionId={connectionId} isActive={isActive} />
     </div>
   );
 });
@@ -48,15 +45,21 @@ export function TabbedConnectionView() {
 
   const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => {
     const initial = new Set<string>();
-    if (activeTabId) initial.add(activeTabId);
+    if (activeTabId) {
+      initial.add(activeTabId);
+    }
     return initial;
   });
 
   // Ensure the active tab is mounted (handles hydration, URL changes, etc.)
   useEffect(() => {
-    if (!activeTabId) return;
+    if (!activeTabId) {
+      return;
+    }
     setMountedTabs((prev) => {
-      if (prev.has(activeTabId)) return prev;
+      if (prev.has(activeTabId)) {
+        return prev;
+      }
       return new Set([...prev, activeTabId]);
     });
   }, [activeTabId]);
@@ -65,7 +68,9 @@ export function TabbedConnectionView() {
   useEffect(() => {
     const openIds = new Set(tabs.map((t) => t.id));
     // Preserve the URL connectionId even if not yet in tabs (hydration race)
-    if (activeTabId) openIds.add(activeTabId);
+    if (activeTabId) {
+      openIds.add(activeTabId);
+    }
 
     setMountedTabs((prev) => {
       const next = new Set(prev);
@@ -81,13 +86,9 @@ export function TabbedConnectionView() {
   }, [tabs, activeTabId]);
 
   return (
-    <div className="h-full relative">
+    <div className="relative h-full">
       {[...mountedTabs].map((id) => (
-        <TabPage
-          key={id}
-          connectionId={id}
-          isActive={id === activeTabId}
-        />
+        <TabPage connectionId={id} isActive={id === activeTabId} key={id} />
       ))}
     </div>
   );

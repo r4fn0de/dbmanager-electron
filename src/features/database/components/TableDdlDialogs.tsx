@@ -14,6 +14,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  CodeBlock,
+  CodeBlockCode,
+  CodeBlockGroup,
+} from "@/components/ui/code-block";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -21,8 +26,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -31,12 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-block";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Icon } from "@/components/ui/Icon";
-import { getTableDetails } from "../hooks/db-actions";
-import { qi, qt, buildCreateTableSql } from "@/ipc/db/ddl-sql";
-import type { DatabaseType } from "@/ipc/db/types";
+import { buildCreateTableSql, qi, qt } from "@/ipc/db/ddl-sql";
 import type {
   AddColumnInput,
   AlterColumnTypeInput,
@@ -44,6 +46,7 @@ import type {
   CreateIndexInput,
   CreateSchemaInput,
   CreateTableInput,
+  DatabaseType,
   DdlResult,
   DropColumnInput,
   DropTableInput,
@@ -51,45 +54,121 @@ import type {
   RenameTableInput,
   SaveChangesInput,
   SaveChangesResponse,
+  SchemaTableDetails,
   SetColumnDefaultInput,
   SetColumnNullableInput,
-  SchemaTableDetails,
 } from "@/ipc/db/types";
+import { getTableDetails } from "../hooks/db-actions";
 
 // ============================================================
 // Data types per database engine
 // ============================================================
 
 const TYPES_BY_ENGINE: Record<string, string[]> = {
-  postgresql: [
-    "text", "varchar(255)", "char(1)", "integer", "bigint", "smallint",
-    "serial", "bigserial", "boolean", "uuid", "timestamp", "timestamptz",
-    "date", "time", "jsonb", "json", "numeric(10,2)", "real",
-    "double precision", "bytea", "inet", "cidr", "macaddr", "point",
-  ],
-  mysql: [
-    "varchar(255)", "char(1)", "text", "mediumtext", "longtext",
-    "int", "bigint", "smallint", "tinyint",
-    "boolean", "datetime", "timestamp", "date", "time",
-    "json", "decimal(10,2)", "float", "double",
-    "blob", "binary(16)", "enum('a','b')",
+  clickhouse: [
+    "String",
+    "FixedString(16)",
+    "UInt8",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "Int8",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Float32",
+    "Float64",
+    "Boolean",
+    "Date",
+    "DateTime",
+    "DateTime64(3)",
+    "UUID",
+    "Nullable(String)",
+    "Array(String)",
+    "Map(String, UInt64)",
   ],
   mariadb: [
-    "varchar(255)", "char(1)", "text", "mediumtext", "longtext",
-    "int", "bigint", "smallint", "tinyint",
-    "boolean", "datetime", "timestamp", "date", "time",
-    "json", "decimal(10,2)", "float", "double",
-    "blob", "binary(16)", "enum('a','b')",
+    "varchar(255)",
+    "char(1)",
+    "text",
+    "mediumtext",
+    "longtext",
+    "int",
+    "bigint",
+    "smallint",
+    "tinyint",
+    "boolean",
+    "datetime",
+    "timestamp",
+    "date",
+    "time",
+    "json",
+    "decimal(10,2)",
+    "float",
+    "double",
+    "blob",
+    "binary(16)",
+    "enum('a','b')",
   ],
-  clickhouse: [
-    "String", "FixedString(16)", "UInt8", "UInt16", "UInt32", "UInt64",
-    "Int8", "Int16", "Int32", "Int64", "Float32", "Float64",
-    "Boolean", "Date", "DateTime", "DateTime64(3)", "UUID",
-    "Nullable(String)", "Array(String)", "Map(String, UInt64)",
+  mysql: [
+    "varchar(255)",
+    "char(1)",
+    "text",
+    "mediumtext",
+    "longtext",
+    "int",
+    "bigint",
+    "smallint",
+    "tinyint",
+    "boolean",
+    "datetime",
+    "timestamp",
+    "date",
+    "time",
+    "json",
+    "decimal(10,2)",
+    "float",
+    "double",
+    "blob",
+    "binary(16)",
+    "enum('a','b')",
+  ],
+  postgresql: [
+    "text",
+    "varchar(255)",
+    "char(1)",
+    "integer",
+    "bigint",
+    "smallint",
+    "serial",
+    "bigserial",
+    "boolean",
+    "uuid",
+    "timestamp",
+    "timestamptz",
+    "date",
+    "time",
+    "jsonb",
+    "json",
+    "numeric(10,2)",
+    "real",
+    "double precision",
+    "bytea",
+    "inet",
+    "cidr",
+    "macaddr",
+    "point",
   ],
   sqlite: [
-    "TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC",
-    "BOOLEAN", "VARCHAR(255)", "DATETIME", "DATE",
+    "TEXT",
+    "INTEGER",
+    "REAL",
+    "BLOB",
+    "NUMERIC",
+    "BOOLEAN",
+    "VARCHAR(255)",
+    "DATETIME",
+    "DATE",
   ],
 };
 
@@ -99,15 +178,47 @@ function getTypesForEngine(dbType: string): string[] {
 
 function getDefaultIdColumn(dbType: string): ColumnRow {
   if (dbType === "mysql" || dbType === "mariadb") {
-    return { id: "init-0", name: "id", dataType: "int", isNullable: false, isUnique: false, defaultExpr: "AUTO_INCREMENT", references: "" };
+    return {
+      dataType: "int",
+      defaultExpr: "AUTO_INCREMENT",
+      id: "init-0",
+      isNullable: false,
+      isUnique: false,
+      name: "id",
+      references: "",
+    };
   }
   if (dbType === "clickhouse") {
-    return { id: "init-0", name: "id", dataType: "UUID", isNullable: false, isUnique: false, defaultExpr: "generateUUIDv4()", references: "" };
+    return {
+      dataType: "UUID",
+      defaultExpr: "generateUUIDv4()",
+      id: "init-0",
+      isNullable: false,
+      isUnique: false,
+      name: "id",
+      references: "",
+    };
   }
   if (dbType === "sqlite") {
-    return { id: "init-0", name: "id", dataType: "INTEGER", isNullable: false, isUnique: false, defaultExpr: "", references: "" };
+    return {
+      dataType: "INTEGER",
+      defaultExpr: "",
+      id: "init-0",
+      isNullable: false,
+      isUnique: false,
+      name: "id",
+      references: "",
+    };
   }
-  return { id: "init-0", name: "id", dataType: "uuid", isNullable: false, isUnique: false, defaultExpr: "gen_random_uuid()", references: "" };
+  return {
+    dataType: "uuid",
+    defaultExpr: "gen_random_uuid()",
+    id: "init-0",
+    isNullable: false,
+    isUnique: false,
+    name: "id",
+    references: "",
+  };
 }
 
 // ============================================================
@@ -115,41 +226,41 @@ function getDefaultIdColumn(dbType: string): ColumnRow {
 // ============================================================
 
 interface SchemaTableSummary {
+  columns: Array<{ name: string; type: string }>;
   name: string;
   schema: string;
-  columns: Array<{ name: string; type: string }>;
 }
 
 interface CreateTableDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
   connectionId: string;
-  schema: string;
+  createTable: (input: CreateTableInput) => Promise<DdlResult>;
   dbType: DatabaseType;
   existingTables: SchemaTableSummary[];
-  createTable: (input: CreateTableInput) => Promise<DdlResult>;
+  isOpen: boolean;
+  onClose: () => void;
   onSuccess: () => void;
+  schema: string;
 }
 
 interface ColumnRow {
-  id: string;
-  name: string;
   dataType: string;
+  defaultExpr: string;
+  id: string;
   isNullable: boolean;
   isUnique: boolean;
-  defaultExpr: string;
+  name: string;
   references: string;
 }
 
 function emptyColumn(id: string, dbType: string): ColumnRow {
   const defaultType = getTypesForEngine(dbType)[0] ?? "text";
   return {
-    id,
-    name: "",
     dataType: defaultType,
+    defaultExpr: "",
+    id,
     isNullable: true,
     isUnique: false,
-    defaultExpr: "",
+    name: "",
     references: "",
   };
 }
@@ -181,52 +292,70 @@ export function CreateTableDialog({
     for (const table of existingTables) {
       for (const col of table.columns) {
         const ref = `${qi(dbType, table.schema)}.${qi(dbType, table.name)}(${qi(dbType, col.name)})`;
-        options.push({ value: ref, label: `${table.schema}.${table.name}(${col.name})` });
+        options.push({
+          label: `${table.schema}.${table.name}(${col.name})`,
+          value: ref,
+        });
       }
     }
     return options;
   }, [existingTables, dbType]);
 
   const isValid = useMemo(() => {
-    if (!tableName.trim()) return false;
-    if (columns.length === 0) return false;
-    if (primaryKeyColumns.length === 0) return false;
+    if (!tableName.trim()) {
+      return false;
+    }
+    if (columns.length === 0) {
+      return false;
+    }
+    if (primaryKeyColumns.length === 0) {
+      return false;
+    }
     const names = columns.map((c) => c.name.trim());
     const hasEmpty = names.some((n) => !n);
     const hasDupes = new Set(names).size !== names.length;
-    if (hasEmpty || hasDupes) return false;
+    if (hasEmpty || hasDupes) {
+      return false;
+    }
     return columns.every((c) => c.dataType.trim());
   }, [tableName, columns, primaryKeyColumns]);
 
   // SQL Preview
   const sqlPreview = useMemo(() => {
-    if (!tableName.trim() || columns.length === 0) return "";
+    if (!tableName.trim() || columns.length === 0) {
+      return "";
+    }
     const validCols = columns.filter((c) => c.name.trim() && c.dataType.trim());
-    if (validCols.length === 0) return "";
+    if (validCols.length === 0) {
+      return "";
+    }
     return buildCreateTableSql(
       dbType,
       schema,
       tableName.trim(),
       validCols.map((c) => ({
-        name: c.name.trim(),
         dataType: c.dataType.trim(),
+        defaultExpr: c.defaultExpr.trim() || undefined,
         isNullable: c.isNullable,
         isUnique: c.isUnique,
-        defaultExpr: c.defaultExpr.trim() || undefined,
+        name: c.name.trim(),
         references: c.references.trim() || undefined,
       })),
       primaryKeyColumns,
-      ifNotExists,
+      ifNotExists
     );
   }, [dbType, schema, tableName, columns, primaryKeyColumns, ifNotExists]);
 
   const addColumn = () => {
-    setColumns((prev) => [...prev, emptyColumn(`${baseId}-${prev.length}`, dbType)]);
+    setColumns((prev) => [
+      ...prev,
+      emptyColumn(`${baseId}-${prev.length}`, dbType),
+    ]);
   };
 
   const updateColumn = (id: string, patch: Partial<ColumnRow>) => {
     setColumns((prev) =>
-      prev.map((col) => (col.id === id ? { ...col, ...patch } : col)),
+      prev.map((col) => (col.id === id ? { ...col, ...patch } : col))
     );
   };
 
@@ -236,7 +365,9 @@ export function CreateTableDialog({
       const next = prev.filter((col) => col.id !== id);
       // Also remove from PK if present
       if (removed) {
-        setPrimaryKeyColumns((pk) => pk.filter((c) => c !== removed.name.trim()));
+        setPrimaryKeyColumns((pk) =>
+          pk.filter((c) => c !== removed.name.trim())
+        );
       }
       return next;
     });
@@ -252,30 +383,32 @@ export function CreateTableDialog({
   };
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Creating table...");
     try {
       const columnDefs: ColumnDefinition[] = columns.map((c) => ({
-        name: c.name.trim(),
         dataType: c.dataType.trim(),
+        defaultExpr: c.defaultExpr.trim() || undefined,
         isNullable: c.isNullable,
         isPrimaryKey: primaryKeyColumns.includes(c.name.trim()),
         isUnique: c.isUnique,
-        defaultExpr: c.defaultExpr.trim() || undefined,
+        name: c.name.trim(),
         references: c.references.trim() || undefined,
       }));
       const result = await createTable({
-        connectionId,
-        schema,
-        name: tableName.trim(),
         columns: columnDefs,
-        primaryKeyColumns,
+        connectionId,
         ifNotExists,
+        name: tableName.trim(),
+        primaryKeyColumns,
+        schema,
       });
       toast.success("Table created", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
@@ -287,7 +420,7 @@ export function CreateTableDialog({
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to create table",
-        { id: toastId },
+        { id: toastId }
       );
     } finally {
       setIsSubmitting(false);
@@ -305,8 +438,8 @@ export function CreateTableDialog({
   }, [isOpen, dbType]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="t-resize sm:max-w-[820px] max-h-[85vh] overflow-hidden flex flex-col">
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
+      <DialogContent className="t-resize flex max-h-[85vh] flex-col overflow-hidden sm:max-w-[820px]">
         <DialogHeader>
           <DialogTitle>Create table</DialogTitle>
           <DialogDescription>
@@ -315,17 +448,17 @@ export function CreateTableDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 flex-1 overflow-auto px-0.5">
+        <div className="flex-1 space-y-4 overflow-auto px-0.5">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Table name</Label>
+            <Label className="text-muted-foreground text-xs">Table name</Label>
             <div className="flex items-center gap-3">
               <Input
-                value={tableName}
+                className="flex-1"
                 onChange={(e) => setTableName(e.target.value)}
                 placeholder="users"
-                className="flex-1"
+                value={tableName}
               />
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer shrink-0">
+              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-muted-foreground text-xs">
                 <Switch
                   checked={ifNotExists}
                   onCheckedChange={setIfNotExists}
@@ -338,20 +471,20 @@ export function CreateTableDialog({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Columns</Label>
+              <Label className="text-muted-foreground text-xs">Columns</Label>
               <Button
+                onClick={addColumn}
+                size="sm"
                 type="button"
                 variant="outline"
-                size="sm"
-                onClick={addColumn}
               >
-                <Icon name="plus" className="h-3 w-3" />
+                <Icon className="h-3 w-3" name="plus" />
                 Add column
               </Button>
             </div>
 
             {/* Column header */}
-            <div className="grid grid-cols-[1fr_1fr_50px_50px_1fr_1fr_32px] gap-1.5 items-center text-[10px] text-muted-foreground px-0.5">
+            <div className="grid grid-cols-[1fr_1fr_50px_50px_1fr_1fr_32px] items-center gap-1.5 px-0.5 text-[10px] text-muted-foreground">
               <span>Name</span>
               <span>Type</span>
               <span className="text-center">Null</span>
@@ -365,29 +498,29 @@ export function CreateTableDialog({
               const isPk = primaryKeyColumns.includes(col.name.trim());
               return (
                 <div
+                  className="grid grid-cols-[1fr_1fr_50px_50px_1fr_1fr_32px] items-center gap-1.5"
                   key={col.id}
-                  className="grid grid-cols-[1fr_1fr_50px_50px_1fr_1fr_32px] gap-1.5 items-center"
                 >
                   <Input
-                    value={col.name}
+                    className="h-8 text-xs"
                     onChange={(e) =>
                       updateColumn(col.id, { name: e.target.value })
                     }
                     placeholder="column_name"
-                    className="text-xs h-8"
+                    value={col.name}
                   />
                   <Select
-                    value={col.dataType}
                     onValueChange={(v) =>
                       updateColumn(col.id, { dataType: v ?? col.dataType })
                     }
+                    value={col.dataType}
                   >
-                    <SelectTrigger className="text-xs h-8">
+                    <SelectTrigger className="h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {engineTypes.map((t) => (
-                        <SelectItem key={t} value={t} className="text-xs">
+                        <SelectItem className="text-xs" key={t} value={t}>
                           {t}
                         </SelectItem>
                       ))}
@@ -407,7 +540,9 @@ export function CreateTableDialog({
                       checked={isPk}
                       onCheckedChange={() => {
                         const name = col.name.trim();
-                        if (!name) return;
+                        if (!name) {
+                          return;
+                        }
                         togglePk(name);
                         // PK implies NOT NULL
                         if (!isPk) {
@@ -418,42 +553,54 @@ export function CreateTableDialog({
                     />
                   </div>
                   <Input
-                    value={col.defaultExpr}
+                    className="h-8 font-mono text-xs"
                     onChange={(e) =>
                       updateColumn(col.id, { defaultExpr: e.target.value })
                     }
                     placeholder="DEFAULT"
-                    className="text-xs h-8 font-mono"
+                    value={col.defaultExpr}
                   />
                   <Select
-                    value={col.references || "__none__"}
                     onValueChange={(v) =>
-                      updateColumn(col.id, { references: v === "__none__" ? "" : (v ?? "") })
+                      updateColumn(col.id, {
+                        references: v === "__none__" ? "" : (v ?? ""),
+                      })
                     }
+                    value={col.references || "__none__"}
                   >
-                    <SelectTrigger className="text-xs h-8">
+                    <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="—" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__" className="text-xs text-muted-foreground">
+                      <SelectItem
+                        className="text-muted-foreground text-xs"
+                        value="__none__"
+                      >
                         — none —
                       </SelectItem>
                       {fkOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                        <SelectItem
+                          className="text-xs"
+                          key={opt.value}
+                          value={opt.value}
+                        >
                           {opt.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <Button
+                    className="h-8 w-8"
+                    disabled={columns.length <= 1}
+                    onClick={() => removeColumn(col.id)}
+                    size="icon"
                     type="button"
                     variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => removeColumn(col.id)}
-                    disabled={columns.length <= 1}
                   >
-                    <Icon name="trash" className="h-3 w-3 text-muted-foreground" />
+                    <Icon
+                      className="h-3 w-3 text-muted-foreground"
+                      name="trash"
+                    />
                   </Button>
                 </div>
               );
@@ -462,10 +609,17 @@ export function CreateTableDialog({
 
           {/* Composite PK indicator */}
           {primaryKeyColumns.length > 1 && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
-              <Icon name="key" className="h-3 w-3" />
-              Composite PK: {primaryKeyColumns.map((c) => (
-                <Badge key={c} variant="secondary" className="text-[10px] px-1 py-0">{c}</Badge>
+            <div className="flex items-center gap-1.5 rounded bg-muted/50 px-2 py-1 text-muted-foreground text-xs">
+              <Icon className="h-3 w-3" name="key" />
+              Composite PK:{" "}
+              {primaryKeyColumns.map((c) => (
+                <Badge
+                  className="px-1 py-0 text-[10px]"
+                  key={c}
+                  variant="secondary"
+                >
+                  {c}
+                </Badge>
               ))}
             </div>
           )}
@@ -473,7 +627,9 @@ export function CreateTableDialog({
           {/* SQL Preview */}
           {sqlPreview && (
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">SQL Preview</Label>
+              <Label className="text-muted-foreground text-xs">
+                SQL Preview
+              </Label>
               <CodeBlock className="max-h-40 overflow-auto">
                 <CodeBlockCode code={sqlPreview} />
               </CodeBlock>
@@ -482,11 +638,13 @@ export function CreateTableDialog({
         </div>
 
         <DialogFooter className="gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+          <Button disabled={!isValid || isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
             Create table
           </Button>
         </DialogFooter>
@@ -500,13 +658,13 @@ export function CreateTableDialog({
 // ============================================================
 
 interface DropTableDialogProps {
+  connectionId: string;
+  dropTable: (input: DropTableInput) => Promise<DdlResult>;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
+  onSuccess: () => void;
   schema: string;
   tableName: string;
-  dropTable: (input: DropTableInput) => Promise<DdlResult>;
-  onSuccess: () => void;
 }
 
 export function DropTableDialog({
@@ -526,14 +684,14 @@ export function DropTableDialog({
     const toastId = toast.loading("Dropping table...");
     try {
       const result = await dropTable({
-        connectionId,
-        schema,
-        name: tableName,
         cascade,
+        connectionId,
+        name: tableName,
+        schema,
       });
       toast.success("Table dropped", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
@@ -548,8 +706,8 @@ export function DropTableDialog({
 
   return (
     <AlertDialog
+      onOpenChange={(open) => !(isSubmitting || open) && onClose()}
       open={isOpen}
-      onOpenChange={(open) => !isSubmitting && !open && onClose()}
     >
       <AlertDialogContent className="t-resize">
         <AlertDialogHeader>
@@ -569,12 +727,12 @@ export function DropTableDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <label className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs cursor-pointer">
+        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">
           <input
-            type="checkbox"
             checked={cascade}
-            onChange={(e) => setCascade(e.target.checked)}
             className="mt-0.5"
+            onChange={(e) => setCascade(e.target.checked)}
+            type="checkbox"
           />
           <span>
             <span className="font-medium text-foreground">CASCADE</span>
@@ -588,14 +746,14 @@ export function DropTableDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            variant="destructive"
-            onClick={handleDrop}
             disabled={isSubmitting}
+            onClick={handleDrop}
+            variant="destructive"
           >
             {isSubmitting ? (
-              <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
             ) : (
-              <Icon name="trash" className="h-3.5 w-3.5" />
+              <Icon className="h-3.5 w-3.5" name="trash" />
             )}
             Drop table
           </AlertDialogAction>
@@ -610,13 +768,13 @@ export function DropTableDialog({
 // ============================================================
 
 interface RenameTableDialogProps {
+  connectionId: string;
+  currentName: string;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
-  schema: string;
-  currentName: string;
-  renameTable: (input: RenameTableInput) => Promise<DdlResult>;
   onSuccess: () => void;
+  renameTable: (input: RenameTableInput) => Promise<DdlResult>;
+  schema: string;
 }
 
 export function RenameTableDialog({
@@ -634,26 +792,28 @@ export function RenameTableDialog({
   const isValid = newName.trim() && newName.trim() !== currentName;
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Renaming table...");
     try {
       const result = await renameTable({
         connectionId,
-        schema,
-        oldName: currentName,
         newName: newName.trim(),
+        oldName: currentName,
+        schema,
       });
       toast.success("Table renamed", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to rename table",
-        { id: toastId },
+        { id: toastId }
       );
     } finally {
       setIsSubmitting(false);
@@ -661,7 +821,7 @@ export function RenameTableDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>Rename table</DialogTitle>
@@ -674,20 +834,22 @@ export function RenameTableDialog({
         </DialogHeader>
 
         <div className="space-y-1.5 py-2">
-          <Label className="text-xs text-muted-foreground">New name</Label>
+          <Label className="text-muted-foreground text-xs">New name</Label>
           <Input
-            value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            value={newName}
           />
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+          <Button disabled={!isValid || isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
             Rename
           </Button>
         </DialogFooter>
@@ -701,14 +863,14 @@ export function RenameTableDialog({
 // ============================================================
 
 interface AddColumnDialogProps {
+  addColumn: (input: AddColumnInput) => Promise<DdlResult>;
+  connectionId: string;
+  dbType: DatabaseType;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
+  onSuccess: () => void;
   schema: string;
   tableName: string;
-  dbType: DatabaseType;
-  addColumn: (input: AddColumnInput) => Promise<DdlResult>;
-  onSuccess: () => void;
 }
 
 export function AddColumnDialog({
@@ -731,25 +893,27 @@ export function AddColumnDialog({
   const isValid = name.trim() && dataType.trim();
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Adding column...");
     try {
       const result = await addColumn({
+        column: {
+          dataType: dataType.trim(),
+          defaultExpr: defaultExpr.trim() || undefined,
+          isNullable,
+          isUnique,
+          name: name.trim(),
+        },
         connectionId,
         schema,
         table: tableName,
-        column: {
-          name: name.trim(),
-          dataType: dataType.trim(),
-          isNullable,
-          isUnique,
-          defaultExpr: defaultExpr.trim() || undefined,
-        },
       });
       toast.success("Column added", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
@@ -769,7 +933,7 @@ export function AddColumnDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>Add column</DialogTitle>
@@ -783,23 +947,23 @@ export function AddColumnDialog({
 
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Column name</Label>
+            <Label className="text-muted-foreground text-xs">Column name</Label>
             <Input
-              value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="column_name"
+              value={name}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Data type</Label>
-            <Select value={dataType} onValueChange={(v) => v && setDataType(v)}>
+            <Label className="text-muted-foreground text-xs">Data type</Label>
+            <Select onValueChange={(v) => v && setDataType(v)} value={dataType}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {getTypesForEngine(dbType).map((t: string) => (
-                  <SelectItem key={t} value={t} className="text-xs">
+                  <SelectItem className="text-xs" key={t} value={t}>
                     {t}
                   </SelectItem>
                 ))}
@@ -826,27 +990,29 @@ export function AddColumnDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
+            <Label className="text-muted-foreground text-xs">
               Default expression{" "}
-              <Badge variant="secondary" className="text-[9px] ml-1">
+              <Badge className="ml-1 text-[9px]" variant="secondary">
                 optional
               </Badge>
             </Label>
             <Input
-              value={defaultExpr}
+              className="font-mono text-xs"
               onChange={(e) => setDefaultExpr(e.target.value)}
               placeholder="now(), 0, 'default'"
-              className="font-mono text-xs"
+              value={defaultExpr}
             />
           </div>
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+          <Button disabled={!isValid || isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
             Add column
           </Button>
         </DialogFooter>
@@ -860,14 +1026,14 @@ export function AddColumnDialog({
 // ============================================================
 
 interface DropColumnDialogProps {
+  columnName: string;
+  connectionId: string;
+  dropColumn: (input: DropColumnInput) => Promise<DdlResult>;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
+  onSuccess: () => void;
   schema: string;
   tableName: string;
-  columnName: string;
-  dropColumn: (input: DropColumnInput) => Promise<DdlResult>;
-  onSuccess: () => void;
 }
 
 export function DropColumnDialog({
@@ -888,22 +1054,22 @@ export function DropColumnDialog({
     const toastId = toast.loading("Dropping column...");
     try {
       const result = await dropColumn({
+        cascade,
+        column: columnName,
         connectionId,
         schema,
         table: tableName,
-        column: columnName,
-        cascade,
       });
       toast.success("Column dropped", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to drop column",
-        { id: toastId },
+        { id: toastId }
       );
     } finally {
       setIsSubmitting(false);
@@ -912,8 +1078,8 @@ export function DropColumnDialog({
 
   return (
     <AlertDialog
+      onOpenChange={(open) => !(isSubmitting || open) && onClose()}
       open={isOpen}
-      onOpenChange={(open) => !isSubmitting && !open && onClose()}
     >
       <AlertDialogContent className="t-resize">
         <AlertDialogHeader>
@@ -932,12 +1098,12 @@ export function DropColumnDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <label className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs cursor-pointer">
+        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs">
           <input
-            type="checkbox"
             checked={cascade}
-            onChange={(e) => setCascade(e.target.checked)}
             className="mt-0.5"
+            onChange={(e) => setCascade(e.target.checked)}
+            type="checkbox"
           />
           <span>
             <span className="font-medium text-foreground">CASCADE</span>
@@ -950,14 +1116,14 @@ export function DropColumnDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            variant="destructive"
-            onClick={handleDrop}
             disabled={isSubmitting}
+            onClick={handleDrop}
+            variant="destructive"
           >
             {isSubmitting ? (
-              <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
             ) : (
-              <Icon name="trash" className="h-3.5 w-3.5" />
+              <Icon className="h-3.5 w-3.5" name="trash" />
             )}
             Drop column
           </AlertDialogAction>
@@ -972,10 +1138,10 @@ export function DropColumnDialog({
 // ============================================================
 
 interface CreateSchemaDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
   connectionId: string;
   createSchema: (input: CreateSchemaInput) => Promise<DdlResult>;
+  isOpen: boolean;
+  onClose: () => void;
   onSuccess: () => void;
 }
 
@@ -991,16 +1157,18 @@ export function CreateSchemaDialog({
   const isValid = schemaName.trim().length > 0;
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Creating schema...");
     try {
       const result = await createSchema({
         connectionId,
-        name: schemaName.trim(),
         ifNotExists: true,
+        name: schemaName.trim(),
       });
-      toast.success("Schema created", { id: toastId, description: result.sql });
+      toast.success("Schema created", { description: result.sql, id: toastId });
       onSuccess();
       onClose();
       setSchemaName("");
@@ -1009,7 +1177,7 @@ export function CreateSchemaDialog({
         err instanceof Error ? err.message : "Failed to create schema",
         {
           id: toastId,
-        },
+        }
       );
     } finally {
       setIsSubmitting(false);
@@ -1017,7 +1185,7 @@ export function CreateSchemaDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Create schema</DialogTitle>
@@ -1027,22 +1195,24 @@ export function CreateSchemaDialog({
         </DialogHeader>
 
         <div className="space-y-1.5 py-2">
-          <Label className="text-xs text-muted-foreground">Schema name</Label>
+          <Label className="text-muted-foreground text-xs">Schema name</Label>
           <Input
-            value={schemaName}
             onChange={(e) => setSchemaName(e.target.value)}
-            placeholder="analytics"
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            placeholder="analytics"
+            value={schemaName}
           />
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
-            <Icon name="database" className="h-3.5 w-3.5" />
+          <Button disabled={!isValid || isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
+            <Icon className="h-3.5 w-3.5" name="database" />
             Create schema
           </Button>
         </DialogFooter>
@@ -1056,13 +1226,13 @@ export function CreateSchemaDialog({
 // ============================================================
 
 interface CreateIndexDialogProps {
+  connectionId: string;
+  createIndex: (input: CreateIndexInput) => Promise<DdlResult>;
+  defaultTableName: string;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
-  schema: string;
-  defaultTableName: string;
-  createIndex: (input: CreateIndexInput) => Promise<DdlResult>;
   onSuccess: () => void;
+  schema: string;
 }
 
 export function CreateIndexDialog({
@@ -1086,25 +1256,27 @@ export function CreateIndexDialog({
         .split(",")
         .map((col) => col.trim())
         .filter(Boolean),
-    [columnsRaw],
+    [columnsRaw]
   );
   const isValid = tableName.trim().length > 0 && columns.length > 0;
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Creating index...");
     try {
       const result = await createIndex({
+        columns,
         connectionId,
+        ifNotExists: true,
+        name: indexName.trim() || undefined,
         schema,
         table: tableName.trim(),
-        name: indexName.trim() || undefined,
-        columns,
         unique: isUnique,
-        ifNotExists: true,
       });
-      toast.success("Index created", { id: toastId, description: result.sql });
+      toast.success("Index created", { description: result.sql, id: toastId });
       onSuccess();
       onClose();
       setIndexName("");
@@ -1115,7 +1287,7 @@ export function CreateIndexDialog({
         err instanceof Error ? err.message : "Failed to create index",
         {
           id: toastId,
-        },
+        }
       );
     } finally {
       setIsSubmitting(false);
@@ -1123,7 +1295,7 @@ export function CreateIndexDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Create index</DialogTitle>
@@ -1135,31 +1307,31 @@ export function CreateIndexDialog({
 
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Table</Label>
+            <Label className="text-muted-foreground text-xs">Table</Label>
             <Input
-              value={tableName}
               onChange={(e) => setTableName(e.target.value)}
               placeholder="users"
+              value={tableName}
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
+            <Label className="text-muted-foreground text-xs">
               Index name (optional)
             </Label>
             <Input
-              value={indexName}
               onChange={(e) => setIndexName(e.target.value)}
               placeholder="users_email_idx"
+              value={indexName}
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
+            <Label className="text-muted-foreground text-xs">
               Columns (comma separated)
             </Label>
             <Input
-              value={columnsRaw}
               onChange={(e) => setColumnsRaw(e.target.value)}
               placeholder="email, created_at"
+              value={columnsRaw}
             />
           </div>
           <div className="flex items-center justify-between rounded-md border p-2.5">
@@ -1173,12 +1345,14 @@ export function CreateIndexDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
-            <Icon name="wand" className="h-3.5 w-3.5" />
+          <Button disabled={!isValid || isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
+            <Icon className="h-3.5 w-3.5" name="wand" />
             Create index
           </Button>
         </DialogFooter>
@@ -1192,19 +1366,19 @@ export function CreateIndexDialog({
 // ============================================================
 
 interface ImportCsvDialogProps {
+  connectionId: string;
+  defaultTableName: string;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
-  schema: string;
-  defaultTableName: string;
-  tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
   onSuccess: () => void;
+  schema: string;
+  tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
 }
 
-type CsvParseResult = {
+interface CsvParseResult {
   headers: string[];
   rows: Record<string, unknown>[];
-};
+}
 
 function parseCsvText(input: string): CsvParseResult {
   const rows: string[][] = [];
@@ -1233,7 +1407,9 @@ function parseCsvText(input: string): CsvParseResult {
     }
 
     if (!inQuotes && (ch === "\n" || ch === "\r")) {
-      if (ch === "\r" && next === "\n") i += 1;
+      if (ch === "\r" && next === "\n") {
+        i += 1;
+      }
       row.push(current);
       current = "";
       if (row.some((value) => value.length > 0)) {
@@ -1291,7 +1467,9 @@ export function ImportCsvDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleFile = async (file: File | null) => {
-    if (!file) return;
+    if (!file) {
+      return;
+    }
     const text = await file.text();
     const parsedCsv = parseCsvText(text);
     setFileName(file.name);
@@ -1302,7 +1480,9 @@ export function ImportCsvDialog({
     tableName.trim().length > 0 && parsed && parsed.rows.length > 0;
 
   const handleImport = async () => {
-    if (!isValid || !parsed) return;
+    if (!(isValid && parsed)) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Importing CSV...");
     try {
@@ -1310,20 +1490,20 @@ export function ImportCsvDialog({
       for (let i = 0; i < parsed.rows.length; i += chunkSize) {
         const chunk = parsed.rows.slice(i, i + chunkSize);
         await tableSaveChanges({
+          deletes: [],
+          inserts: chunk,
           tableRef: {
             connectionId,
             schema,
             table: tableName.trim(),
           },
-          inserts: chunk,
           updates: [],
-          deletes: [],
         });
       }
 
       toast.success(`Imported ${parsed.rows.length} rows`, {
-        id: toastId,
         description: `${fileName} → ${schema}.${tableName.trim()}`,
+        id: toastId,
       });
       onSuccess();
       onClose();
@@ -1339,7 +1519,7 @@ export function ImportCsvDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle>Import CSV</DialogTitle>
@@ -1351,30 +1531,30 @@ export function ImportCsvDialog({
 
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
+            <Label className="text-muted-foreground text-xs">
               Target table
             </Label>
             <Input
-              value={tableName}
               onChange={(e) => setTableName(e.target.value)}
               placeholder="users"
+              value={tableName}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">CSV file</Label>
+            <Label className="text-muted-foreground text-xs">CSV file</Label>
             <Input
-              type="file"
               accept=".csv,text/csv"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
                 void handleFile(file);
               }}
+              type="file"
             />
           </div>
 
           {parsed && (
-            <div className="rounded-md border p-2.5 text-xs space-y-1">
+            <div className="space-y-1 rounded-md border p-2.5 text-xs">
               <p>
                 <strong>File:</strong> {fileName}
               </p>
@@ -1389,12 +1569,14 @@ export function ImportCsvDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleImport} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
-            <Icon name="upload" className="h-3.5 w-3.5" />
+          <Button disabled={!isValid || isSubmitting} onClick={handleImport}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
+            <Icon className="h-3.5 w-3.5" name="upload" />
             Import CSV
           </Button>
         </DialogFooter>
@@ -1408,14 +1590,14 @@ export function ImportCsvDialog({
 // ============================================================
 
 interface RenameColumnDialogProps {
+  connectionId: string;
+  currentName: string;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
+  onSuccess: () => void;
+  renameColumn: (input: RenameColumnInput) => Promise<DdlResult>;
   schema: string;
   tableName: string;
-  currentName: string;
-  renameColumn: (input: RenameColumnInput) => Promise<DdlResult>;
-  onSuccess: () => void;
 }
 
 export function RenameColumnDialog({
@@ -1434,18 +1616,20 @@ export function RenameColumnDialog({
   const isValid = newName.trim().length > 0 && newName.trim() !== currentName;
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Renaming column...");
     try {
       const result = await renameColumn({
         connectionId,
+        newName: newName.trim(),
+        oldName: currentName,
         schema,
         table: tableName,
-        oldName: currentName,
-        newName: newName.trim(),
       });
-      toast.success("Column renamed", { id: toastId, description: result.sql });
+      toast.success("Column renamed", { description: result.sql, id: toastId });
       onSuccess();
       onClose();
     } catch (err) {
@@ -1453,7 +1637,7 @@ export function RenameColumnDialog({
         err instanceof Error ? err.message : "Failed to rename column",
         {
           id: toastId,
-        },
+        }
       );
     } finally {
       setIsSubmitting(false);
@@ -1461,7 +1645,7 @@ export function RenameColumnDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle>Rename column</DialogTitle>
@@ -1476,21 +1660,23 @@ export function RenameColumnDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5 py-2">
-          <Label className="text-xs text-muted-foreground">
+          <Label className="text-muted-foreground text-xs">
             New column name
           </Label>
           <Input
-            value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            value={newName}
           />
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+          <Button disabled={!isValid || isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
             Rename column
           </Button>
         </DialogFooter>
@@ -1504,15 +1690,15 @@ export function RenameColumnDialog({
 // ============================================================
 
 interface AlterColumnTypeDialogProps {
+  alterColumnType: (input: AlterColumnTypeInput) => Promise<DdlResult>;
+  columnName: string;
+  connectionId: string;
+  currentType: string;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
+  onSuccess: () => void;
   schema: string;
   tableName: string;
-  columnName: string;
-  currentType: string;
-  alterColumnType: (input: AlterColumnTypeInput) => Promise<DdlResult>;
-  onSuccess: () => void;
 }
 
 export function AlterColumnTypeDialog({
@@ -1533,28 +1719,30 @@ export function AlterColumnTypeDialog({
   const isValid = newType.trim().length > 0 && newType.trim() !== currentType;
 
   const handleSubmit = async () => {
-    if (!isValid) return;
+    if (!isValid) {
+      return;
+    }
     setIsSubmitting(true);
     const toastId = toast.loading("Altering column type...");
     try {
       const result = await alterColumnType({
+        column: columnName,
         connectionId,
+        newType: newType.trim(),
         schema,
         table: tableName,
-        column: columnName,
-        newType: newType.trim(),
         usingExpr: usingExpr.trim() || undefined,
       });
       toast.success("Column type updated", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to alter column type",
-        { id: toastId },
+        { id: toastId }
       );
     } finally {
       setIsSubmitting(false);
@@ -1562,7 +1750,7 @@ export function AlterColumnTypeDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Alter column type</DialogTitle>
@@ -1580,32 +1768,34 @@ export function AlterColumnTypeDialog({
 
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">New type</Label>
+            <Label className="text-muted-foreground text-xs">New type</Label>
             <Input
-              value={newType}
               onChange={(e) => setNewType(e.target.value)}
               placeholder="text, integer, varchar(255), jsonb..."
+              value={newType}
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
+            <Label className="text-muted-foreground text-xs">
               USING expression (optional)
             </Label>
             <Input
-              value={usingExpr}
+              className="font-mono text-xs"
               onChange={(e) => setUsingExpr(e.target.value)}
               placeholder='"column_name"::text'
-              className="font-mono text-xs"
+              value={usingExpr}
             />
           </div>
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!isValid || isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+          <Button disabled={!isValid || isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
             Save type
           </Button>
         </DialogFooter>
@@ -1619,15 +1809,15 @@ export function AlterColumnTypeDialog({
 // ============================================================
 
 interface SetColumnDefaultDialogProps {
+  columnName: string;
+  connectionId: string;
+  currentDefault: string | null;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
-  schema: string;
-  tableName: string;
-  columnName: string;
-  currentDefault: string | null;
-  setColumnDefault: (input: SetColumnDefaultInput) => Promise<DdlResult>;
   onSuccess: () => void;
+  schema: string;
+  setColumnDefault: (input: SetColumnDefaultInput) => Promise<DdlResult>;
+  tableName: string;
 }
 
 export function SetColumnDefaultDialog({
@@ -1647,19 +1837,19 @@ export function SetColumnDefaultDialog({
   const handleSave = async (clear: boolean) => {
     setIsSubmitting(true);
     const toastId = toast.loading(
-      clear ? "Dropping default..." : "Setting default...",
+      clear ? "Dropping default..." : "Setting default..."
     );
     try {
       const result = await setColumnDefault({
+        column: columnName,
         connectionId,
+        defaultExpr: clear ? undefined : defaultExpr.trim() || undefined,
         schema,
         table: tableName,
-        column: columnName,
-        defaultExpr: clear ? undefined : defaultExpr.trim() || undefined,
       });
       toast.success(clear ? "Default removed" : "Default updated", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
@@ -1668,7 +1858,7 @@ export function SetColumnDefaultDialog({
         err instanceof Error ? err.message : "Failed to update default",
         {
           id: toastId,
-        },
+        }
       );
     } finally {
       setIsSubmitting(false);
@@ -1676,7 +1866,7 @@ export function SetColumnDefaultDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Set column default</DialogTitle>
@@ -1693,37 +1883,39 @@ export function SetColumnDefaultDialog({
         </DialogHeader>
 
         <div className="space-y-1.5 py-2">
-          <Label className="text-xs text-muted-foreground">
+          <Label className="text-muted-foreground text-xs">
             Default expression
           </Label>
           <Input
-            value={defaultExpr}
+            className="font-mono text-xs"
             onChange={(e) => setDefaultExpr(e.target.value)}
             placeholder="now(), gen_random_uuid(), 'active', 0"
-            className="font-mono text-xs"
+            value={defaultExpr}
           />
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
           <Button
-            variant="outline"
+            disabled={isSubmitting}
             onClick={() => {
               void handleSave(true);
             }}
-            disabled={isSubmitting}
+            variant="outline"
           >
             Clear default
           </Button>
           <Button
+            disabled={isSubmitting || defaultExpr.trim().length === 0}
             onClick={() => {
               void handleSave(false);
             }}
-            disabled={isSubmitting || defaultExpr.trim().length === 0}
           >
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
             Save default
           </Button>
         </DialogFooter>
@@ -1737,15 +1929,15 @@ export function SetColumnDefaultDialog({
 // ============================================================
 
 interface SetColumnNullableDialogProps {
+  columnName: string;
+  connectionId: string;
+  isCurrentlyNullable: boolean;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
-  schema: string;
-  tableName: string;
-  columnName: string;
-  isCurrentlyNullable: boolean;
-  setColumnNullable: (input: SetColumnNullableInput) => Promise<DdlResult>;
   onSuccess: () => void;
+  schema: string;
+  setColumnNullable: (input: SetColumnNullableInput) => Promise<DdlResult>;
+  tableName: string;
 }
 
 export function SetColumnNullableDialog({
@@ -1767,15 +1959,15 @@ export function SetColumnNullableDialog({
     const toastId = toast.loading("Updating nullable constraint...");
     try {
       const result = await setColumnNullable({
+        column: columnName,
         connectionId,
+        isNullable,
         schema,
         table: tableName,
-        column: columnName,
-        isNullable,
       });
       toast.success("Nullable constraint updated", {
-        id: toastId,
         description: result.sql,
+        id: toastId,
       });
       onSuccess();
       onClose();
@@ -1784,7 +1976,7 @@ export function SetColumnNullableDialog({
         err instanceof Error ? err.message : "Failed to set nullable",
         {
           id: toastId,
-        },
+        }
       );
     } finally {
       setIsSubmitting(false);
@@ -1792,7 +1984,7 @@ export function SetColumnNullableDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="t-resize sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>Set nullable</DialogTitle>
@@ -1815,11 +2007,13 @@ export function SetColumnNullableDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting && <Icon name="loader" className="h-3.5 w-3.5 animate-spin" />}
+          <Button disabled={isSubmitting} onClick={handleSubmit}>
+            {isSubmitting && (
+              <Icon className="h-3.5 w-3.5 animate-spin" name="loader" />
+            )}
             Save
           </Button>
         </DialogFooter>
@@ -1833,26 +2027,33 @@ export function SetColumnNullableDialog({
 // ============================================================
 
 interface ViewDdlDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  connectionId: string;
-  schema: string;
-  tableName: string;
-  dbType: DatabaseType;
   /** Pre-fetched table details from React Query cache, if available. */
   cachedDetails?: SchemaTableDetails | null;
+  connectionId: string;
+  dbType: DatabaseType;
+  isOpen: boolean;
+  onClose: () => void;
+  schema: string;
+  tableName: string;
 }
 
 /** Build a CREATE TABLE DDL script from SchemaTableDetails with engine-correct quoting. */
-function buildDdlFromDetails(details: SchemaTableDetails, dbType: DatabaseType): string {
+function buildDdlFromDetails(
+  details: SchemaTableDetails,
+  dbType: DatabaseType
+): string {
   const lines: string[] = [];
   const colLines: string[] = [];
   const qTable = qt(dbType, details.schema, details.name);
 
   for (const col of details.columns) {
     let line = `  ${qi(dbType, col.name)} ${col.data_type}`;
-    if (!col.is_nullable) line += " NOT NULL";
-    if (col.column_default) line += ` DEFAULT ${col.column_default}`;
+    if (!col.is_nullable) {
+      line += " NOT NULL";
+    }
+    if (col.column_default) {
+      line += ` DEFAULT ${col.column_default}`;
+    }
     colLines.push(line);
   }
 
@@ -1860,14 +2061,16 @@ function buildDdlFromDetails(details: SchemaTableDetails, dbType: DatabaseType):
   const pk = details.indexes.find((idx) => idx.is_primary);
   if (pk) {
     colLines.push(
-      `  PRIMARY KEY (${pk.column_names.map((c) => qi(dbType, c)).join(", ")})`,
+      `  PRIMARY KEY (${pk.column_names.map((c) => qi(dbType, c)).join(", ")})`
     );
   }
 
   // Unique constraints (non-primary)
-  for (const idx of details.indexes.filter((i) => i.is_unique && !i.is_primary)) {
+  for (const idx of details.indexes.filter(
+    (i) => i.is_unique && !i.is_primary
+  )) {
     colLines.push(
-      `  UNIQUE (${idx.column_names.map((c) => qi(dbType, c)).join(", ")})`,
+      `  UNIQUE (${idx.column_names.map((c) => qi(dbType, c)).join(", ")})`
     );
   }
 
@@ -1877,21 +2080,19 @@ function buildDdlFromDetails(details: SchemaTableDetails, dbType: DatabaseType):
       ? qt(dbType, fk.referenced_schema, fk.referenced_table)
       : qi(dbType, fk.referenced_table);
     colLines.push(
-      `  FOREIGN KEY (${qi(dbType, fk.column_name)}) REFERENCES ${ref}(${qi(dbType, fk.referenced_column)})`,
+      `  FOREIGN KEY (${qi(dbType, fk.column_name)}) REFERENCES ${ref}(${qi(dbType, fk.referenced_column)})`
     );
   }
 
-  lines.push(
-    `CREATE TABLE ${qTable} (`,
-    colLines.join(",\n"),
-    ");",
-  );
+  lines.push(`CREATE TABLE ${qTable} (`, colLines.join(",\n"), ");");
 
   // Non-unique indexes
-  const nonUnique = details.indexes.filter((i) => !i.is_unique && !i.is_primary);
+  const nonUnique = details.indexes.filter(
+    (i) => !(i.is_unique || i.is_primary)
+  );
   for (const idx of nonUnique) {
     lines.push(
-      `CREATE INDEX ${qi(dbType, idx.name)} ON ${qTable} (${idx.column_names.map((c) => qi(dbType, c)).join(", ")});`,
+      `CREATE INDEX ${qi(dbType, idx.name)} ON ${qTable} (${idx.column_names.map((c) => qi(dbType, c)).join(", ")});`
     );
   }
 
@@ -1902,9 +2103,11 @@ function buildDdlFromDetails(details: SchemaTableDetails, dbType: DatabaseType):
     for (const policy of details.rls_policies) {
       const roles = policy.roles.join(", ");
       const usingPart = policy.using_expr ? ` WITH (${policy.using_expr})` : "";
-      const checkPart = policy.with_check_expr ? ` WITH CHECK (${policy.with_check_expr})` : "";
+      const checkPart = policy.with_check_expr
+        ? ` WITH CHECK (${policy.with_check_expr})`
+        : "";
       lines.push(
-        `CREATE POLICY ${qi(dbType, policy.name)} ON ${qTable} AS ${policy.kind} FOR ${roles}${usingPart}${checkPart};`,
+        `CREATE POLICY ${qi(dbType, policy.name)} ON ${qTable} AS ${policy.kind} FOR ${roles}${usingPart}${checkPart};`
       );
     }
   }
@@ -1948,15 +2151,23 @@ export function ViewDdlDialog({
     setError(null);
     getTableDetails(connectionId, schema, tableName)
       .then((result) => {
-        if (!cancelled) setDetails(result);
+        if (!cancelled) {
+          setDetails(result);
+        }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load DDL");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load DDL");
+        }
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, connectionId, schema, tableName, cachedDetails]);
 
   const handleCopy = async () => {
@@ -1970,23 +2181,30 @@ export function ViewDdlDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="t-resize sm:max-w-[680px] max-h-[80vh] overflow-hidden flex flex-col">
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
+      <DialogContent className="t-resize flex max-h-[80vh] flex-col overflow-hidden sm:max-w-[680px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon name="script" className="size-4 text-muted-foreground" />
+            <Icon className="size-4 text-muted-foreground" name="script" />
             DDL Script
           </DialogTitle>
           <DialogDescription>
-            <code className="font-mono text-foreground">{schema}.{tableName}</code>
+            <code className="font-mono text-foreground">
+              {schema}.{tableName}
+            </code>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Icon name="loader" className="size-5 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading DDL...</span>
+              <Icon
+                className="size-5 animate-spin text-muted-foreground"
+                name="loader"
+              />
+              <span className="ml-2 text-muted-foreground text-sm">
+                Loading DDL...
+              </span>
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-12 text-destructive text-sm">
@@ -1994,23 +2212,27 @@ export function ViewDdlDialog({
             </div>
           ) : details ? (
             <ScrollArea className="h-full max-h-[55vh]">
-              <CodeBlock className="border-0 bg-muted/30 rounded-lg">
-                <CodeBlockGroup className="px-4 py-2 border-b border-border/40">
-                  <span className="text-xs text-muted-foreground font-mono">sql</span>
+              <CodeBlock className="rounded-lg border-0 bg-muted/30">
+                <CodeBlockGroup className="border-border/40 border-b px-4 py-2">
+                  <span className="font-mono text-muted-foreground text-xs">
+                    sql
+                  </span>
                   <Button
-                    variant="ghost"
+                    className="h-6 gap-1.5 px-2 text-xs"
+                    onClick={() => {
+                      void handleCopy();
+                    }}
                     size="sm"
-                    className="h-6 px-2 text-xs gap-1.5"
-                    onClick={() => { void handleCopy(); }}
+                    variant="ghost"
                   >
-                    <Icon name="copy" className="size-3" />
+                    <Icon className="size-3" name="copy" />
                     {copyFeedback ? "Copied!" : "Copy"}
                   </Button>
                 </CodeBlockGroup>
                 <CodeBlockCode
+                  className="[&>pre]:py-3"
                   code={ddl}
                   language="sql"
-                  className="[&>pre]:py-3"
                 />
               </CodeBlock>
             </ScrollArea>
@@ -2018,7 +2240,7 @@ export function ViewDdlDialog({
         </div>
 
         <DialogFooter className="pt-2">
-          <Button variant="outline" onClick={onClose}>
+          <Button onClick={onClose} variant="outline">
             Close
           </Button>
         </DialogFooter>

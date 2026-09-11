@@ -31,12 +31,12 @@ function createAbortError(): Error {
 export interface StartChatStreamOptions {
   input: ChatStartInput;
   onChunk?: (chunk: AiChatChunkPayload) => void;
-  onText?: (text: string, fullText: string) => void;
-  onReasoning?: (text: string) => void;
-  onToolCall?: (chunk: AiChatChunkPayload) => void;
-  onToolResult?: (chunk: AiChatChunkPayload) => void;
   onDone?: (payload: AiChatDonePayload, fullText: string) => void;
   onError?: (payload: AiChatErrorPayload) => void;
+  onReasoning?: (text: string) => void;
+  onText?: (text: string, fullText: string) => void;
+  onToolCall?: (chunk: AiChatChunkPayload) => void;
+  onToolResult?: (chunk: AiChatChunkPayload) => void;
 }
 
 export interface StartedChatStream {
@@ -47,7 +47,7 @@ export interface StartedChatStream {
 }
 
 export function startChatStream(
-  options: StartChatStreamOptions,
+  options: StartChatStreamOptions
 ): StartedChatStream {
   const api = assertAiApi();
   const { input } = options;
@@ -79,7 +79,9 @@ export function startChatStream(
 
   unsubscribers.push(
     api.chat.onChunk((payload) => {
-      if (payload.chatId !== chatId) return;
+      if (payload.chatId !== chatId) {
+        return;
+      }
 
       options.onChunk?.(payload);
 
@@ -106,36 +108,42 @@ export function startChatStream(
       if (payload.type === "tool-result") {
         options.onToolResult?.(payload);
       }
-    }),
+    })
   );
 
   unsubscribers.push(
     api.chat.onDone((payload) => {
-      if (payload.chatId !== chatId || settled) return;
+      if (payload.chatId !== chatId || settled) {
+        return;
+      }
 
       settled = true;
       cleanup();
       options.onDone?.(payload, fullText);
       resolveDone(payload);
-    }),
+    })
   );
 
   unsubscribers.push(
     api.chat.onError((payload) => {
-      if (payload.chatId !== chatId || settled) return;
+      if (payload.chatId !== chatId || settled) {
+        return;
+      }
 
       settled = true;
       cleanup();
       options.onError?.(payload);
       rejectDone(new Error(payload.message));
-    }),
+    })
   );
 
   api.chat.start(input);
 
   return {
     abort() {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
 
       settled = true;
       api.chat.abort(chatId);
@@ -157,10 +165,10 @@ export function startChatStream(
 export interface StartInlineStreamOptions {
   input: InlineGenerateStartInput;
   onChunk?: (chunk: AiInlineChunkPayload) => void;
-  onText?: (text: string, fullText: string) => void;
-  onReasoning?: (text: string) => void;
   onDone?: (payload: AiInlineDonePayload, fullText: string) => void;
   onError?: (payload: AiInlineErrorPayload) => void;
+  onReasoning?: (text: string) => void;
+  onText?: (text: string, fullText: string) => void;
 }
 
 export interface StartedInlineStream {
@@ -171,7 +179,7 @@ export interface StartedInlineStream {
 }
 
 export function startInlineStream(
-  options: StartInlineStreamOptions,
+  options: StartInlineStreamOptions
 ): StartedInlineStream {
   const api = assertAiApi();
   const { input } = options;
@@ -203,7 +211,9 @@ export function startInlineStream(
 
   unsubscribers.push(
     api.inline.onChunk((payload) => {
-      if (payload.requestId !== requestId) return;
+      if (payload.requestId !== requestId) {
+        return;
+      }
 
       options.onChunk?.(payload);
 
@@ -216,36 +226,42 @@ export function startInlineStream(
       if (payload.type === "reasoning") {
         options.onReasoning?.(payload.text);
       }
-    }),
+    })
   );
 
   unsubscribers.push(
     api.inline.onDone((payload) => {
-      if (payload.requestId !== requestId || settled) return;
+      if (payload.requestId !== requestId || settled) {
+        return;
+      }
 
       settled = true;
       cleanup();
       options.onDone?.(payload, fullText);
       resolveDone(payload);
-    }),
+    })
   );
 
   unsubscribers.push(
     api.inline.onError((payload) => {
-      if (payload.requestId !== requestId || settled) return;
+      if (payload.requestId !== requestId || settled) {
+        return;
+      }
 
       settled = true;
       cleanup();
       options.onError?.(payload);
       rejectDone(new Error(payload.message));
-    }),
+    })
   );
 
   api.inline.start(input);
 
   return {
     abort() {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
 
       settled = true;
       api.inline.abort(requestId);

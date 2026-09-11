@@ -1,9 +1,9 @@
-"use no memo"
-import { cn } from "@/lib/utils";
+"use no memo";
 import type { MotionProps } from "motion/react";
 import { motion } from "motion/react";
 import type { CSSProperties, ElementType, JSX } from "react";
 import { memo, useMemo } from "react";
+import { cn } from "@/lib/utils";
 
 type MotionHTMLProps = MotionProps & Record<string, unknown>;
 
@@ -23,8 +23,8 @@ const getMotionComponent = (element: keyof JSX.IntrinsicElements) => {
 };
 
 export interface TextShimmerProps {
-  children: string;
   as?: ElementType;
+  children: string;
   className?: string;
   duration?: number;
   spread?: number;

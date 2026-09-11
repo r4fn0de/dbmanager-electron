@@ -1,54 +1,52 @@
 import type {
+  FkLookupInput,
+  FkLookupResponse,
+  SaveChangesInput,
+  SaveChangesResponse,
   SchemaColumn,
   SchemaTable,
-  ListRowsInput,
-  SaveChangesInput,
   TableRef,
-  SaveChangesResponse,
-  FkLookupResponse,
-  FkLookupInput,
-  TableRowsResponse,
 } from "@/ipc/db/types";
 
 export interface TableDataEditorProps {
   connectionId: string;
-  table: SchemaTable;
-  tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
-  tableTruncate: (tableRef: TableRef) => Promise<void>;
-  tableFkLookup: (input: FkLookupInput) => Promise<FkLookupResponse>;
-  onOpenRelatedTable?: (schema: string, table: string) => void;
+  disableWindowUnsavedTracking?: boolean;
+  isSidebarVisible?: boolean;
   isSwitchingTable?: boolean;
+  onDirtyChange?: (tableKey: string, dirty: boolean) => void;
+  onExportData?: () => void;
+  onOpenRelatedTable?: (schema: string, table: string) => void;
   onRequestAddColumn?: () => void;
+  onRequestAlterColumnType?: (column: SchemaColumn) => void;
   onRequestDropColumn?: (columnName: string) => void;
   onRequestRenameColumn?: (columnName: string) => void;
-  onRequestAlterColumnType?: (column: SchemaColumn) => void;
   onRequestSetColumnDefault?: (column: SchemaColumn) => void;
   onRequestSetColumnNullable?: (column: SchemaColumn) => void;
-  isSidebarVisible?: boolean;
-  onToggleSidebar?: () => void;
   onSeedData?: () => void;
-  onExportData?: () => void;
+  onToggleSidebar?: () => void;
+  table: SchemaTable;
+  tableFkLookup: (input: FkLookupInput) => Promise<FkLookupResponse>;
   tableKey?: string;
-  onDirtyChange?: (tableKey: string, dirty: boolean) => void;
-  disableWindowUnsavedTracking?: boolean;
+  tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
+  tableTruncate: (tableRef: TableRef) => Promise<void>;
 }
 
 export interface TableDataEditorHandle {
-  saveAllChanges: () => Promise<void>;
-  saveAllDraftsAcrossTabs: () => Promise<void>;
   discardAllChanges: () => void;
   hasDraftChanges: () => boolean;
+  saveAllChanges: () => Promise<void>;
+  saveAllDraftsAcrossTabs: () => Promise<void>;
 }
 
 export type RowRecord = Record<string, unknown>;
 
-export type RowUpdateDraft = {
+export interface RowUpdateDraft {
   primaryKey: RowRecord;
   changes: RowRecord;
-};
+}
 
-export type DeleteDraft = {
+export interface DeleteDraft {
   rowKey: string;
   primaryKey: RowRecord;
   sqlPreview: string;
-};
+}

@@ -1,12 +1,12 @@
 import type { DatabaseType, SchemaColumn, SchemaIndex } from "@/ipc/db/types";
-import {
-  getColumnType,
-  toLiteralKey,
-  pascalCase,
-  isEnumColumn,
-  formatEnumAsUnionType,
-} from "../utils";
 import type { GeneratorFormat } from "../utils";
+import {
+  formatEnumAsUnionType,
+  getColumnType,
+  isEnumColumn,
+  pascalCase,
+  toLiteralKey,
+} from "../utils";
 
 export function generateSchemaTypeScript(params: {
   table: string;
@@ -41,7 +41,12 @@ export function generateSchemaTypeScript(params: {
   }
 
   // Emit enum type placeholders when detected (uses formatEnumAsUnionType for valid TS syntax)
-  const enumLines = enumTypes.map((e) => `// TODO: replace with actual enum values\n// export type ${e} = ${formatEnumAsUnionType(["value1", "value2"])};`).join("\n");
+  const enumLines = enumTypes
+    .map(
+      (e) =>
+        `// TODO: replace with actual enum values\n// export type ${e} = ${formatEnumAsUnionType(["value1", "value2"])};`
+    )
+    .join("\n");
   const header = enumLines ? `${enumLines}\n\n` : "";
 
   return `${header}export interface ${pascalName} {\n${colLines.join("\n")}\n}`;

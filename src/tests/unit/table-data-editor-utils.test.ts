@@ -29,14 +29,14 @@ describe("TableDataEditor data transforms", () => {
 
   it("handles a 10k-row scenario for baseline profiling inputs", () => {
     const rows = Array.from({ length: 10_000 }, (_, index) => ({
-      id: index + 1,
-      name: `row-${index + 1}`,
       active: index % 2 === 0,
       created_at: `2026-01-${(index % 28) + 1}`,
+      id: index + 1,
+      name: `row-${index + 1}`,
     }));
     const deletes = { "pk:10": true, "pk:100": true, "pk:1000": true };
     const effective = buildEffectiveRows(rows, ["id"], deletes);
-    expect(effective.length).toBe(9_997);
+    expect(effective.length).toBe(9997);
     expect(effective[0]?.rowKey).toBe("pk:1");
   });
 });

@@ -1,27 +1,28 @@
 // Components
+
+export { CellExpandPopover } from "./components/CellExpandPopover";
 export { DatabaseNavSidebar } from "./components/DatabaseNavSidebar";
 export { DatabaseOverview } from "./components/DatabaseOverview";
 export { DefinitionsBrowserPanel } from "./components/DefinitionsBrowserPanel";
+export { LazyMonacoEditor } from "./components/LazyMonacoEditor";
 export { QueryResults } from "./components/QueryResults";
 export { RlsPoliciesDialog } from "./components/RlsPoliciesDialog";
 export { SchemaExportDialog } from "./components/SchemaExportDialog";
 export { SchemaVisualizer } from "./components/SchemaVisualizer";
 export { SqlEditor } from "./components/SqlEditor";
-export { TableDataEditor } from "./components/TableDataEditor";
-export { CellExpandPopover } from "./components/CellExpandPopover";
-export { LazyMonacoEditor } from "./components/LazyMonacoEditor";
 export { TabbedConnectionView } from "./components/TabbedConnectionView";
+export { TableDataEditor } from "./components/TableDataEditor";
 export {
-  CreateTableDialog,
-  DropTableDialog,
-  RenameTableDialog,
   AddColumnDialog,
-  DropColumnDialog,
-  CreateSchemaDialog,
+  AlterColumnTypeDialog,
   CreateIndexDialog,
+  CreateSchemaDialog,
+  CreateTableDialog,
+  DropColumnDialog,
+  DropTableDialog,
   ImportCsvDialog,
   RenameColumnDialog,
-  AlterColumnTypeDialog,
+  RenameTableDialog,
   SetColumnDefaultDialog,
   SetColumnNullableDialog,
   ViewDdlDialog,

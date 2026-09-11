@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -30,24 +30,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ConnectionForm, ConnectionList, useConnectionsList } from "@/features/connection";
 import {
+  ConnectionForm,
+  ConnectionList,
+  useConnectionsList,
+} from "@/features/connection";
+import {
+  getConnection,
+  testConnection,
+} from "@/features/database/hooks/db-actions";
+import {
+  CloneToLocalDialog,
   CreateLocalDbDialog,
   type CreateLocalDbInput,
-  CloneToLocalDialog,
-  useLocalDatabases,
   useCloneToLocal,
+  useLocalDatabases,
 } from "@/features/localDb";
-import { getConnection, testConnection } from "@/features/database/hooks/db-actions";
-import type { BranchInfo, TableRowCount } from "@/ipc/db/types";
 import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
-import type { Connection, ConnectionInput } from "@/ipc/db/types";
+import type {
+  BranchInfo,
+  Connection,
+  ConnectionInput,
+  TableRowCount,
+} from "@/ipc/db/types";
 import { ipc } from "@/ipc/manager";
-import { cn } from "@/lib/utils";
 import {
   buildConnectionTab,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
+import { cn } from "@/lib/utils";
 
 function Home() {
   const {
@@ -56,18 +67,31 @@ function Home() {
     saveConnection,
     deleteConnection,
   } = useConnectionsList();
-  const { create: createLocalDb, start: startLocalDb, pause: pauseLocalDb, remove: removeLocalDb, databases: localDbs, invalidateCache: invalidateLocalDbCache } = useLocalDatabases();
+  const {
+    create: createLocalDb,
+    start: startLocalDb,
+    pause: pauseLocalDb,
+    remove: removeLocalDb,
+    databases: localDbs,
+    invalidateCache: invalidateLocalDbCache,
+  } = useLocalDatabases();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
   const [activeTagFilter, setActiveTagFilter] = useState("all-tags");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLocalDbDialogOpen, setIsLocalDbDialogOpen] = useState(false);
   const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
-  const [cloningConnection, setCloningConnection] = useState<Connection | null>(null);
+  const [cloningConnection, setCloningConnection] = useState<Connection | null>(
+    null
+  );
   const [cloneRowCounts, setCloneRowCounts] = useState<TableRowCount[]>([]);
-  const [clonedConnection, setClonedConnection] = useState<Connection | null>(null);
+  const [clonedConnection, setClonedConnection] = useState<Connection | null>(
+    null
+  );
   const [isLoadingCloneSchema, setIsLoadingCloneSchema] = useState(false);
-  const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
+  const [editingConnection, setEditingConnection] = useState<Connection | null>(
+    null
+  );
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -87,7 +111,7 @@ function Home() {
   } = useCloneToLocal();
 
   const localDbById = useMemo(() => {
-    const map: Record<string, typeof localDbs[number]> = {};
+    const map: Record<string, (typeof localDbs)[number]> = {};
     for (const db of localDbs) {
       map[db.id] = db;
     }
@@ -98,7 +122,9 @@ function Home() {
   // Branch data is fetched on demand via IPC when users interact with local PG DBs.
   // We store results in a simple state map rather than using a hook per-DB
   // to avoid race conditions with hook query-key changes.
-  const [branchesByDbId, setBranchesByDbId] = useState<Record<string, BranchInfo[]>>({});
+  const [branchesByDbId, setBranchesByDbId] = useState<
+    Record<string, BranchInfo[]>
+  >({});
 
   // Load branches for a specific local DB on demand
   const loadBranchesForDb = useCallback(async (localDbId: string) => {
@@ -114,7 +140,9 @@ function Home() {
     const tags = new Set<string>();
     for (const connection of connections) {
       const tag = connection.tag?.trim();
-      if (tag) tags.add(tag);
+      if (tag) {
+        tags.add(tag);
+      }
     }
     return Array.from(tags).sort((a, b) => a.localeCompare(b));
   }, [connections]);
@@ -129,18 +157,28 @@ function Home() {
         c.database.toLowerCase().includes(q) ||
         (c.url ?? "").toLowerCase().includes(q);
 
-      if (!matchesSearch) return false;
+      if (!matchesSearch) {
+        return false;
+      }
 
-      if (activeFilter === "all") return true;
-      if (activeFilter === "local") return c.is_local;
-      if (activeFilter === "remote") return !c.is_local;
+      if (activeFilter === "all") {
+        return true;
+      }
+      if (activeFilter === "local") {
+        return c.is_local;
+      }
+      if (activeFilter === "remote") {
+        return !c.is_local;
+      }
 
       return false;
     });
   }, [connections, searchQuery, activeFilter]);
 
   const fullyFilteredConnections = useMemo(() => {
-    if (activeTagFilter === "all-tags") return filteredConnections;
+    if (activeTagFilter === "all-tags") {
+      return filteredConnections;
+    }
     if (activeTagFilter === "tagged") {
       return filteredConnections.filter((c) => Boolean(c.tag?.trim()));
     }
@@ -156,11 +194,11 @@ function Home() {
 
   const localCount = useMemo(
     () => connections.filter((c) => c.is_local).length,
-    [connections],
+    [connections]
   );
   const remoteCount = useMemo(
     () => connections.filter((c) => !c.is_local).length,
-    [connections],
+    [connections]
   );
 
   const handleAdd = () => {
@@ -217,7 +255,7 @@ function Home() {
         throw new Error(
           error instanceof Error
             ? `Failed to save local connection: ${error.message}`
-            : "Failed to save local connection",
+            : "Failed to save local connection"
         );
       }
       navigate({
@@ -234,7 +272,11 @@ function Home() {
       setIsLocalDbDialogOpen(false);
       toast.success("Local database created successfully");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create local database");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to create local database"
+      );
     } finally {
       setIsCreatingLocalDb(false);
     }
@@ -247,7 +289,9 @@ function Home() {
       setIsFormOpen(false);
       toast.success("Connection saved successfully");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save connection");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save connection"
+      );
     } finally {
       setIsSaving(false);
     }
@@ -267,7 +311,9 @@ function Home() {
   };
 
   const handleDeleteConfirm = async () => {
-    if (!pendingDelete) return;
+    if (!pendingDelete) {
+      return;
+    }
     setIsDeleting(true);
     const isLocal = pendingDelete.is_local;
     let localDbRemoved = false;
@@ -280,9 +326,12 @@ function Home() {
       useConnectionTabsStore.getState().removeTab(pendingDelete.id);
       toast.success("Connection deleted");
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Failed to delete connection";
+      const msg =
+        error instanceof Error ? error.message : "Failed to delete connection";
       if (isLocal && localDbRemoved) {
-        toast.error(`Database removed but failed to delete connection entry: ${msg}`);
+        toast.error(
+          `Database removed but failed to delete connection entry: ${msg}`
+        );
       } else {
         toast.error(msg);
       }
@@ -302,7 +351,9 @@ function Home() {
     if (connection.is_local) {
       const localDb = localDbById[connection.id];
       if (!localDb?.running) {
-        toast.error(`Local database "${connection.name}" is not running. Start it before opening.`);
+        toast.error(
+          `Local database "${connection.name}" is not running. Start it before opening.`
+        );
         return;
       }
       // Load branches for this DB when the user clicks it
@@ -334,7 +385,9 @@ function Home() {
         setCloneRowCounts([]);
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load schema");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load schema"
+      );
       setCloneRowCounts([]);
     } finally {
       setIsLoadingCloneSchema(false);
@@ -344,16 +397,18 @@ function Home() {
   const handleStartClone = async (
     targetName: string,
     selectedTables: { schema: string; table: string; importData: boolean }[],
-    postgresVersion: string,
+    postgresVersion: string
   ) => {
-    if (!cloningConnection) return;
+    if (!cloningConnection) {
+      return;
+    }
 
     try {
       const newConnection = await cloneToLocal(
         cloningConnection,
         targetName,
         selectedTables,
-        postgresVersion,
+        postgresVersion
       );
 
       if (newConnection) {
@@ -366,7 +421,9 @@ function Home() {
   };
 
   const handleOpenClonedDatabase = () => {
-    if (!clonedConnection) return;
+    if (!clonedConnection) {
+      return;
+    }
 
     useConnectionTabsStore.getState().addTab({
       id: clonedConnection.id,
@@ -398,18 +455,18 @@ function Home() {
 
   return (
     <motion.div
-      className="h-full flex flex-col"
-      initial={{ paddingLeft: 24 }}
       animate={{ paddingLeft: 0 }}
+      className="flex h-full flex-col"
       exit={{ paddingLeft: 24 }}
+      initial={{ paddingLeft: 24 }}
       transition={{ duration: 0.36, ease: [0.23, 1, 0.32, 1] }}
     >
-      <div className="flex-1 flex flex-col bg-background rounded-md border overflow-hidden">
-        <div className="max-w-3xl mx-auto w-full px-5 py-5 flex-1 flex flex-col min-h-0 gap-5">
+      <div className="flex flex-1 flex-col overflow-hidden rounded-md border bg-background">
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-5 px-5 py-5">
           {/* Page header */}
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2.5">
-              <h1 className="text-base font-semibold">Databases</h1>
+              <h1 className="font-semibold text-base">Databases</h1>
               {connections.length > 0 && (
                 <span className="text-[11px] text-muted-foreground/60 tabular-nums">
                   {connections.length}
@@ -419,20 +476,26 @@ function Home() {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button size="sm" className="h-8 text-xs gap-1.5 px-3 shadow-sm">
-                    <Icon name="plus" className="size-3.5" />
+                  <Button
+                    className="h-8 gap-1.5 px-3 text-xs shadow-sm"
+                    size="sm"
+                  >
+                    <Icon className="size-3.5" name="plus" />
                     Add
                   </Button>
                 }
               />
               <DropdownMenuContent align="end" className="min-w-[180px]">
-                <DropdownMenuItem onClick={handleAdd} className="gap-2 text-xs">
-                  <Icon name="database" className="size-3.5" />
+                <DropdownMenuItem className="gap-2 text-xs" onClick={handleAdd}>
+                  <Icon className="size-3.5" name="database" />
                   Remote Connection
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleAddLocalDb} className="gap-2 text-xs">
-                  <Icon name="hard-drive" className="size-3.5" />
+                <DropdownMenuItem
+                  className="gap-2 text-xs"
+                  onClick={handleAddLocalDb}
+                >
+                  <Icon className="size-3.5" name="hard-drive" />
                   New Local Database
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -444,21 +507,29 @@ function Home() {
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Icon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 pointer-events-none" />
+                  <Icon
+                    className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50"
+                    name="search"
+                  />
                   <Input
+                    className="h-8 bg-muted/20 pl-8 text-xs"
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search by name, host, or database…"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-8 pl-8 text-xs bg-muted/20"
                   />
                 </div>
                 <Select
-                  value={activeTagFilter}
                   onValueChange={(value) => {
-                    if (value !== null) setActiveTagFilter(value);
+                    if (value !== null) {
+                      setActiveTagFilter(value);
+                    }
                   }}
+                  value={activeTagFilter}
                 >
-                  <SelectTrigger size="default" className="h-8 w-[160px] text-xs bg-muted/20">
+                  <SelectTrigger
+                    className="h-8 w-[160px] bg-muted/20 text-xs"
+                    size="default"
+                  >
                     <SelectValue placeholder="Tag" />
                   </SelectTrigger>
                   <SelectContent>
@@ -480,73 +551,84 @@ function Home() {
                   { label: "Remote", value: "remote", count: remoteCount },
                 ].map((chip) => (
                   <button
-                    key={chip.value}
-                    type="button"
-                    onClick={() => setActiveFilter(chip.value)}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors duration-150 active:scale-[0.97]",
+                      "flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium text-[11px] transition-colors duration-150 active:scale-[0.97]",
                       activeFilter === chip.value
                         ? "border-primary/40 bg-primary/10 text-primary shadow-sm"
-                        : "border-border/60 text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground hover:bg-muted/30",
+                        : "border-border/60 text-muted-foreground hover:border-muted-foreground/40 hover:bg-muted/30 hover:text-foreground"
                     )}
+                    key={chip.value}
+                    onClick={() => setActiveFilter(chip.value)}
+                    type="button"
                   >
                     {chip.label}
-                    <span className="text-[10px] tabular-nums text-muted-foreground/50">
+                    <span className="text-[10px] text-muted-foreground/50 tabular-nums">
                       {chip.count}
                     </span>
                   </button>
                 ))}
               </div>
-              {(searchQuery || activeFilter !== "all" || activeTagFilter !== "all-tags") &&
+              {(searchQuery ||
+                activeFilter !== "all" ||
+                activeTagFilter !== "all-tags") &&
                 connections.length !== fullyFilteredConnections.length && (
-                <p className="text-[10px] text-muted-foreground/50 tabular-nums">
-                  Showing {fullyFilteredConnections.length} of {connections.length}
-                </p>
+                  <p className="text-[10px] text-muted-foreground/50 tabular-nums">
+                    Showing {fullyFilteredConnections.length} of{" "}
+                    {connections.length}
+                  </p>
                 )}
             </div>
           )}
 
           {/* Divider */}
-          <div className="border-t border-border/40" />
+          <div className="border-border/40 border-t" />
 
           {/* Connection list */}
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
             <ConnectionList
-              connections={fullyFilteredConnections}
-              localDbById={localDbById}
               branchesByDbId={branchesByDbId}
+              connections={fullyFilteredConnections}
               isLoading={isLoadingConnections}
+              localDbById={localDbById}
               onAdd={handleAdd}
-              onEdit={handleEdit}
+              onCloneToLocal={handleCloneToLocal}
+              onCreateBranch={async (localDbId, input) => {
+                const result = await ipc.client.db.createBranch({
+                  localDbId,
+                  ...input,
+                });
+                await loadBranchesForDb(localDbId);
+                return result;
+              }}
               onDelete={handleDeleteRequest}
+              onDeleteBranch={async (localDbId, branchId) => {
+                await ipc.client.db.deleteBranch({ localDbId, branchId });
+                await loadBranchesForDb(localDbId);
+              }}
+              onEdit={handleEdit}
+              onPauseLocal={pauseLocalDb}
+              onPreviewDeleteBranch={async (localDbId, branchId) =>
+                ipc.client.db.previewDeleteBranch({ localDbId, branchId })
+              }
               onSelect={handleSelectConnection}
               onStartLocal={async (id) => {
                 await startLocalDb(id);
                 // Load branches after starting
                 loadBranchesForDb(id);
               }}
-              onPauseLocal={pauseLocalDb}
-              onCloneToLocal={handleCloneToLocal}
-              onCreateBranch={async (localDbId, input) => {
-                const result = await ipc.client.db.createBranch({ localDbId, ...input });
-                await loadBranchesForDb(localDbId);
-                return result;
-              }}
               onSwitchBranch={async (localDbId, branchId) => {
-                const result = await ipc.client.db.switchBranch({ localDbId, branchId });
+                const result = await ipc.client.db.switchBranch({
+                  localDbId,
+                  branchId,
+                });
                 await loadBranchesForDb(localDbId);
                 invalidateLocalDbCache();
                 await queryClient.invalidateQueries({
-                  predicate: (query) => Array.isArray(query.queryKey) && query.queryKey.includes(localDbId),
+                  predicate: (query) =>
+                    Array.isArray(query.queryKey) &&
+                    query.queryKey.includes(localDbId),
                 });
                 return result;
-              }}
-              onPreviewDeleteBranch={async (localDbId, branchId) =>
-                ipc.client.db.previewDeleteBranch({ localDbId, branchId })
-              }
-              onDeleteBranch={async (localDbId, branchId) => {
-                await ipc.client.db.deleteBranch({ localDbId, branchId });
-                await loadBranchesForDb(localDbId);
               }}
             />
           </div>
@@ -554,29 +636,44 @@ function Home() {
       </div>
 
       {/* Delete confirmation dialog */}
-      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+        open={!!pendingDelete}
+      >
         <AlertDialogContent className="t-resize sm:max-w-[400px]">
           <AlertDialogHeader className="gap-2">
             <AlertDialogTitle className="flex items-center gap-2 text-sm">
-              <Icon name="alert-triangle" className="size-4 text-destructive/70" />
+              <Icon
+                className="size-4 text-destructive/70"
+                name="alert-triangle"
+              />
               Delete connection?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs leading-relaxed">
-              This will remove <strong className="text-foreground">{pendingDelete?.name}</strong> from your saved connections.
-              {pendingDelete?.is_local && " The local database will also be deleted."}
+              This will remove{" "}
+              <strong className="text-foreground">{pendingDelete?.name}</strong>{" "}
+              from your saved connections.
+              {pendingDelete?.is_local &&
+                " The local database will also be deleted."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2.5 border-t bg-muted/30 px-6 py-3.5">
-            <AlertDialogCancel className="h-8 px-3 text-xs">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="h-8 px-3 text-xs">
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
-              onClick={handleDeleteConfirm}
+              className="h-8 gap-1.5 px-5 text-xs shadow-sm"
               disabled={isDeleting}
-              className="h-8 px-5 text-xs gap-1.5 shadow-sm"
+              onClick={handleDeleteConfirm}
+              variant="destructive"
             >
               {isDeleting ? (
                 <>
-                  <Icon name="loader" className="size-3.5 animate-spin" />
+                  <Icon className="size-3.5 animate-spin" name="loader" />
                   Deleting…
                 </>
               ) : (
@@ -591,33 +688,33 @@ function Home() {
         connection={editingConnection}
         connections={connections}
         isOpen={isFormOpen}
+        isSaving={isSaving}
+        isTesting={isTesting}
         onClose={() => setIsFormOpen(false)}
         onSave={handleSave}
         onTest={handleTest}
-        isSaving={isSaving}
-        isTesting={isTesting}
       />
 
       <CreateLocalDbDialog
+        isCreating={isCreatingLocalDb}
         isOpen={isLocalDbDialogOpen}
         onClose={() => setIsLocalDbDialogOpen(false)}
         onCreate={handleCreateLocalDb}
-        isCreating={isCreatingLocalDb}
       />
 
       <CloneToLocalDialog
+        clonedDatabaseName={clonedConnection?.name}
+        error={cloneError}
+        isCloning={isCloning}
+        isLoadingSchema={isLoadingCloneSchema}
         isOpen={isCloneDialogOpen}
+        onCancelClone={cancelClone}
         onClose={handleCloseCloneDialog}
+        onOpenClonedDatabase={handleOpenClonedDatabase}
+        onStartClone={handleStartClone}
+        progress={cloneProgress}
         sourceConnection={cloningConnection}
         tableRowCounts={cloneRowCounts}
-        isLoadingSchema={isLoadingCloneSchema}
-        onStartClone={handleStartClone}
-        onCancelClone={cancelClone}
-        onOpenClonedDatabase={handleOpenClonedDatabase}
-        clonedDatabaseName={clonedConnection?.name}
-        progress={cloneProgress}
-        isCloning={isCloning}
-        error={cloneError}
       />
     </motion.div>
   );

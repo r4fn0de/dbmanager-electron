@@ -15,7 +15,8 @@ describe("table-editor-tabs store", () => {
     useTableEditorTabsStore.getState().openTab(connectionId, tab);
     useTableEditorTabsStore.getState().openTab(connectionId, tab);
 
-    const state = useTableEditorTabsStore.getState().byConnectionId[connectionId];
+    const state =
+      useTableEditorTabsStore.getState().byConnectionId[connectionId];
     expect(state.openTabs).toHaveLength(1);
     expect(state.activeTabKey).toBe(tab.key);
   });
@@ -32,7 +33,8 @@ describe("table-editor-tabs store", () => {
     store.activateTab(connectionId, b.key);
     store.closeTab(connectionId, b.key);
 
-    const state = useTableEditorTabsStore.getState().byConnectionId[connectionId];
+    const state =
+      useTableEditorTabsStore.getState().byConnectionId[connectionId];
     expect(state.openTabs.map((t) => t.key)).toEqual([a.key, c.key]);
     expect(state.activeTabKey).toBe(c.key);
   });

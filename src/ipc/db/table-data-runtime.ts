@@ -1,4 +1,5 @@
 import type mysql from "mysql2/promise";
+import { getMysqlPool, getPgPool } from "./kysely-factory";
 import type {
   DatabaseType,
   FkLookupInput,
@@ -8,7 +9,6 @@ import type {
   SchemaForeignKey,
   TableRowsResponse,
 } from "./types";
-import { getMysqlPool, getPgPool } from "./kysely-factory";
 
 function pgId(id: string): string {
   return `"${id.replace(/"/g, '""')}"`;
@@ -26,13 +26,16 @@ function mysqlAffectedRows(result: unknown): number {
 async function execMysql<T = unknown>(
   conn: mysql.PoolConnection,
   query: string,
-  values: unknown[] = [],
+  values: unknown[] = []
 ): Promise<T> {
   const [rows] = await conn.query(query, values as never[]);
   return rows as T;
 }
 
-async function savePgChanges(connectionString: string, input: SaveChangesInput): Promise<SaveChangesResponse> {
+async function savePgChanges(
+  connectionString: string,
+  input: SaveChangesInput
+): Promise<SaveChangesResponse> {
   const pool = getPgPool(connectionString);
   const client = await pool.connect();
 
@@ -48,7 +51,9 @@ async function savePgChanges(connectionString: string, input: SaveChangesInput):
     for (const row of input.inserts) {
       const cols = Object.keys(row);
       if (cols.length === 0) {
-        const res = await client.query(`INSERT INTO ${tableRef} DEFAULT VALUES`);
+        const res = await client.query(
+          `INSERT INTO ${tableRef} DEFAULT VALUES`
+        );
         inserted += res.rowCount ?? 0;
         continue;
       }
@@ -58,14 +63,16 @@ async function savePgChanges(connectionString: string, input: SaveChangesInput):
       const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(", ");
       const res = await client.query(
         `INSERT INTO ${tableRef} (${colSql}) VALUES (${placeholders})`,
-        values,
+        values
       );
       inserted += res.rowCount ?? 0;
     }
 
     for (const entry of input.updates) {
       const changes = Object.keys(entry.changes);
-      if (changes.length === 0) continue;
+      if (changes.length === 0) {
+        continue;
+      }
 
       const pkCols = Object.keys(entry.primaryKey);
       if (pkCols.length === 0) {
@@ -84,7 +91,7 @@ async function savePgChanges(connectionString: string, input: SaveChangesInput):
 
       const res = await client.query(
         `UPDATE ${tableRef} SET ${setSql} WHERE ${whereSql}`,
-        [...changeValues, ...pkValues],
+        [...changeValues, ...pkValues]
       );
       updated += res.rowCount ?? 0;
     }
@@ -100,12 +107,15 @@ async function savePgChanges(connectionString: string, input: SaveChangesInput):
         .map((c, idx) => `${pgId(c)} = $${idx + 1}`)
         .join(" AND ");
 
-      const res = await client.query(`DELETE FROM ${tableRef} WHERE ${whereSql}`, pkValues);
+      const res = await client.query(
+        `DELETE FROM ${tableRef} WHERE ${whereSql}`,
+        pkValues
+      );
       deleted += res.rowCount ?? 0;
     }
 
     await client.query("COMMIT");
-    return { inserted, updated, deleted };
+    return { deleted, inserted, updated };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw err;
@@ -114,7 +124,10 @@ async function savePgChanges(connectionString: string, input: SaveChangesInput):
   }
 }
 
-async function saveMysqlChanges(connectionString: string, input: SaveChangesInput): Promise<SaveChangesResponse> {
+async function saveMysqlChanges(
+  connectionString: string,
+  input: SaveChangesInput
+): Promise<SaveChangesResponse> {
   const pool = await getMysqlPool(connectionString);
   const conn = await pool.getConnection();
 
@@ -130,7 +143,10 @@ async function saveMysqlChanges(connectionString: string, input: SaveChangesInpu
     for (const row of input.inserts) {
       const cols = Object.keys(row);
       if (cols.length === 0) {
-        const res = await execMysql(conn, `INSERT INTO ${tableRef} () VALUES ()`) as unknown;
+        const res = (await execMysql(
+          conn,
+          `INSERT INTO ${tableRef} () VALUES ()`
+        )) as unknown;
         inserted += mysqlAffectedRows(res);
         continue;
       }
@@ -138,13 +154,19 @@ async function saveMysqlChanges(connectionString: string, input: SaveChangesInpu
       const values = cols.map((c) => row[c]);
       const colSql = cols.map(myId).join(", ");
       const placeholders = cols.map(() => "?").join(", ");
-      const res = await execMysql(conn, `INSERT INTO ${tableRef} (${colSql}) VALUES (${placeholders})`, values) as unknown;
+      const res = (await execMysql(
+        conn,
+        `INSERT INTO ${tableRef} (${colSql}) VALUES (${placeholders})`,
+        values
+      )) as unknown;
       inserted += mysqlAffectedRows(res);
     }
 
     for (const entry of input.updates) {
       const changes = Object.keys(entry.changes);
-      if (changes.length === 0) continue;
+      if (changes.length === 0) {
+        continue;
+      }
 
       const pkCols = Object.keys(entry.primaryKey);
       if (pkCols.length === 0) {
@@ -157,10 +179,11 @@ async function saveMysqlChanges(connectionString: string, input: SaveChangesInpu
       const setSql = changes.map((c) => `${myId(c)} = ?`).join(", ");
       const whereSql = pkCols.map((c) => `${myId(c)} = ?`).join(" AND ");
 
-      const res = await execMysql(conn, `UPDATE ${tableRef} SET ${setSql} WHERE ${whereSql}`, [
-        ...changeValues,
-        ...pkValues,
-      ]) as unknown;
+      const res = (await execMysql(
+        conn,
+        `UPDATE ${tableRef} SET ${setSql} WHERE ${whereSql}`,
+        [...changeValues, ...pkValues]
+      )) as unknown;
       updated += mysqlAffectedRows(res);
     }
 
@@ -173,12 +196,16 @@ async function saveMysqlChanges(connectionString: string, input: SaveChangesInpu
       const pkValues = pkCols.map((c) => entry.primaryKey[c]);
       const whereSql = pkCols.map((c) => `${myId(c)} = ?`).join(" AND ");
 
-      const res = await execMysql(conn, `DELETE FROM ${tableRef} WHERE ${whereSql}`, pkValues) as unknown;
+      const res = (await execMysql(
+        conn,
+        `DELETE FROM ${tableRef} WHERE ${whereSql}`,
+        pkValues
+      )) as unknown;
       deleted += mysqlAffectedRows(res);
     }
 
     await conn.commit();
-    return { inserted, updated, deleted };
+    return { deleted, inserted, updated };
   } catch (err) {
     await conn.rollback().catch(() => undefined);
     throw err;
@@ -190,7 +217,7 @@ async function saveMysqlChanges(connectionString: string, input: SaveChangesInpu
 export async function tableSaveChangesRuntime(
   dbType: DatabaseType,
   connectionString: string,
-  input: SaveChangesInput,
+  input: SaveChangesInput
 ): Promise<SaveChangesResponse> {
   if (dbType === "postgresql") {
     return savePgChanges(connectionString, input);
@@ -205,7 +232,7 @@ export async function tableTruncateRuntime(
   dbType: DatabaseType,
   connectionString: string,
   schema: string,
-  table: string,
+  table: string
 ): Promise<void> {
   if (dbType === "postgresql") {
     const pool = getPgPool(connectionString);
@@ -227,12 +254,17 @@ export async function tableTruncateRuntime(
   throw new Error(`tableTruncate is not supported for ${dbType}`);
 }
 
-function pickLabelColumns(rows: Record<string, unknown>[], referencedColumn: string): string[] {
+function pickLabelColumns(
+  rows: Record<string, unknown>[],
+  referencedColumn: string
+): string[] {
   const first = rows[0];
-  if (!first) return [referencedColumn];
+  if (!first) {
+    return [referencedColumn];
+  }
   const keys = Object.keys(first);
-  const preferred = keys.filter((k) =>
-    k === referencedColumn || /name|title|label|email|username/i.test(k),
+  const preferred = keys.filter(
+    (k) => k === referencedColumn || /name|title|label|email|username/i.test(k)
   );
   const ordered = [...new Set([...preferred, ...keys])];
   return ordered.slice(0, 3);
@@ -240,26 +272,29 @@ function pickLabelColumns(rows: Record<string, unknown>[], referencedColumn: str
 
 function buildFkOptions(
   rowsResponse: TableRowsResponse,
-  referencedColumn: string,
+  referencedColumn: string
 ): FkLookupResponse {
   const labelCols = pickLabelColumns(rowsResponse.rows, referencedColumn);
   const options: FkLookupResponse["options"] = [];
   for (const row of rowsResponse.rows) {
     const value = row[referencedColumn];
-    if (value === undefined) continue;
-    const label = labelCols
-      .map((col) => row[col])
-      .filter((v) => v !== null && v !== undefined)
-      .map((v) => String(v))
-      .join(" · ") || String(value);
-    options.push({ value, label });
+    if (value === undefined) {
+      continue;
+    }
+    const label =
+      labelCols
+        .map((col) => row[col])
+        .filter((v) => v !== null && v !== undefined)
+        .map((v) => String(v))
+        .join(" · ") || String(value);
+    options.push({ label, value });
   }
 
   return {
-    options,
     hasMore:
       rowsResponse.totalEstimate >
       rowsResponse.pageInfo.page * rowsResponse.pageInfo.pageSize,
+    options,
   };
 }
 
@@ -267,7 +302,11 @@ export async function tableFkLookupRuntime(args: {
   dbType: DatabaseType;
   connectionString: string;
   input: FkLookupInput;
-  getTableDetails: (connectionString: string, schema: string, table: string) => Promise<{
+  getTableDetails: (
+    connectionString: string,
+    schema: string,
+    table: string
+  ) => Promise<{
     foreign_keys: SchemaForeignKey[];
   }>;
   listRows: (
@@ -277,23 +316,23 @@ export async function tableFkLookupRuntime(args: {
     page: number,
     pageSize: number,
     sort?: Array<{ column: string; direction: "asc" | "desc" }>,
-    filters?: Array<{ column: string; operator: string; value?: unknown }>,
+    filters?: Array<{ column: string; operator: string; value?: unknown }>
   ) => Promise<TableRowsResponse>;
 }): Promise<FkLookupResponse> {
   const { dbType, connectionString, input, getTableDetails, listRows } = args;
   if (dbType === "clickhouse") {
-    return { options: [], hasMore: false };
+    return { hasMore: false, options: [] };
   }
 
   const details = await getTableDetails(
     connectionString,
     input.tableRef.schema,
-    input.tableRef.table,
+    input.tableRef.table
   );
 
   const fk = details.foreign_keys.find((f) => f.column_name === input.column);
   if (!fk) {
-    return { options: [], hasMore: false };
+    return { hasMore: false, options: [] };
   }
 
   const rowsResponse = await listRows(
@@ -304,8 +343,14 @@ export async function tableFkLookupRuntime(args: {
     input.pageSize,
     [{ column: fk.referenced_column, direction: "asc" }],
     input.query.trim().length
-      ? [{ column: fk.referenced_column, operator: "contains", value: input.query }]
-      : [],
+      ? [
+          {
+            column: fk.referenced_column,
+            operator: "contains",
+            value: input.query,
+          },
+        ]
+      : []
   );
 
   return buildFkOptions(rowsResponse, fk.referenced_column);

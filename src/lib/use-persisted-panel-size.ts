@@ -59,14 +59,14 @@ function readStoredSize(storageKey: string): Size | null {
 export function usePersistedPanelSize(
   id: string,
   fallback: Size,
-  legacyPanelId?: string,
+  legacyPanelId?: string
 ): [Size, (size: Size) => void] {
   const storageKey = `${STORAGE_PREFIX}${id}`;
   const [size, setSize] = useState<Size>(
     () =>
       readStoredSize(storageKey) ??
       (legacyPanelId ? readLegacySize(id, legacyPanelId) : null) ??
-      fallback,
+      fallback
   );
 
   const update = useCallback(
@@ -78,7 +78,7 @@ export function usePersistedPanelSize(
         // Storage can be unavailable (private mode, quota) — the size still applies this session.
       }
     },
-    [storageKey],
+    [storageKey]
   );
 
   return [size, update];

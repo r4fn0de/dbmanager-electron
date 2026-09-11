@@ -8,33 +8,33 @@ const sharedFaker = new Faker({ locale: [pt_BR] });
 // ---------------------------------------------------------------------------
 
 export interface GeneratorDef {
-  label: string;
   category: string;
   generate: () => unknown;
+  label: string;
 }
 
 export type GeneratorMap = Record<string, GeneratorDef>;
 
 export interface ColumnSeedConfig {
+  customExpression?: string;
   generatorId: string;
   nullable: boolean;
-  customExpression?: string;
 }
 
 export interface ColumnMeta {
-  name: string;
-  dataType: string;
-  udtName?: string | null;
-  isNullable: boolean;
   columnDefault: string | null;
-  isPrimaryKey?: boolean;
-  isUnique?: boolean;
+  dataType: string;
+  enumValues?: string[];
   foreignKey?: {
     referencedSchema: string;
     referencedTable: string;
     referencedColumn: string;
   };
-  enumValues?: string[];
+  isNullable: boolean;
+  isPrimaryKey?: boolean;
+  isUnique?: boolean;
+  name: string;
+  udtName?: string | null;
 }
 
 export interface GenerateRowsInput {
@@ -61,103 +61,401 @@ export const CUSTOM_GENERATOR = "__custom__";
 
 export const BASE_GENERATORS: GeneratorMap = {
   // Special
-  [SKIP_GENERATOR]: { label: "Use default", category: "Special", generate: () => undefined },
-  [NULL_GENERATOR]: { label: "NULL", category: "Special", generate: () => null },
-  [REFERENCE_GENERATOR]: { label: "FK reference", category: "Special", generate: () => undefined },
-  [ENUM_GENERATOR]: { label: "Enum value", category: "Special", generate: () => undefined },
-  [CUSTOM_GENERATOR]: { label: "Custom SQL", category: "Special", generate: () => undefined },
-
-  // Text
-  "lorem.word": { label: "Word", category: "Text", generate: () => sharedFaker.lorem.word() },
-  "lorem.sentence": { label: "Sentence", category: "Text", generate: () => sharedFaker.lorem.sentence() },
-  "lorem.paragraph": { label: "Paragraph", category: "Text", generate: () => sharedFaker.lorem.paragraph() },
-  "lorem.lines": { label: "Lines", category: "Text", generate: () => sharedFaker.lorem.lines() },
-  "lorem.slug": { label: "Slug", category: "Text", generate: () => sharedFaker.lorem.slug() },
-  "lorem.text": { label: "Text Block", category: "Text", generate: () => sharedFaker.lorem.text() },
-  "string.alpha": { label: "Alpha String", category: "Text", generate: () => sharedFaker.string.alpha(10) },
-  "string.alphanumeric": { label: "Alphanumeric", category: "Text", generate: () => sharedFaker.string.alphanumeric(10) },
-  "string.hexadecimal": { label: "Hex String", category: "Text", generate: () => sharedFaker.string.hexadecimal({ length: 16 }) },
-
-  // Person
-  "person.firstName": { label: "First Name", category: "Person", generate: () => sharedFaker.person.firstName() },
-  "person.lastName": { label: "Last Name", category: "Person", generate: () => sharedFaker.person.lastName() },
-  "person.fullName": { label: "Full Name", category: "Person", generate: () => sharedFaker.person.fullName() },
-  "person.jobTitle": { label: "Job Title", category: "Person", generate: () => sharedFaker.person.jobTitle() },
-  "person.gender": { label: "Gender", category: "Person", generate: () => sharedFaker.person.gender() },
-
-  // Internet
-  "internet.email": { label: "Email", category: "Internet", generate: () => sharedFaker.internet.email() },
-  "internet.url": { label: "URL", category: "Internet", generate: () => sharedFaker.internet.url() },
-  "internet.username": { label: "Username", category: "Internet", generate: () => sharedFaker.internet.username() },
-  "internet.displayName": { label: "Display Name", category: "Internet", generate: () => sharedFaker.internet.displayName() },
-  "internet.password": { label: "Password", category: "Internet", generate: () => sharedFaker.internet.password() },
-  "internet.ip": { label: "IPv4 Address", category: "Internet", generate: () => sharedFaker.internet.ip() },
-  "internet.ipv6": { label: "IPv6 Address", category: "Internet", generate: () => sharedFaker.internet.ipv6() },
-  "internet.mac": { label: "MAC Address", category: "Internet", generate: () => sharedFaker.internet.mac() },
-  "internet.userAgent": { label: "User Agent", category: "Internet", generate: () => sharedFaker.internet.userAgent() },
-  "internet.domainName": { label: "Domain Name", category: "Internet", generate: () => sharedFaker.internet.domainName() },
-  "internet.port": { label: "Port", category: "Internet", generate: () => sharedFaker.internet.port() },
-  "image.url": { label: "Image URL", category: "Internet", generate: () => sharedFaker.image.url() },
-  "image.avatar": { label: "Avatar URL", category: "Internet", generate: () => sharedFaker.image.avatar() },
-
-  // Number
-  "number.int": { label: "Integer", category: "Number", generate: () => sharedFaker.number.int({ max: 10000 }) },
-  "number.float": { label: "Float", category: "Number", generate: () => sharedFaker.number.float({ max: 10000, fractionDigits: 2 }) },
-  "number.bigInt": { label: "Big Integer", category: "Number", generate: () => String(sharedFaker.number.bigInt({ max: 9007199254740991n })) },
-  "number.percentage": { label: "Percentage", category: "Number", generate: () => sharedFaker.number.float({ min: 0, max: 100, fractionDigits: 2 }) },
-
-  // Date
-  "date.recent": { label: "Recent Date", category: "Date", generate: () => sharedFaker.date.recent().toISOString() },
-  "date.past": { label: "Past Date", category: "Date", generate: () => sharedFaker.date.past().toISOString() },
-  "date.future": { label: "Future Date", category: "Date", generate: () => sharedFaker.date.future().toISOString() },
-  "date.soon": { label: "Soon Date", category: "Date", generate: () => sharedFaker.date.soon().toISOString() },
-  "date.birthdate": { label: "Birthdate", category: "Date", generate: () => sharedFaker.date.birthdate().toISOString() },
-  "date.month": { label: "Month Name", category: "Date", generate: () => sharedFaker.date.month() },
-  "date.weekday": { label: "Weekday", category: "Date", generate: () => sharedFaker.date.weekday() },
-  "date.time": { label: "Time", category: "Date", generate: () => sharedFaker.date.recent().toISOString().slice(11, 19) },
-
-  // Boolean
-  "datatype.boolean": { label: "Boolean", category: "Boolean", generate: () => sharedFaker.datatype.boolean() },
-
-  // ID
-  "string.uuidV4": { label: "UUID v4", category: "ID", generate: () => sharedFaker.string.uuid({ version: 4 }) },
-  "string.uuidV7": { label: "UUID v7", category: "ID", generate: () => sharedFaker.string.uuid({ version: 7 }) },
-  "string.nanoid": { label: "Nano ID", category: "ID", generate: () => sharedFaker.string.nanoid() },
-  "string.ulid": { label: "ULID", category: "ID", generate: () => sharedFaker.string.ulid() },
-
-  // Location
-  "location.city": { label: "City", category: "Location", generate: () => sharedFaker.location.city() },
-  "location.country": { label: "Country", category: "Location", generate: () => sharedFaker.location.country() },
-  "location.countryCode": { label: "Country Code", category: "Location", generate: () => sharedFaker.location.countryCode() },
-  "location.state": { label: "State", category: "Location", generate: () => sharedFaker.location.state() },
-  "location.streetAddress": { label: "Street Address", category: "Location", generate: () => sharedFaker.location.streetAddress() },
-  "location.zipCode": { label: "Zip Code", category: "Location", generate: () => sharedFaker.location.zipCode() },
-  "location.latitude": { label: "Latitude", category: "Location", generate: () => sharedFaker.location.latitude() },
-  "location.longitude": { label: "Longitude", category: "Location", generate: () => sharedFaker.location.longitude() },
-
-  // Finance
-  "finance.amount": { label: "Amount", category: "Finance", generate: () => Number(sharedFaker.finance.amount()) },
-  "finance.currencyCode": { label: "Currency Code", category: "Finance", generate: () => sharedFaker.finance.currencyCode() },
-  "finance.creditCardNumber": { label: "Credit Card", category: "Finance", generate: () => sharedFaker.finance.creditCardNumber() },
-  "finance.iban": { label: "IBAN", category: "Finance", generate: () => sharedFaker.finance.iban() },
+  [SKIP_GENERATOR]: {
+    category: "Special",
+    generate: () => undefined,
+    label: "Use default",
+  },
+  [NULL_GENERATOR]: {
+    category: "Special",
+    generate: () => null,
+    label: "NULL",
+  },
+  [REFERENCE_GENERATOR]: {
+    category: "Special",
+    generate: () => undefined,
+    label: "FK reference",
+  },
+  [ENUM_GENERATOR]: {
+    category: "Special",
+    generate: () => undefined,
+    label: "Enum value",
+  },
+  [CUSTOM_GENERATOR]: {
+    category: "Special",
+    generate: () => undefined,
+    label: "Custom SQL",
+  },
+  "color.human": {
+    category: "Other",
+    generate: () => sharedFaker.color.human(),
+    label: "Color Name",
+  },
+  "commerce.department": {
+    category: "Commerce",
+    generate: () => sharedFaker.commerce.department(),
+    label: "Department",
+  },
 
   // Commerce
-  "commerce.price": { label: "Price", category: "Commerce", generate: () => Number(sharedFaker.commerce.price()) },
-  "commerce.productName": { label: "Product Name", category: "Commerce", generate: () => sharedFaker.commerce.productName() },
-  "commerce.productDescription": { label: "Product Desc", category: "Commerce", generate: () => sharedFaker.commerce.productDescription() },
-  "commerce.department": { label: "Department", category: "Commerce", generate: () => sharedFaker.commerce.department() },
-  "company.name": { label: "Company Name", category: "Commerce", generate: () => sharedFaker.company.name() },
+  "commerce.price": {
+    category: "Commerce",
+    generate: () => Number(sharedFaker.commerce.price()),
+    label: "Price",
+  },
+  "commerce.productDescription": {
+    category: "Commerce",
+    generate: () => sharedFaker.commerce.productDescription(),
+    label: "Product Desc",
+  },
+  "commerce.productName": {
+    category: "Commerce",
+    generate: () => sharedFaker.commerce.productName(),
+    label: "Product Name",
+  },
+  "company.name": {
+    category: "Commerce",
+    generate: () => sharedFaker.company.name(),
+    label: "Company Name",
+  },
 
-  // System
-  "system.fileName": { label: "File Name", category: "System", generate: () => sharedFaker.system.fileName() },
-  "system.fileExt": { label: "File Extension", category: "System", generate: () => sharedFaker.system.fileExt() },
-  "system.mimeType": { label: "MIME Type", category: "System", generate: () => sharedFaker.system.mimeType() },
-  "system.semver": { label: "Semver", category: "System", generate: () => sharedFaker.system.semver() },
+  // Boolean
+  "datatype.boolean": {
+    category: "Boolean",
+    generate: () => sharedFaker.datatype.boolean(),
+    label: "Boolean",
+  },
+  "date.birthdate": {
+    category: "Date",
+    generate: () => sharedFaker.date.birthdate().toISOString(),
+    label: "Birthdate",
+  },
+  "date.future": {
+    category: "Date",
+    generate: () => sharedFaker.date.future().toISOString(),
+    label: "Future Date",
+  },
+  "date.month": {
+    category: "Date",
+    generate: () => sharedFaker.date.month(),
+    label: "Month Name",
+  },
+  "date.past": {
+    category: "Date",
+    generate: () => sharedFaker.date.past().toISOString(),
+    label: "Past Date",
+  },
+
+  // Date
+  "date.recent": {
+    category: "Date",
+    generate: () => sharedFaker.date.recent().toISOString(),
+    label: "Recent Date",
+  },
+  "date.soon": {
+    category: "Date",
+    generate: () => sharedFaker.date.soon().toISOString(),
+    label: "Soon Date",
+  },
+  "date.time": {
+    category: "Date",
+    generate: () => sharedFaker.date.recent().toISOString().slice(11, 19),
+    label: "Time",
+  },
+  "date.weekday": {
+    category: "Date",
+    generate: () => sharedFaker.date.weekday(),
+    label: "Weekday",
+  },
+
+  // Finance
+  "finance.amount": {
+    category: "Finance",
+    generate: () => Number(sharedFaker.finance.amount()),
+    label: "Amount",
+  },
+  "finance.creditCardNumber": {
+    category: "Finance",
+    generate: () => sharedFaker.finance.creditCardNumber(),
+    label: "Credit Card",
+  },
+  "finance.currencyCode": {
+    category: "Finance",
+    generate: () => sharedFaker.finance.currencyCode(),
+    label: "Currency Code",
+  },
+  "finance.iban": {
+    category: "Finance",
+    generate: () => sharedFaker.finance.iban(),
+    label: "IBAN",
+  },
+  "image.avatar": {
+    category: "Internet",
+    generate: () => sharedFaker.image.avatar(),
+    label: "Avatar URL",
+  },
+  "image.url": {
+    category: "Internet",
+    generate: () => sharedFaker.image.url(),
+    label: "Image URL",
+  },
+  "internet.displayName": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.displayName(),
+    label: "Display Name",
+  },
+  "internet.domainName": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.domainName(),
+    label: "Domain Name",
+  },
+
+  // Internet
+  "internet.email": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.email(),
+    label: "Email",
+  },
+  "internet.ip": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.ip(),
+    label: "IPv4 Address",
+  },
+  "internet.ipv6": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.ipv6(),
+    label: "IPv6 Address",
+  },
+  "internet.mac": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.mac(),
+    label: "MAC Address",
+  },
+  "internet.password": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.password(),
+    label: "Password",
+  },
+  "internet.port": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.port(),
+    label: "Port",
+  },
+  "internet.url": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.url(),
+    label: "URL",
+  },
+  "internet.userAgent": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.userAgent(),
+    label: "User Agent",
+  },
+  "internet.username": {
+    category: "Internet",
+    generate: () => sharedFaker.internet.username(),
+    label: "Username",
+  },
+  "json.object": {
+    category: "Other",
+    generate: () => ({
+      key: sharedFaker.lorem.word(),
+      value: sharedFaker.number.int({ max: 100 }),
+    }),
+    label: "JSON Object",
+  },
+
+  // Location
+  "location.city": {
+    category: "Location",
+    generate: () => sharedFaker.location.city(),
+    label: "City",
+  },
+  "location.country": {
+    category: "Location",
+    generate: () => sharedFaker.location.country(),
+    label: "Country",
+  },
+  "location.countryCode": {
+    category: "Location",
+    generate: () => sharedFaker.location.countryCode(),
+    label: "Country Code",
+  },
+  "location.latitude": {
+    category: "Location",
+    generate: () => sharedFaker.location.latitude(),
+    label: "Latitude",
+  },
+  "location.longitude": {
+    category: "Location",
+    generate: () => sharedFaker.location.longitude(),
+    label: "Longitude",
+  },
+  "location.state": {
+    category: "Location",
+    generate: () => sharedFaker.location.state(),
+    label: "State",
+  },
+  "location.streetAddress": {
+    category: "Location",
+    generate: () => sharedFaker.location.streetAddress(),
+    label: "Street Address",
+  },
+  "location.zipCode": {
+    category: "Location",
+    generate: () => sharedFaker.location.zipCode(),
+    label: "Zip Code",
+  },
+  "lorem.lines": {
+    category: "Text",
+    generate: () => sharedFaker.lorem.lines(),
+    label: "Lines",
+  },
+  "lorem.paragraph": {
+    category: "Text",
+    generate: () => sharedFaker.lorem.paragraph(),
+    label: "Paragraph",
+  },
+  "lorem.sentence": {
+    category: "Text",
+    generate: () => sharedFaker.lorem.sentence(),
+    label: "Sentence",
+  },
+  "lorem.slug": {
+    category: "Text",
+    generate: () => sharedFaker.lorem.slug(),
+    label: "Slug",
+  },
+  "lorem.text": {
+    category: "Text",
+    generate: () => sharedFaker.lorem.text(),
+    label: "Text Block",
+  },
+
+  // Text
+  "lorem.word": {
+    category: "Text",
+    generate: () => sharedFaker.lorem.word(),
+    label: "Word",
+  },
+  "number.bigInt": {
+    category: "Number",
+    generate: () =>
+      String(sharedFaker.number.bigInt({ max: 9007199254740991n })),
+    label: "Big Integer",
+  },
+  "number.float": {
+    category: "Number",
+    generate: () =>
+      sharedFaker.number.float({ fractionDigits: 2, max: 10_000 }),
+    label: "Float",
+  },
+
+  // Number
+  "number.int": {
+    category: "Number",
+    generate: () => sharedFaker.number.int({ max: 10_000 }),
+    label: "Integer",
+  },
+  "number.percentage": {
+    category: "Number",
+    generate: () =>
+      sharedFaker.number.float({ fractionDigits: 2, max: 100, min: 0 }),
+    label: "Percentage",
+  },
+
+  // Person
+  "person.firstName": {
+    category: "Person",
+    generate: () => sharedFaker.person.firstName(),
+    label: "First Name",
+  },
+  "person.fullName": {
+    category: "Person",
+    generate: () => sharedFaker.person.fullName(),
+    label: "Full Name",
+  },
+  "person.gender": {
+    category: "Person",
+    generate: () => sharedFaker.person.gender(),
+    label: "Gender",
+  },
+  "person.jobTitle": {
+    category: "Person",
+    generate: () => sharedFaker.person.jobTitle(),
+    label: "Job Title",
+  },
+  "person.lastName": {
+    category: "Person",
+    generate: () => sharedFaker.person.lastName(),
+    label: "Last Name",
+  },
 
   // Other
-  "phone.number": { label: "Phone Number", category: "Other", generate: () => sharedFaker.phone.number() },
-  "color.human": { label: "Color Name", category: "Other", generate: () => sharedFaker.color.human() },
-  "json.object": { label: "JSON Object", category: "Other", generate: () => ({ key: sharedFaker.lorem.word(), value: sharedFaker.number.int({ max: 100 }) }) },
+  "phone.number": {
+    category: "Other",
+    generate: () => sharedFaker.phone.number(),
+    label: "Phone Number",
+  },
+  "string.alpha": {
+    category: "Text",
+    generate: () => sharedFaker.string.alpha(10),
+    label: "Alpha String",
+  },
+  "string.alphanumeric": {
+    category: "Text",
+    generate: () => sharedFaker.string.alphanumeric(10),
+    label: "Alphanumeric",
+  },
+  "string.hexadecimal": {
+    category: "Text",
+    generate: () => sharedFaker.string.hexadecimal({ length: 16 }),
+    label: "Hex String",
+  },
+  "string.nanoid": {
+    category: "ID",
+    generate: () => sharedFaker.string.nanoid(),
+    label: "Nano ID",
+  },
+  "string.ulid": {
+    category: "ID",
+    generate: () => sharedFaker.string.ulid(),
+    label: "ULID",
+  },
+
+  // ID
+  "string.uuidV4": {
+    category: "ID",
+    generate: () => sharedFaker.string.uuid({ version: 4 }),
+    label: "UUID v4",
+  },
+  "string.uuidV7": {
+    category: "ID",
+    generate: () => sharedFaker.string.uuid({ version: 7 }),
+    label: "UUID v7",
+  },
+  "system.fileExt": {
+    category: "System",
+    generate: () => sharedFaker.system.fileExt(),
+    label: "File Extension",
+  },
+
+  // System
+  "system.fileName": {
+    category: "System",
+    generate: () => sharedFaker.system.fileName(),
+    label: "File Name",
+  },
+  "system.mimeType": {
+    category: "System",
+    generate: () => sharedFaker.system.mimeType(),
+    label: "MIME Type",
+  },
+  "system.semver": {
+    category: "System",
+    generate: () => sharedFaker.system.semver(),
+    label: "Semver",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -167,48 +465,142 @@ export const BASE_GENERATORS: GeneratorMap = {
 export function baseAutoDetectByName(name: string): string | undefined {
   const n = name.toLowerCase().replaceAll("_", "");
 
-  if (n.includes("email")) return "internet.email";
-  if (n === "firstname") return "person.firstName";
-  if (n === "lastname" || n === "surname") return "person.lastName";
-  if (n === "fullname" || n === "name") return "person.fullName";
-  if (n.includes("phone") || n.includes("mobile") || n.includes("tel")) return "phone.number";
-  if (n.includes("url") || n.includes("website") || n.includes("link")) return "internet.url";
-  if (n.includes("avatar") || n.includes("image") || n.includes("photo") || n.includes("picture")) return "image.url";
-  if (n.includes("username") || n === "login") return "internet.username";
-  if (n.includes("title") || n.includes("subject")) return "lorem.sentence";
-  if (n.includes("description") || n.includes("content") || n.includes("bio") || n.includes("summary")) return "lorem.paragraph";
-  if (n.includes("city")) return "location.city";
-  if (n.includes("countrycode")) return "location.countryCode";
-  if (n.includes("country")) return "location.country";
-  if (n.includes("ipaddress") || n === "ip") return "internet.ip";
-  if (n.includes("address") || n.includes("street")) return "location.streetAddress";
-  if (n.includes("zip") || n.includes("postal")) return "location.zipCode";
-  if (n === "lat") return "location.latitude";
-  if (n === "lng" || n === "lon") return "location.longitude";
-  if (n.includes("company") || n.includes("organization")) return "company.name";
-  if (n.includes("price") || n.includes("amount") || n.includes("cost") || n.includes("total") || n.includes("fee")) return "commerce.price";
-  if (n.includes("product")) return "commerce.productName";
-  if (n.includes("color") || n.includes("colour")) return "color.human";
-  if (n.includes("slug")) return "lorem.slug";
-  if (n.includes("jobtitle") || n.includes("position") || n.includes("role")) return "person.jobTitle";
-  if (n.includes("gender")) return "person.gender";
-  if (n.includes("password") || n.includes("secret") || n.includes("hash")) return "internet.password";
-  if (n.includes("domain")) return "internet.domainName";
-  if (n.includes("useragent")) return "internet.userAgent";
-  if (n.includes("currency") && n.includes("code")) return "finance.currencyCode";
-  if (n.includes("currency")) return "finance.currencyCode";
-  if (n.includes("iban")) return "finance.iban";
-  if (n.includes("creditcard") || n.includes("cardnumber")) return "finance.creditCardNumber";
-  if (n.includes("accountnumber")) return "finance.accountNumber";
-  if (n.includes("timezone")) return "date.time";
-  if (n.includes("filename")) return "system.fileName";
-  if (n.includes("mimetype") || n.includes("contenttype")) return "system.mimeType";
-  if (n.includes("version")) return "system.semver";
-  if (n.includes("birthdate") || n.includes("birthday") || n.includes("dob")) return "date.birthdate";
-  if (n.includes("displayname") || n.includes("nickname")) return "internet.displayName";
-  if (n.includes("port")) return "internet.port";
-
-  return undefined;
+  if (n.includes("email")) {
+    return "internet.email";
+  }
+  if (n === "firstname") {
+    return "person.firstName";
+  }
+  if (n === "lastname" || n === "surname") {
+    return "person.lastName";
+  }
+  if (n === "fullname" || n === "name") {
+    return "person.fullName";
+  }
+  if (n.includes("phone") || n.includes("mobile") || n.includes("tel")) {
+    return "phone.number";
+  }
+  if (n.includes("url") || n.includes("website") || n.includes("link")) {
+    return "internet.url";
+  }
+  if (
+    n.includes("avatar") ||
+    n.includes("image") ||
+    n.includes("photo") ||
+    n.includes("picture")
+  ) {
+    return "image.url";
+  }
+  if (n.includes("username") || n === "login") {
+    return "internet.username";
+  }
+  if (n.includes("title") || n.includes("subject")) {
+    return "lorem.sentence";
+  }
+  if (
+    n.includes("description") ||
+    n.includes("content") ||
+    n.includes("bio") ||
+    n.includes("summary")
+  ) {
+    return "lorem.paragraph";
+  }
+  if (n.includes("city")) {
+    return "location.city";
+  }
+  if (n.includes("countrycode")) {
+    return "location.countryCode";
+  }
+  if (n.includes("country")) {
+    return "location.country";
+  }
+  if (n.includes("ipaddress") || n === "ip") {
+    return "internet.ip";
+  }
+  if (n.includes("address") || n.includes("street")) {
+    return "location.streetAddress";
+  }
+  if (n.includes("zip") || n.includes("postal")) {
+    return "location.zipCode";
+  }
+  if (n === "lat") {
+    return "location.latitude";
+  }
+  if (n === "lng" || n === "lon") {
+    return "location.longitude";
+  }
+  if (n.includes("company") || n.includes("organization")) {
+    return "company.name";
+  }
+  if (
+    n.includes("price") ||
+    n.includes("amount") ||
+    n.includes("cost") ||
+    n.includes("total") ||
+    n.includes("fee")
+  ) {
+    return "commerce.price";
+  }
+  if (n.includes("product")) {
+    return "commerce.productName";
+  }
+  if (n.includes("color") || n.includes("colour")) {
+    return "color.human";
+  }
+  if (n.includes("slug")) {
+    return "lorem.slug";
+  }
+  if (n.includes("jobtitle") || n.includes("position") || n.includes("role")) {
+    return "person.jobTitle";
+  }
+  if (n.includes("gender")) {
+    return "person.gender";
+  }
+  if (n.includes("password") || n.includes("secret") || n.includes("hash")) {
+    return "internet.password";
+  }
+  if (n.includes("domain")) {
+    return "internet.domainName";
+  }
+  if (n.includes("useragent")) {
+    return "internet.userAgent";
+  }
+  if (n.includes("currency") && n.includes("code")) {
+    return "finance.currencyCode";
+  }
+  if (n.includes("currency")) {
+    return "finance.currencyCode";
+  }
+  if (n.includes("iban")) {
+    return "finance.iban";
+  }
+  if (n.includes("creditcard") || n.includes("cardnumber")) {
+    return "finance.creditCardNumber";
+  }
+  if (n.includes("accountnumber")) {
+    return "finance.accountNumber";
+  }
+  if (n.includes("timezone")) {
+    return "date.time";
+  }
+  if (n.includes("filename")) {
+    return "system.fileName";
+  }
+  if (n.includes("mimetype") || n.includes("contenttype")) {
+    return "system.mimeType";
+  }
+  if (n.includes("version")) {
+    return "system.semver";
+  }
+  if (n.includes("birthdate") || n.includes("birthday") || n.includes("dob")) {
+    return "date.birthdate";
+  }
+  if (n.includes("displayname") || n.includes("nickname")) {
+    return "internet.displayName";
+  }
+  if (n.includes("port")) {
+    return "internet.port";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -218,21 +610,69 @@ export function baseAutoDetectByName(name: string): string | undefined {
 export function baseAutoDetectByType(type: string): string | undefined {
   const t = type.toLowerCase();
 
-  if (t === "uuid") return "string.uuidV4";
-  if (t === "bool" || t === "boolean") return "datatype.boolean";
-  if (/^int|^uint|^serial|^bigserial|^smallserial|^oid$/.test(t) || t === "integer" || t === "bigint" || t === "smallint" || t === "tinyint") return "number.int";
-  if (t.includes("float") || t.includes("double") || t.includes("decimal") || t.includes("numeric") || t === "real" || t === "money") return "number.float";
-  if (t.includes("timestamp") || t === "datetime" || t === "datetime2" || t === "datetimeoffset") return "date.recent";
-  if (t === "date") return "date.recent";
-  if (t.includes("time") || t === "timetz") return "date.time";
-  if (t.includes("json") || t === "jsonb") return "json.object";
-  if (t.includes("text") || t.includes("varchar") || t.includes("char") || t.includes("nvarchar") || t === "string") return "lorem.sentence";
-  if (t === "inet" || t === "cidr") return "internet.ip";
-  if (t === "macaddr" || t === "macaddr8") return "internet.mac";
-  if (t === "xml") return "lorem.sentence";
-  if (t === "bytea" || t === "varbinary" || t === "binary") return "string.hexadecimal";
-
-  return undefined;
+  if (t === "uuid") {
+    return "string.uuidV4";
+  }
+  if (t === "bool" || t === "boolean") {
+    return "datatype.boolean";
+  }
+  if (
+    /^int|^uint|^serial|^bigserial|^smallserial|^oid$/.test(t) ||
+    t === "integer" ||
+    t === "bigint" ||
+    t === "smallint" ||
+    t === "tinyint"
+  ) {
+    return "number.int";
+  }
+  if (
+    t.includes("float") ||
+    t.includes("double") ||
+    t.includes("decimal") ||
+    t.includes("numeric") ||
+    t === "real" ||
+    t === "money"
+  ) {
+    return "number.float";
+  }
+  if (
+    t.includes("timestamp") ||
+    t === "datetime" ||
+    t === "datetime2" ||
+    t === "datetimeoffset"
+  ) {
+    return "date.recent";
+  }
+  if (t === "date") {
+    return "date.recent";
+  }
+  if (t.includes("time") || t === "timetz") {
+    return "date.time";
+  }
+  if (t.includes("json") || t === "jsonb") {
+    return "json.object";
+  }
+  if (
+    t.includes("text") ||
+    t.includes("varchar") ||
+    t.includes("char") ||
+    t.includes("nvarchar") ||
+    t === "string"
+  ) {
+    return "lorem.sentence";
+  }
+  if (t === "inet" || t === "cidr") {
+    return "internet.ip";
+  }
+  if (t === "macaddr" || t === "macaddr8") {
+    return "internet.mac";
+  }
+  if (t === "xml") {
+    return "lorem.sentence";
+  }
+  if (t === "bytea" || t === "varbinary" || t === "binary") {
+    return "string.hexadecimal";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -241,21 +681,31 @@ export function baseAutoDetectByType(type: string): string | undefined {
 
 export function autoDetectGenerator(column: ColumnMeta): string {
   // FK column → reference
-  if (column.foreignKey) return REFERENCE_GENERATOR;
+  if (column.foreignKey) {
+    return REFERENCE_GENERATOR;
+  }
 
   // Enum column → enum
-  if (column.enumValues && column.enumValues.length > 0) return ENUM_GENERATOR;
+  if (column.enumValues && column.enumValues.length > 0) {
+    return ENUM_GENERATOR;
+  }
 
   // Column with default → skip (use DB default)
-  if (column.columnDefault) return SKIP_GENERATOR;
+  if (column.columnDefault) {
+    return SKIP_GENERATOR;
+  }
 
   // Try type-based detection
   const typeResult = baseAutoDetectByType(column.udtName ?? column.dataType);
-  if (typeResult) return typeResult;
+  if (typeResult) {
+    return typeResult;
+  }
 
   // Try name-based detection
   const nameResult = baseAutoDetectByName(column.name);
-  if (nameResult) return nameResult;
+  if (nameResult) {
+    return nameResult;
+  }
 
   return "lorem.word";
 }
@@ -265,8 +715,8 @@ export function autoDetectGenerator(column: ColumnMeta): string {
 // ---------------------------------------------------------------------------
 
 export interface GeneratorGroup {
-  value: string;
   items: string[];
+  value: string;
 }
 
 export function getGeneratorGroups(): GeneratorGroup[] {
@@ -276,7 +726,7 @@ export function getGeneratorGroups(): GeneratorGroup[] {
     if (existing) {
       existing.items.push(id);
     } else {
-      groups.push({ value: gen.category, items: [id] });
+      groups.push({ items: [id], value: gen.category });
     }
   }
   return groups;
@@ -286,23 +736,31 @@ export function getGeneratorGroups(): GeneratorGroup[] {
 // Row generation
 // ---------------------------------------------------------------------------
 
-export function generateRows(input: GenerateRowsInput): Record<string, unknown>[] {
+export function generateRows(
+  input: GenerateRowsInput
+): Record<string, unknown>[] {
   const { columns, configs, count, referenceData, seed } = input;
 
   // Seed the shared faker so generators produce deterministic output
-  if (seed !== undefined) sharedFaker.seed(seed);
+  if (seed !== undefined) {
+    sharedFaker.seed(seed);
+  }
 
   return Array.from({ length: count }, () => {
     const row: Record<string, unknown> = {};
 
     for (const column of columns) {
       const config = configs[column.name];
-      if (!config) continue;
+      if (!config) {
+        continue;
+      }
 
       const { generatorId, nullable, customExpression } = config;
 
       // Skip → omit column from row (use DB default)
-      if (generatorId === SKIP_GENERATOR) continue;
+      if (generatorId === SKIP_GENERATOR) {
+        continue;
+      }
 
       // NULL
       if (generatorId === NULL_GENERATOR) {
@@ -317,7 +775,11 @@ export function generateRows(input: GenerateRowsInput): Record<string, unknown>[
       }
 
       // Nullable — 10% chance of null
-      if (nullable && column.isNullable && sharedFaker.number.int({ min: 0, max: 9 }) === 0) {
+      if (
+        nullable &&
+        column.isNullable &&
+        sharedFaker.number.int({ max: 9, min: 0 }) === 0
+      ) {
         row[column.name] = null;
         continue;
       }
@@ -334,7 +796,9 @@ export function generateRows(input: GenerateRowsInput): Record<string, unknown>[
       // Enum
       if (generatorId === ENUM_GENERATOR) {
         if (column.enumValues && column.enumValues.length > 0) {
-          row[column.name] = sharedFaker.helpers.arrayElement(column.enumValues);
+          row[column.name] = sharedFaker.helpers.arrayElement(
+            column.enumValues
+          );
         }
         continue;
       }

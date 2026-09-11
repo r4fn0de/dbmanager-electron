@@ -8,9 +8,9 @@ export interface ParsedImportData {
 }
 
 export interface ColumnMappingResult {
+  extraSourceColumns: string[];
   mapping: Record<string, string | null>;
   missingTargetColumns: string[];
-  extraSourceColumns: string[];
 }
 
 const MAX_PREVIEW_ROWS = 200;
@@ -18,7 +18,9 @@ const MAX_PREVIEW_ROWS = 200;
 const normalizeName = (value: string): string => value.trim().toLowerCase();
 
 const normalizeCell = (value: unknown): unknown => {
-  if (value === "") return null;
+  if (value === "") {
+    return null;
+  }
   return value;
 };
 
@@ -49,10 +51,14 @@ function parseCsvText(input: string): ParsedImportData {
     }
 
     if (!inQuotes && (ch === "\n" || ch === "\r")) {
-      if (ch === "\r" && next === "\n") i += 1;
+      if (ch === "\r" && next === "\n") {
+        i += 1;
+      }
       row.push(current);
       current = "";
-      if (row.some((value) => value.length > 0)) rows.push(row);
+      if (row.some((value) => value.length > 0)) {
+        rows.push(row);
+      }
       row = [];
       continue;
     }
@@ -62,10 +68,14 @@ function parseCsvText(input: string): ParsedImportData {
 
   if (current.length > 0 || row.length > 0) {
     row.push(current);
-    if (row.some((value) => value.length > 0)) rows.push(row);
+    if (row.some((value) => value.length > 0)) {
+      rows.push(row);
+    }
   }
 
-  if (rows.length === 0) throw new Error("CSV file is empty");
+  if (rows.length === 0) {
+    throw new Error("CSV file is empty");
+  }
 
   const headers = rows[0].map((header) => header.trim());
   if (headers.some((header) => header.length === 0)) {
@@ -95,14 +105,16 @@ function parseJsonText(input: string): ParsedImportData {
     throw new Error("JSON deve ser um array de objetos");
   }
 
-  const rows = parsed as Array<Record<string, unknown>>;
+  const rows = parsed as Record<string, unknown>[];
   if (rows.length === 0) {
     return { headers: [], rows: [] };
   }
 
   const headerSet = new Set<string>();
   for (const row of rows) {
-    for (const key of Object.keys(row)) headerSet.add(key);
+    for (const key of Object.keys(row)) {
+      headerSet.add(key);
+    }
   }
   const headers = Array.from(headerSet);
 
@@ -121,17 +133,23 @@ function parseJsonText(input: string): ParsedImportData {
 function parseExcelBuffer(input: ArrayBuffer): ParsedImportData {
   const workbook = XLSX.read(input, { type: "array" });
   const firstSheetName = workbook.SheetNames[0];
-  if (!firstSheetName) throw new Error("Planilha sem abas");
+  if (!firstSheetName) {
+    throw new Error("Planilha sem abas");
+  }
   const sheet = workbook.Sheets[firstSheetName];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: null,
     raw: true,
   });
-  if (rows.length === 0) return { headers: [], rows: [] };
+  if (rows.length === 0) {
+    return { headers: [], rows: [] };
+  }
 
   const headerSet = new Set<string>();
   for (const row of rows) {
-    for (const key of Object.keys(row)) headerSet.add(key);
+    for (const key of Object.keys(row)) {
+      headerSet.add(key);
+    }
   }
   const headers = Array.from(headerSet);
   return {
@@ -166,7 +184,7 @@ export async function parseImportFile(file: File): Promise<ParsedImportData> {
 
 export function buildColumnMapping(
   sourceHeaders: string[],
-  targetColumns: Array<{ name: string }>,
+  targetColumns: Array<{ name: string }>
 ): ColumnMappingResult {
   const targetByNormalized = new Map<string, string>();
   for (const column of targetColumns) {
@@ -179,60 +197,80 @@ export function buildColumnMapping(
   }
 
   const mappedTargets = new Set(
-    Object.values(mapping).filter((target): target is string => Boolean(target)),
+    Object.values(mapping).filter((target): target is string => Boolean(target))
   );
 
   const missingTargetColumns = targetColumns
     .map((column) => column.name)
     .filter((columnName) => !mappedTargets.has(columnName));
 
-  const extraSourceColumns = sourceHeaders.filter((header) => mapping[header] === null);
+  const extraSourceColumns = sourceHeaders.filter(
+    (header) => mapping[header] === null
+  );
 
   return {
+    extraSourceColumns,
     mapping,
     missingTargetColumns,
-    extraSourceColumns,
   };
 }
 
 export function applyColumnMapping(
   rows: Record<string, unknown>[],
-  mapping: Record<string, string | null>,
+  mapping: Record<string, string | null>
 ): Record<string, unknown>[] {
   return rows.map((row) => {
     const nextRow: Record<string, unknown> = {};
     for (const [sourceColumn, targetColumn] of Object.entries(mapping)) {
-      if (!targetColumn) continue;
+      if (!targetColumn) {
+        continue;
+      }
       nextRow[targetColumn] = normalizeCell(row[sourceColumn]);
     }
     return nextRow;
   });
 }
 
-export function inferColumnsFromRows(rows: Record<string, unknown>[]): Array<{ name: string; dataType: string; isNullable: boolean }> {
+export function inferColumnsFromRows(
+  rows: Record<string, unknown>[]
+): Array<{ name: string; dataType: string; isNullable: boolean }> {
   const valueByColumn = new Map<string, unknown[]>();
   for (const row of rows) {
     for (const [column, value] of Object.entries(row)) {
-      if (!valueByColumn.has(column)) valueByColumn.set(column, []);
+      if (!valueByColumn.has(column)) {
+        valueByColumn.set(column, []);
+      }
       valueByColumn.get(column)?.push(value);
     }
   }
 
-  const inferred: Array<{ name: string; dataType: string; isNullable: boolean }> = [];
+  const inferred: Array<{
+    name: string;
+    dataType: string;
+    isNullable: boolean;
+  }> = [];
   for (const [name, values] of valueByColumn.entries()) {
-    const nonNullValues = values.filter((value) => value !== null && value !== undefined);
+    const nonNullValues = values.filter(
+      (value) => value !== null && value !== undefined
+    );
     const isNullable = nonNullValues.length !== values.length;
     let dataType = "text";
 
     if (nonNullValues.length > 0) {
-      const hasOnlyNumbers = nonNullValues.every((value) => typeof value === "number");
-      const hasOnlyBooleans = nonNullValues.every((value) => typeof value === "boolean");
+      const hasOnlyNumbers = nonNullValues.every(
+        (value) => typeof value === "number"
+      );
+      const hasOnlyBooleans = nonNullValues.every(
+        (value) => typeof value === "boolean"
+      );
       const hasOnlyDateStrings = nonNullValues.every(
-        (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value),
+        (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)
       );
 
       if (hasOnlyNumbers) {
-        dataType = nonNullValues.every((value) => Number.isInteger(value)) ? "integer" : "numeric";
+        dataType = nonNullValues.every((value) => Number.isInteger(value))
+          ? "integer"
+          : "numeric";
       } else if (hasOnlyBooleans) {
         dataType = "boolean";
       } else if (hasOnlyDateStrings) {
@@ -241,15 +279,17 @@ export function inferColumnsFromRows(rows: Record<string, unknown>[]): Array<{ n
     }
 
     inferred.push({
-      name,
       dataType,
       isNullable,
+      name,
     });
   }
 
   return inferred;
 }
 
-export function getPreviewRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+export function getPreviewRows(
+  rows: Record<string, unknown>[]
+): Record<string, unknown>[] {
   return rows.slice(0, MAX_PREVIEW_ROWS);
 }

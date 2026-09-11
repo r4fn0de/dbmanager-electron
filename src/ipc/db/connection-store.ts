@@ -1,17 +1,17 @@
 import { app } from "electron";
-import { readFile, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { decryptSecret, encryptSecret } from "../security/secrets";
 import type { Connection } from "./types";
 
 function encryptConnectionSecrets(connection: Connection): Connection {
   return {
     ...connection,
-    password: encryptSecret(connection.password),
-    url: connection.url ? encryptSecret(connection.url) : connection.url,
     connection_string: connection.connection_string
       ? encryptSecret(connection.connection_string)
       : connection.connection_string,
+    password: encryptSecret(connection.password),
+    url: connection.url ? encryptSecret(connection.url) : connection.url,
   };
 }
 
@@ -20,23 +20,25 @@ function decryptConnectionSecrets(connection: Connection): {
   changed: boolean;
 } {
   const decryptedPassword = decryptSecret(connection.password);
-  const decryptedUrl = connection.url ? decryptSecret(connection.url) : connection.url;
+  const decryptedUrl = connection.url
+    ? decryptSecret(connection.url)
+    : connection.url;
   const decryptedConnectionString = connection.connection_string
     ? decryptSecret(connection.connection_string)
     : connection.connection_string;
 
   const changed =
-    decryptedPassword !== connection.password
-    || decryptedUrl !== connection.url
-    || decryptedConnectionString !== connection.connection_string;
+    decryptedPassword !== connection.password ||
+    decryptedUrl !== connection.url ||
+    decryptedConnectionString !== connection.connection_string;
 
   return {
     changed,
     connection: {
       ...connection,
+      connection_string: decryptedConnectionString,
       password: decryptedPassword,
       url: decryptedUrl,
-      connection_string: decryptedConnectionString,
     },
   };
 }
@@ -82,7 +84,9 @@ export async function loadConnections(): Promise<Connection[]> {
   }
 }
 
-export async function saveConnections(connections: Connection[]): Promise<void> {
+export async function saveConnections(
+  connections: Connection[]
+): Promise<void> {
   const path = getStoragePath();
   const dir = join(path, "..");
   await mkdir(dir, { recursive: true });

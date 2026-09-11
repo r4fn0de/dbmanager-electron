@@ -7,8 +7,8 @@ import type { Connection } from "@/ipc/db/types";
 
 export interface MentionState {
   isInMention: boolean;
-  startIndex: number;
   query: string;
+  startIndex: number;
 }
 
 /**
@@ -19,10 +19,12 @@ export interface MentionState {
  */
 export function getMentionState(
   text: string,
-  cursorPos: number,
+  cursorPos: number
 ): MentionState | null {
   // Cursor must be at least 1 char after a potential "@"
-  if (cursorPos < 1) return null;
+  if (cursorPos < 1) {
+    return null;
+  }
 
   // Walk backwards from cursor to find the nearest "@"
   let atIndex = -1;
@@ -33,27 +35,35 @@ export function getMentionState(
       break;
     }
     // Mention query stops at whitespace or newline
-    if (/\s/.test(ch)) break;
+    if (/\s/.test(ch)) {
+      break;
+    }
   }
 
-  if (atIndex === -1) return null;
+  if (atIndex === -1) {
+    return null;
+  }
 
   // Ensure "@" is preceded by whitespace or start-of-string
   // (so "email@domain" doesn't trigger)
   if (atIndex > 0) {
     const prevChar = text[atIndex - 1];
-    if (!/\s/.test(prevChar)) return null;
+    if (!/\s/.test(prevChar)) {
+      return null;
+    }
   }
 
   const query = text.slice(atIndex + 1, cursorPos);
 
   // If query contains whitespace, the user left the mention context
-  if (/\s/.test(query)) return null;
+  if (/\s/.test(query)) {
+    return null;
+  }
 
   return {
     isInMention: true,
-    startIndex: atIndex,
     query,
+    startIndex: atIndex,
   };
 }
 
@@ -65,7 +75,7 @@ export function insertMention(
   text: string,
   startIndex: number,
   queryLength: number,
-  connectionName: string,
+  connectionName: string
 ): string {
   const before = text.slice(0, startIndex);
   const after = text.slice(startIndex + 1 + queryLength);
@@ -91,10 +101,12 @@ export function parseMentions(text: string): string[] {
  */
 export function filterConnectionsByMention(
   connections: Connection[],
-  query: string,
+  query: string
 ): Connection[] {
   const q = query.trim().toLowerCase();
-  if (!q) return connections;
+  if (!q) {
+    return connections;
+  }
   return connections.filter((c) => c.name.toLowerCase().includes(q));
 }
 
@@ -103,7 +115,7 @@ export function filterConnectionsByMention(
  */
 export function findConnectionByMentionName(
   connections: Connection[],
-  name: string,
+  name: string
 ): Connection | undefined {
   const lower = name.toLowerCase();
   return connections.find((c) => c.name.toLowerCase() === lower);

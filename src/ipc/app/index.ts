@@ -8,10 +8,10 @@ import {
 } from "./handlers";
 
 export const app = {
-  currentPlatfom,
   appVersion,
-  updateStatus,
   checkForUpdates,
-  restartAndInstallUpdate,
   checkManualUpdateInfo,
+  currentPlatfom,
+  restartAndInstallUpdate,
+  updateStatus,
 };

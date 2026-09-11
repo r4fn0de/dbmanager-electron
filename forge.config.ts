@@ -18,10 +18,24 @@ const macUpdateManifestBaseUrl = updateBaseUrl
   : undefined;
 
 const config: ForgeConfig = {
+  makers: [
+    new MakerSquirrel({
+      ...(winRemoteReleases ? { remoteReleases: winRemoteReleases } : {}),
+    }),
+    new MakerZIP(
+      {
+        ...(macUpdateManifestBaseUrl ? { macUpdateManifestBaseUrl } : {}),
+      },
+      ["darwin"]
+    ),
+    new MakerDMG({}, ["darwin"]),
+    new MakerRpm({}),
+    new MakerDeb({}),
+  ],
   packagerConfig: {
-    icon: "./icons/app-icon",
     asar: {
-      unpack: "**/node_modules/{better-sqlite3,bindings,file-uri-to-path,embedded-postgres,@embedded-postgres,async-exit-hook,pg,pg-connection-string,pg-pool,pg-protocol,pg-types,pgpass,split2,pg-int8,postgres-array,postgres-bytea,postgres-date,postgres-interval,xtend}/**/*",
+      unpack:
+        "**/node_modules/{better-sqlite3,bindings,file-uri-to-path,embedded-postgres,@embedded-postgres,async-exit-hook,pg,pg-connection-string,pg-pool,pg-protocol,pg-types,pgpass,split2,pg-int8,postgres-array,postgres-bytea,postgres-date,postgres-interval,xtend}/**/*",
     },
     extraResource: [
       "node_modules/better-sqlite3",
@@ -44,44 +58,27 @@ const config: ForgeConfig = {
       "node_modules/postgres-interval",
       "node_modules/xtend",
     ],
+    icon: "./icons/app-icon",
   },
-  rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({
-      ...(winRemoteReleases ? { remoteReleases: winRemoteReleases } : {}),
-    }),
-    new MakerZIP(
-      {
-        ...(macUpdateManifestBaseUrl
-          ? { macUpdateManifestBaseUrl }
-          : {}),
-      },
-      ["darwin"],
-    ),
-    new MakerDMG({}, ["darwin"]),
-    new MakerRpm({}),
-    new MakerDeb({}),
-  ],
-  publishers: [],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       build: [
         {
-          entry: "src/features/shell/main.ts",
           config: "vite.main.config.mts",
+          entry: "src/features/shell/main.ts",
           target: "main",
         },
         {
-          entry: "src/features/shell/preload.ts",
           config: "vite.preload.config.mts",
+          entry: "src/features/shell/preload.ts",
           target: "preload",
         },
       ],
       renderer: [
         {
-          name: "main_window",
           config: "vite.renderer.config.mts",
+          name: "main_window",
         },
       ],
     }),
@@ -96,6 +93,8 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],
+  publishers: [],
+  rebuildConfig: {},
 };
 
 export default config;

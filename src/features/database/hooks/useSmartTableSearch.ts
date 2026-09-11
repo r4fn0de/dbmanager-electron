@@ -9,17 +9,20 @@
  * tagged with `aiMatch: true` and appended after a brief loading indicator.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SchemaTableSummary } from "@/ipc/db/types";
 import { getAiTableSearchMatches } from "@/features/ai/hooks/ai-actions";
-import { fuzzySearchTables, isDescriptiveQuery } from "@/features/database/utils/table-search";
+import {
+  fuzzySearchTables,
+  isDescriptiveQuery,
+} from "@/features/database/utils/table-search";
+import type { SchemaTableSummary } from "@/ipc/db/types";
 
 export interface SmartTableSearchResult {
+  /** Set of table names that were matched by AI (not fuzzy) */
+  aiMatchedNames: Set<string>;
   /** Filtered tables (fuzzy + AI merged, deduplicated) */
   filteredTables: SchemaTableSummary[];
   /** Whether the AI search is currently in progress */
   isAiSearching: boolean;
-  /** Set of table names that were matched by AI (not fuzzy) */
-  aiMatchedNames: Set<string>;
 }
 
 /** Debounce delay for AI search calls (ms). */
@@ -31,7 +34,7 @@ export function useSmartTableSearch(
   query: string,
   allTables: SchemaTableSummary[],
   aiEnabled: boolean,
-  schemaContext?: string,
+  schemaContext?: string
 ): SmartTableSearchResult {
   const [aiMatches, setAiMatches] = useState<Set<string>>(new Set());
   const [isAiSearching, setIsAiSearching] = useState(false);
@@ -45,18 +48,19 @@ export function useSmartTableSearch(
   }, []);
 
   // Table names for the current schema
-  const tableNames = useMemo(
-    () => allTables.map((t) => t.name),
-    [allTables],
-  );
+  const tableNames = useMemo(() => allTables.map((t) => t.name), [allTables]);
   const tableNamesKey = useMemo(() => tableNames.join("\u0001"), [tableNames]);
   tableNamesRef.current = tableNames;
 
   // ── Fuzzy matching (instant, every keystroke) ──
   const fuzzyMatches = useMemo(() => {
-    if (!query.trim()) return allTables;
+    if (!query.trim()) {
+      return allTables;
+    }
     const results = fuzzySearchTables(tableNames, query);
-    if (results.length === 0) return [];
+    if (results.length === 0) {
+      return [];
+    }
 
     const matchSet = new Set(results.map((r) => r.name));
     // Preserve original sort order from allTables for fuzzy matches
@@ -71,7 +75,7 @@ export function useSmartTableSearch(
         abortRef.current.abort();
       }
 
-      if (!searchQuery.trim() || !aiEnabled) {
+      if (!(searchQuery.trim() && aiEnabled)) {
         clearAiState();
         return;
       }
@@ -111,7 +115,7 @@ export function useSmartTableSearch(
           }
         });
     },
-    [aiEnabled, schemaContext, clearAiState, tableNamesKey],
+    [aiEnabled, schemaContext, clearAiState, tableNamesKey]
   );
 
   // Debounce AI search on query change
@@ -121,7 +125,7 @@ export function useSmartTableSearch(
       clearTimeout(debounceTimerRef.current);
     }
 
-    if (!query.trim() || !aiEnabled) {
+    if (!(query.trim() && aiEnabled)) {
       clearAiState();
       return;
     }
@@ -144,26 +148,29 @@ export function useSmartTableSearch(
   }, [query, aiEnabled, tableNamesKey, triggerAiSearch, clearAiState]);
 
   // Cleanup on unmount
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (abortRef.current) {
         abortRef.current.abort();
       }
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-    };
-  }, []);
+    },
+    []
+  );
 
   // ── Merge fuzzy + AI results ──
   const mergedResults = useMemo(() => {
-    if (!query.trim()) return allTables;
+    if (!query.trim()) {
+      return allTables;
+    }
 
     const fuzzyNameSet = new Set(fuzzyMatches.map((t) => t.name));
 
     // AI-only matches: tables found by AI but not by fuzzy
     const aiOnlyTables = allTables.filter(
-      (t) => aiMatches.has(t.name) && !fuzzyNameSet.has(t.name),
+      (t) => aiMatches.has(t.name) && !fuzzyNameSet.has(t.name)
     );
 
     // Tag AI-only matches
@@ -177,8 +184,8 @@ export function useSmartTableSearch(
   }, [query, allTables, fuzzyMatches, aiMatches]);
 
   return {
+    aiMatchedNames: aiMatches,
     filteredTables: mergedResults,
     isAiSearching,
-    aiMatchedNames: aiMatches,
   };
 }

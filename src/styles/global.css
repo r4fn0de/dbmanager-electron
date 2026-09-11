@@ -49,7 +49,11 @@
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.5144 0.1605 267.44);
   --window-bg: color-mix(in oklch, var(--background) 25%, transparent);
-  --window-solid-bg: color-mix(in oklch, var(--background) 84%, var(--foreground));
+  --window-solid-bg: color-mix(
+    in oklch,
+    var(--background) 84%,
+    var(--foreground)
+  );
 }
 
 :root.theme-neo {
@@ -108,18 +112,22 @@
     0.25px 8px 10px -1px hsl(236.5829 64.225% 21.4383% / 0.15);
   --shadow-2xl: 0.25px 1px 3px 0 hsl(236.5829 64.225% 21.4383% / 0.38);
   --window-bg: color-mix(in oklch, var(--background) 25%, transparent);
-  --window-solid-bg: color-mix(in oklch, var(--background) 82%, var(--foreground));
+  --window-solid-bg: color-mix(
+    in oklch,
+    var(--background) 82%,
+    var(--foreground)
+  );
 }
 
 /* Tema é controlado pela classe .dark adicionada pelo next-themes */
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-body);
   margin: 0;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color: var(--foreground);
+  background: var(--background);
 }
 
 code {
@@ -194,7 +202,11 @@ code {
   --sidebar-ring: oklch(0.5144 0.1605 267.44);
   --radius: 0.1875rem;
   --window-bg: color-mix(in oklch, var(--background) 25%, transparent);
-  --window-solid-bg: color-mix(in oklch, var(--background) 70%, var(--foreground));
+  --window-solid-bg: color-mix(
+    in oklch,
+    var(--background) 70%,
+    var(--foreground)
+  );
 }
 
 /* Improve dark-mode contrast for database brand SVG icons (brand fills are too dark) */
@@ -213,8 +225,8 @@ code {
 }
 
 @theme inline {
-  --font-sans: 'Mona Sans Variable', sans-serif;
-  --font-heading: 'Mona Sans Variable', sans-serif;
+  --font-sans: "Mona Sans Variable", sans-serif;
+  --font-heading: "Mona Sans Variable", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -253,14 +265,15 @@ code {
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  --font-mono: 'IBM Plex Mono', monospace;
+  --font-mono: "IBM Plex Mono", monospace;
 }
 
 @layer base {
   * {
     @apply border-border;
   }
-  html, body {
+  html,
+  body {
     background: var(--window-bg) !important;
   }
   body {
@@ -281,8 +294,8 @@ code {
 
 /* Custom thin scrollbars */
 * {
-  scrollbar-width: thin;
   scrollbar-color: var(--muted-foreground) transparent;
+  scrollbar-width: thin;
 }
 
 /* Webkit scrollbars */
@@ -320,16 +333,20 @@ code {
 }
 
 /* ScrollArea: reveal thumb on scroll or hover */
-[data-scrolling=true] [data-slot="scroll-area-thumb"],
+[data-scrolling="true"] [data-slot="scroll-area-thumb"],
 .scroll-area-root:hover [data-slot="scroll-area-thumb"] {
-  background-color: color-mix(in oklch, var(--color-border) 60%, transparent) !important;
+  background-color: color-mix(
+    in oklch,
+    var(--color-border) 60%,
+    transparent
+  ) !important;
 }
 
 /* Glassmorphism para elementos com blur */
 .glass {
   background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .dark .glass {
@@ -350,7 +367,8 @@ code {
     min-width var(--resize-dur) var(--resize-ease),
     min-height var(--resize-dur) var(--resize-ease),
     flex-basis var(--resize-dur) var(--resize-ease);
-  will-change: width, height, max-width, max-height, min-width, min-height, flex-basis;
+  will-change:
+    width, height, max-width, max-height, min-width, min-height, flex-basis;
 }
 
 @media (prefers-reduced-motion: reduce) {

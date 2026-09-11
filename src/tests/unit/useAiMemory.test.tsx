@@ -5,28 +5,28 @@ import { describe, expect, it, vi } from "vitest";
 import { useAiMemory } from "@/features/ai/hooks/useAiMemory";
 
 const aiMocks = vi.hoisted(() => ({
+  cleanupMemory: vi.fn(),
+  clearMemory: vi.fn(),
   getEmbeddingStatus: vi.fn(),
+  getMemoryContext: vi.fn(),
   getMemoryStats: vi.fn(),
   getRecentHistory: vi.fn(),
-  storeMemory: vi.fn(),
   searchMemory: vi.fn(),
-  getMemoryContext: vi.fn(),
-  clearMemory: vi.fn(),
-  cleanupMemory: vi.fn(),
+  storeMemory: vi.fn(),
 }));
 
 vi.mock("@/ipc/manager", () => ({
   ipc: {
     client: {
       ai: {
+        cleanupMemory: aiMocks.cleanupMemory,
+        clearMemory: aiMocks.clearMemory,
         getEmbeddingStatus: aiMocks.getEmbeddingStatus,
+        getMemoryContext: aiMocks.getMemoryContext,
         getMemoryStats: aiMocks.getMemoryStats,
         getRecentHistory: aiMocks.getRecentHistory,
-        storeMemory: aiMocks.storeMemory,
         searchMemory: aiMocks.searchMemory,
-        getMemoryContext: aiMocks.getMemoryContext,
-        clearMemory: aiMocks.clearMemory,
-        cleanupMemory: aiMocks.cleanupMemory,
+        storeMemory: aiMocks.storeMemory,
       },
     },
   },
@@ -35,24 +35,29 @@ vi.mock("@/ipc/manager", () => ({
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
-      queries: { retry: false },
       mutations: { retry: false },
+      queries: { retry: false },
     },
   });
 
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
   };
 }
 
 describe("useAiMemory", () => {
   it("exposes degraded mode when embeddings are not ready", async () => {
-    aiMocks.getEmbeddingStatus.mockResolvedValue({ status: "loading", ready: false });
+    aiMocks.getEmbeddingStatus.mockResolvedValue({
+      ready: false,
+      status: "loading",
+    });
     aiMocks.getMemoryStats.mockResolvedValue({
-      totalEntries: 0,
-      withEmbeddings: 0,
       conversations: 0,
       oldestEntry: null,
+      totalEntries: 0,
+      withEmbeddings: 0,
     });
     aiMocks.getRecentHistory.mockResolvedValue({ messages: [] });
 
@@ -68,12 +73,15 @@ describe("useAiMemory", () => {
   });
 
   it("passes through memory context mode from backend", async () => {
-    aiMocks.getEmbeddingStatus.mockResolvedValue({ status: "ready", ready: true });
+    aiMocks.getEmbeddingStatus.mockResolvedValue({
+      ready: true,
+      status: "ready",
+    });
     aiMocks.getMemoryStats.mockResolvedValue({
-      totalEntries: 10,
-      withEmbeddings: 8,
       conversations: 2,
       oldestEntry: "2026-01-01T00:00:00.000Z",
+      totalEntries: 10,
+      withEmbeddings: 8,
     });
     aiMocks.getRecentHistory.mockResolvedValue({ messages: [] });
     aiMocks.getMemoryContext.mockResolvedValue({
@@ -90,7 +98,9 @@ describe("useAiMemory", () => {
       expect(result.current.isStatusLoading).toBe(false);
     });
 
-    const context = await result.current.getMemoryContext({ query: "show users" });
+    const context = await result.current.getMemoryContext({
+      query: "show users",
+    });
     expect(context.mode).toBe("text-fallback");
     expect(result.current.memoryStatus).toBe("ready");
   });

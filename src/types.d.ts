@@ -1,15 +1,15 @@
-declare module '*.css' {
+declare module "*.css" {
   const content: string;
   export default content;
 }
 
-declare module '*.svg' {
+declare module "*.svg" {
   const content: string;
   export default content;
 }
 
-declare module '@fontsource-variable/*';
-declare module '@fontsource-variable/geist*';
+declare module "@fontsource-variable/*";
+declare module "@fontsource-variable/geist*";
 
 export {};
 
@@ -22,7 +22,7 @@ declare global {
   interface Window {
     electron?: {
       platform?: string;
-      setNativeThemeSource?: (themeSource: 'system' | 'light' | 'dark') => void;
+      setNativeThemeSource?: (themeSource: "system" | "light" | "dark") => void;
       aiChat?: {
         start: (input: {
           chatId: string;
@@ -48,15 +48,23 @@ declare global {
               name: string;
               dbType: string;
               provider: string;
-              scope: 'local' | 'remote';
+              scope: "local" | "remote";
             }>;
           };
           messages: Array<{ role: string; content: string }>;
         }) => void;
         abort: (chatId: string) => void;
         onChunk: (callback: (chunk: AiChatChunk) => void) => () => void;
-        onDone: (callback: (result: { chatId: string; finishReason: string; usage?: unknown }) => void) => () => void;
-        onError: (callback: (error: { chatId: string; message: string }) => void) => () => void;
+        onDone: (
+          callback: (result: {
+            chatId: string;
+            finishReason: string;
+            usage?: unknown;
+          }) => void
+        ) => () => void;
+        onError: (
+          callback: (error: { chatId: string; message: string }) => void
+        ) => () => void;
       };
       aiInline?: {
         start: (input: {
@@ -68,8 +76,16 @@ declare global {
         }) => void;
         abort: (requestId: string) => void;
         onChunk: (callback: (chunk: AiInlineChunk) => void) => () => void;
-        onDone: (callback: (result: { requestId: string; finishReason: string; usage?: unknown }) => void) => () => void;
-        onError: (callback: (error: { requestId: string; message: string }) => void) => () => void;
+        onDone: (
+          callback: (result: {
+            requestId: string;
+            finishReason: string;
+            usage?: unknown;
+          }) => void
+        ) => () => void;
+        onError: (
+          callback: (error: { requestId: string; message: string }) => void
+        ) => () => void;
       };
       dbCancel?: {
         cancelQuery: (requestId: string) => void;
@@ -78,13 +94,42 @@ declare global {
   }
 
   type AiChatChunk =
-    | { chatId: string; type: 'text'; text: string }
-    | { chatId: string; type: 'reasoning'; text: string }
-    | { chatId: string; type: 'source'; source: unknown }
-    | { chatId: string; type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
-    | { chatId: string; type: 'tool-call-streaming-start'; toolCallId?: string; toolName?: string; input?: unknown }
-    | { chatId: string; type: 'tool-call-delta'; toolCallId?: string; toolName?: string; input?: unknown; argsTextDelta?: string }
-    | { chatId: string; type: 'tool-result'; toolCallId: string; toolName: string; result: unknown };
+    | { chatId: string; type: "text"; text: string }
+    | { chatId: string; type: "reasoning"; text: string }
+    | { chatId: string; type: "source"; source: unknown }
+    | {
+        chatId: string;
+        type: "tool-call";
+        toolCallId: string;
+        toolName: string;
+        input: unknown;
+      }
+    | {
+        chatId: string;
+        type: "tool-call-streaming-start";
+        toolCallId?: string;
+        toolName?: string;
+        input?: unknown;
+      }
+    | {
+        chatId: string;
+        type: "tool-call-delta";
+        toolCallId?: string;
+        toolName?: string;
+        input?: unknown;
+        argsTextDelta?: string;
+      }
+    | {
+        chatId: string;
+        type: "tool-result";
+        toolCallId: string;
+        toolName: string;
+        result: unknown;
+      };
 
-  type AiInlineChunk = { requestId: string; type: 'text'; text: string };
+  interface AiInlineChunk {
+    requestId: string;
+    type: "text";
+    text: string 
+}
 }

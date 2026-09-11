@@ -10,96 +10,96 @@
 // ---------------------------------------------------------------------------
 
 export interface PgInformationSchema {
-  schemata: PgSchemataTable;
   columns: PgColumnsTable;
-  tables: PgTablesTable;
-  table_constraints: PgTableConstraintsTable;
-  key_column_usage: PgKeyColumnUsageTable;
   constraint_column_usage: PgConstraintColumnUsageTable;
+  key_column_usage: PgKeyColumnUsageTable;
   referential_constraints: PgReferentialConstraintsTable;
+  schemata: PgSchemataTable;
+  table_constraints: PgTableConstraintsTable;
+  tables: PgTablesTable;
 }
 
 export interface PgSystemCatalog {
-  pg_indexes: PgIndexesTable;
-  pg_database: PgDatabaseTable;
-  pg_type: PgTypeTable;
-  pg_enum: PgEnumTable;
-  pg_namespace: PgNamespaceTable;
-  pg_class: PgClassTable;
-  pg_policy: PgPolicyTable;
-  pg_depend: PgDependTable;
   pg_attribute: PgAttributeTable;
+  pg_class: PgClassTable;
+  pg_database: PgDatabaseTable;
+  pg_depend: PgDependTable;
+  pg_enum: PgEnumTable;
+  pg_indexes: PgIndexesTable;
+  pg_namespace: PgNamespaceTable;
+  pg_policy: PgPolicyTable;
+  pg_type: PgTypeTable;
 }
 
 export interface PgDatabase extends PgInformationSchema, PgSystemCatalog {}
 
 interface PgSchemataTable {
-  schema_name: string;
   catalog_name: string;
+  schema_name: string;
   schema_owner: string;
 }
 
 interface PgColumnsTable {
-  table_schema: string;
-  table_name: string;
-  column_name: string;
-  ordinal_position: number;
-  data_type: string;
-  udt_name: string | null;
-  udt_schema: string | null;
-  is_nullable: "YES" | "NO";
-  column_default: string | null;
   character_maximum_length: number | null;
+  column_default: string | null;
+  column_name: string;
+  data_type: string;
+  is_nullable: "YES" | "NO";
   numeric_precision: number | null;
   numeric_scale: number | null;
+  ordinal_position: number;
+  table_name: string;
+  table_schema: string;
+  udt_name: string | null;
+  udt_schema: string | null;
 }
 
 interface PgTablesTable {
-  table_schema: string;
   table_name: string;
+  table_schema: string;
   table_type: "BASE TABLE" | "VIEW";
 }
 
 interface PgTableConstraintsTable {
-  constraint_schema: string;
   constraint_name: string;
+  constraint_schema: string;
   constraint_type: string;
-  table_schema: string;
   table_name: string;
+  table_schema: string;
 }
 
 interface PgKeyColumnUsageTable {
-  constraint_schema: string;
-  constraint_name: string;
-  table_schema: string;
-  table_name: string;
   column_name: string;
+  constraint_name: string;
+  constraint_schema: string;
   ordinal_position: number;
+  table_name: string;
+  table_schema: string;
 }
 
 interface PgConstraintColumnUsageTable {
-  constraint_schema: string;
-  constraint_name: string;
-  table_schema: string;
-  table_name: string;
   column_name: string;
+  constraint_name: string;
+  constraint_schema: string;
+  table_name: string;
+  table_schema: string;
 }
 
 interface PgReferentialConstraintsTable {
-  constraint_schema: string;
   constraint_name: string;
-  unique_constraint_schema: string | null;
-  unique_constraint_name: string | null;
-  match_option: string;
-  update_rule: string;
+  constraint_schema: string;
   delete_rule: string;
+  match_option: string;
+  unique_constraint_name: string | null;
+  unique_constraint_schema: string | null;
+  update_rule: string;
 }
 
 interface PgIndexesTable {
+  indexdef: string;
+  indexname: string;
   schemaname: string;
   tablename: string;
-  indexname: string;
-  indexdef: string;
 }
 
 interface PgDatabaseTable {
@@ -114,30 +114,30 @@ interface PgTypeTable {
 }
 
 interface PgEnumTable {
-  enumtypid: number;
   enumlabel: string;
   enumsortorder: number;
+  enumtypid: number;
 }
 
 interface PgNamespaceTable {
-  oid: number;
   nspname: string;
+  oid: number;
 }
 
 interface PgClassTable {
   oid: number;
+  relkind: string;
   relname: string;
   relnamespace: number;
-  relkind: string;
   relrowsecurity: boolean;
 }
 
 interface PgPolicyTable {
   oid: number;
-  polname: string;
-  polrelid: number;
   polcmd: string;
+  polname: string;
   polpermissive: boolean;
+  polrelid: number;
 }
 
 interface PgDependTable {
@@ -147,12 +147,12 @@ interface PgDependTable {
 }
 
 interface PgAttributeTable {
-  attrelid: number;
+  attisdropped: boolean;
   attname: string;
   attnum: number;
+  attrelid: number;
   atttypid: number;
   atttypmod: number;
-  attisdropped: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,13 +160,13 @@ interface PgAttributeTable {
 // ---------------------------------------------------------------------------
 
 export interface MysqlInformationSchema {
-  schemata: MysqlSchemataTable;
   columns: MysqlColumnsTable;
-  tables: MysqlTablesTable;
-  statistics: MysqlStatisticsTable;
   key_column_usage: MysqlKeyColumnUsageTable;
-  table_constraints: MysqlTableConstraintsTable;
   referential_constraints: MysqlReferentialConstraintsTable;
+  schemata: MysqlSchemataTable;
+  statistics: MysqlStatisticsTable;
+  table_constraints: MysqlTableConstraintsTable;
+  tables: MysqlTablesTable;
   views: MysqlViewsTable;
 }
 
@@ -178,67 +178,67 @@ interface MysqlSchemataTable {
 }
 
 interface MysqlColumnsTable {
-  TABLE_SCHEMA: string;
-  TABLE_NAME: string;
+  COLUMN_DEFAULT: string | null;
   COLUMN_NAME: string;
-  ORDINAL_POSITION: number;
   COLUMN_TYPE: string;
   DATA_TYPE: string;
-  IS_NULLABLE: "YES" | "NO";
-  COLUMN_DEFAULT: string | null;
-  EXTRA: string;
   EXPRESSION: string | null;
+  EXTRA: string;
+  IS_NULLABLE: "YES" | "NO";
+  ORDINAL_POSITION: number;
+  TABLE_NAME: string;
+  TABLE_SCHEMA: string;
 }
 
 interface MysqlTablesTable {
-  TABLE_SCHEMA: string;
-  TABLE_NAME: string;
-  TABLE_TYPE: string;
+  AUTO_INCREMENT: number | null;
   ENGINE: string | null;
   TABLE_COLLATION: string | null;
-  AUTO_INCREMENT: number | null;
+  TABLE_NAME: string;
   TABLE_ROWS: number | null;
+  TABLE_SCHEMA: string;
+  TABLE_TYPE: string;
 }
 
 interface MysqlStatisticsTable {
-  TABLE_SCHEMA: string;
-  TABLE_NAME: string;
-  INDEX_NAME: string;
   COLUMN_NAME: string;
-  SEQ_IN_INDEX: number;
+  INDEX_NAME: string;
   NON_UNIQUE: number;
+  SEQ_IN_INDEX: number;
+  TABLE_NAME: string;
+  TABLE_SCHEMA: string;
 }
 
 interface MysqlKeyColumnUsageTable {
-  CONSTRAINT_SCHEMA: string;
-  CONSTRAINT_NAME: string;
-  TABLE_SCHEMA: string;
-  TABLE_NAME: string;
   COLUMN_NAME: string;
+  CONSTRAINT_NAME: string;
+  CONSTRAINT_SCHEMA: string;
   ORDINAL_POSITION: number;
-  REFERENCED_TABLE_SCHEMA: string | null;
-  REFERENCED_TABLE_NAME: string | null;
   REFERENCED_COLUMN_NAME: string | null;
+  REFERENCED_TABLE_NAME: string | null;
+  REFERENCED_TABLE_SCHEMA: string | null;
+  TABLE_NAME: string;
+  TABLE_SCHEMA: string;
 }
 
 interface MysqlTableConstraintsTable {
-  CONSTRAINT_SCHEMA: string;
   CONSTRAINT_NAME: string;
-  TABLE_SCHEMA: string;
-  TABLE_NAME: string;
+  CONSTRAINT_SCHEMA: string;
   CONSTRAINT_TYPE: string;
+  TABLE_NAME: string;
+  TABLE_SCHEMA: string;
 }
 
 interface MysqlReferentialConstraintsTable {
-  CONSTRAINT_SCHEMA: string;
   CONSTRAINT_NAME: string;
+  CONSTRAINT_SCHEMA: string;
   DELETE_RULE: string | null;
   UPDATE_RULE: string | null;
 }
 
 interface MysqlViewsTable {
-  TABLE_SCHEMA: string;
   TABLE_NAME: string;
+  TABLE_SCHEMA: string;
   VIEW_DEFINITION: string;
 }
 
@@ -247,11 +247,11 @@ interface MysqlViewsTable {
 // ---------------------------------------------------------------------------
 
 export interface ClickHouseSystem {
-  databases: ChDatabasesTable;
   columns: ChColumnsTable;
-  tables: ChTablesTable;
-  parts: ChPartsTable;
   data_indexes: ChDataIndexesTable;
+  databases: ChDatabasesTable;
+  parts: ChPartsTable;
+  tables: ChTablesTable;
 }
 
 export interface ClickHouseDatabase extends ClickHouseSystem {}
@@ -262,32 +262,32 @@ interface ChDatabasesTable {
 
 interface ChColumnsTable {
   database: string;
-  table: string;
-  name: string;
-  type: string;
-  position: number;
-  default_kind: string;
   default_expression: string;
+  default_kind: string;
   is_in_primary_key: number;
+  name: string;
+  position: number;
+  table: string;
+  type: string;
 }
 
 interface ChTablesTable {
-  database: string;
-  name: string;
-  engine: string;
   create_table_query: string;
+  database: string;
+  engine: string;
+  name: string;
 }
 
 interface ChPartsTable {
-  database: string;
-  table: string;
-  rows: number;
   active: number;
   data_compressed_bytes: number;
+  database: string;
+  rows: number;
+  table: string;
 }
 
 interface ChDataIndexesTable {
   database: string;
-  table: string;
   name: string;
+  table: string;
 }

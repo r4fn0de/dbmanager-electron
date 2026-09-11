@@ -1,14 +1,20 @@
-import { normalizeDisplay } from "./valueParsers";
 import type { RowRecord } from "../types";
+import { normalizeDisplay } from "./valueParsers";
 
-export type EffectiveRow = { row: RowRecord; rowKey: string; index: number };
+export interface EffectiveRow {
+    row: RowRecord;
+    rowKey: string;
+    index: number 
+}
 
 export function rowKeyFromPk(
   pkColumns: string[],
   row: RowRecord,
-  fallback: string,
+  fallback: string
 ): string {
-  if (pkColumns.length === 0) return fallback;
+  if (pkColumns.length === 0) {
+    return fallback;
+  }
   const parts = pkColumns.map((column) => normalizeDisplay(row[column]));
   return `pk:${parts.join("|")}`;
 }
@@ -16,12 +22,12 @@ export function rowKeyFromPk(
 export function buildEffectiveRows(
   rows: RowRecord[],
   primaryKey: string[],
-  draftDeletes: Record<string, unknown>,
+  draftDeletes: Record<string, unknown>
 ): EffectiveRow[] {
   return rows.reduce<EffectiveRow[]>((acc, row, index) => {
     const key = rowKeyFromPk(primaryKey, row, `row:${index}`);
     if (!draftDeletes[key]) {
-      acc.push({ row, rowKey: key, index });
+      acc.push({ index, row, rowKey: key });
     }
     return acc;
   }, []);
@@ -30,8 +36,7 @@ export function buildEffectiveRows(
 export function getGridCellIndex(
   rowIndex: number,
   columnIndex: number,
-  columnsCount: number,
+  columnsCount: number
 ): number {
   return rowIndex * columnsCount + columnIndex;
 }
-

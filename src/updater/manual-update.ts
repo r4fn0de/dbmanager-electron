@@ -2,8 +2,6 @@ import { app } from "electron";
 import { z } from "zod";
 
 const latestReleaseSchema = z.object({
-  version: z.string().min(1),
-  downloadUrl: z.string().url().optional(),
   downloads: z
     .object({
       darwin: z
@@ -14,17 +12,19 @@ const latestReleaseSchema = z.object({
         .optional(),
       win32: z
         .object({
-          x64: z.string().url().optional(),
           arm64: z.string().url().optional(),
+          x64: z.string().url().optional(),
         })
         .optional(),
     })
     .optional(),
+  downloadUrl: z.string().url().optional(),
   notes: z.string().optional().nullable(),
   publishedAt: z.string().optional().nullable(),
+  version: z.string().min(1),
 });
 
-export type ManualUpdateInfo = {
+export interface ManualUpdateInfo {
   currentVersion: string;
   latestVersion: string;
   hasUpdate: boolean;
@@ -34,7 +34,7 @@ export type ManualUpdateInfo = {
   metaUrl: string;
   platform: NodeJS.Platform;
   arch: string;
-};
+}
 
 function compareSemver(a: string, b: string): number {
   const pa = a.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -44,8 +44,12 @@ function compareSemver(a: string, b: string): number {
   for (let i = 0; i < max; i += 1) {
     const av = pa[i] ?? 0;
     const bv = pb[i] ?? 0;
-    if (av > bv) return 1;
-    if (av < bv) return -1;
+    if (av > bv) {
+      return 1;
+    }
+    if (av < bv) {
+      return -1;
+    }
   }
 
   return 0;
@@ -57,7 +61,9 @@ function resolveMetaUrl(): string {
     return updateMetaUrl;
   }
 
-  const updateBaseUrl = (process.env.UPDATE_BASE_URL?.trim() || "https://update.novon.tech/updates").replace(/\/+$/, "");
+  const updateBaseUrl = (
+    process.env.UPDATE_BASE_URL?.trim() || "https://update.novon.tech/updates"
+  ).replace(/\/+$/, "");
   return `${updateBaseUrl}/latest.json`;
 }
 
@@ -66,14 +72,16 @@ export async function checkManualUpdate(): Promise<ManualUpdateInfo> {
   const metaUrl = resolveMetaUrl();
 
   const response = await fetch(metaUrl, {
-    method: "GET",
     headers: {
       Accept: "application/json",
     },
+    method: "GET",
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch latest update metadata (${response.status})`);
+    throw new Error(
+      `Failed to fetch latest update metadata (${response.status})`
+    );
   }
 
   const parsed = latestReleaseSchema.safeParse(await response.json());
@@ -97,14 +105,14 @@ export async function checkManualUpdate(): Promise<ManualUpdateInfo> {
   }
 
   return {
-    currentVersion,
-    latestVersion: latest.version,
-    hasUpdate,
-    downloadUrl,
-    notes: latest.notes ?? null,
-    publishedAt: latest.publishedAt ?? null,
-    metaUrl,
-    platform,
     arch,
+    currentVersion,
+    downloadUrl,
+    hasUpdate,
+    latestVersion: latest.version,
+    metaUrl,
+    notes: latest.notes ?? null,
+    platform,
+    publishedAt: latest.publishedAt ?? null,
   };
 }

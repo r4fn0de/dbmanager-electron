@@ -1,22 +1,22 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
+  Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
-import { Dialog } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/Icon";
-import { Badge } from "@/components/ui/badge";
 import type { BranchInfo } from "@/ipc/db/types";
 
 interface BranchSwitchConfirmDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  targetBranch: BranchInfo | null;
   currentBranch: BranchInfo | null;
   onConfirm: () => Promise<BranchInfo>;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  targetBranch: BranchInfo | null;
 }
 
 export function BranchSwitchConfirmDialog({
@@ -42,17 +42,19 @@ export function BranchSwitchConfirmDialog({
     }
   }, [onConfirm, onOpenChange]);
 
-  if (!targetBranch) return null;
+  if (!targetBranch) {
+    return null;
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         className="t-resize sm:max-w-[400px]"
         overlayClassName="bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon name="git-branch" className="size-4 text-muted-foreground" />
+            <Icon className="size-4 text-muted-foreground" name="git-branch" />
             Switch Branch
           </DialogTitle>
           <DialogDescription className="select-text">
@@ -62,17 +64,20 @@ export function BranchSwitchConfirmDialog({
 
         <div className="space-y-3 py-2">
           {/* Branch transition */}
-          <div className="flex items-center gap-2 justify-center">
+          <div className="flex items-center justify-center gap-2">
             <Badge
+              className="px-2 py-0.5 text-xs"
               variant={currentBranch?.isMain ? "default" : "outline"}
-              className="text-xs px-2 py-0.5"
             >
               {currentBranch?.name ?? "main"}
             </Badge>
-            <Icon name="arrow-right" className="size-3.5 text-muted-foreground" />
+            <Icon
+              className="size-3.5 text-muted-foreground"
+              name="arrow-right"
+            />
             <Badge
+              className="px-2 py-0.5 text-xs"
               variant={targetBranch.isMain ? "default" : "outline"}
-              className="text-xs px-2 py-0.5"
             >
               {targetBranch.name}
             </Badge>
@@ -80,7 +85,7 @@ export function BranchSwitchConfirmDialog({
 
           {/* Description if present */}
           {targetBranch.description && (
-            <p className="text-xs text-muted-foreground text-center select-text">
+            <p className="select-text text-center text-muted-foreground text-xs">
               {targetBranch.description}
             </p>
           )}
@@ -88,17 +93,21 @@ export function BranchSwitchConfirmDialog({
           {/* Warning */}
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
             <div className="flex items-start gap-2">
-              <Icon name="triangle-alert" className="size-3.5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed select-text">
-                Switching branches will change the database that your connection points to.
-                Any open editors or queries will use the new branch's data.
+              <Icon
+                className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                name="triangle-alert"
+              />
+              <p className="select-text text-amber-800 text-xs leading-relaxed dark:text-amber-200">
+                Switching branches will change the database that your connection
+                points to. Any open editors or queries will use the new branch's
+                data.
               </p>
             </div>
           </div>
 
           {/* Error */}
           {error && (
-            <p className="text-xs text-destructive rounded-md bg-destructive/10 px-3 py-2 select-text">
+            <p className="select-text rounded-md bg-destructive/10 px-3 py-2 text-destructive text-xs">
               {error}
             </p>
           )}
@@ -107,26 +116,22 @@ export function BranchSwitchConfirmDialog({
         {/* Actions */}
         <div className="flex justify-end gap-2 pt-2">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenChange(false)}
             disabled={isSwitching}
+            onClick={() => onOpenChange(false)}
+            size="sm"
+            variant="outline"
           >
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={handleConfirm}
-            disabled={isSwitching}
-          >
+          <Button disabled={isSwitching} onClick={handleConfirm} size="sm">
             {isSwitching ? (
               <>
-                <Icon name="loader" className="size-3.5 animate-spin mr-1.5" />
+                <Icon className="mr-1.5 size-3.5 animate-spin" name="loader" />
                 Switching...
               </>
             ) : (
               <>
-                <Icon name="git-branch" className="size-3.5 mr-1.5" />
+                <Icon className="mr-1.5 size-3.5" name="git-branch" />
                 Switch to {targetBranch.name}
               </>
             )}

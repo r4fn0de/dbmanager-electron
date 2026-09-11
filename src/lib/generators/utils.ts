@@ -4,23 +4,31 @@ import type { DatabaseType, SchemaColumn, SchemaIndex } from "@/ipc/db/types";
 // Types
 // ---------------------------------------------------------------------------
 
-export type GeneratorFormat = "sql" | "ts" | "zod" | "kysely" | "drizzle" | "prisma";
+export type GeneratorFormat =
+  | "sql"
+  | "ts"
+  | "zod"
+  | "kysely"
+  | "drizzle"
+  | "prisma";
 
 export interface GroupedIndex {
-  name: string;
-  isUnique: boolean;
-  isPrimary: boolean;
   columns: string[];
+  isPrimary: boolean;
+  isUnique: boolean;
+  name: string;
 }
 
 /** Which formats are available per database type. */
-export const GENERATOR_COMPATIBILITY: Partial<Record<GeneratorFormat, DatabaseType[]>> = {
+export const GENERATOR_COMPATIBILITY: Partial<
+  Record<GeneratorFormat, DatabaseType[]>
+> = {
+  drizzle: ["postgresql", "mysql", "mariadb", "clickhouse"],
+  kysely: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"],
+  prisma: ["postgresql", "mysql", "mariadb", "sqlite"],
   sql: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"],
   ts: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"],
   zod: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"],
-  kysely: ["postgresql", "mysql", "mariadb", "clickhouse", "sqlite"],
-  drizzle: ["postgresql", "mysql", "mariadb", "clickhouse"],
-  prisma: ["postgresql", "mysql", "mariadb", "sqlite"],
 };
 
 // ---------------------------------------------------------------------------
@@ -53,80 +61,182 @@ export function camelCase(name: string): string {
 // ---------------------------------------------------------------------------
 
 function tsMapper(t: string): string {
-  if (/int|float|decimal|number|double|numeric|serial|bigserial/i.test(t))
+  if (/int|float|decimal|number|double|numeric|serial|bigserial/i.test(t)) {
     return "number";
-  if (/bool|bit/i.test(t)) return "boolean";
-  if (/date|time/i.test(t)) return "Date";
-  if (/json/i.test(t)) return "unknown";
+  }
+  if (/bool|bit/i.test(t)) {
+    return "boolean";
+  }
+  if (/date|time/i.test(t)) {
+    return "Date";
+  }
+  if (/json/i.test(t)) {
+    return "unknown";
+  }
   return "string";
 }
 
 function zodMapper(t: string): string {
-  if (/int|float|decimal|number|double|numeric|serial|bigserial/i.test(t))
+  if (/int|float|decimal|number|double|numeric|serial|bigserial/i.test(t)) {
     return "z.number()";
-  if (/bool|bit/i.test(t)) return "z.boolean()";
-  if (/date|time/i.test(t)) return "z.date()";
-  if (/json/i.test(t)) return "z.record(z.string(), z.any())";
+  }
+  if (/bool|bit/i.test(t)) {
+    return "z.boolean()";
+  }
+  if (/date|time/i.test(t)) {
+    return "z.date()";
+  }
+  if (/json/i.test(t)) {
+    return "z.record(z.string(), z.any())";
+  }
   return "z.string()";
 }
 
 function drizzlePostgresMapper(t: string): string {
-  if (/serial/i.test(t)) return "serial";
-  if (/bigserial/i.test(t)) return "bigserial";
-  if (/bigint/i.test(t)) return "bigint";
-  if (/int/i.test(t)) return "integer";
-  if (/text/i.test(t)) return "text";
-  if (/varchar|character varying/i.test(t)) return "varchar";
-  if (/bool/i.test(t)) return "boolean";
-  if (/timestamp/i.test(t)) return "timestamp";
-  if (/date/i.test(t)) return "date";
-  if (/decimal|numeric/i.test(t)) return "decimal";
-  if (/double|float|real/i.test(t)) return "doublePrecision";
-  if (/json/i.test(t)) return "json";
-  if (/uuid/i.test(t)) return "uuid";
+  if (/serial/i.test(t)) {
+    return "serial";
+  }
+  if (/bigserial/i.test(t)) {
+    return "bigserial";
+  }
+  if (/bigint/i.test(t)) {
+    return "bigint";
+  }
+  if (/int/i.test(t)) {
+    return "integer";
+  }
+  if (/text/i.test(t)) {
+    return "text";
+  }
+  if (/varchar|character varying/i.test(t)) {
+    return "varchar";
+  }
+  if (/bool/i.test(t)) {
+    return "boolean";
+  }
+  if (/timestamp/i.test(t)) {
+    return "timestamp";
+  }
+  if (/date/i.test(t)) {
+    return "date";
+  }
+  if (/decimal|numeric/i.test(t)) {
+    return "decimal";
+  }
+  if (/double|float|real/i.test(t)) {
+    return "doublePrecision";
+  }
+  if (/json/i.test(t)) {
+    return "json";
+  }
+  if (/uuid/i.test(t)) {
+    return "uuid";
+  }
   return "text";
 }
 
 function drizzleMysqlMapper(t: string): string {
-  if (/serial/i.test(t)) return "serial";
-  if (/tinyint/i.test(t)) return "tinyint";
-  if (/bigint/i.test(t)) return "bigint";
-  if (/int/i.test(t)) return "int";
-  if (/text/i.test(t)) return "text";
-  if (/varchar/i.test(t)) return "varchar";
-  if (/bool/i.test(t)) return "boolean";
-  if (/timestamp/i.test(t)) return "timestamp";
-  if (/datetime/i.test(t)) return "datetime";
-  if (/date/i.test(t)) return "date";
-  if (/decimal|numeric/i.test(t)) return "decimal";
-  if (/double|float|real/i.test(t)) return "double";
-  if (/json/i.test(t)) return "json";
+  if (/serial/i.test(t)) {
+    return "serial";
+  }
+  if (/tinyint/i.test(t)) {
+    return "tinyint";
+  }
+  if (/bigint/i.test(t)) {
+    return "bigint";
+  }
+  if (/int/i.test(t)) {
+    return "int";
+  }
+  if (/text/i.test(t)) {
+    return "text";
+  }
+  if (/varchar/i.test(t)) {
+    return "varchar";
+  }
+  if (/bool/i.test(t)) {
+    return "boolean";
+  }
+  if (/timestamp/i.test(t)) {
+    return "timestamp";
+  }
+  if (/datetime/i.test(t)) {
+    return "datetime";
+  }
+  if (/date/i.test(t)) {
+    return "date";
+  }
+  if (/decimal|numeric/i.test(t)) {
+    return "decimal";
+  }
+  if (/double|float|real/i.test(t)) {
+    return "double";
+  }
+  if (/json/i.test(t)) {
+    return "json";
+  }
   return "text";
 }
 
 function drizzleClickhouseMapper(t: string): string {
-  if (/int/i.test(t)) return "integer";
-  if (/text/i.test(t)) return "text";
-  if (/bool/i.test(t)) return "boolean";
-  if (/date/i.test(t)) return "date";
-  if (/decimal/i.test(t)) return "decimal";
-  if (/real|float/i.test(t)) return "real";
-  if (/json/i.test(t)) return "json";
+  if (/int/i.test(t)) {
+    return "integer";
+  }
+  if (/text/i.test(t)) {
+    return "text";
+  }
+  if (/bool/i.test(t)) {
+    return "boolean";
+  }
+  if (/date/i.test(t)) {
+    return "date";
+  }
+  if (/decimal/i.test(t)) {
+    return "decimal";
+  }
+  if (/real|float/i.test(t)) {
+    return "real";
+  }
+  if (/json/i.test(t)) {
+    return "json";
+  }
   return "text";
 }
 
 function prismaMapper(t: string): string {
-  if (/bigint/i.test(t)) return "BigInt";
-  if (/serial|int|integer|smallint/i.test(t)) return "Int";
-  if (/decimal|numeric/i.test(t)) return "Decimal";
-  if (/double|float|real/i.test(t)) return "Float";
-  if (/bool|bit/i.test(t)) return "Boolean";
-  if (/timestamp|datetime/i.test(t)) return "DateTime";
-  if (/date|time/i.test(t)) return "DateTime";
-  if (/json/i.test(t)) return "Json";
-  if (/uuid/i.test(t)) return "String @db.Uuid";
-  if (/char|varchar|text|citext/i.test(t)) return "String";
-  if (/bytea|blob|binary|varbinary/i.test(t)) return "Bytes";
+  if (/bigint/i.test(t)) {
+    return "BigInt";
+  }
+  if (/serial|int|integer|smallint/i.test(t)) {
+    return "Int";
+  }
+  if (/decimal|numeric/i.test(t)) {
+    return "Decimal";
+  }
+  if (/double|float|real/i.test(t)) {
+    return "Float";
+  }
+  if (/bool|bit/i.test(t)) {
+    return "Boolean";
+  }
+  if (/timestamp|datetime/i.test(t)) {
+    return "DateTime";
+  }
+  if (/date|time/i.test(t)) {
+    return "DateTime";
+  }
+  if (/json/i.test(t)) {
+    return "Json";
+  }
+  if (/uuid/i.test(t)) {
+    return "String @db.Uuid";
+  }
+  if (/char|varchar|text|citext/i.test(t)) {
+    return "String";
+  }
+  if (/bytea|blob|binary|varbinary/i.test(t)) {
+    return "Bytes";
+  }
   return "String";
 }
 
@@ -134,56 +244,56 @@ export const TYPE_MAPPINGS: Record<
   GeneratorFormat,
   Record<string, (type: string) => string>
 > = {
-  ts: {
-    postgresql: tsMapper,
-    mysql: tsMapper,
-    mariadb: tsMapper,
+  drizzle: {
+    clickhouse: drizzleClickhouseMapper,
+    mariadb: drizzleMysqlMapper,
+    mysql: drizzleMysqlMapper,
+    postgresql: drizzlePostgresMapper,
+    sqlite: () => "text", // Drizzle doesn't support SQLite schema gen well
+  },
+  kysely: {
     clickhouse: tsMapper,
+    mariadb: tsMapper,
+    mysql: tsMapper,
+    // Kysely uses the raw DB type name as-is (it maps at query time)
+    postgresql: tsMapper,
+    sqlite: tsMapper,
+  },
+  prisma: {
+    clickhouse: () => "String", // Prisma does not support ClickHouse
+    mariadb: prismaMapper,
+    mysql: prismaMapper,
+    postgresql: prismaMapper,
+    sqlite: prismaMapper,
+  },
+  sql: {
+    clickhouse: (t) => t,
+    mariadb: (t) => t,
+    mysql: (t) => t,
+    // SQL uses the raw type name
+    postgresql: (t) => t,
+    sqlite: (t) => t,
+  },
+  ts: {
+    clickhouse: tsMapper,
+    mariadb: tsMapper,
+    mysql: tsMapper,
+    postgresql: tsMapper,
     sqlite: tsMapper,
   },
   zod: {
-    postgresql: zodMapper,
-    mysql: zodMapper,
-    mariadb: zodMapper,
     clickhouse: zodMapper,
+    mariadb: zodMapper,
+    mysql: zodMapper,
+    postgresql: zodMapper,
     sqlite: zodMapper,
-  },
-  kysely: {
-    // Kysely uses the raw DB type name as-is (it maps at query time)
-    postgresql: tsMapper,
-    mysql: tsMapper,
-    mariadb: tsMapper,
-    clickhouse: tsMapper,
-    sqlite: tsMapper,
-  },
-  sql: {
-    // SQL uses the raw type name
-    postgresql: (t) => t,
-    mysql: (t) => t,
-    mariadb: (t) => t,
-    clickhouse: (t) => t,
-    sqlite: (t) => t,
-  },
-  drizzle: {
-    postgresql: drizzlePostgresMapper,
-    mysql: drizzleMysqlMapper,
-    mariadb: drizzleMysqlMapper,
-    clickhouse: drizzleClickhouseMapper,
-    sqlite: () => "text", // Drizzle doesn't support SQLite schema gen well
-  },
-  prisma: {
-    postgresql: prismaMapper,
-    mysql: prismaMapper,
-    mariadb: prismaMapper,
-    clickhouse: () => "String", // Prisma does not support ClickHouse
-    sqlite: prismaMapper,
   },
 };
 
 export function getColumnType(
   type: string,
   format: GeneratorFormat,
-  dialect: DatabaseType,
+  dialect: DatabaseType
 ): string {
   return TYPE_MAPPINGS[format][dialect](type);
 }
@@ -198,7 +308,9 @@ export function isEnumColumn(col: SchemaColumn): boolean {
     /enum/i.test(col.data_type) ||
     (col.data_type === "USER-DEFINED" &&
       !!col.udt_name &&
-      !/^(bool|int|float|numeric|text|varchar|timestamp|date|json|uuid|bytea)/i.test(col.udt_name))
+      !/^(bool|int|float|numeric|text|varchar|timestamp|date|json|uuid|bytea)/i.test(
+        col.udt_name
+      ))
   );
 }
 
@@ -212,7 +324,7 @@ export function formatEnumAsUnionType(values: string[]): string {
 
 export function groupIndexes(
   indexes: SchemaIndex[],
-  table: string,
+  _table: string
 ): GroupedIndex[] {
   const grouped = new Map<string, GroupedIndex>();
 
@@ -223,10 +335,10 @@ export function groupIndexes(
       existing.columns.push(...idx.column_names);
     } else {
       grouped.set(key, {
-        name: idx.name,
-        isUnique: idx.is_unique,
-        isPrimary: idx.is_primary,
         columns: [...idx.column_names],
+        isPrimary: idx.is_primary,
+        isUnique: idx.is_unique,
+        name: idx.name,
       });
     }
   }
@@ -237,16 +349,22 @@ export function groupIndexes(
 export function filterExplicitIndexes(
   grouped: GroupedIndex[],
   columns: SchemaColumn[],
-  _dialect?: DatabaseType,
+  _dialect?: DatabaseType
 ): GroupedIndex[] {
   return grouped.filter((idx) => {
-    if (idx.isPrimary) return false;
+    if (idx.isPrimary) {
+      return false;
+    }
     // Remove redundant unique indexes where the column itself is unique
     const isRedundantUnique =
       idx.isUnique &&
       idx.columns.length === 1 &&
-      columns.some((c) => c.name === idx.columns[0] && c.data_type.includes("unique"));
-    if (isRedundantUnique) return false;
+      columns.some(
+        (c) => c.name === idx.columns[0] && c.data_type.includes("unique")
+      );
+    if (isRedundantUnique) {
+      return false;
+    }
     return true;
   });
 }
@@ -256,12 +374,21 @@ export function filterExplicitIndexes(
 // ---------------------------------------------------------------------------
 
 export function formatValue(value: unknown): string {
-  if (value === null) return "NULL";
-  if (typeof value === "string")
+  if (value === null) {
+    return "NULL";
+  }
+  if (typeof value === "string") {
     return `'${value.replace(/'/g, "''")}'`;
-  if (typeof value === "number") return String(value);
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
-  if (value instanceof Date) return `'${value.toISOString()}'`;
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  if (typeof value === "boolean") {
+    return value ? "TRUE" : "FALSE";
+  }
+  if (value instanceof Date) {
+    return `'${value.toISOString()}'`;
+  }
   return `'${String(value)}'`;
 }
 
@@ -278,7 +405,6 @@ export function quoteIdentifier(name: string, dialect: DatabaseType): string {
       return `\`${name}\``;
     case "sqlite":
       return `"${name}"`;
-    case "postgresql":
     default:
       return `"${name}"`;
   }
@@ -287,7 +413,7 @@ export function quoteIdentifier(name: string, dialect: DatabaseType): string {
 export function qualifiedName(
   schema: string,
   table: string,
-  dialect: DatabaseType,
+  dialect: DatabaseType
 ): string {
   return `${quoteIdentifier(schema, dialect)}.${quoteIdentifier(table, dialect)}`;
 }

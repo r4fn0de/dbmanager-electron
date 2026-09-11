@@ -6,38 +6,38 @@
 
 /** Metadata for a branch within a local database. */
 export interface BranchMeta {
-  /** Unique ID for this branch (UUID) */
-  id: string;
-  /** User-chosen branch name (e.g., "feature/add-uuid") */
-  name: string;
-  /** Sanitized branch name used in the PostgreSQL database name */
-  dbName: string;
-  /** The parent branch ID — "main" for branches off the main branch */
-  parentId: string;
   /** ISO timestamp of branch creation */
   createdAt: string;
-  /** ISO timestamp of last merge into this branch (if any) */
-  lastMergedAt?: string;
-  /** Whether this branch is the main/default branch */
-  isMain: boolean;
+  /** Sanitized branch name used in the PostgreSQL database name */
+  dbName: string;
   /** Description/notes for this branch (optional, user-editable) */
   description?: string;
+  /** Unique ID for this branch (UUID) */
+  id: string;
+  /** Whether this branch is the main/default branch */
+  isMain: boolean;
+  /** ISO timestamp of last merge into this branch (if any) */
+  lastMergedAt?: string;
+  /** User-chosen branch name (e.g., "feature/add-uuid") */
+  name: string;
+  /** The parent branch ID — "main" for branches off the main branch */
+  parentId: string;
 }
 
 /** Branch info returned to the renderer — includes runtime state. */
 export interface BranchInfo {
-  id: string;
-  name: string;
-  parentId: string;
-  isMain: boolean;
-  isActive: boolean;
-  createdAt: string;
-  lastMergedAt?: string;
-  description?: string;
-  /** The PostgreSQL database name for this branch */
-  databaseName: string;
   /** Full connection string for this branch */
   connectionString: string;
+  createdAt: string;
+  /** The PostgreSQL database name for this branch */
+  databaseName: string;
+  description?: string;
+  id: string;
+  isActive: boolean;
+  isMain: boolean;
+  lastMergedAt?: string;
+  name: string;
+  parentId: string;
 }
 
 export interface BranchDeletePreview {
@@ -46,12 +46,18 @@ export interface BranchDeletePreview {
 }
 
 export interface MergeBranchSchemaResult {
-  statements: string[];
   applied: number;
   errors: Array<{ sql: string; error: string }>;
+  statements: string[];
 }
 
-export type DatabaseType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite" | "redis";
+export type DatabaseType =
+  | "postgresql"
+  | "mysql"
+  | "mariadb"
+  | "clickhouse"
+  | "sqlite"
+  | "redis";
 
 export type SslMode =
   | "disable"
@@ -71,35 +77,44 @@ export type SslMode =
  *   - Port 8123 with SSL require → 8443 (HTTPS)
  *   - Any other port → returned as-is
  */
-export function getClickhouseEffectivePort(sslMode: SslMode, configuredPort: number): number {
+export function getClickhouseEffectivePort(
+  sslMode: SslMode,
+  configuredPort: number
+): number {
   // SSL require with default HTTP port → HTTPS port
-  if (sslMode === "require" && configuredPort === 8123) return 8443;
+  if (sslMode === "require" && configuredPort === 8123) {
+    return 8443;
+  }
   // Native protocol port (9000) → HTTP (8123) or HTTPS (8443)
-  if (configuredPort === 9000) return sslMode === "require" ? 8443 : 8123;
+  if (configuredPort === 9000) {
+    return sslMode === "require" ? 8443 : 8123;
+  }
   // Native TLS protocol port (9440) → HTTPS (8443)
-  if (configuredPort === 9440) return 8443;
+  if (configuredPort === 9440) {
+    return 8443;
+  }
   return configuredPort;
 }
 
 export interface Connection {
-  id: string;
-  name: string;
-  db_type: DatabaseType;
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  password: string;
-  ssl_mode: SslMode;
-  url?: string;
-  is_local?: boolean;
+  color?: string;
   connection_string?: string;
+  database: string;
+  db_type: DatabaseType;
   engine_version?: string; // Renamed from postgres_version for multi-db support
+  host: string;
+  id: string;
+  is_local?: boolean;
+  local_auto_start?: boolean;
+  name: string;
+  password: string;
+  port: number;
   /** @deprecated Use engine_version instead */
   postgres_version?: string;
+  ssl_mode: SslMode;
   tag?: string;
-  color?: string;
-  local_auto_start?: boolean;
+  url?: string;
+  username: string;
 }
 
 export type ConnectionInput = Omit<Connection, "id"> & {
@@ -112,23 +127,23 @@ export type ConnectionInput = Omit<Connection, "id"> & {
 export type LocalDbEngine = "postgresql" | "sqlite";
 
 export interface LocalDbInfo {
-  id: string;
-  name: string;
-  database_name: string;
-  username: string;
-  running: boolean;
-  port: number | null;
+  auto_start: boolean;
   connection_string: string;
+  database_name: string;
   /** Which engine powers this local DB. */
   engine: LocalDbEngine;
-  /** @deprecated Use engine instead. Kept for backward compat. */
-  postgres_version?: string;
-  /** SQLite-specific: absolute path to the .db file on disk. */
-  file_path?: string;
-  externally_connectable: boolean;
   external_host: string;
   external_port: number | null;
-  auto_start: boolean;
+  externally_connectable: boolean;
+  /** SQLite-specific: absolute path to the .db file on disk. */
+  file_path?: string;
+  id: string;
+  name: string;
+  port: number | null;
+  /** @deprecated Use engine instead. Kept for backward compat. */
+  postgres_version?: string;
+  running: boolean;
+  username: string;
 }
 
 export interface ColumnMeta {
@@ -138,53 +153,53 @@ export interface ColumnMeta {
 
 export interface QueryResult {
   columns: ColumnMeta[];
-  rows: unknown[][];
   row_count: number;
-  /** Whether the result set was truncated because it exceeded the safety limit */
-  truncated?: boolean;
+  rows: unknown[][];
   /** Total row count before truncation (only present when truncated is true) */
   totalRowCount?: number;
+  /** Whether the result set was truncated because it exceeded the safety limit */
+  truncated?: boolean;
 }
 
 export interface SchemaColumn {
-  name: string;
-  data_type: string;
-  udt_name?: string | null;
-  is_nullable: boolean;
   column_default: string | null;
+  data_type: string;
+  is_nullable: boolean;
+  name: string;
+  udt_name?: string | null;
 }
 
 export interface SchemaIndex {
-  name: string;
-  is_unique: boolean;
-  is_primary: boolean;
   column_names: string[];
+  is_primary: boolean;
+  is_unique: boolean;
+  name: string;
 }
 
 export interface SchemaForeignKey {
-  name: string;
   column_name: string;
+  name: string;
+  referenced_column: string;
   referenced_schema?: string;
   referenced_table: string;
-  referenced_column: string;
 }
 
 export interface SchemaPolicy {
-  name: string;
   kind: string;
+  name: string;
   roles: string[];
   using_expr: string | null;
   with_check_expr: string | null;
 }
 
 export interface SchemaTable {
-  name: string;
-  schema: string;
   columns: SchemaColumn[];
-  indexes: SchemaIndex[];
   foreign_keys: SchemaForeignKey[];
   has_rls: boolean;
+  indexes: SchemaIndex[];
+  name: string;
   rls_policies: SchemaPolicy[];
+  schema: string;
 }
 
 export interface DatabaseSchema {
@@ -193,13 +208,13 @@ export interface DatabaseSchema {
 }
 
 export interface SchemaTableSummary {
-  name: string;
-  schema: string;
-  has_rls: boolean;
-  /** Estimated row count (approximate, from DB statistics). 0 means unknown/empty. */
-  estimated_row_count: number;
   /** True when this table was matched by AI semantic search (not fuzzy). */
   aiMatch?: boolean;
+  /** Estimated row count (approximate, from DB statistics). 0 means unknown/empty. */
+  estimated_row_count: number;
+  has_rls: boolean;
+  name: string;
+  schema: string;
 }
 
 export interface SchemaSummary {
@@ -208,13 +223,13 @@ export interface SchemaSummary {
 }
 
 export interface SchemaTableDetails {
-  name: string;
-  schema: string;
-  has_rls: boolean;
   columns: SchemaColumn[];
-  indexes: SchemaIndex[];
   foreign_keys: SchemaForeignKey[];
+  has_rls: boolean;
+  indexes: SchemaIndex[];
+  name: string;
   rls_policies: SchemaPolicy[];
+  schema: string;
 }
 
 export interface TableRef {
@@ -246,11 +261,11 @@ export interface TableFilter {
 }
 
 export interface ListRowsInput {
-  tableRef: TableRef;
+  filters: TableFilter[];
   page: number;
   pageSize: number;
   sort: TableSort[];
-  filters: TableFilter[];
+  tableRef: TableRef;
 }
 
 export interface TablePageInfo {
@@ -259,27 +274,27 @@ export interface TablePageInfo {
 }
 
 export interface TableForeignKeyMeta {
-  name: string;
   column_name: string;
+  name: string;
+  referenced_column: string;
   referenced_schema: string;
   referenced_table: string;
-  referenced_column: string;
 }
 
 export interface TableRowsResponse {
   columns: ColumnMeta[];
-  rows: Record<string, unknown>[];
-  primaryKey: string[];
+  filtersAppliedOnServer?: boolean;
   foreignKeys: TableForeignKeyMeta[];
   pageInfo: TablePageInfo;
-  totalEstimate: number;
+  primaryKey: string[];
+  rows: Record<string, unknown>[];
   sortAppliedOnServer?: boolean;
-  filtersAppliedOnServer?: boolean;
+  totalEstimate: number;
 }
 
 export interface TableUpdateChange {
-  primaryKey: Record<string, unknown>;
   changes: Record<string, unknown>;
+  primaryKey: Record<string, unknown>;
 }
 
 export interface TableDeleteChange {
@@ -287,161 +302,161 @@ export interface TableDeleteChange {
 }
 
 export interface SaveChangesInput {
-  tableRef: TableRef;
-  inserts: Record<string, unknown>[];
-  updates: TableUpdateChange[];
   deletes: TableDeleteChange[];
+  inserts: Record<string, unknown>[];
+  tableRef: TableRef;
+  updates: TableUpdateChange[];
 }
 
 export interface SaveChangesResponse {
+  deleted: number;
   inserted: number;
   updated: number;
-  deleted: number;
 }
 
 export interface FkLookupInput {
-  tableRef: TableRef;
   column: string;
-  query: string;
   page: number;
   pageSize: number;
+  query: string;
+  tableRef: TableRef;
 }
 
 export interface FkLookupOption {
-  value: unknown;
   label: string;
+  value: unknown;
 }
 
 export interface FkLookupResponse {
-  options: FkLookupOption[];
   hasMore: boolean;
+  options: FkLookupOption[];
 }
 
 export interface DatabaseInfo {
-  version: string;
-  encoding: string;
-  timezone: string;
-  size?: string;
-  /** Server uptime as a human-readable string (e.g. "3 days, 2:14:30") */
-  uptime?: string;
   /** Number of currently active connections to this database */
   activeConnections?: number;
-  /** Maximum allowed connections (if available) */
-  maxConnections?: number;
   /** Cache hit ratio as a percentage (0–100), for buffer/cache efficiency */
   cacheHitRatio?: number;
+  /** Database name (useful when connection uses a default) */
+  databaseName?: string;
+  /** Number of dead tuples across all user tables (indicates need for vacuum) */
+  deadTuples?: number;
+  encoding: string;
+  /** Maximum allowed connections (if available) */
+  maxConnections?: number;
+  size?: string;
+  timezone: string;
+  /** Server uptime as a human-readable string (e.g. "3 days, 2:14:30") */
+  uptime?: string;
+  version: string;
   /** Number of committed transactions (for health monitoring) */
   xactCommit?: number;
   /** Number of rolled-back transactions */
   xactRollback?: number;
-  /** Number of dead tuples across all user tables (indicates need for vacuum) */
-  deadTuples?: number;
-  /** Database name (useful when connection uses a default) */
-  databaseName?: string;
 }
 
 // DDL Types
 export interface ColumnDefinition {
-  name: string;
   dataType: string;
+  defaultExpr?: string;
   isNullable: boolean;
   isPrimaryKey?: boolean;
   isUnique?: boolean;
-  defaultExpr?: string;
+  name: string;
   /** Foreign key reference: schema.table(column) */
   references?: string;
 }
 
 export interface CreateTableInput {
-  connectionId: string;
-  schema: string;
-  name: string;
   columns: ColumnDefinition[];
-  primaryKeyColumns?: string[];
+  connectionId: string;
   ifNotExists?: boolean;
+  name: string;
+  primaryKeyColumns?: string[];
+  schema: string;
 }
 
 export interface DropTableInput {
-  connectionId: string;
-  schema: string;
-  name: string;
   cascade?: boolean;
+  connectionId: string;
   ifExists?: boolean;
+  name: string;
+  schema: string;
 }
 
 export interface RenameTableInput {
   connectionId: string;
-  schema: string;
-  oldName: string;
   newName: string;
+  oldName: string;
+  schema: string;
 }
 
 export interface AddColumnInput {
+  column: ColumnDefinition;
   connectionId: string;
+  ifNotExists?: boolean;
   schema: string;
   table: string;
-  column: ColumnDefinition;
-  ifNotExists?: boolean;
 }
 
 export interface DropColumnInput {
+  cascade?: boolean;
+  column: string;
   connectionId: string;
+  ifExists?: boolean;
   schema: string;
   table: string;
-  column: string;
-  cascade?: boolean;
-  ifExists?: boolean;
 }
 
 export interface RenameColumnInput {
   connectionId: string;
+  newName: string;
+  oldName: string;
   schema: string;
   table: string;
-  oldName: string;
-  newName: string;
 }
 
 export interface AlterColumnTypeInput {
+  column: string;
   connectionId: string;
+  newType: string;
   schema: string;
   table: string;
-  column: string;
-  newType: string;
   usingExpr?: string;
 }
 
 export interface SetColumnNullableInput {
+  column: string;
   connectionId: string;
+  isNullable: boolean;
   schema: string;
   table: string;
-  column: string;
-  isNullable: boolean;
 }
 
 export interface SetColumnDefaultInput {
+  column: string;
   connectionId: string;
+  defaultExpr?: string;
   schema: string;
   table: string;
-  column: string;
-  defaultExpr?: string;
 }
 
 export interface CreateIndexInput {
+  columns: string[];
   connectionId: string;
+  ifNotExists?: boolean;
+  name?: string;
   schema: string;
   table: string;
-  name?: string;
-  columns: string[];
   unique?: boolean;
-  ifNotExists?: boolean;
 }
 
 export interface DropIndexInput {
-  connectionId: string;
-  schema: string;
-  name: string;
   cascade?: boolean;
+  connectionId: string;
   ifExists?: boolean;
+  name: string;
+  schema: string;
 }
 
 export interface DdlResult {
@@ -450,23 +465,23 @@ export interface DdlResult {
 
 export interface CreateSchemaInput {
   connectionId: string;
-  name: string;
   ifNotExists?: boolean;
+  name: string;
 }
 
 // Clone to Local Types
 export interface DdlScript {
-  type: "schema" | "type" | "table" | "index" | "constraint" | "sequence";
-  schema: string;
-  name: string;
-  sql: string;
   dependsOn?: string[];
+  name: string;
+  schema: string;
+  sql: string;
+  type: "schema" | "type" | "table" | "index" | "constraint" | "sequence";
 }
 
 export interface TableRowCount {
+  rowCount: number;
   schema: string;
   table: string;
-  rowCount: number;
 }
 
 export interface ExportSchemaResult {
@@ -475,24 +490,24 @@ export interface ExportSchemaResult {
 }
 
 export interface InsertBatch {
-  tableRef: TableRef;
-  rows: Record<string, unknown>[];
   columns: string[];
   isLastBatch: boolean;
+  rows: Record<string, unknown>[];
+  tableRef: TableRef;
 }
 
 export interface ExportTableDataInput {
+  batchSize: number;
   connectionId: string;
+  offset: number;
   schema: string;
   table: string;
-  batchSize: number;
-  offset: number;
 }
 
 export interface ExportTableDataResult {
-  rows: Record<string, unknown>[];
   columns: string[];
   hasMore: boolean;
+  rows: Record<string, unknown>[];
   totalExported: number;
 }
 
@@ -502,17 +517,17 @@ export interface ExecuteBatchDdlInput {
 }
 
 export interface ImportTableRowsInput {
+  columns: string[];
   connectionId: string;
+  rows: Record<string, unknown>[];
   schema: string;
   table: string;
-  columns: string[];
-  rows: Record<string, unknown>[];
 }
 
 export interface ImportColumnMeta {
-  name: string;
   dataType: string;
   isNullable: boolean;
+  name: string;
 }
 
 export interface ImportTableColumnsInput {
@@ -522,38 +537,38 @@ export interface ImportTableColumnsInput {
 }
 
 export interface ImportDryRunInput {
+  batchSize?: number;
+  columns: string[];
   connectionId: string;
+  rows: Record<string, unknown>[];
   schema: string;
   table: string;
-  columns: string[];
-  rows: Record<string, unknown>[];
-  batchSize?: number;
 }
 
 export interface ImportDryRunIssue {
-  rowIndex: number;
   message: string;
+  rowIndex: number;
 }
 
 export interface ImportDryRunResult {
-  validRows: number;
   invalidRows: number;
   issues: ImportDryRunIssue[];
+  validRows: number;
 }
 
 export interface CreateTableFromImportColumn {
-  name: string;
   dataType: string;
   isNullable: boolean;
+  name: string;
 }
 
 export interface CreateTableFromImportInput {
+  columns: CreateTableFromImportColumn[];
   connectionId: string;
+  ifNotExists?: boolean;
+  primaryKeyColumns?: string[];
   schema: string;
   table: string;
-  ifNotExists?: boolean;
-  columns: CreateTableFromImportColumn[];
-  primaryKeyColumns?: string[];
 }
 
 export interface ExportScopeInput {
@@ -568,24 +583,24 @@ export interface ExportSchemaIndexesResult {
 
 export interface WaitForDatabaseInput {
   connectionString: string;
-  maxRetries?: number;
   intervalMs?: number;
+  maxRetries?: number;
 }
 
 export interface CloneToLocalProgress {
-  stage: "schema" | "data" | "indexes" | "constraints" | "complete";
   currentTable?: string;
+  message: string;
+  rowsProcessed: number;
+  stage: "schema" | "data" | "indexes" | "constraints" | "complete";
   tablesProcessed: number;
   totalTables: number;
-  rowsProcessed: number;
-  message: string;
 }
 
 export interface CloneToLocalInput {
+  postgresVersion?: string;
+  selectedTables: { schema: string; table: string; importData: boolean }[];
   sourceConnectionId: string;
   targetLocalDbName: string;
-  selectedTables: { schema: string; table: string; importData: boolean }[];
-  postgresVersion?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -599,30 +614,30 @@ export interface SchemaEnum {
 }
 
 export interface SchemaFunction {
-  name: string;
-  schema: string;
-  type: "function" | "procedure";
-  language: string | null;
-  return_type: string | null;
   argument_count: number;
   /** Full argument list as a string, e.g. "(a integer, b text)" */
   arguments: string | null;
   /** Source/body of the function, if available */
   definition: string | null;
+  language: string | null;
+  name: string;
+  return_type: string | null;
+  schema: string;
+  type: "function" | "procedure";
 }
 
 export interface SchemaTrigger {
+  /** Full trigger definition statement */
+  definition: string | null;
+  /** Whether the trigger is currently enabled */
+  enabled: boolean;
+  event: string;
+  /** The function/procedure called by the trigger */
+  function_name: string | null;
   name: string;
   schema: string;
   table: string;
-  event: string;
   timing: string;
-  /** Whether the trigger is currently enabled */
-  enabled: boolean;
-  /** The function/procedure called by the trigger */
-  function_name: string | null;
-  /** Full trigger definition statement */
-  definition: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -630,81 +645,87 @@ export interface SchemaTrigger {
 // ---------------------------------------------------------------------------
 
 export interface IndexInfo {
+  columns: string[];
+  isPrimary: boolean;
+  isUnique: boolean;
   name: string;
   schema: string;
   table: string;
-  columns: string[];
-  isUnique: boolean;
-  isPrimary: boolean;
   type?: string;
 }
 
-export type ConstraintType = "primary_key" | "unique" | "foreign_key" | "check" | "exclude" | "not_null";
+export type ConstraintType =
+  | "primary_key"
+  | "unique"
+  | "foreign_key"
+  | "check"
+  | "exclude"
+  | "not_null";
 
 export interface ConstraintInfo {
-  name: string;
-  schema: string;
-  table: string;
-  type: ConstraintType;
   columns: string[];
   definition?: string;
+  deleteRule?: string;
+  name: string;
+  referencedColumns?: string[];
   // For foreign keys
   referencedSchema?: string;
   referencedTable?: string;
-  referencedColumns?: string[];
+  schema: string;
+  table: string;
+  type: ConstraintType;
   updateRule?: string;
-  deleteRule?: string;
 }
 
 export interface TableStats {
-  schema: string;
-  table: string;
-  rowCount: number;
-  sizeBytes: number;
-  sizeFormatted: string;
-  lastVacuum?: string | null;
   lastAnalyze?: string | null;
   lastAutoanalyze?: string | null;
+  lastVacuum?: string | null;
+  rowCount: number;
+  schema: string;
+  sizeBytes: number;
+  sizeFormatted: string;
+  table: string;
 }
 
 /** Result of EXPLAIN/EXPLAIN ANALYZE query execution */
 export interface QueryPlanResult {
-  /** Raw query plan output (format varies by database) */
-  plan: string;
-  /** Whether the plan includes actual execution stats (ANALYZE) */
-  hasExecutionStats: boolean;
-  /** Estimated/actual cost if available */
-  totalCost?: number;
   /** Estimated/actual row count if available */
   estimatedRows?: number;
   /** Execution time in ms if ANALYZE was used */
   executionTimeMs?: number;
+  /** Whether the plan includes actual execution stats (ANALYZE) */
+  hasExecutionStats: boolean;
+  /** Raw query plan output (format varies by database) */
+  plan: string;
+  /** Estimated/actual cost if available */
+  totalCost?: number;
 }
 
 /** Statistical sample of table data for AI analysis */
 export interface TableSampleResult {
-  /** Sample rows (distributed/stratified if possible) */
-  rows: Record<string, unknown>[];
   /** Column statistics (min/max/avg for numeric, top values for categorical) */
   columnStats: ColumnStat[];
-  /** Total row count in table */
-  totalRows: number;
+  /** Sample rows (distributed/stratified if possible) */
+  rows: Record<string, unknown>[];
   /** Sample size */
   sampleSize: number;
+  /** Total row count in table */
+  totalRows: number;
 }
 
 /** Statistics for a single column */
 export interface ColumnStat {
+  avg?: number;
   columnName: string;
   dataType: string;
+  max?: number | string;
   /** For numeric columns */
   min?: number | string;
-  max?: number | string;
-  avg?: number;
-  /** For string/categorical columns - top N most frequent values */
-  topValues?: { value: string; count: number }[];
   /** Null percentage (0-100) */
   nullPercentage?: number;
+  /** For string/categorical columns - top N most frequent values */
+  topValues?: { value: string; count: number }[];
   /** Unique value count (approximation for large tables) */
   uniqueCount?: number;
 }

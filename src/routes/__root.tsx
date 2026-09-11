@@ -1,28 +1,31 @@
 import {
   createRootRoute,
   Outlet,
-  useRouterState,
-  useParams,
   useNavigate,
+  useParams,
+  useRouterState,
 } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo } from "react";
-
 import type { Size } from "motion-panels/react";
-import { ThemeProvider, UpdateToastListener } from "@/features/settings";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { useCallback, useEffect, useMemo } from "react";
 import { TitleBar } from "@/components/TitleBar";
-import { Toaster } from "@/components/ui/sonner";
-import { TabbedConnectionView } from "@/features/database";
-import { AiChatPanel } from "@/features/ai";
 import { Panel, PanelGroup } from "@/components/ui/motion-panels";
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AiChatPanel } from "@/features/ai";
+import { useConnectionsList } from "@/features/connection";
+import { TabbedConnectionView } from "@/features/database";
+import { useLocalDatabases } from "@/features/localDb";
+import { ThemeProvider, UpdateToastListener } from "@/features/settings";
+import type { Connection, DatabaseType } from "@/ipc/db/types";
+import { ipc } from "@/ipc/manager";
 import { useAiChatGlobalStore } from "@/lib/stores/ai-chat-global";
 import { useAppearanceStore } from "@/lib/stores/appearance";
-import { ipc } from "@/ipc/manager";
-import { isSettingsTab, useConnectionTabsStore, detectConnectionProvider } from "@/lib/stores/connection-tabs";
-import { useConnectionsList } from "@/features/connection";
-import { useLocalDatabases } from "@/features/localDb";
-import type { Connection, DatabaseType } from "@/ipc/db/types";
 import type { ConnectionTab } from "@/lib/stores/connection-tabs";
+import {
+  detectConnectionProvider,
+  isSettingsTab,
+  useConnectionTabsStore,
+} from "@/lib/stores/connection-tabs";
 import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 
 import "../styles/global.css";
@@ -36,9 +39,15 @@ const AI_PANEL_FADE_IN = { duration: 0.22, ease: AI_PANEL_EASE };
 const AI_PANEL_FADE_OUT = { duration: 0.18, ease: AI_PANEL_EASE };
 
 function isAiChatShortcut(event: KeyboardEvent): boolean {
-  if (event.isComposing || event.repeat) return false;
-  if (!(event.metaKey || event.ctrlKey)) return false;
-  if (event.shiftKey || event.altKey) return false;
+  if (event.isComposing || event.repeat) {
+    return false;
+  }
+  if (!(event.metaKey || event.ctrlKey)) {
+    return false;
+  }
+  if (event.shiftKey || event.altKey) {
+    return false;
+  }
 
   // `code` is layout-independent (physical key), `key` is fallback.
   return event.code === "KeyJ" || event.key.toLowerCase() === "j";
@@ -46,30 +55,45 @@ function isAiChatShortcut(event: KeyboardEvent): boolean {
 
 function isLocalHost(host: string): boolean {
   const h = host.toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0";
+  return (
+    h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0"
+  );
 }
 
 function isLikelyCloudProvider(provider: string): boolean {
   return provider === "neon" || provider === "supabase";
 }
 
-function resolveConnectionScope(connection: Connection, provider: string): "local" | "remote" {
-  if (isLocalHost(connection.host)) return "local";
+function resolveConnectionScope(
+  connection: Connection,
+  provider: string
+): "local" | "remote" {
+  if (isLocalHost(connection.host)) {
+    return "local";
+  }
 
   if (connection.url) {
     try {
       const url = new URL(connection.url);
-      if (isLocalHost(url.hostname)) return "local";
+      if (isLocalHost(url.hostname)) {
+        return "local";
+      }
     } catch {
       // Ignore invalid URL values and continue with other signals.
     }
   }
 
   // Cloud providers should be treated as remote unless host/URL is explicitly local.
-  if (isLikelyCloudProvider(provider)) return "remote";
+  if (isLikelyCloudProvider(provider)) {
+    return "remote";
+  }
 
-  if (connection.is_local === true) return "local";
-  if (connection.is_local === false) return "remote";
+  if (connection.is_local === true) {
+    return "local";
+  }
+  if (connection.is_local === false) {
+    return "remote";
+  }
 
   // Safe default: unknown external hosts are remote.
   return "remote";
@@ -86,22 +110,29 @@ function buildUserConnectionsContext(input: {
     const provider = detectConnectionProvider(connection) ?? "manual";
     const scope = resolveConnectionScope(connection, provider);
     const isLocal = scope === "local";
-    const localEngine = isLocal ? input.localDbById.get(connection.id)?.engine : undefined;
-    const dbType = (localEngine ?? connection.db_type ?? "postgresql") as DatabaseType;
+    const localEngine = isLocal
+      ? input.localDbById.get(connection.id)?.engine
+      : undefined;
+    const dbType = (localEngine ??
+      connection.db_type ??
+      "postgresql") as DatabaseType;
 
     byProvider.set(provider, (byProvider.get(provider) ?? 0) + 1);
     byDbType.set(dbType, (byDbType.get(dbType) ?? 0) + 1);
 
     return {
       id: connection.id,
-      name: connection.name?.trim() || connection.database?.trim() || connection.id,
+      name:
+        connection.name?.trim() || connection.database?.trim() || connection.id,
       dbType,
       provider,
       scope,
     };
   });
 
-  const local = summaryConnections.filter((connection) => connection.scope === "local").length;
+  const local = summaryConnections.filter(
+    (connection) => connection.scope === "local"
+  ).length;
   const remote = summaryConnections.length - local;
 
   return {
@@ -110,7 +141,9 @@ function buildUserConnectionsContext(input: {
     remote,
     byProvider: Array.from(byProvider.entries())
       .map(([provider, count]) => ({ provider, count }))
-      .sort((a, b) => b.count - a.count || a.provider.localeCompare(b.provider)),
+      .sort(
+        (a, b) => b.count - a.count || a.provider.localeCompare(b.provider)
+      ),
     byDbType: Array.from(byDbType.entries())
       .map(([dbType, count]) => ({ dbType, count }))
       .sort((a, b) => b.count - a.count || a.dbType.localeCompare(b.dbType)),
@@ -129,7 +162,7 @@ function Root() {
   const { databases: localDatabases } = useLocalDatabases();
   const localDbById = useMemo(
     () => new Map(localDatabases.map((db) => [db.id, db])),
-    [localDatabases],
+    [localDatabases]
   );
 
   const isAiChatOpen = useAiChatGlobalStore((state) => state.isOpen);
@@ -137,7 +170,9 @@ function Root() {
   const setAiChatOpen = useAiChatGlobalStore((state) => state.setOpen);
   const setAiPanelSize = useAiChatGlobalStore((state) => state.setPanelSize);
   const storeContext = useAiChatGlobalStore((state) => state.currentContext);
-  const requestSqlInsertFromChat = useAiChatGlobalStore((state) => state.requestSqlInsert);
+  const requestSqlInsertFromChat = useAiChatGlobalStore(
+    (state) => state.requestSqlInsert
+  );
 
   const solidBackground = useAppearanceStore((s) => s.solidBackground);
   const themePreset = useAppearanceStore((s) => s.themePreset);
@@ -145,12 +180,16 @@ function Root() {
 
   // Apply vibrancy setting on mount and when it changes
   useEffect(() => {
-    if (!appearanceHydrated) return;
+    if (!appearanceHydrated) {
+      return;
+    }
     void ipc.client.window.setWindowVibrancy({ solid: solidBackground });
   }, [appearanceHydrated, solidBackground]);
 
   useEffect(() => {
-    if (!appearanceHydrated) return;
+    if (!appearanceHydrated) {
+      return;
+    }
     const root = document.documentElement;
     root.classList.remove("theme-neo");
     if (themePreset === "neo") {
@@ -169,19 +208,25 @@ function Root() {
       const resolvedProvider = provider ?? "manual";
       const scope = resolveConnectionScope(activeConnection, resolvedProvider);
       const isLocal = scope === "local";
-      const localEngine = isLocal ? localDbById.get(activeConnection.id)?.engine : undefined;
-      const effectiveDbType = (localEngine ?? activeConnection.db_type ?? "postgresql") as DatabaseType;
+      const localEngine = isLocal
+        ? localDbById.get(activeConnection.id)?.engine
+        : undefined;
+      const effectiveDbType = (localEngine ??
+        activeConnection.db_type ??
+        "postgresql") as DatabaseType;
       return {
         connectionId: activeConnection.id,
-        connectionLabel: activeConnection.name?.trim()
-          || activeConnection.database?.trim()
-          || activeConnection.id,
+        connectionLabel:
+          activeConnection.name?.trim() ||
+          activeConnection.database?.trim() ||
+          activeConnection.id,
         dbType: effectiveDbType,
         provider,
         // Use store's schemaContext if available for the same connection, otherwise undefined
-        schemaContext: storeContext.connectionId === activeConnection.id
-          ? storeContext.schemaContext
-          : undefined,
+        schemaContext:
+          storeContext.connectionId === activeConnection.id
+            ? storeContext.schemaContext
+            : undefined,
         connectionInfo: {
           name: activeConnection.name?.trim() || activeConnection.id,
           host: activeConnection.host,
@@ -190,19 +235,23 @@ function Root() {
           isLocal,
         },
         contextPreview: {
-          connectionLabel: activeConnection.name?.trim()
-            || activeConnection.database?.trim()
-            || activeConnection.id,
+          connectionLabel:
+            activeConnection.name?.trim() ||
+            activeConnection.database?.trim() ||
+            activeConnection.id,
           dbType: effectiveDbType,
-          selectionPreview: storeContext.connectionId === activeConnection.id
-            ? storeContext.contextPreview?.selectionPreview
-            : undefined,
-          errorPreview: storeContext.connectionId === activeConnection.id
-            ? storeContext.contextPreview?.errorPreview
-            : undefined,
-          tablePreview: storeContext.connectionId === activeConnection.id
-            ? storeContext.contextPreview?.tablePreview
-            : undefined,
+          selectionPreview:
+            storeContext.connectionId === activeConnection.id
+              ? storeContext.contextPreview?.selectionPreview
+              : undefined,
+          errorPreview:
+            storeContext.connectionId === activeConnection.id
+              ? storeContext.contextPreview?.errorPreview
+              : undefined,
+          tablePreview:
+            storeContext.connectionId === activeConnection.id
+              ? storeContext.contextPreview?.tablePreview
+              : undefined,
         },
       };
     }
@@ -220,7 +269,7 @@ function Root() {
 
   const userConnectionsContext = useMemo(
     () => buildUserConnectionsContext({ connections, localDbById }),
-    [connections, localDbById],
+    [connections, localDbById]
   );
 
   // The panel folds to zero on close, so the AI panel needs no imperative handle:
@@ -242,16 +291,16 @@ function Root() {
   // The panel reports a percentage, which is the unit the store persists.
   const handleAiPanelResize = useCallback(
     (next: Size) => {
-      setAiPanelSize(
-        typeof next === "number" ? next : Number.parseFloat(next),
-      );
+      setAiPanelSize(typeof next === "number" ? next : Number.parseFloat(next));
     },
-    [setAiPanelSize],
+    [setAiPanelSize]
   );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!isAiChatShortcut(event)) return;
+      if (!isAiChatShortcut(event)) {
+        return;
+      }
 
       event.preventDefault();
       event.stopPropagation();
@@ -276,7 +325,7 @@ function Root() {
         params: { connectionId: tab.id },
       });
     },
-    [navigate],
+    [navigate]
   );
 
   useEffect(() => {
@@ -289,14 +338,22 @@ function Root() {
 
         const store = useConnectionTabsStore.getState();
         const { tabs, activeTabId, recentTabIds, setActiveTab } = store;
-        if (tabs.length <= 1) return;
+        if (tabs.length <= 1) {
+          return;
+        }
 
         if (event.shiftKey) {
           // Ctrl+Shift+Tab: go to least-recently-used (bottom of MRU stack)
           const openIds = new Set(tabs.map((t) => t.id));
-          const candidates = recentTabIds.filter((id) => openIds.has(id) && id !== activeTabId);
-          const target = candidates[candidates.length - 1] ?? tabs.find((t) => t.id !== activeTabId)?.id;
-          const targetTab = target ? tabs.find((tab) => tab.id === target) : undefined;
+          const candidates = recentTabIds.filter(
+            (id) => openIds.has(id) && id !== activeTabId
+          );
+          const target =
+            candidates[candidates.length - 1] ??
+            tabs.find((t) => t.id !== activeTabId)?.id;
+          const targetTab = target
+            ? tabs.find((tab) => tab.id === target)
+            : undefined;
           if (targetTab) {
             setActiveTab(targetTab.id);
             navigateToTab(targetTab);
@@ -304,9 +361,14 @@ function Root() {
         } else {
           // Ctrl+Tab: go to most-recently-used (second in MRU stack)
           const openIds = new Set(tabs.map((t) => t.id));
-          const candidates = recentTabIds.filter((id) => openIds.has(id) && id !== activeTabId);
-          const target = candidates[0] ?? tabs.find((t) => t.id !== activeTabId)?.id;
-          const targetTab = target ? tabs.find((tab) => tab.id === target) : undefined;
+          const candidates = recentTabIds.filter(
+            (id) => openIds.has(id) && id !== activeTabId
+          );
+          const target =
+            candidates[0] ?? tabs.find((t) => t.id !== activeTabId)?.id;
+          const targetTab = target
+            ? tabs.find((tab) => tab.id === target)
+            : undefined;
           if (targetTab) {
             setActiveTab(targetTab.id);
             navigateToTab(targetTab);
@@ -315,28 +377,49 @@ function Root() {
         return;
       }
 
-      if (event.key.toLowerCase() === "w" && isCtrl && !event.shiftKey && !event.altKey) {
+      if (
+        event.key.toLowerCase() === "w" &&
+        isCtrl &&
+        !event.shiftKey &&
+        !event.altKey
+      ) {
         // Don't intercept if focus is inside an input/textarea (so users can still type W)
         const tag = (event.target as HTMLElement)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+          return;
+        }
         // Also skip if inside Monaco editor (code-editor context)
-        if ((event.target as HTMLElement)?.closest?.(".monaco-editor")) return;
+        if ((event.target as HTMLElement)?.closest?.(".monaco-editor")) {
+          return;
+        }
 
         event.preventDefault();
         event.stopPropagation();
 
         const store = useConnectionTabsStore.getState();
         const { tabs, activeTabId, recentTabIds, removeTab } = store;
-        if (!activeTabId || tabs.length === 0) return;
+        if (!activeTabId || tabs.length === 0) {
+          return;
+        }
 
         const activeTab = tabs.find((tab) => tab.id === activeTabId);
         const remaining = tabs.filter((t) => t.id !== activeTabId);
         const nextTab = isSettingsTab(activeTab ?? { id: activeTabId })
-          ? recentTabIds
+          ? (recentTabIds
               .map((id) => remaining.find((tab) => tab.id === id))
               .find((tab): tab is ConnectionTab => tab !== undefined) ??
-            remaining[Math.min(tabs.findIndex((t) => t.id === activeTabId), remaining.length - 1)]
-          : remaining[Math.min(tabs.findIndex((t) => t.id === activeTabId), remaining.length - 1)];
+            remaining[
+              Math.min(
+                tabs.findIndex((t) => t.id === activeTabId),
+                remaining.length - 1
+              )
+            ])
+          : remaining[
+              Math.min(
+                tabs.findIndex((t) => t.id === activeTabId),
+                remaining.length - 1
+              )
+            ];
         removeTab(activeTabId);
 
         if (nextTab) {
@@ -348,11 +431,25 @@ function Root() {
       }
 
       const isNextTab =
-        (isCtrl && event.shiftKey && !event.altKey && (event.code === "BracketRight" || event.key === "]")) ||
-        (event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.code === "PageDown");
+        (isCtrl &&
+          event.shiftKey &&
+          !event.altKey &&
+          (event.code === "BracketRight" || event.key === "]")) ||
+        (event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          !event.altKey &&
+          event.code === "PageDown");
       const isPrevTab =
-        (isCtrl && event.shiftKey && !event.altKey && (event.code === "BracketLeft" || event.key === "[")) ||
-        (event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.code === "PageUp");
+        (isCtrl &&
+          event.shiftKey &&
+          !event.altKey &&
+          (event.code === "BracketLeft" || event.key === "[")) ||
+        (event.ctrlKey &&
+          !event.metaKey &&
+          !event.shiftKey &&
+          !event.altKey &&
+          event.code === "PageUp");
 
       if (isNextTab || isPrevTab) {
         event.preventDefault();
@@ -360,7 +457,9 @@ function Root() {
 
         const store = useConnectionTabsStore.getState();
         const { tabs, activeTabId, setActiveTab } = store;
-        if (!activeTabId || tabs.length <= 1) return;
+        if (!activeTabId || tabs.length <= 1) {
+          return;
+        }
 
         const idx = tabs.findIndex((t) => t.id === activeTabId);
         const nextIdx = isNextTab
@@ -371,7 +470,6 @@ function Root() {
           setActiveTab(next.id);
           navigateToTab(next);
         }
-        return;
       }
     };
 
@@ -384,45 +482,48 @@ function Root() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <TooltipProvider delay={500}>
-        <div className="h-screen flex flex-col overflow-hidden bg-transparent antialiased" data-solid-bg={solidBackground || undefined}>
+        <div
+          className="flex h-screen flex-col overflow-hidden bg-transparent antialiased"
+          data-solid-bg={solidBackground || undefined}
+        >
           <TitleBar />
-          <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
-            <div className="page-frame h-full relative">
+          <div className="min-h-0 flex-1 overflow-hidden bg-transparent">
+            <div className="page-frame relative h-full">
               <div className="h-full overflow-hidden rounded-md">
-              <PanelGroup orientation="horizontal" className="h-full min-h-0">
-                <Panel className="min-h-0 min-w-0">
-                  {isDatabaseRoute ? <TabbedConnectionView /> : <Outlet />}
-                </Panel>
+                <PanelGroup className="h-full min-h-0" orientation="horizontal">
+                  <Panel className="min-h-0 min-w-0">
+                    {isDatabaseRoute ? <TabbedConnectionView /> : <Outlet />}
+                  </Panel>
 
-                <Panel
-                  size={aiPanelWidth}
-                  minSize="15%"
-                  maxSize="45%"
-                  collapsed={!isAiChatOpen}
-                  keepMounted={false}
-                  onSizeChange={handleAiPanelResize}
-                  transition={AI_PANEL_FADE_IN}
-                  animate={{ ...AI_PANEL_OPEN, transition: AI_PANEL_FADE_IN }}
-                  exit={{ ...AI_PANEL_CLOSED, transition: AI_PANEL_FADE_OUT }}
-                  initial={AI_PANEL_CLOSED}
-                  className="min-h-0 min-w-0 overflow-hidden"
-                >
-                  <AiChatPanel
-                    className="-mt-1.5 h-[calc(100%+6px)] pl-0 pr-0"
-                    connectionId={effectiveContext.connectionId}
-                    connectionLabel={effectiveContext.connectionLabel}
-                    connectionInfo={effectiveContext.connectionInfo}
-                    contextPreview={effectiveContext.contextPreview}
-                    dbType={effectiveContext.dbType}
-                    isOpen={isAiChatOpen}
-                    onClose={handleAiChatClose}
-                    onInsertSql={requestSqlInsertFromChat}
-                    provider={effectiveContext.provider}
-                    schemaContext={effectiveContext.schemaContext}
-                    userConnectionsContext={userConnectionsContext}
-                  />
-                </Panel>
-              </PanelGroup>
+                  <Panel
+                    animate={{ ...AI_PANEL_OPEN, transition: AI_PANEL_FADE_IN }}
+                    className="min-h-0 min-w-0 overflow-hidden"
+                    collapsed={!isAiChatOpen}
+                    exit={{ ...AI_PANEL_CLOSED, transition: AI_PANEL_FADE_OUT }}
+                    initial={AI_PANEL_CLOSED}
+                    keepMounted={false}
+                    maxSize="45%"
+                    minSize="15%"
+                    onSizeChange={handleAiPanelResize}
+                    size={aiPanelWidth}
+                    transition={AI_PANEL_FADE_IN}
+                  >
+                    <AiChatPanel
+                      className="-mt-1.5 h-[calc(100%+6px)] pr-0 pl-0"
+                      connectionId={effectiveContext.connectionId}
+                      connectionInfo={effectiveContext.connectionInfo}
+                      connectionLabel={effectiveContext.connectionLabel}
+                      contextPreview={effectiveContext.contextPreview}
+                      dbType={effectiveContext.dbType}
+                      isOpen={isAiChatOpen}
+                      onClose={handleAiChatClose}
+                      onInsertSql={requestSqlInsertFromChat}
+                      provider={effectiveContext.provider}
+                      schemaContext={effectiveContext.schemaContext}
+                      userConnectionsContext={userConnectionsContext}
+                    />
+                  </Panel>
+                </PanelGroup>
               </div>
             </div>
           </div>

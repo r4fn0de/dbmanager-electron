@@ -9,41 +9,41 @@ export type ProgressiveBlurSide = "top" | "bottom" | "left" | "right";
 
 export interface ProgressiveBlurProps
   extends React.HTMLAttributes<HTMLDivElement> {
+  className?: string;
   /** Which edge the blur is strongest at. @default "bottom" */
   side?: ProgressiveBlurSide;
-  /** Blur amount in pixels. @default 4 */
-  strength?: number;
   /** Thickness of the blurred area. @default "160px" */
   size?: string | number;
+  /** Blur amount in pixels. @default 4 */
+  strength?: number;
   /** Add a background-color tint fade alongside the blur. @default true */
   tint?: boolean;
   /** Opacity of the tint at the solid edge (0–1). @default 1 */
   tintStrength?: number;
-  className?: string;
 }
 
 // ─── Module-level constants ───────────────────────────────────────────────────
 
 const IS_HORIZONTAL: Record<ProgressiveBlurSide, boolean> = {
-  top: false,
   bottom: false,
   left: true,
   right: true,
+  top: false,
 };
 
 // Gradient goes FROM the edge (opaque) TO the content (transparent)
 const FADE_DIR: Record<ProgressiveBlurSide, string> = {
-  top: "to bottom",
   bottom: "to top",
   left: "to right",
   right: "to left",
+  top: "to bottom",
 };
 
 const POSITION_STYLE: Record<ProgressiveBlurSide, React.CSSProperties> = {
-  top: { top: 0, left: 0 },
   bottom: { bottom: 0, left: 0 },
-  left: { top: 0, left: 0 },
-  right: { top: 0, right: 0 },
+  left: { left: 0, top: 0 },
+  right: { right: 0, top: 0 },
+  top: { left: 0, top: 0 },
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ export const ProgressiveBlur = React.memo(
     const sizeValue = typeof size === "number" ? `${size}px` : size;
 
     const sizeStyle: React.CSSProperties = isHorizontal
-      ? { width: sizeValue, height: "100%" }
+      ? { height: "100%", width: sizeValue }
       : { height: sizeValue, width: "100%" };
 
     const maskImage = `linear-gradient(${fadeDir}, black 50%, transparent 100%)`;
@@ -80,11 +80,11 @@ export const ProgressiveBlur = React.memo(
         style={{
           ...sizeStyle,
           ...POSITION_STYLE[side],
+          backdropFilter: `blur(${strength}px)`,
           background,
           maskImage,
-          WebkitMaskImage: maskImage,
-          backdropFilter: `blur(${strength}px)`,
           WebkitBackdropFilter: `blur(${strength}px)`,
+          WebkitMaskImage: maskImage,
           willChange: "backdrop-filter",
           ...style,
         }}
@@ -98,5 +98,5 @@ export const ProgressiveBlur = React.memo(
     prev.size === next.size &&
     prev.tint === next.tint &&
     prev.tintStrength === next.tintStrength &&
-    prev.className === next.className,
+    prev.className === next.className
 );

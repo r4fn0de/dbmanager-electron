@@ -6,11 +6,6 @@ import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  server: {
-    host: "127.0.0.1",
-    port: 5173,
-    strictPort: true,
-  },
   plugins: [
     tanstackRouter({
       target: "react",
@@ -20,9 +15,14 @@ export default defineConfig({
     babel({ presets: [reactCompilerPreset()] }),
   ],
   resolve: {
-    preserveSymlinks: true,
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
     },
+    preserveSymlinks: true,
+  },
+  server: {
+    host: "127.0.0.1",
+    port: 5173,
+    strictPort: true,
   },
 });

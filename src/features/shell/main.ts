@@ -1,16 +1,23 @@
 import path from "node:path";
-import { app, BrowserWindow, dialog, Menu, nativeTheme, session } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  Menu,
+  nativeTheme,
+  session,
+} from "electron";
 import { ipcMain } from "electron/main";
 import { downloadChromeExtension } from "electron-devtools-installer/dist/downloadChromeExtension";
+import { APP_DISPLAY_NAME } from "@/appBranding";
+import { DB_IPC_CHANNELS, IPC_CHANNELS, inDevelopment } from "@/constants";
+import { registerAiStreamingHandlers } from "@/ipc/ai";
 import { ipcContext } from "@/ipc/context";
-import { IPC_CHANNELS, DB_IPC_CHANNELS, inDevelopment } from "@/constants";
-import { getBasePath } from "@/lib/path";
+import { cancelQuery as cancelActiveQuery } from "@/ipc/db/active-queries";
+import { closeAllPools } from "@/ipc/db/kysely-factory";
 import { localDbManager } from "@/ipc/db/local-db-manager";
 import { registerDrivers } from "@/ipc/db/registry";
-import { closeAllPools } from "@/ipc/db/kysely-factory";
-import { registerAiStreamingHandlers } from "@/ipc/ai";
-import { APP_DISPLAY_NAME } from "@/appBranding";
-import { cancelQuery as cancelActiveQuery } from "@/ipc/db/active-queries";
+import { getBasePath } from "@/lib/path";
 import { initializeAutoUpdates } from "@/updater/auto-update";
 
 const REACT_DEVELOPER_TOOLS_EXTENSION_ID = "fmkadmapgofadopljbjfkapdkoienihi";
@@ -60,19 +67,27 @@ function buildDevServerCandidateUrls(rawUrl: string): string[] {
   }
 }
 
-async function loadDevServerURL(mainWindow: BrowserWindow, rawUrl: string): Promise<void> {
+async function loadDevServerURL(
+  mainWindow: BrowserWindow,
+  rawUrl: string
+): Promise<void> {
   let lastError: unknown;
   const candidateUrls = buildDevServerCandidateUrls(rawUrl);
 
   for (let attempt = 1; attempt <= DEV_SERVER_MAX_RETRIES + 1; attempt += 1) {
     for (const url of candidateUrls) {
       try {
-        console.log(`[window] loading dev server URL (attempt ${attempt}/${DEV_SERVER_MAX_RETRIES + 1}): ${url}`);
+        console.log(
+          `[window] loading dev server URL (attempt ${attempt}/${DEV_SERVER_MAX_RETRIES + 1}): ${url}`
+        );
         await mainWindow.loadURL(url);
         return;
       } catch (error) {
         lastError = error;
-        console.error(`[window] failed to load dev server URL on attempt ${attempt}:`, error);
+        console.error(
+          `[window] failed to load dev server URL on attempt ${attempt}:`,
+          error
+        );
 
         if (!mainWindow.isDestroyed() && mainWindow.webContents.isLoading()) {
           mainWindow.webContents.stop();
@@ -93,10 +108,15 @@ async function runAsyncShutdown(reason: string): Promise<void> {
     await Promise.race([
       localDbManager.stopAll(),
       new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("stopAll timeout")), SHUTDOWN_TIMEOUT_MS);
+        setTimeout(
+          () => reject(new Error("stopAll timeout")),
+          SHUTDOWN_TIMEOUT_MS
+        );
       }),
     ]);
-    console.log(`[shutdown] localDbManager.stopAll completed in ${Date.now() - startTime}ms`);
+    console.log(
+      `[shutdown] localDbManager.stopAll completed in ${Date.now() - startTime}ms`
+    );
   } catch (error) {
     console.error("[shutdown] localDbManager.stopAll failed:", error);
   }
@@ -105,23 +125,33 @@ async function runAsyncShutdown(reason: string): Promise<void> {
     await Promise.race([
       closeAllPools(),
       new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("closeAllPools timeout")), SHUTDOWN_TIMEOUT_MS);
+        setTimeout(
+          () => reject(new Error("closeAllPools timeout")),
+          SHUTDOWN_TIMEOUT_MS
+        );
       }),
     ]);
-    console.log(`[shutdown] closeAllPools completed in ${Date.now() - startTime}ms`);
+    console.log(
+      `[shutdown] closeAllPools completed in ${Date.now() - startTime}ms`
+    );
   } catch (error) {
     console.error("[shutdown] closeAllPools failed:", error);
   }
 }
 
 function runSyncShutdown(reason: string): void {
-  if (hasRunSyncShutdown) return;
+  if (hasRunSyncShutdown) {
+    return;
+  }
   hasRunSyncShutdown = true;
   console.log(`[shutdown] Running sync shutdown (${reason})...`);
 
   localDbManager.stopAllSync();
   closeAllPools().catch((error) => {
-    console.error("[shutdown] closeAllPools failed during sync shutdown:", error);
+    console.error(
+      "[shutdown] closeAllPools failed during sync shutdown:",
+      error
+    );
   });
 }
 
@@ -133,43 +163,43 @@ function createWindow() {
   const platformOptions: Electron.BrowserWindowConstructorOptions =
     process.platform === "darwin"
       ? {
+          backgroundColor: "#00000000",
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 14, y: 12 },
           // macOS: vibrancy com blur nativo
           transparent: true,
           vibrancy: "fullscreen-ui",
           visualEffectState: "active", // mantém o blur mesmo quando a janela perde foco
-          backgroundColor: "#00000000",
-          titleBarStyle: "hiddenInset",
-          trafficLightPosition: { x: 14, y: 12 },
         }
       : process.platform === "win32"
         ? {
+            backgroundColor: "#00000000",
+            backgroundMaterial: "acrylic",
+            titleBarStyle: "hidden",
             // Windows: transparência com blur
             transparent: true,
-            backgroundMaterial: "acrylic",
-            backgroundColor: "#00000000",
-            titleBarStyle: "hidden",
           }
         : {
-            // Linux: transparência básica
-            transparent: true,
             backgroundColor: "#00000000",
             titleBarStyle: "hidden",
+            // Linux: transparência básica
+            transparent: true,
           };
 
   const mainWindow = new BrowserWindow({
-    width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    show: false,
     icon: path.join(basePath, "../icons/app-icon.png"),
+    minHeight: 600,
+    minWidth: 800,
+    show: false,
     webPreferences: {
-      devTools: inDevelopment,
       contextIsolation: true,
+      devTools: inDevelopment,
       nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
       preload,
     },
+    width: 1200,
     ...platformOptions,
   });
   ipcContext.setMainWindow(mainWindow);
@@ -187,7 +217,9 @@ function createWindow() {
       return;
     }
     windowShown = true;
-    console.log(`[window] isVisible: ${mainWindow.isVisible()}, isLoading: ${mainWindow.webContents.isLoading()}`);
+    console.log(
+      `[window] isVisible: ${mainWindow.isVisible()}, isLoading: ${mainWindow.webContents.isLoading()}`
+    );
 
     // Even if window is visible, ensure it's shown and focused
     if (!mainWindow.isVisible()) {
@@ -212,13 +244,17 @@ function createWindow() {
   });
 
   mainWindow.on("close", (event) => {
-    if (isQuitting) return;
+    if (isQuitting) {
+      return;
+    }
 
     const hasUnsavedChanges = ipcContext.hasUnsavedChanges;
     const runningLocalDbs = localDbManager.getRunningInstancesSnapshot();
     const hasRunningLocalDbs = runningLocalDbs.length > 0;
 
-    if (!hasUnsavedChanges && !hasRunningLocalDbs) return;
+    if (!(hasUnsavedChanges || hasRunningLocalDbs)) {
+      return;
+    }
 
     event.preventDefault();
 
@@ -227,7 +263,9 @@ function createWindow() {
     if (hasUnsavedChanges) {
       const unsavedScopes = ipcContext.unsavedScopeKeys;
       const summarizedScopes = unsavedScopes.slice(0, 3).map((scope) => {
-        if (!scope.startsWith("table:")) return scope;
+        if (!scope.startsWith("table:")) {
+          return scope;
+        }
         const [, , tableRef] = scope.split(":");
         return tableRef ?? scope;
       });
@@ -236,7 +274,9 @@ function createWindow() {
       details.push("Closing now may discard pending edits.", "");
       details.push(...summarizedScopes.map((scope) => `• ${scope}`));
       if (hasMoreScopes) {
-        details.push(`• +${unsavedScopes.length - summarizedScopes.length} more`);
+        details.push(
+          `• +${unsavedScopes.length - summarizedScopes.length} more`
+        );
       }
     }
 
@@ -244,34 +284,41 @@ function createWindow() {
       const summarizedRunningDbs = runningLocalDbs
         .slice(0, 3)
         .map((db) => `${db.name} (${db.engine})`);
-      const hasMoreRunningDbs = runningLocalDbs.length > summarizedRunningDbs.length;
+      const hasMoreRunningDbs =
+        runningLocalDbs.length > summarizedRunningDbs.length;
 
-      if (details.length > 0) details.push("");
+      if (details.length > 0) {
+        details.push("");
+      }
       details.push(
         "There are local databases still running.",
         "The app will pause closing and stop them safely before exiting.",
-        "",
+        ""
       );
       details.push(...summarizedRunningDbs.map((dbLabel) => `• ${dbLabel}`));
       if (hasMoreRunningDbs) {
-        details.push(`• +${runningLocalDbs.length - summarizedRunningDbs.length} more`);
+        details.push(
+          `• +${runningLocalDbs.length - summarizedRunningDbs.length} more`
+        );
       }
     }
 
     details.push("", "Do you want to quit anyway?");
 
     const choice = dialog.showMessageBoxSync(mainWindow, {
-      type: "warning",
       buttons: ["Cancel", "Quit Anyway"],
-      defaultId: 0,
       cancelId: 0,
-      title: APP_DISPLAY_NAME,
-      message: "Confirm app close",
+      defaultId: 0,
       detail: details.join("\n"),
+      message: "Confirm app close",
       noLink: true,
+      title: APP_DISPLAY_NAME,
+      type: "warning",
     });
 
-    if (choice === 0) return;
+    if (choice === 0) {
+      return;
+    }
 
     isQuitting = true;
     void (async () => {
@@ -280,7 +327,10 @@ function createWindow() {
           await localDbManager.stopAll();
         }
       } catch (error) {
-        console.error("[shutdown] Failed to stop local DBs before close:", error);
+        console.error(
+          "[shutdown] Failed to stop local DBs before close:",
+          error
+        );
       } finally {
         ipcContext.clearUnsavedScopes();
         if (!mainWindow.isDestroyed()) {
@@ -309,7 +359,7 @@ function createWindow() {
         validatedURL,
       });
       showMainWindow("did-fail-load");
-    },
+    }
   );
 
   // Ensure window shows even if something goes wrong with loading
@@ -322,7 +372,9 @@ function createWindow() {
   });
   mainWindow.webContents.on("console-message", (details) => {
     const { level, sourceId, lineNumber, message } = details;
-    console.log(`[renderer:console:${level}] ${sourceId}:${lineNumber} ${message}`);
+    console.log(
+      `[renderer:console:${level}] ${sourceId}:${lineNumber} ${message}`
+    );
   });
   mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
     console.error(`[window] preload error at ${preloadPath}:`, error);
@@ -335,18 +387,23 @@ function createWindow() {
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void loadDevServerURL(mainWindow, MAIN_WINDOW_VITE_DEV_SERVER_URL).catch((error) => {
-      console.error("[window] failed to load renderer after retries:", error);
-      if (!mainWindow.isDestroyed()) {
-        showMainWindow("dev-server-load-failed");
+    void loadDevServerURL(mainWindow, MAIN_WINDOW_VITE_DEV_SERVER_URL).catch(
+      (error) => {
+        console.error("[window] failed to load renderer after retries:", error);
+        if (!mainWindow.isDestroyed()) {
+          showMainWindow("dev-server-load-failed");
+        }
+        dialog.showErrorBox(
+          "Renderer Startup Error",
+          `The renderer failed to load from ${MAIN_WINDOW_VITE_DEV_SERVER_URL}.\n\nPlease restart the dev server and try again.`
+        );
       }
-      dialog.showErrorBox(
-        "Renderer Startup Error",
-        `The renderer failed to load from ${MAIN_WINDOW_VITE_DEV_SERVER_URL}.\n\nPlease restart the dev server and try again.`,
-      );
-    });
+    );
   } else {
-    const filePath = path.join(basePath, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    const filePath = path.join(
+      basePath,
+      `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`
+    );
     console.log(`[window] loading file: ${filePath}`);
     mainWindow.loadFile(filePath).catch((err) => {
       console.error("[window] failed to load file:", err);
@@ -356,7 +413,7 @@ function createWindow() {
 
 async function installExtensions() {
   const startTime = Date.now();
-  const TIMEOUT_MS = 10000; // 10 second timeout
+  const TIMEOUT_MS = 10_000; // 10 second timeout
 
   try {
     const extensionApi = session.defaultSession.extensions;
@@ -366,18 +423,24 @@ async function installExtensions() {
 
     // Race between download and timeout
     const extensionFolder = await Promise.race([
-      downloadChromeExtension(
-        REACT_DEVELOPER_TOOLS_EXTENSION_ID,
-        { forceDownload: false, attempts: 3 },
-      ),
+      downloadChromeExtension(REACT_DEVELOPER_TOOLS_EXTENSION_ID, {
+        attempts: 3,
+        forceDownload: false,
+      }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Extension download timeout")), TIMEOUT_MS)
+        setTimeout(
+          () => reject(new Error("Extension download timeout")),
+          TIMEOUT_MS
+        )
       ),
     ]);
 
     if (installedExtension?.id) {
       const unloadPromise = new Promise<void>((resolve) => {
-        const handler = (_event: Electron.Event, extension: Electron.Extension) => {
+        const handler = (
+          _event: Electron.Event,
+          extension: Electron.Extension
+        ) => {
           if (extension.id === installedExtension.id) {
             extensionApi.removeListener("extension-unloaded", handler);
             resolve();
@@ -392,9 +455,14 @@ async function installExtensions() {
     }
 
     const loadedExtension = await extensionApi.loadExtension(extensionFolder);
-    console.log(`[startup] Extensions installed in ${Date.now() - startTime}ms: ${loadedExtension.name}`);
+    console.log(
+      `[startup] Extensions installed in ${Date.now() - startTime}ms: ${loadedExtension.name}`
+    );
   } catch (error) {
-    console.error(`[startup] Failed to install extensions after ${Date.now() - startTime}ms:`, error);
+    console.error(
+      `[startup] Failed to install extensions after ${Date.now() - startTime}ms:`,
+      error
+    );
     // Non-fatal: continue without extensions
   }
 }
@@ -406,52 +474,63 @@ async function runPostWindowInitialization() {
   // Run independent operations in parallel
   const operations = [
     {
-      name: "installExtensions",
       fn: () => installExtensions(),
-      timeout: 15000,
+      name: "installExtensions",
+      timeout: 15_000,
     },
     {
-      name: "registerDrivers",
       fn: () => registerDrivers(),
-      timeout: 10000,
+      name: "registerDrivers",
+      timeout: 10_000,
     },
     {
-      name: "registerAiHandlers",
       fn: () => registerAiStreamingHandlers(),
+      name: "registerAiHandlers",
       timeout: 5000,
     },
   ];
 
-  const runWithTimeout = async <T>(name: string, fn: () => T | Promise<T>, timeoutMs: number) => {
+  const runWithTimeout = async <T>(
+    name: string,
+    fn: () => T | Promise<T>,
+    timeoutMs: number
+  ) => {
     const opStart = Date.now();
     try {
-      const result = await Promise.race([
+      const _result = await Promise.race([
         Promise.resolve(fn()),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error(`${name} timeout`)), timeoutMs)
         ),
       ]);
       console.log(`[startup] ${name} completed in ${Date.now() - opStart}ms`);
-      return { name, success: true, duration: Date.now() - opStart };
+      return { duration: Date.now() - opStart, name, success: true };
     } catch (error) {
-      console.error(`[startup] ${name} failed after ${Date.now() - opStart}ms:`, error);
-      return { name, success: false, error, duration: Date.now() - opStart };
+      console.error(
+        `[startup] ${name} failed after ${Date.now() - opStart}ms:`,
+        error
+      );
+      return { duration: Date.now() - opStart, error, name, success: false };
     }
   };
 
   // Run all operations in parallel
   const results = await Promise.all(
-    operations.map(op => runWithTimeout(op.name, op.fn, op.timeout))
+    operations.map((op) => runWithTimeout(op.name, op.fn, op.timeout))
   );
 
   const totalTime = Date.now() - startTime;
-  const successful = results.filter(r => r.success).length;
-  console.log(`[startup] Post-window initialization complete in ${totalTime}ms (${successful}/${operations.length} ops succeeded)`);
+  const successful = results.filter((r) => r.success).length;
+  console.log(
+    `[startup] Post-window initialization complete in ${totalTime}ms (${successful}/${operations.length} ops succeeded)`
+  );
 
   // Log any failures
-  results.filter(r => !r.success).forEach(r => {
-    console.error(`[startup] Failed operation: ${r.name}`);
-  });
+  results
+    .filter((r) => !r.success)
+    .forEach((r) => {
+      console.error(`[startup] Failed operation: ${r.name}`);
+    });
 }
 
 function setupMenu() {
@@ -495,15 +574,18 @@ function setupMenu() {
   if (inDevelopment) {
     viewSubmenu.push(
       {
-        label: "Toggle Developer Tools",
         accelerator: isMac ? "Alt+Cmd+I" : "Ctrl+Shift+I",
-        click: (_menuItem: Electron.MenuItem, focusedWindow: Electron.BaseWindow | undefined) => {
+        click: (
+          _menuItem: Electron.MenuItem,
+          focusedWindow: Electron.BaseWindow | undefined
+        ) => {
           if (focusedWindow instanceof BrowserWindow) {
             focusedWindow.webContents.toggleDevTools();
           }
         },
+        label: "Toggle Developer Tools",
       },
-      { type: "separator" },
+      { type: "separator" }
     );
   }
   viewSubmenu.push(
@@ -514,7 +596,7 @@ function setupMenu() {
     { role: "zoomIn" },
     { role: "zoomOut" },
     { type: "separator" },
-    { role: "togglefullscreen" },
+    { role: "togglefullscreen" }
   );
   template.push({ label: "View", submenu: viewSubmenu });
 
@@ -558,11 +640,12 @@ async function setupORPC() {
       if (cancelled) {
         console.log(`[db:cancel] Query ${requestId} cancelled`);
       } else {
-        console.warn(`[db:cancel] Query ${requestId} not found (may have already completed)`);
+        console.warn(
+          `[db:cancel] Query ${requestId} not found (may have already completed)`
+        );
       }
     }
   );
-
 }
 
 function configureAppIdentity(): void {
@@ -590,15 +673,22 @@ app.whenReady().then(async () => {
     while (orpcRetries < maxRetries) {
       try {
         await setupORPC();
-        console.log(`[startup] ORPC setup succeeded (attempt ${orpcRetries + 1})`);
+        console.log(
+          `[startup] ORPC setup succeeded (attempt ${orpcRetries + 1})`
+        );
         break;
       } catch (error) {
         orpcRetries++;
-        console.error(`[startup] ORPC setup failed (attempt ${orpcRetries}/${maxRetries}):`, error);
+        console.error(
+          `[startup] ORPC setup failed (attempt ${orpcRetries}/${maxRetries}):`,
+          error
+        );
         if (orpcRetries >= maxRetries) {
-          console.error("[startup] ORPC setup failed after all retries, continuing without IPC");
+          console.error(
+            "[startup] ORPC setup failed after all retries, continuing without IPC"
+          );
         } else {
-          await new Promise(r => setTimeout(r, 100 * orpcRetries)); // Exponential backoff
+          await new Promise((r) => setTimeout(r, 100 * orpcRetries)); // Exponential backoff
         }
       }
     }
@@ -610,11 +700,14 @@ app.whenReady().then(async () => {
     setupMenu();
 
     // Keep the window startup path fast and run non-critical setup in background.
-    console.log("[startup] Starting post-window initialization (background)...");
+    console.log(
+      "[startup] Starting post-window initialization (background)..."
+    );
     void runPostWindowInitialization();
 
-    console.log(`[startup] Core initialization complete in ${Date.now() - startTime}ms`);
-
+    console.log(
+      `[startup] Core initialization complete in ${Date.now() - startTime}ms`
+    );
   } catch (error) {
     console.error("[startup] Fatal error during app initialization:", error);
 
@@ -630,7 +723,9 @@ app.whenReady().then(async () => {
 // Stop all local DB instances and close database pools on quit
 // Prefer async cleanup in before-quit; keep will-quit as a final sync fallback.
 app.on("before-quit", (event) => {
-  if (isShutdownInProgress) return;
+  if (isShutdownInProgress) {
+    return;
+  }
 
   event.preventDefault();
   isShutdownInProgress = true;

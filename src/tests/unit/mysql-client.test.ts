@@ -1,14 +1,13 @@
 import { describe, expect, test } from "vitest";
+import type { ServerVersion } from "@/ipc/db/mysql-client";
 import {
   escId,
   mapMySqlType,
   parseServerVersion,
-  versionGte,
   supportsAddColumnIfNotExists,
   supportsCreateIndexIfNotExists,
+  versionGte,
 } from "@/ipc/db/mysql-client";
-import type { ServerVersion } from "@/ipc/db/mysql-client";
-import type { DatabaseType } from "@/ipc/db/types";
 
 // ---------------------------------------------------------------------------
 // escId — MySQL identifier escaping
@@ -126,37 +125,37 @@ describe("mapMySqlType", () => {
 describe("parseServerVersion", () => {
   test("parses standard MySQL version", () => {
     const v = parseServerVersion("8.0.35");
-    expect(v).toEqual({ major: 8, minor: 0, patch: 35, isMariaDb: false });
+    expect(v).toEqual({ isMariaDb: false, major: 8, minor: 0, patch: 35 });
   });
 
   test("parses MariaDB version with -MariaDB suffix", () => {
     const v = parseServerVersion("10.6.12-MariaDB");
-    expect(v).toEqual({ major: 10, minor: 6, patch: 12, isMariaDb: true });
+    expect(v).toEqual({ isMariaDb: true, major: 10, minor: 6, patch: 12 });
   });
 
   test("parses MariaDB version with lowercase suffix", () => {
     const v = parseServerVersion("10.5.2-mariadb");
-    expect(v).toEqual({ major: 10, minor: 5, patch: 2, isMariaDb: true });
+    expect(v).toEqual({ isMariaDb: true, major: 10, minor: 5, patch: 2 });
   });
 
   test("parses MySQL 5.7 version", () => {
     const v = parseServerVersion("5.7.44");
-    expect(v).toEqual({ major: 5, minor: 7, patch: 44, isMariaDb: false });
+    expect(v).toEqual({ isMariaDb: false, major: 5, minor: 7, patch: 44 });
   });
 
   test("parses MySQL 8.0.29 (IF NOT EXISTS threshold)", () => {
     const v = parseServerVersion("8.0.29");
-    expect(v).toEqual({ major: 8, minor: 0, patch: 29, isMariaDb: false });
+    expect(v).toEqual({ isMariaDb: false, major: 8, minor: 0, patch: 29 });
   });
 
   test("returns conservative defaults for unrecognised string", () => {
     const v = parseServerVersion("unknown");
-    expect(v).toEqual({ major: 0, minor: 0, patch: 0, isMariaDb: false });
+    expect(v).toEqual({ isMariaDb: false, major: 0, minor: 0, patch: 0 });
   });
 
   test("returns conservative defaults for empty string", () => {
     const v = parseServerVersion("");
-    expect(v).toEqual({ major: 0, minor: 0, patch: 0, isMariaDb: false });
+    expect(v).toEqual({ isMariaDb: false, major: 0, minor: 0, patch: 0 });
   });
 
   test("detects MariaDB even in unrecognised version", () => {
@@ -171,9 +170,24 @@ describe("parseServerVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("versionGte", () => {
-  const v8_0_29: ServerVersion = { major: 8, minor: 0, patch: 29, isMariaDb: false };
-  const v8_0_28: ServerVersion = { major: 8, minor: 0, patch: 28, isMariaDb: false };
-  const v10_6_12: ServerVersion = { major: 10, minor: 6, patch: 12, isMariaDb: true };
+  const v8_0_29: ServerVersion = {
+    isMariaDb: false,
+    major: 8,
+    minor: 0,
+    patch: 29,
+  };
+  const v8_0_28: ServerVersion = {
+    isMariaDb: false,
+    major: 8,
+    minor: 0,
+    patch: 28,
+  };
+  const v10_6_12: ServerVersion = {
+    isMariaDb: true,
+    major: 10,
+    minor: 6,
+    patch: 12,
+  };
 
   test("exact match returns true", () => {
     expect(versionGte(v8_0_29, 8, 0, 29)).toBe(true);
@@ -204,7 +218,12 @@ describe("versionGte", () => {
   });
 
   test("zero version is less than any positive target", () => {
-    const v0: ServerVersion = { major: 0, minor: 0, patch: 0, isMariaDb: false };
+    const v0: ServerVersion = {
+      isMariaDb: false,
+      major: 0,
+      minor: 0,
+      patch: 0,
+    };
     expect(versionGte(v0, 1, 0, 0)).toBe(false);
     expect(versionGte(v0, 0, 0, 1)).toBe(false);
     expect(versionGte(v0, 0, 0, 0)).toBe(true);
@@ -217,38 +236,53 @@ describe("versionGte", () => {
 
 describe("supportsAddColumnIfNotExists", () => {
   test("MySQL 8.0.29+ supports it", () => {
-    const v: ServerVersion = { major: 8, minor: 0, patch: 29, isMariaDb: false };
+    const v: ServerVersion = {
+      isMariaDb: false,
+      major: 8,
+      minor: 0,
+      patch: 29,
+    };
     expect(supportsAddColumnIfNotExists(v, "mysql")).toBe(true);
   });
 
   test("MySQL 8.0.28 does NOT support it", () => {
-    const v: ServerVersion = { major: 8, minor: 0, patch: 28, isMariaDb: false };
+    const v: ServerVersion = {
+      isMariaDb: false,
+      major: 8,
+      minor: 0,
+      patch: 28,
+    };
     expect(supportsAddColumnIfNotExists(v, "mysql")).toBe(false);
   });
 
   test("MySQL 5.7 does NOT support it", () => {
-    const v: ServerVersion = { major: 5, minor: 7, patch: 44, isMariaDb: false };
+    const v: ServerVersion = {
+      isMariaDb: false,
+      major: 5,
+      minor: 7,
+      patch: 44,
+    };
     expect(supportsAddColumnIfNotExists(v, "mysql")).toBe(false);
   });
 
   test("MariaDB 10.0.2+ supports it", () => {
-    const v: ServerVersion = { major: 10, minor: 0, patch: 2, isMariaDb: true };
+    const v: ServerVersion = { isMariaDb: true, major: 10, minor: 0, patch: 2 };
     expect(supportsAddColumnIfNotExists(v, "mariadb")).toBe(true);
   });
 
   test("MariaDB 10.0.1 does NOT support it", () => {
-    const v: ServerVersion = { major: 10, minor: 0, patch: 1, isMariaDb: true };
+    const v: ServerVersion = { isMariaDb: true, major: 10, minor: 0, patch: 1 };
     expect(supportsAddColumnIfNotExists(v, "mariadb")).toBe(false);
   });
 
   test("MySQL driver with MariaDB server detected supports it at 10.0.2+", () => {
     // If dbType is "mysql" but the server reports isMariaDb=true, use MariaDB rules
-    const v: ServerVersion = { major: 10, minor: 0, patch: 2, isMariaDb: true };
+    const v: ServerVersion = { isMariaDb: true, major: 10, minor: 0, patch: 2 };
     expect(supportsAddColumnIfNotExists(v, "mysql")).toBe(true);
   });
 
   test("unknown version returns false", () => {
-    const v: ServerVersion = { major: 0, minor: 0, patch: 0, isMariaDb: false };
+    const v: ServerVersion = { isMariaDb: false, major: 0, minor: 0, patch: 0 };
     expect(supportsAddColumnIfNotExists(v, "mysql")).toBe(false);
   });
 });
@@ -259,37 +293,47 @@ describe("supportsAddColumnIfNotExists", () => {
 
 describe("supportsCreateIndexIfNotExists", () => {
   test("MySQL never supports it", () => {
-    const v: ServerVersion = { major: 8, minor: 0, patch: 35, isMariaDb: false };
+    const v: ServerVersion = {
+      isMariaDb: false,
+      major: 8,
+      minor: 0,
+      patch: 35,
+    };
     expect(supportsCreateIndexIfNotExists(v, "mysql")).toBe(false);
   });
 
   test("MySQL 9.x still does not support it", () => {
-    const v: ServerVersion = { major: 9, minor: 0, patch: 0, isMariaDb: false };
+    const v: ServerVersion = { isMariaDb: false, major: 9, minor: 0, patch: 0 };
     expect(supportsCreateIndexIfNotExists(v, "mysql")).toBe(false);
   });
 
   test("MariaDB 10.5.2+ supports it", () => {
-    const v: ServerVersion = { major: 10, minor: 5, patch: 2, isMariaDb: true };
+    const v: ServerVersion = { isMariaDb: true, major: 10, minor: 5, patch: 2 };
     expect(supportsCreateIndexIfNotExists(v, "mariadb")).toBe(true);
   });
 
   test("MariaDB 10.5.1 does NOT support it", () => {
-    const v: ServerVersion = { major: 10, minor: 5, patch: 1, isMariaDb: true };
+    const v: ServerVersion = { isMariaDb: true, major: 10, minor: 5, patch: 1 };
     expect(supportsCreateIndexIfNotExists(v, "mariadb")).toBe(false);
   });
 
   test("MariaDB 10.4.x does NOT support it", () => {
-    const v: ServerVersion = { major: 10, minor: 4, patch: 99, isMariaDb: true };
+    const v: ServerVersion = {
+      isMariaDb: true,
+      major: 10,
+      minor: 4,
+      patch: 99,
+    };
     expect(supportsCreateIndexIfNotExists(v, "mariadb")).toBe(false);
   });
 
   test("MySQL driver with MariaDB server detected supports it at 10.5.2+", () => {
-    const v: ServerVersion = { major: 10, minor: 5, patch: 2, isMariaDb: true };
+    const v: ServerVersion = { isMariaDb: true, major: 10, minor: 5, patch: 2 };
     expect(supportsCreateIndexIfNotExists(v, "mysql")).toBe(true);
   });
 
   test("unknown version returns false", () => {
-    const v: ServerVersion = { major: 0, minor: 0, patch: 0, isMariaDb: false };
+    const v: ServerVersion = { isMariaDb: false, major: 0, minor: 0, patch: 0 };
     expect(supportsCreateIndexIfNotExists(v, "mariadb")).toBe(false);
   });
 });

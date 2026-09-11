@@ -36,9 +36,9 @@ export const closeWindow = os
 export const setUnsavedChanges = os
   .input(
     z.object({
-      scope: z.string(),
       dirty: z.boolean(),
-    }),
+      scope: z.string(),
+    })
   )
   .handler(({ input }) => {
     ipcContext.setUnsavedScope(input.scope, input.dirty);
@@ -49,7 +49,7 @@ export const setWindowVibrancy = os
   .input(
     z.object({
       solid: z.boolean(),
-    }),
+    })
   )
   .handler(({ context, input }) => {
     const { window: win } = context;
@@ -59,6 +59,12 @@ export const setWindowVibrancy = os
     } else if (process.platform === "win32") {
       // Windows: backgroundMaterial cannot be changed after creation,
       // but setting a solid backgroundColor achieves the same visual effect.
-      win.setBackgroundColor(input.solid ? (nativeTheme.shouldUseDarkColors ? "#1c1c1c" : "#ffffff") : "#00000000");
+      win.setBackgroundColor(
+        input.solid
+          ? nativeTheme.shouldUseDarkColors
+            ? "#1c1c1c"
+            : "#ffffff"
+          : "#00000000"
+      );
     }
   });

@@ -8,9 +8,7 @@
  * For connection list data + mutations with cache invalidation,
  * use `useConnectionsList()` instead.
  */
-import { ipc } from "@/ipc/manager";
-import { queryClient } from "@/lib/query-client";
-import { dbQueryKeys } from "@/lib/query-options";
+
 import type {
   AddColumnInput,
   AlterColumnTypeInput,
@@ -19,6 +17,7 @@ import type {
   ConstraintInfo,
   CreateIndexInput,
   CreateSchemaInput,
+  CreateTableFromImportInput,
   CreateTableInput,
   DatabaseInfo,
   DatabaseSchema,
@@ -26,8 +25,14 @@ import type {
   DropColumnInput,
   DropIndexInput,
   DropTableInput,
+  ExportSchemaIndexesResult,
+  ExportScopeInput,
   FkLookupInput,
   FkLookupResponse,
+  ImportColumnMeta,
+  ImportDryRunInput,
+  ImportDryRunResult,
+  ImportTableColumnsInput,
   IndexInfo,
   ListRowsInput,
   QueryResult,
@@ -44,29 +49,26 @@ import type {
   SetColumnNullableInput,
   TableRef,
   TableRowsResponse,
-  ImportDryRunInput,
-  ImportDryRunResult,
-  ImportTableColumnsInput,
-  ImportColumnMeta,
-  CreateTableFromImportInput,
-  ExportScopeInput,
-  ExportSchemaIndexesResult,
 } from "@/ipc/db/types";
+import { ipc } from "@/ipc/manager";
+import { queryClient } from "@/lib/query-client";
+import { dbQueryKeys } from "@/lib/query-options";
 
-function extractErrorMessage(
-  err: unknown,
-  fallback: string,
-): string {
+function extractErrorMessage(err: unknown, fallback: string): string {
   const pickString = (value: unknown): string | null =>
     typeof value === "string" && value.trim() ? value.trim() : null;
 
-  if (err instanceof Error && err.message.trim()) return err.message;
-  if (typeof err === "string" && err.trim()) return err.trim();
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  if (typeof err === "string" && err.trim()) {
+    return err.trim();
+  }
 
   if (err && typeof err === "object") {
     const asRecord = err as Record<string, unknown>;
 
-    const candidates: Array<unknown> = [
+    const candidates: unknown[] = [
       asRecord.message,
       (asRecord.data as Record<string, unknown> | undefined)?.message,
       (asRecord.cause as Record<string, unknown> | undefined)?.message,
@@ -87,14 +89,20 @@ function extractErrorMessage(
 
     for (const candidate of candidates) {
       const picked = pickString(candidate);
-      if (picked) return picked;
+      if (picked) {
+        return picked;
+      }
     }
   }
 
   return fallback;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timeoutId = setTimeout(() => {
       reject(new Error(timeoutMessage));
@@ -115,40 +123,40 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
 // ── Connection operations ────────────────────────────────────────────
 
 export async function testConnection(
-  connection: ConnectionInput,
+  connection: ConnectionInput
 ): Promise<boolean> {
   try {
     const ok = await ipc.client.db.testConnection({ ...connection });
     if (!ok) {
       console.warn("[db-actions] testConnection returned false", {
+        database: connection.database,
         dbType: connection.db_type,
         host: connection.host,
-        port: connection.port,
-        database: connection.database,
-        sslMode: connection.ssl_mode,
         isLocal: connection.is_local,
+        port: connection.port,
+        sslMode: connection.ssl_mode,
       });
     }
     return ok;
   } catch (err) {
     const message = extractErrorMessage(err, "Connection test failed");
     const logPayload = {
+      database: connection.database,
       dbType: connection.db_type,
       host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      sslMode: connection.ssl_mode,
       isLocal: connection.is_local,
       message,
+      port: connection.port,
+      sslMode: connection.ssl_mode,
     };
-    console.error(`[db-actions] testConnection failed ${JSON.stringify(logPayload)}`);
+    console.error(
+      `[db-actions] testConnection failed ${JSON.stringify(logPayload)}`
+    );
     throw new Error(message);
   }
 }
 
-export async function getConnection(
-  id: string,
-): Promise<Connection | null> {
+export async function getConnection(id: string): Promise<Connection | null> {
   try {
     return await ipc.client.db.getConnection({ id });
   } catch {
@@ -161,10 +169,10 @@ export async function getConnection(
 export async function executeQuery(
   connectionId: string,
   sql: string,
-  requestId?: string,
+  requestId?: string
 ): Promise<QueryResult> {
   try {
-    return await ipc.client.db.executeQuery({ connectionId, sql, requestId });
+    return await ipc.client.db.executeQuery({ connectionId, requestId, sql });
   } catch (err) {
     throw new Error(extractErrorMessage(err, "Query execution failed"));
   }
@@ -181,30 +189,28 @@ export function cancelQuery(requestId: string): void {
 
 // ── Schema operations ─────────────────────────────────────────────────
 
-export async function getSchema(
-  connectionId: string,
-): Promise<DatabaseSchema> {
+export async function getSchema(connectionId: string): Promise<DatabaseSchema> {
   try {
     return await ipc.client.db.getSchema({ id: connectionId });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch schema",
+      err instanceof Error ? err.message : "Failed to fetch schema"
     );
   }
 }
 
 export async function getSchemaSummary(
-  connectionId: string,
+  connectionId: string
 ): Promise<SchemaSummary> {
   try {
     return await withTimeout(
       ipc.client.db.getSchemaSummary({ id: connectionId }),
       15_000,
-      "Schema summary request timed out",
+      "Schema summary request timed out"
     );
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch schema summary",
+      err instanceof Error ? err.message : "Failed to fetch schema summary"
     );
   }
 }
@@ -212,25 +218,25 @@ export async function getSchemaSummary(
 export async function getTableDetails(
   connectionId: string,
   schema: string,
-  table: string,
+  table: string
 ): Promise<SchemaTableDetails> {
   try {
     return await ipc.client.db.getTableDetails({ connectionId, schema, table });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch table details",
+      err instanceof Error ? err.message : "Failed to fetch table details"
     );
   }
 }
 
 export async function getDatabaseInfo(
-  connectionId: string,
+  connectionId: string
 ): Promise<DatabaseInfo> {
   try {
     return await ipc.client.db.getDatabaseInfo({ id: connectionId });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch database info",
+      err instanceof Error ? err.message : "Failed to fetch database info"
     );
   }
 }
@@ -238,109 +244,106 @@ export async function getDatabaseInfo(
 // ── Table data operations ────────────────────────────────────────────
 
 export async function tableListRows(
-  input: ListRowsInput,
+  input: ListRowsInput
 ): Promise<TableRowsResponse> {
   try {
     return await ipc.client.db.tableListRows({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to list table rows",
+      err instanceof Error ? err.message : "Failed to list table rows"
     );
   }
 }
 
 export async function tableSaveChanges(
-  input: SaveChangesInput,
+  input: SaveChangesInput
 ): Promise<SaveChangesResponse> {
   try {
     return await ipc.client.db.tableSaveChanges({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to save table changes",
+      err instanceof Error ? err.message : "Failed to save table changes"
     );
   }
 }
 export async function importTableColumns(
-  input: ImportTableColumnsInput,
+  input: ImportTableColumnsInput
 ): Promise<ImportColumnMeta[]> {
   try {
     return await ipc.client.db.importTableColumns({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to load target table columns",
+      err instanceof Error ? err.message : "Failed to load target table columns"
     );
   }
 }
 
 export async function importDryRun(
-  input: ImportDryRunInput,
+  input: ImportDryRunInput
 ): Promise<ImportDryRunResult> {
   try {
     return await ipc.client.db.importDryRun({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to validate import data",
+      err instanceof Error ? err.message : "Failed to validate import data"
     );
   }
 }
 
 export async function createTableFromImport(
-  input: CreateTableFromImportInput,
+  input: CreateTableFromImportInput
 ): Promise<DdlResult> {
   try {
     return await ipc.client.db.createTableFromImport({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to create table from import",
+      err instanceof Error ? err.message : "Failed to create table from import"
     );
   }
 }
 
 export async function exportSchemaIndexes(
-  input: ExportScopeInput,
+  input: ExportScopeInput
 ): Promise<ExportSchemaIndexesResult> {
   try {
     return await ipc.client.db.exportSchemaIndexes({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to export schema indexes",
+      err instanceof Error ? err.message : "Failed to export schema indexes"
     );
   }
 }
-
 
 export async function tableTruncate(tableRef: TableRef): Promise<void> {
   try {
     await ipc.client.db.tableTruncate({ tableRef });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to truncate table",
+      err instanceof Error ? err.message : "Failed to truncate table"
     );
   }
 }
 
 export async function tableFkLookup(
-  input: FkLookupInput,
+  input: FkLookupInput
 ): Promise<FkLookupResponse> {
   try {
     return await ipc.client.db.tableFkLookup({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to lookup foreign keys",
+      err instanceof Error ? err.message : "Failed to lookup foreign keys"
     );
   }
 }
 
 // ── DDL operations ───────────────────────────────────────────────────
 
-export async function createTable(
-  input: CreateTableInput,
-): Promise<DdlResult> {
+export async function createTable(input: CreateTableInput): Promise<DdlResult> {
   try {
     return await ipc.client.db.createTable({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to create table",
+      err instanceof Error ? err.message : "Failed to create table"
     );
   }
 }
@@ -350,19 +353,17 @@ export async function dropTable(input: DropTableInput): Promise<DdlResult> {
     return await ipc.client.db.dropTable({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to drop table",
+      err instanceof Error ? err.message : "Failed to drop table"
     );
   }
 }
 
-export async function renameTable(
-  input: RenameTableInput,
-): Promise<DdlResult> {
+export async function renameTable(input: RenameTableInput): Promise<DdlResult> {
   try {
     return await ipc.client.db.renameTable({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to rename table",
+      err instanceof Error ? err.message : "Failed to rename table"
     );
   }
 }
@@ -372,7 +373,7 @@ export async function addColumn(input: AddColumnInput): Promise<DdlResult> {
     return await ipc.client.db.addColumn({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to add column",
+      err instanceof Error ? err.message : "Failed to add column"
     );
   }
 }
@@ -382,37 +383,37 @@ export async function dropColumn(input: DropColumnInput): Promise<DdlResult> {
     return await ipc.client.db.dropColumn({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to drop column",
+      err instanceof Error ? err.message : "Failed to drop column"
     );
   }
 }
 
 export async function renameColumn(
-  input: RenameColumnInput,
+  input: RenameColumnInput
 ): Promise<DdlResult> {
   try {
     return await ipc.client.db.renameColumn({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to rename column",
+      err instanceof Error ? err.message : "Failed to rename column"
     );
   }
 }
 
 export async function alterColumnType(
-  input: AlterColumnTypeInput,
+  input: AlterColumnTypeInput
 ): Promise<DdlResult> {
   try {
     return await ipc.client.db.alterColumnType({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to alter column type",
+      err instanceof Error ? err.message : "Failed to alter column type"
     );
   }
 }
 
 export async function setColumnNullable(
-  input: SetColumnNullableInput,
+  input: SetColumnNullableInput
 ): Promise<DdlResult> {
   try {
     return await ipc.client.db.setColumnNullable({ ...input });
@@ -420,33 +421,29 @@ export async function setColumnNullable(
     throw new Error(
       err instanceof Error
         ? err.message
-        : "Failed to update column nullable constraint",
+        : "Failed to update column nullable constraint"
     );
   }
 }
 
 export async function setColumnDefault(
-  input: SetColumnDefaultInput,
+  input: SetColumnDefaultInput
 ): Promise<DdlResult> {
   try {
     return await ipc.client.db.setColumnDefault({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error
-        ? err.message
-        : "Failed to update column default",
+      err instanceof Error ? err.message : "Failed to update column default"
     );
   }
 }
 
-export async function createIndex(
-  input: CreateIndexInput,
-): Promise<DdlResult> {
+export async function createIndex(input: CreateIndexInput): Promise<DdlResult> {
   try {
     return await ipc.client.db.createIndex({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to create index",
+      err instanceof Error ? err.message : "Failed to create index"
     );
   }
 }
@@ -456,19 +453,19 @@ export async function dropIndex(input: DropIndexInput): Promise<DdlResult> {
     return await ipc.client.db.dropIndex({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to drop index",
+      err instanceof Error ? err.message : "Failed to drop index"
     );
   }
 }
 
 export async function createSchema(
-  input: CreateSchemaInput,
+  input: CreateSchemaInput
 ): Promise<DdlResult> {
   try {
     return await ipc.client.db.createSchema({ ...input });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to create schema",
+      err instanceof Error ? err.message : "Failed to create schema"
     );
   }
 }
@@ -477,65 +474,65 @@ export async function createSchema(
 
 export async function getEnums(
   connectionId: string,
-  schema: string,
+  schema: string
 ): Promise<SchemaEnum[]> {
   try {
     return await ipc.client.db.getEnums({ connectionId, schema });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch enums",
+      err instanceof Error ? err.message : "Failed to fetch enums"
     );
   }
 }
 
 export async function getFunctions(
   connectionId: string,
-  schema: string,
+  schema: string
 ): Promise<SchemaFunction[]> {
   try {
     return await ipc.client.db.getFunctions({ connectionId, schema });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch functions",
+      err instanceof Error ? err.message : "Failed to fetch functions"
     );
   }
 }
 
 export async function getTriggers(
   connectionId: string,
-  schema: string,
+  schema: string
 ): Promise<SchemaTrigger[]> {
   try {
     return await ipc.client.db.getTriggers({ connectionId, schema });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch triggers",
+      err instanceof Error ? err.message : "Failed to fetch triggers"
     );
   }
 }
 
 export async function getSchemaConstraints(
   connectionId: string,
-  schema: string,
+  schema: string
 ): Promise<ConstraintInfo[]> {
   try {
     return await ipc.client.db.getSchemaConstraints({ connectionId, schema });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch schema constraints",
+      err instanceof Error ? err.message : "Failed to fetch schema constraints"
     );
   }
 }
 
 export async function getSchemaIndexes(
   connectionId: string,
-  schema: string,
+  schema: string
 ): Promise<IndexInfo[]> {
   try {
     return await ipc.client.db.getSchemaIndexes({ connectionId, schema });
   } catch (err) {
     throw new Error(
-      err instanceof Error ? err.message : "Failed to fetch schema indexes",
+      err instanceof Error ? err.message : "Failed to fetch schema indexes"
     );
   }
 }
@@ -546,27 +543,51 @@ export async function getSchemaIndexes(
  * Invalidate all cached data for a connection after a DDL operation.
  * This ensures schema summary, table details, and row caches are refreshed.
  */
-export function invalidateDdlCache(connectionId: string, schema?: string, table?: string): void {
+export function invalidateDdlCache(
+  connectionId: string,
+  schema?: string,
+  table?: string
+): void {
   // Schema summary (table list)
-  queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaSummary(connectionId) });
+  queryClient.invalidateQueries({
+    queryKey: dbQueryKeys.schemaSummary(connectionId),
+  });
   // Table details
   if (schema && table) {
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableDetails(connectionId, schema, table) });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.tableDetails(connectionId, schema, table),
+    });
   } else {
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableDetailsAll(connectionId) });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.tableDetailsAll(connectionId),
+    });
   }
   // Schema details batch (visualizer/AI)
-  queryClient.invalidateQueries({ queryKey: dbQueryKeys.selectedSchemaDetailsPrefix(connectionId) });
+  queryClient.invalidateQueries({
+    queryKey: dbQueryKeys.selectedSchemaDetailsPrefix(connectionId),
+  });
   // Table rows
   if (schema && table) {
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.tableRowsPrefix(connectionId, schema, table) });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.tableRowsPrefix(connectionId, schema, table),
+    });
   }
   // Definitions browser
   if (schema) {
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaConstraints(connectionId, schema) });
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaEnums(connectionId, schema) });
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaFunctions(connectionId, schema) });
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaIndexes(connectionId, schema) });
-    queryClient.invalidateQueries({ queryKey: dbQueryKeys.schemaTriggers(connectionId, schema) });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.schemaConstraints(connectionId, schema),
+    });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.schemaEnums(connectionId, schema),
+    });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.schemaFunctions(connectionId, schema),
+    });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.schemaIndexes(connectionId, schema),
+    });
+    queryClient.invalidateQueries({
+      queryKey: dbQueryKeys.schemaTriggers(connectionId, schema),
+    });
   }
 }

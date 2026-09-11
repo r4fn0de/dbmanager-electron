@@ -15,20 +15,32 @@ export function isEncryptedSecret(value: string): boolean {
 }
 
 export function encryptSecret(value: string): string {
-  if (!value) return value;
-  if (isEncryptedSecret(value)) return value;
-  if (!safeStorage.isEncryptionAvailable()) return value;
+  if (!value) {
+    return value;
+  }
+  if (isEncryptedSecret(value)) {
+    return value;
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    return value;
+  }
 
   const encrypted = safeStorage.encryptString(value);
   return `${ENCRYPTED_PREFIX}${toBase64(encrypted)}`;
 }
 
 export function decryptSecret(value: string): string {
-  if (!value) return value;
-  if (!isEncryptedSecret(value)) return value;
+  if (!value) {
+    return value;
+  }
+  if (!isEncryptedSecret(value)) {
+    return value;
+  }
 
   const encoded = value.slice(ENCRYPTED_PREFIX.length);
-  if (!encoded) return "";
+  if (!encoded) {
+    return "";
+  }
 
   try {
     const decrypted = safeStorage.decryptString(fromBase64(encoded));

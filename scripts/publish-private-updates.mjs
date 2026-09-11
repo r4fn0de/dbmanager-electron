@@ -1,12 +1,15 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 const repoRoot = process.cwd();
 const makeRoot = path.resolve(repoRoot, "out", "make");
 const bucket = process.env.UPDATE_BUCKET;
-const prefix = (process.env.UPDATE_PREFIX || "updates").replace(/^\/+|\/+$/g, "");
+const prefix = (process.env.UPDATE_PREFIX || "updates").replace(
+  /^\/+|\/+$/g,
+  ""
+);
 const channel = (process.env.UPDATE_CHANNEL || "stable").trim();
 const distributionId = process.env.UPDATE_CLOUDFRONT_DISTRIBUTION_ID?.trim();
 
@@ -34,11 +37,11 @@ function parseTarget(filePath) {
   const basename = path.basename(filePath);
 
   if (
-    basename !== "RELEASES"
-    && !basename.endsWith(".nupkg")
-    && !basename.endsWith("Setup.exe")
-    && basename !== "RELEASES.json"
-    && !basename.endsWith(".zip")
+    basename !== "RELEASES" &&
+    !basename.endsWith(".nupkg") &&
+    !basename.endsWith("Setup.exe") &&
+    basename !== "RELEASES.json" &&
+    !basename.endsWith(".zip")
   ) {
     return null;
   }
@@ -48,40 +51,48 @@ function parseTarget(filePath) {
 
   if (normalized.includes(squirrelPrefix)) {
     const arch = normalized.split(squirrelPrefix)[1]?.split("/")[0];
-    if (!arch) return null;
+    if (!arch) {
+      return null;
+    }
     return {
-      platform: "win32",
       arch,
       basename,
+      platform: "win32",
     };
   }
 
   if (normalized.includes(zipPrefix)) {
     const arch = normalized.split(zipPrefix)[1]?.split("/")[0];
-    if (!arch) return null;
+    if (!arch) {
+      return null;
+    }
     return {
-      platform: "darwin",
       arch,
       basename,
+      platform: "darwin",
     };
   }
 
   const nameMatch = basename.match(/-(win32|darwin)-([a-z0-9_]+)\b/i);
-  if (!nameMatch) return null;
+  if (!nameMatch) {
+    return null;
+  }
   return {
-    platform: nameMatch[1].toLowerCase(),
     arch: nameMatch[2].toLowerCase(),
     basename,
+    platform: nameMatch[1].toLowerCase(),
   };
 }
 
 function runAws(args) {
   const result = spawnSync("aws", args, {
-    stdio: "inherit",
     shell: false,
+    stdio: "inherit",
   });
   if (result.status !== 0) {
-    throw new Error(`aws ${args.join(" ")} failed with code ${result.status ?? "unknown"}`);
+    throw new Error(
+      `aws ${args.join(" ")} failed with code ${result.status ?? "unknown"}`
+    );
   }
 }
 
@@ -105,7 +116,9 @@ for (const item of artifactFiles) {
 
 if (distributionId) {
   const uniquePaths = [...new Set(uploadedPaths)];
-  console.log(`[publish-updates] invalidate ${uniquePaths.length} CloudFront paths`);
+  console.log(
+    `[publish-updates] invalidate ${uniquePaths.length} CloudFront paths`
+  );
   runAws([
     "cloudfront",
     "create-invalidation",

@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  CodeBlock,
+  CodeBlockCode,
+  CodeBlockGroup,
+} from "@/components/ui/code-block";
 import {
   Dialog,
   DialogContent,
@@ -17,29 +22,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CodeBlock, CodeBlockCode, CodeBlockGroup } from "@/components/ui/code-block";
-import { getTableDetails } from "../hooks/db-actions";
+import type { DatabaseType, SchemaTableDetails } from "@/ipc/db/types";
 import {
-  generateSchema,
-  GENERATOR_COMPATIBILITY,
   FORMAT_LABELS,
   FORMAT_LANGUAGES,
+  GENERATOR_COMPATIBILITY,
   type GeneratorFormat,
+  generateSchema,
 } from "@/lib/generators";
-import type { DatabaseType, SchemaTableDetails } from "@/ipc/db/types";
+import { getTableDetails } from "../hooks/db-actions";
 
 interface SchemaExportDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  connectionId: string;
-  schema: string;
-  tableName: string;
-  dbType: DatabaseType;
   /** Pre-fetched table details from React Query cache, if available. */
   cachedDetails?: SchemaTableDetails | null;
+  connectionId: string;
+  dbType: DatabaseType;
+  isOpen: boolean;
+  onClose: () => void;
+  schema: string;
+  tableName: string;
 }
 
-const ALL_FORMATS: GeneratorFormat[] = ["sql", "ts", "zod", "kysely", "drizzle", "prisma"];
+const ALL_FORMATS: GeneratorFormat[] = [
+  "sql",
+  "ts",
+  "zod",
+  "kysely",
+  "drizzle",
+  "prisma",
+];
 
 // Injection keyframes for the copy feedback animation
 const copyFeedbackAnimationKeyframes = `@keyframes copyFeedbackPulse {
@@ -72,7 +83,9 @@ export function SchemaExportDialog({
   const { resolvedTheme } = useTheme();
   const codeTheme = resolvedTheme === "dark" ? "github-dark" : "github-light";
   const availableFormats = useMemo(() => getAvailableFormats(dbType), [dbType]);
-  const [selectedFormat, setSelectedFormat] = useState<GeneratorFormat>(availableFormats[0] ?? "sql");
+  const [selectedFormat, setSelectedFormat] = useState<GeneratorFormat>(
+    availableFormats[0] ?? "sql"
+  );
   const [details, setDetails] = useState<SchemaTableDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +102,9 @@ export function SchemaExportDialog({
     }
     return () => {
       const style = document.getElementById(styleId);
-      if (style) style.remove();
+      if (style) {
+        style.remove();
+      }
     };
   }, []);
 
@@ -111,15 +126,25 @@ export function SchemaExportDialog({
     setError(null);
     getTableDetails(connectionId, schema, tableName)
       .then((result) => {
-        if (!cancelled) setDetails(result);
+        if (!cancelled) {
+          setDetails(result);
+        }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load schema");
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load schema"
+          );
+        }
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, connectionId, schema, tableName, cachedDetails]);
 
   // Reset format when dbType changes and current format is incompatible
@@ -131,15 +156,17 @@ export function SchemaExportDialog({
 
   // Generate code from table details
   const generatedCode = useMemo(() => {
-    if (!details) return "";
+    if (!details) {
+      return "";
+    }
     try {
       return generateSchema(selectedFormat, {
-        table: tableName,
-        schema,
         columns: details.columns,
-        indexes: details.indexes,
-        foreignKeys: details.foreign_keys,
         dialect: dbType,
+        foreignKeys: details.foreign_keys,
+        indexes: details.indexes,
+        schema,
+        table: tableName,
       });
     } catch (err) {
       return `// Error generating schema: ${err instanceof Error ? err.message : "Unknown error"}`;
@@ -158,56 +185,66 @@ export function SchemaExportDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="t-resize sm:max-w-[720px] max-h-[80vh] overflow-hidden flex flex-col">
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
+      <DialogContent className="t-resize flex max-h-[80vh] flex-col overflow-hidden sm:max-w-[720px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Icon name="file-code" className="size-4 text-muted-foreground" />
+            <Icon className="size-4 text-muted-foreground" name="file-code" />
             Export Schema
           </DialogTitle>
           <DialogDescription>
             Generate code from{" "}
-            <code className="font-mono text-foreground">{schema}.{tableName}</code>
+            <code className="font-mono text-foreground">
+              {schema}.{tableName}
+            </code>
           </DialogDescription>
         </DialogHeader>
 
         {/* Format selector */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-xs text-muted-foreground whitespace-nowrap">Format:</span>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="whitespace-nowrap text-muted-foreground text-xs">
+            Format:
+          </span>
           {availableFormats.length === 0 ? (
-            <span className="text-xs text-muted-foreground italic">
+            <span className="text-muted-foreground text-xs italic">
               No export formats available for {dbType}
             </span>
           ) : (
-          <Select
-            value={selectedFormat}
-            onValueChange={(v) => setSelectedFormat(v as GeneratorFormat)}
-          >
-            <SelectTrigger className="w-[180px] h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableFormats.map((format) => (
-                <SelectItem key={format} value={format} className="text-xs">
-                  {FORMAT_LABELS[format]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select
+              onValueChange={(v) => setSelectedFormat(v as GeneratorFormat)}
+              value={selectedFormat}
+            >
+              <SelectTrigger className="h-8 w-[180px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableFormats.map((format) => (
+                  <SelectItem className="text-xs" key={format} value={format}>
+                    {FORMAT_LABELS[format]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
           {details && (
-            <span className="text-[10px] text-muted-foreground ml-auto">
-              {details.columns.length} columns · {details.indexes.length} indexes · {details.foreign_keys.length} FKs
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {details.columns.length} columns · {details.indexes.length}{" "}
+              indexes · {details.foreign_keys.length} FKs
             </span>
           )}
         </div>
 
         {/* Generated code */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Icon name="loader" className="size-5 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading schema...</span>
+              <Icon
+                className="size-5 animate-spin text-muted-foreground"
+                name="loader"
+              />
+              <span className="ml-2 text-muted-foreground text-sm">
+                Loading schema...
+              </span>
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-12 text-destructive text-sm">
@@ -215,34 +252,37 @@ export function SchemaExportDialog({
             </div>
           ) : details ? (
             <div className="h-[55vh] max-h-[55vh] min-h-0 overflow-hidden pr-1">
-              <CodeBlock className="border-0 bg-muted/30 rounded-lg h-full min-h-0 flex flex-col">
-                <CodeBlockGroup className="shrink-0 px-4 py-2 border-b border-border/40 bg-muted/30">
-                  <span className="text-xs text-muted-foreground font-mono">
+              <CodeBlock className="flex h-full min-h-0 flex-col rounded-lg border-0 bg-muted/30">
+                <CodeBlockGroup className="shrink-0 border-border/40 border-b bg-muted/30 px-4 py-2">
+                  <span className="font-mono text-muted-foreground text-xs">
                     {FORMAT_LANGUAGES[selectedFormat]}
                   </span>
                   <Button
-                    variant="ghost"
+                    className={`h-6 gap-1.5 px-2 text-xs transition-[background-color,color] duration-200 ease-out ${
+                      copyFeedback
+                        ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
+                        : ""
+                    }`}
+                    onClick={() => {
+                      void handleCopy();
+                    }}
                     size="sm"
-                    className={
-                      `h-6 px-2 text-xs gap-1.5 transition-[background-color,color] duration-200 ease-out ${
-                        copyFeedback
-                          ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
-                          : ""
-                      }`
-                    }
-                    onClick={() => { void handleCopy(); }}
+                    variant="ghost"
                   >
                     {copyFeedback ? (
                       <span
                         className="flex items-center gap-1"
-                        style={{ animation: "copyFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)" }}
+                        style={{
+                          animation:
+                            "copyFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)",
+                        }}
                       >
-                        <Icon name="check" className="size-3" />
+                        <Icon className="size-3" name="check" />
                         Copied!
                       </span>
                     ) : (
                       <>
-                        <Icon name="copy" className="size-3" />
+                        <Icon className="size-3" name="copy" />
                         Copy
                       </>
                     )}
@@ -250,10 +290,10 @@ export function SchemaExportDialog({
                 </CodeBlockGroup>
                 <div className="min-h-0 flex-1 overflow-auto">
                   <CodeBlockCode
+                    className="[&>pre]:py-3"
                     code={generatedCode}
                     language={FORMAT_LANGUAGES[selectedFormat]}
                     theme={codeTheme}
-                    className="[&>pre]:py-3"
                   />
                 </div>
               </CodeBlock>
@@ -261,30 +301,35 @@ export function SchemaExportDialog({
           ) : null}
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 shrink-0">
-          <Button variant="outline" onClick={onClose}>
+        <div className="flex shrink-0 items-center justify-end gap-2 pt-2">
+          <Button onClick={onClose} variant="outline">
             Close
           </Button>
           <Button
-            onClick={() => { void handleCopy(); }}
-            disabled={!generatedCode || isLoading}
             className={`transition-[background-color,color,box-shadow] duration-200 ease-out ${
               copyFeedback
-                ? "bg-emerald-500 text-white hover:bg-emerald-500/90 hover:text-white shadow-sm"
+                ? "bg-emerald-500 text-white shadow-sm hover:bg-emerald-500/90 hover:text-white"
                 : ""
             }`}
+            disabled={!generatedCode || isLoading}
+            onClick={() => {
+              void handleCopy();
+            }}
           >
             {copyFeedback ? (
               <span
                 className="flex items-center gap-1.5"
-                style={{ animation: "copyFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)" }}
+                style={{
+                  animation:
+                    "copyFeedbackPulse 200ms cubic-bezier(0.23, 1, 0.32, 1)",
+                }}
               >
-                <Icon name="check" className="size-3.5" />
+                <Icon className="size-3.5" name="check" />
                 Copied!
               </span>
             ) : (
               <>
-                <Icon name="copy" className="size-3.5" />
+                <Icon className="size-3.5" name="copy" />
                 Copy code
               </>
             )}

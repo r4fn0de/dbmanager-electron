@@ -11,9 +11,9 @@ import { format as sqlFormat } from "sql-formatter";
 // ── Schema data types ────────────────────────────────────────────────
 
 export interface SchemaCompletionTable {
-  schema: string;
-  name: string;
   columns: { name: string; dataType: string }[];
+  name: string;
+  schema: string;
 }
 
 export interface SchemaCompletionData {
@@ -38,157 +38,155 @@ export function updateSchemaData(data: SchemaCompletionData) {
 
 const SQL_KEYWORDS: { label: string; detail?: string }[] = [
   // DML
-  { label: "SELECT", detail: "Query data" },
-  { label: "FROM", detail: "Data source" },
-  { label: "WHERE", detail: "Filter rows" },
-  { label: "INSERT", detail: "Insert rows" },
-  { label: "INTO", detail: "Target table" },
-  { label: "VALUES", detail: "Value list" },
-  { label: "UPDATE", detail: "Update rows" },
-  { label: "SET", detail: "Set columns" },
-  { label: "DELETE", detail: "Delete rows" },
+  { detail: "Query data", label: "SELECT" },
+  { detail: "Data source", label: "FROM" },
+  { detail: "Filter rows", label: "WHERE" },
+  { detail: "Insert rows", label: "INSERT" },
+  { detail: "Target table", label: "INTO" },
+  { detail: "Value list", label: "VALUES" },
+  { detail: "Update rows", label: "UPDATE" },
+  { detail: "Set columns", label: "SET" },
+  { detail: "Delete rows", label: "DELETE" },
   // Join
-  { label: "JOIN", detail: "Inner join" },
-  { label: "INNER", detail: "Inner join" },
-  { label: "LEFT", detail: "Left outer join" },
-  { label: "RIGHT", detail: "Right outer join" },
-  { label: "OUTER", detail: "Outer join" },
-  { label: "FULL", detail: "Full outer join" },
-  { label: "CROSS", detail: "Cross join" },
-  { label: "ON", detail: "Join condition" },
+  { detail: "Inner join", label: "JOIN" },
+  { detail: "Inner join", label: "INNER" },
+  { detail: "Left outer join", label: "LEFT" },
+  { detail: "Right outer join", label: "RIGHT" },
+  { detail: "Outer join", label: "OUTER" },
+  { detail: "Full outer join", label: "FULL" },
+  { detail: "Cross join", label: "CROSS" },
+  { detail: "Join condition", label: "ON" },
   // Grouping / ordering
-  { label: "GROUP", detail: "Group rows" },
-  { label: "BY", detail: "Group / order by" },
-  { label: "HAVING", detail: "Group filter" },
-  { label: "ORDER", detail: "Sort rows" },
-  { label: "ASC", detail: "Ascending" },
-  { label: "DESC", detail: "Descending" },
-  { label: "LIMIT", detail: "Limit rows" },
-  { label: "OFFSET", detail: "Skip rows" },
+  { detail: "Group rows", label: "GROUP" },
+  { detail: "Group / order by", label: "BY" },
+  { detail: "Group filter", label: "HAVING" },
+  { detail: "Sort rows", label: "ORDER" },
+  { detail: "Ascending", label: "ASC" },
+  { detail: "Descending", label: "DESC" },
+  { detail: "Limit rows", label: "LIMIT" },
+  { detail: "Skip rows", label: "OFFSET" },
   // Logical
-  { label: "AND", detail: "Logical AND" },
-  { label: "OR", detail: "Logical OR" },
-  { label: "NOT", detail: "Logical NOT" },
-  { label: "IN", detail: "In set" },
-  { label: "IS", detail: "Is null / not null" },
-  { label: "NULL", detail: "Null value" },
-  { label: "LIKE", detail: "Pattern match" },
-  { label: "BETWEEN", detail: "Range check" },
-  { label: "EXISTS", detail: "Subquery exists" },
-  { label: "ANY", detail: "Any in set" },
-  { label: "ALL", detail: "All in set" },
-  { label: "CASE", detail: "Conditional expression" },
-  { label: "WHEN", detail: "Case branch" },
-  { label: "THEN", detail: "Case result" },
-  { label: "ELSE", detail: "Case fallback" },
-  { label: "END", detail: "End block" },
-  { label: "AS", detail: "Alias" },
-  { label: "DISTINCT", detail: "Unique rows" },
+  { detail: "Logical AND", label: "AND" },
+  { detail: "Logical OR", label: "OR" },
+  { detail: "Logical NOT", label: "NOT" },
+  { detail: "In set", label: "IN" },
+  { detail: "Is null / not null", label: "IS" },
+  { detail: "Null value", label: "NULL" },
+  { detail: "Pattern match", label: "LIKE" },
+  { detail: "Range check", label: "BETWEEN" },
+  { detail: "Subquery exists", label: "EXISTS" },
+  { detail: "Any in set", label: "ANY" },
+  { detail: "All in set", label: "ALL" },
+  { detail: "Conditional expression", label: "CASE" },
+  { detail: "Case branch", label: "WHEN" },
+  { detail: "Case result", label: "THEN" },
+  { detail: "Case fallback", label: "ELSE" },
+  { detail: "End block", label: "END" },
+  { detail: "Alias", label: "AS" },
+  { detail: "Unique rows", label: "DISTINCT" },
   // DDL
-  { label: "CREATE", detail: "Create object" },
-  { label: "TABLE", detail: "Create table" },
-  { label: "INDEX", detail: "Create index" },
-  { label: "VIEW", detail: "Create view" },
-  { label: "DROP", detail: "Drop object" },
-  { label: "ALTER", detail: "Alter object" },
-  { label: "ADD", detail: "Add column" },
-  { label: "COLUMN", detail: "Column" },
-  { label: "CONSTRAINT", detail: "Constraint" },
-  { label: "PRIMARY", detail: "Primary key" },
-  { label: "KEY", detail: "Key" },
-  { label: "FOREIGN", detail: "Foreign key" },
-  { label: "REFERENCES", detail: "References" },
-  { label: "UNIQUE", detail: "Unique" },
-  { label: "CHECK", detail: "Check constraint" },
-  { label: "DEFAULT", detail: "Default value" },
-  { label: "IF", detail: "Conditional" },
-  { label: "REPLACE", detail: "Replace" },
-  { label: "TEMP", detail: "Temporary" },
-  { label: "TEMPORARY", detail: "Temporary" },
+  { detail: "Create object", label: "CREATE" },
+  { detail: "Create table", label: "TABLE" },
+  { detail: "Create index", label: "INDEX" },
+  { detail: "Create view", label: "VIEW" },
+  { detail: "Drop object", label: "DROP" },
+  { detail: "Alter object", label: "ALTER" },
+  { detail: "Add column", label: "ADD" },
+  { detail: "Column", label: "COLUMN" },
+  { detail: "Constraint", label: "CONSTRAINT" },
+  { detail: "Primary key", label: "PRIMARY" },
+  { detail: "Key", label: "KEY" },
+  { detail: "Foreign key", label: "FOREIGN" },
+  { detail: "References", label: "REFERENCES" },
+  { detail: "Unique", label: "UNIQUE" },
+  { detail: "Check constraint", label: "CHECK" },
+  { detail: "Default value", label: "DEFAULT" },
+  { detail: "Conditional", label: "IF" },
+  { detail: "Replace", label: "REPLACE" },
+  { detail: "Temporary", label: "TEMP" },
+  { detail: "Temporary", label: "TEMPORARY" },
   // Data types
-  { label: "INTEGER", detail: "Integer type" },
-  { label: "INT", detail: "Integer type" },
-  { label: "BIGINT", detail: "Big integer" },
-  { label: "SERIAL", detail: "Auto-increment int" },
-  { label: "BIGSERIAL", detail: "Auto-increment bigint" },
-  { label: "VARCHAR", detail: "Variable-length text" },
-  { label: "TEXT", detail: "Text type" },
-  { label: "BOOLEAN", detail: "Boolean type" },
-  { label: "BOOL", detail: "Boolean type" },
-  { label: "DATE", detail: "Date type" },
-  { label: "TIME", detail: "Time type" },
-  { label: "TIMESTAMP", detail: "Timestamp type" },
-  { label: "FLOAT", detail: "Float type" },
-  { label: "DOUBLE", detail: "Double type" },
-  { label: "DECIMAL", detail: "Decimal type" },
-  { label: "NUMERIC", detail: "Numeric type" },
-  { label: "JSON", detail: "JSON type" },
-  { label: "JSONB", detail: "JSON binary" },
-  { label: "UUID", detail: "UUID type" },
-  { label: "BLOB", detail: "Binary large object" },
-  { label: "BYTEA", detail: "Binary data (PG)" },
+  { detail: "Integer type", label: "INTEGER" },
+  { detail: "Integer type", label: "INT" },
+  { detail: "Big integer", label: "BIGINT" },
+  { detail: "Auto-increment int", label: "SERIAL" },
+  { detail: "Auto-increment bigint", label: "BIGSERIAL" },
+  { detail: "Variable-length text", label: "VARCHAR" },
+  { detail: "Text type", label: "TEXT" },
+  { detail: "Boolean type", label: "BOOLEAN" },
+  { detail: "Boolean type", label: "BOOL" },
+  { detail: "Date type", label: "DATE" },
+  { detail: "Time type", label: "TIME" },
+  { detail: "Timestamp type", label: "TIMESTAMP" },
+  { detail: "Float type", label: "FLOAT" },
+  { detail: "Double type", label: "DOUBLE" },
+  { detail: "Decimal type", label: "DECIMAL" },
+  { detail: "Numeric type", label: "NUMERIC" },
+  { detail: "JSON type", label: "JSON" },
+  { detail: "JSON binary", label: "JSONB" },
+  { detail: "UUID type", label: "UUID" },
+  { detail: "Binary large object", label: "BLOB" },
+  { detail: "Binary data (PG)", label: "BYTEA" },
   // Functions
-  { label: "COUNT", detail: "Count rows" },
-  { label: "SUM", detail: "Sum values" },
-  { label: "AVG", detail: "Average value" },
-  { label: "MIN", detail: "Minimum value" },
-  { label: "MAX", detail: "Maximum value" },
-  { label: "COALESCE", detail: "First non-null" },
-  { label: "NULLIF", detail: "Null if equal" },
-  { label: "CAST", detail: "Type cast" },
-  { label: "EXTRACT", detail: "Extract field" },
-  { label: "NOW", detail: "Current timestamp" },
-  { label: "CURRENT_DATE", detail: "Current date" },
-  { label: "CURRENT_TIME", detail: "Current time" },
-  { label: "CURRENT_TIMESTAMP", detail: "Current timestamp" },
-  { label: "LENGTH", detail: "String length" },
-  { label: "CONCAT", detail: "Concatenate" },
-  { label: "TRIM", detail: "Trim whitespace" },
-  { label: "UPPER", detail: "Uppercase" },
-  { label: "LOWER", detail: "Lowercase" },
-  { label: "SUBSTRING", detail: "Substring" },
-  { label: "REPLACE", detail: "Replace string" },
-  { label: "ROUND", detail: "Round number" },
-  { label: "CEIL", detail: "Ceiling" },
-  { label: "FLOOR", detail: "Floor" },
-  { label: "ABS", detail: "Absolute value" },
+  { detail: "Count rows", label: "COUNT" },
+  { detail: "Sum values", label: "SUM" },
+  { detail: "Average value", label: "AVG" },
+  { detail: "Minimum value", label: "MIN" },
+  { detail: "Maximum value", label: "MAX" },
+  { detail: "First non-null", label: "COALESCE" },
+  { detail: "Null if equal", label: "NULLIF" },
+  { detail: "Type cast", label: "CAST" },
+  { detail: "Extract field", label: "EXTRACT" },
+  { detail: "Current timestamp", label: "NOW" },
+  { detail: "Current date", label: "CURRENT_DATE" },
+  { detail: "Current time", label: "CURRENT_TIME" },
+  { detail: "Current timestamp", label: "CURRENT_TIMESTAMP" },
+  { detail: "String length", label: "LENGTH" },
+  { detail: "Concatenate", label: "CONCAT" },
+  { detail: "Trim whitespace", label: "TRIM" },
+  { detail: "Uppercase", label: "UPPER" },
+  { detail: "Lowercase", label: "LOWER" },
+  { detail: "Substring", label: "SUBSTRING" },
+  { detail: "Replace string", label: "REPLACE" },
+  { detail: "Round number", label: "ROUND" },
+  { detail: "Ceiling", label: "CEIL" },
+  { detail: "Floor", label: "FLOOR" },
+  { detail: "Absolute value", label: "ABS" },
   // Transaction / misc
-  { label: "BEGIN", detail: "Begin transaction" },
-  { label: "COMMIT", detail: "Commit transaction" },
-  { label: "ROLLBACK", detail: "Rollback transaction" },
-  { label: "TRANSACTION", detail: "Transaction" },
-  { label: "EXPLAIN", detail: "Explain plan" },
-  { label: "ANALYZE", detail: "Analyze / explain analyze" },
-  { label: "VACUUM", detail: "Vacuum (PG)" },
-  { label: "WITH", detail: "CTE / WITH clause" },
-  { label: "RECURSIVE", detail: "Recursive CTE" },
-  { label: "UNION", detail: "Union" },
-  { label: "INTERSECT", detail: "Intersect" },
-  { label: "EXCEPT", detail: "Except" },
-  { label: "RETURNING", detail: "Returning (PG)" },
-  { label: "OVER", detail: "Window function" },
-  { label: "PARTITION", detail: "Window partition" },
-  { label: "ROWS", detail: "Window frame rows" },
-  { label: "RANGE", detail: "Window frame range" },
-  { label: "WINDOW", detail: "Named window" },
-  { label: "TRUNCATE", detail: "Truncate table" },
-  { label: "SCHEMA", detail: "Schema" },
-  { label: "DATABASE", detail: "Database" },
-  { label: "GRANT", detail: "Grant privilege" },
-  { label: "REVOKE", detail: "Revoke privilege" },
-  { label: "TRUE", detail: "Boolean true" },
-  { label: "FALSE", detail: "Boolean false" },
+  { detail: "Begin transaction", label: "BEGIN" },
+  { detail: "Commit transaction", label: "COMMIT" },
+  { detail: "Rollback transaction", label: "ROLLBACK" },
+  { detail: "Transaction", label: "TRANSACTION" },
+  { detail: "Explain plan", label: "EXPLAIN" },
+  { detail: "Analyze / explain analyze", label: "ANALYZE" },
+  { detail: "Vacuum (PG)", label: "VACUUM" },
+  { detail: "CTE / WITH clause", label: "WITH" },
+  { detail: "Recursive CTE", label: "RECURSIVE" },
+  { detail: "Union", label: "UNION" },
+  { detail: "Intersect", label: "INTERSECT" },
+  { detail: "Except", label: "EXCEPT" },
+  { detail: "Returning (PG)", label: "RETURNING" },
+  { detail: "Window function", label: "OVER" },
+  { detail: "Window partition", label: "PARTITION" },
+  { detail: "Window frame rows", label: "ROWS" },
+  { detail: "Window frame range", label: "RANGE" },
+  { detail: "Named window", label: "WINDOW" },
+  { detail: "Truncate table", label: "TRUNCATE" },
+  { detail: "Schema", label: "SCHEMA" },
+  { detail: "Database", label: "DATABASE" },
+  { detail: "Grant privilege", label: "GRANT" },
+  { detail: "Revoke privilege", label: "REVOKE" },
+  { detail: "Boolean true", label: "TRUE" },
+  { detail: "Boolean false", label: "FALSE" },
 ];
 
-function makeKeywords(
-  range: monaco.IRange,
-): monaco.languages.CompletionItem[] {
+function makeKeywords(range: monaco.IRange): monaco.languages.CompletionItem[] {
   return SQL_KEYWORDS.map((kw) => ({
-    label: kw.label,
-    kind: monaco.languages.CompletionItemKind.Keyword,
-    insertText: kw.label,
-    range,
     detail: kw.detail,
+    insertText: kw.label,
+    kind: monaco.languages.CompletionItemKind.Keyword,
+    label: kw.label,
+    range,
     sortText: `2_${kw.label}`,
   }));
 }
@@ -197,188 +195,182 @@ function makeKeywords(
 // Labels use the full keyword (SELECT, INSERT, …) so they appear when the
 // user types the keyword name. The snippet prefix is shown in detail.
 
-function makeSnippets(
-  range: monaco.IRange,
-): monaco.languages.CompletionItem[] {
+function makeSnippets(range: monaco.IRange): monaco.languages.CompletionItem[] {
   return [
     {
-      label: "SELECT",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… FROM … WHERE template",
+      documentation: "SELECT … FROM … WHERE",
       insertText:
         "SELECT\n  ${1:columns}\nFROM\n  ${2:table_name}\nWHERE\n  ${3:condition};",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "SELECT … FROM … WHERE",
-      detail: "… FROM … WHERE template",
-      sortText: "1_SELECT",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "SELECT",
       range,
+      sortText: "1_SELECT",
     },
     {
-      label: "SELECT *",
-      kind: monaco.languages.CompletionItemKind.Snippet,
-      insertText:
-        "SELECT *\nFROM\n  ${1:table_name}\nLIMIT ${2:100};",
+      detail: "… FROM … LIMIT template",
+      documentation: "SELECT * FROM … LIMIT",
+      insertText: "SELECT *\nFROM\n  ${1:table_name}\nLIMIT ${2:100};",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "SELECT * FROM … LIMIT",
-      detail: "… FROM … LIMIT template",
-      sortText: "1_SELECT *",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "SELECT *",
       range,
+      sortText: "1_SELECT *",
     },
     {
-      label: "INSERT",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… INTO … VALUES template",
+      documentation: "INSERT INTO … VALUES",
       insertText:
         "INSERT INTO ${1:table_name} (${2:columns})\nVALUES (${3:values});",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "INSERT INTO … VALUES",
-      detail: "… INTO … VALUES template",
-      sortText: "1_INSERT",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "INSERT",
       range,
+      sortText: "1_INSERT",
     },
     {
-      label: "UPDATE",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… SET … WHERE template",
+      documentation: "UPDATE … SET … WHERE",
       insertText:
         "UPDATE ${1:table_name}\nSET\n  ${2:column} = ${3:value}\nWHERE ${4:condition};",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "UPDATE … SET … WHERE",
-      detail: "… SET … WHERE template",
-      sortText: "1_UPDATE",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "UPDATE",
       range,
+      sortText: "1_UPDATE",
     },
     {
-      label: "DELETE",
-      kind: monaco.languages.CompletionItemKind.Snippet,
-      insertText:
-        "DELETE FROM ${1:table_name}\nWHERE ${2:condition};",
+      detail: "… FROM … WHERE template",
+      documentation: "DELETE FROM … WHERE",
+      insertText: "DELETE FROM ${1:table_name}\nWHERE ${2:condition};",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "DELETE FROM … WHERE",
-      detail: "… FROM … WHERE template",
-      sortText: "1_DELETE",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "DELETE",
       range,
+      sortText: "1_DELETE",
     },
     {
-      label: "CREATE TABLE",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… (columns) template",
+      documentation: "CREATE TABLE …",
       insertText:
         "CREATE TABLE ${1:table_name} (\n  ${2:id} SERIAL PRIMARY KEY,\n  ${3:column_name} ${4:VARCHAR(255)}\n);",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "CREATE TABLE …",
-      detail: "… (columns) template",
-      sortText: "1_CREATE TABLE",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "CREATE TABLE",
       range,
+      sortText: "1_CREATE TABLE",
     },
     {
-      label: "INNER JOIN",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… ON … = … template",
+      documentation: "INNER JOIN … ON",
       insertText:
         "INNER JOIN ${1:table_name} ON ${2:table1.column} = ${3:table2.column}",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "INNER JOIN … ON",
-      detail: "… ON … = … template",
-      sortText: "1_INNER JOIN",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "INNER JOIN",
       range,
+      sortText: "1_INNER JOIN",
     },
     {
-      label: "LEFT JOIN",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… ON … = … template",
+      documentation: "LEFT JOIN … ON",
       insertText:
         "LEFT JOIN ${1:table_name} ON ${2:table1.column} = ${3:table2.column}",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "LEFT JOIN … ON",
-      detail: "… ON … = … template",
-      sortText: "1_LEFT JOIN",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "LEFT JOIN",
       range,
+      sortText: "1_LEFT JOIN",
     },
     {
-      label: "RIGHT JOIN",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… ON … = … template",
+      documentation: "RIGHT JOIN … ON",
       insertText:
         "RIGHT JOIN ${1:table_name} ON ${2:table1.column} = ${3:table2.column}",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "RIGHT JOIN … ON",
-      detail: "… ON … = … template",
-      sortText: "1_RIGHT JOIN",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "RIGHT JOIN",
       range,
+      sortText: "1_RIGHT JOIN",
     },
     {
-      label: "GROUP BY",
-      kind: monaco.languages.CompletionItemKind.Snippet,
-      insertText:
-        "GROUP BY ${1:column}\nHAVING ${2:condition}",
+      detail: "… HAVING … template",
+      documentation: "GROUP BY … HAVING",
+      insertText: "GROUP BY ${1:column}\nHAVING ${2:condition}",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "GROUP BY … HAVING",
-      detail: "… HAVING … template",
-      sortText: "1_GROUP BY",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "GROUP BY",
       range,
+      sortText: "1_GROUP BY",
     },
     {
-      label: "ORDER BY",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… ASC/DESC template",
+      documentation: "ORDER BY … ASC/DESC",
       insertText: "ORDER BY ${1:column} ${2|ASC,DESC|}",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "ORDER BY … ASC/DESC",
-      detail: "… ASC/DESC template",
-      sortText: "1_ORDER BY",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "ORDER BY",
       range,
+      sortText: "1_ORDER BY",
     },
     {
-      label: "CREATE INDEX",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… ON … (col) template",
+      documentation: "CREATE INDEX … ON",
       insertText:
         "CREATE INDEX ${1:index_name} ON ${2:table_name} (${3:column});",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "CREATE INDEX … ON",
-      detail: "… ON … (col) template",
-      sortText: "1_CREATE INDEX",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "CREATE INDEX",
       range,
+      sortText: "1_CREATE INDEX",
     },
     {
-      label: "ALTER TABLE",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "… ADD COLUMN … template",
+      documentation: "ALTER TABLE … ADD COLUMN",
       insertText:
         "ALTER TABLE ${1:table_name}\nADD COLUMN ${2:column_name} ${3:data_type};",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "ALTER TABLE … ADD COLUMN",
-      detail: "… ADD COLUMN … template",
-      sortText: "1_ALTER TABLE",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "ALTER TABLE",
       range,
+      sortText: "1_ALTER TABLE",
     },
     {
-      label: "WITH",
-      kind: monaco.languages.CompletionItemKind.Snippet,
+      detail: "CTE: … AS (…) SELECT template",
+      documentation: "Common Table Expression (CTE)",
       insertText:
         "WITH ${1:cte_name} AS (\n  ${2:SELECT}\n)\n${3:SELECT * FROM ${1:cte_name}};",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "Common Table Expression (CTE)",
-      detail: "CTE: … AS (…) SELECT template",
-      sortText: "1_WITH",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "WITH",
       range,
+      sortText: "1_WITH",
     },
     {
-      label: "SELECT FROM",
-      kind: monaco.languages.CompletionItemKind.Snippet,
-      insertText:
-        "SELECT *\nFROM (\n  ${1:SELECT}\n) AS ${2:subquery}",
+      detail: "Subquery template",
+      documentation: "SELECT FROM (subquery)",
+      insertText: "SELECT *\nFROM (\n  ${1:SELECT}\n) AS ${2:subquery}",
       insertTextRules:
         monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-      documentation: "SELECT FROM (subquery)",
-      detail: "Subquery template",
-      sortText: "1_SELECT FROM",
+      kind: monaco.languages.CompletionItemKind.Snippet,
+      label: "SELECT FROM",
       range,
+      sortText: "1_SELECT FROM",
     },
   ];
 }
@@ -395,14 +387,13 @@ export function registerSqlCompletion() {
   completionDisposable = monaco.languages.registerCompletionItemProvider(
     "sql",
     {
-      triggerCharacters: [".", " ", '"'],
       provideCompletionItems(model, position) {
         const word = model.getWordUntilPosition(position);
         const range: monaco.IRange = {
-          startLineNumber: position.lineNumber,
+          endColumn: word.endColumn,
           endLineNumber: position.lineNumber,
           startColumn: word.startColumn,
-          endColumn: word.endColumn,
+          startLineNumber: position.lineNumber,
         };
 
         const lineContent = model.getLineContent(position.lineNumber);
@@ -415,20 +406,22 @@ export function registerSqlCompletion() {
         if (dotMatch) {
           const ref = dotMatch[1];
           const table = currentSchemaData.tables.find(
-            (t) => t.name === ref || `${t.schema}.${t.name}` === ref,
+            (t) => t.name === ref || `${t.schema}.${t.name}` === ref
           );
           if (table) {
             for (const col of table.columns) {
               suggestions.push({
-                label: col.name,
-                kind: monaco.languages.CompletionItemKind.Field,
-                insertText: col.name,
-                range,
                 detail: col.dataType,
+                insertText: col.name,
+                kind: monaco.languages.CompletionItemKind.Field,
+                label: col.name,
+                range,
                 sortText: `0_${col.name}`,
               });
             }
-            if (suggestions.length > 0) return { suggestions };
+            if (suggestions.length > 0) {
+              return { suggestions };
+            }
           }
         }
 
@@ -439,15 +432,15 @@ export function registerSqlCompletion() {
           if (!seen.has(table.name)) {
             seen.add(table.name);
             suggestions.push({
-              label: table.name,
-              kind: monaco.languages.CompletionItemKind.Class,
-              insertText: table.name,
-              range,
               detail: `Table · ${table.schema}`,
               documentation:
                 table.columns.length > 0
                   ? `Columns: ${table.columns.map((c) => c.name).join(", ")}`
                   : undefined,
+              insertText: table.name,
+              kind: monaco.languages.CompletionItemKind.Class,
+              label: table.name,
+              range,
               sortText: `1_${table.name}`,
             });
           }
@@ -456,15 +449,15 @@ export function registerSqlCompletion() {
           if (!seen.has(qualified)) {
             seen.add(qualified);
             suggestions.push({
-              label: qualified,
-              kind: monaco.languages.CompletionItemKind.Class,
-              insertText: qualified,
-              range,
               detail: "Table · qualified",
               documentation:
                 table.columns.length > 0
                   ? `Columns: ${table.columns.map((c) => c.name).join(", ")}`
                   : undefined,
+              insertText: qualified,
+              kind: monaco.languages.CompletionItemKind.Class,
+              label: qualified,
+              range,
               sortText: `2_${qualified}`,
             });
           }
@@ -473,11 +466,11 @@ export function registerSqlCompletion() {
         // ── Schema names ───────────────────────────────────────
         for (const schema of currentSchemaData.schemas) {
           suggestions.push({
-            label: schema,
-            kind: monaco.languages.CompletionItemKind.Module,
-            insertText: schema,
-            range,
             detail: "Schema",
+            insertText: schema,
+            kind: monaco.languages.CompletionItemKind.Module,
+            label: schema,
+            range,
             sortText: `3_${schema}`,
           });
         }
@@ -490,7 +483,8 @@ export function registerSqlCompletion() {
 
         return { suggestions };
       },
-    },
+      triggerCharacters: [".", " ", '"'],
+    }
   );
 }
 
@@ -503,12 +497,7 @@ export function disposeSqlCompletion() {
 
 // ── SQL Formatter ─────────────────────────────────────────────────────
 
-type FormatterLanguage =
-  | "sql"
-  | "mysql"
-  | "postgresql"
-  | "mariadb"
-  | "sqlite";
+type FormatterLanguage = "sql" | "mysql" | "postgresql" | "mariadb" | "sqlite";
 
 function getFormatterLanguage(dbType: string): FormatterLanguage {
   switch (dbType) {
@@ -528,10 +517,10 @@ function getFormatterLanguage(dbType: string): FormatterLanguage {
 export function formatSql(sql: string, dbType: string): string {
   try {
     return sqlFormat(sql, {
-      language: getFormatterLanguage(dbType),
-      tabWidth: 2,
       keywordCase: "upper",
+      language: getFormatterLanguage(dbType),
       logicalOperatorNewline: "before",
+      tabWidth: 2,
     });
   } catch {
     return sql; // Return original on parse error
@@ -543,7 +532,7 @@ export function formatSql(sql: string, dbType: string): string {
 export function buildExplainSql(
   sql: string,
   dbType: string,
-  analyze: boolean = false,
+  analyze = false
 ): string {
   switch (dbType) {
     case "sqlite":
@@ -562,5 +551,10 @@ export function buildExplainSql(
 
 export function supportsExplainAnalyze(dbType: string): boolean {
   // ClickHouse also supports a deeper EXPLAIN mode (PIPELINE vs PLAN)
-  return dbType === "postgresql" || dbType === "mysql" || dbType === "mariadb" || dbType === "clickhouse";
+  return (
+    dbType === "postgresql" ||
+    dbType === "mysql" ||
+    dbType === "mariadb" ||
+    dbType === "clickhouse"
+  );
 }

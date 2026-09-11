@@ -1,24 +1,24 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { dbQueryKeys } from "@/lib/query-options";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { setUnsavedChanges as setWindowUnsavedChanges } from "@/features/shell/actions/window";
 import type {
-  TableRef,
   SaveChangesInput,
   SaveChangesResponse,
   SchemaColumn,
+  TableRef,
 } from "@/ipc/db/types";
-import type { RowRecord, RowUpdateDraft, DeleteDraft } from "../types";
+import { dbQueryKeys } from "@/lib/query-options";
+import type { DeleteDraft, RowRecord, RowUpdateDraft } from "../types";
 
 interface UseDraftChangesOptions {
+  connectionId: string;
+  onDiscard?: () => void;
+  queryClient: QueryClient;
+  tableColumns: SchemaColumn[];
+  tableName: string;
   tableRef: TableRef;
   tableSaveChanges: (input: SaveChangesInput) => Promise<SaveChangesResponse>;
-  queryClient: QueryClient;
-  connectionId: string;
   tableSchema: string;
-  tableName: string;
-  tableColumns: SchemaColumn[];
-  onDiscard?: () => void;
 }
 
 export function useDraftChanges(options: UseDraftChangesOptions) {
@@ -38,18 +38,18 @@ export function useDraftChanges(options: UseDraftChangesOptions) {
     Record<string, RowUpdateDraft>
   >({});
   const [draftDeletes, setDraftDeletes] = useState<Record<string, DeleteDraft>>(
-    {},
+    {}
   );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dirtyCounts = useMemo(
     () => ({
+      deletes: Object.keys(draftDeletes).length,
       inserts: draftInserts.length,
       updates: Object.keys(draftUpdates).length,
-      deletes: Object.keys(draftDeletes).length,
     }),
-    [draftDeletes, draftInserts.length, draftUpdates],
+    [draftDeletes, draftInserts.length, draftUpdates]
   );
 
   const hasDraftChanges =
@@ -79,7 +79,9 @@ export function useDraftChanges(options: UseDraftChangesOptions) {
   }, [onDiscard]);
 
   const saveAllChanges = useCallback(async () => {
-    if (!hasDraftChanges) return;
+    if (!hasDraftChanges) {
+      return;
+    }
 
     setIsSaving(true);
     setError(null);
@@ -87,33 +89,33 @@ export function useDraftChanges(options: UseDraftChangesOptions) {
       const inserts = draftInserts.map((row) => {
         const clean: RowRecord = {};
         for (const [key, value] of Object.entries(row)) {
-          if (value !== undefined) clean[key] = value;
+          if (value !== undefined) {
+            clean[key] = value;
+          }
         }
         return clean;
       });
 
       const updates = Object.values(draftUpdates).map((entry) => ({
-        primaryKey: entry.primaryKey,
         changes: entry.changes,
+        primaryKey: entry.primaryKey,
       }));
 
       const deletes = Object.values(draftDeletes).map((entry) => ({
         primaryKey: entry.primaryKey,
       }));
 
-      await tableSaveChanges({ tableRef, inserts, updates, deletes });
+      await tableSaveChanges({ deletes, inserts, tableRef, updates });
       discardDrafts();
       await queryClient.invalidateQueries({
         queryKey: dbQueryKeys.tableRowsPrefix(
           connectionId,
           tableSchema,
-          tableName,
+          tableName
         ),
       });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to save changes",
-      );
+      setError(err instanceof Error ? err.message : "Failed to save changes");
     } finally {
       setIsSaving(false);
     }
@@ -132,20 +134,20 @@ export function useDraftChanges(options: UseDraftChangesOptions) {
   ]);
 
   return {
-    draftInserts,
-    setDraftInserts,
-    draftUpdates,
-    setDraftUpdates,
-    draftDeletes,
-    setDraftDeletes,
     dirtyCounts,
-    hasDraftChanges,
     discardDrafts,
-    handleAddDraftRecord,
-    saveAllChanges,
-    isSaving,
-    setIsSaving,
+    draftDeletes,
+    draftInserts,
+    draftUpdates,
     error,
+    handleAddDraftRecord,
+    hasDraftChanges,
+    isSaving,
+    saveAllChanges,
+    setDraftDeletes,
+    setDraftInserts,
+    setDraftUpdates,
     setError,
+    setIsSaving,
   };
 }

@@ -1,11 +1,11 @@
 import z from "zod";
 import type {
+  ColumnDefinition,
   DatabaseType,
   SslMode,
-  ColumnDefinition,
-  TableSort,
   TableFilter,
   TableRef,
+  TableSort,
 } from "./types";
 
 // Database type schema
@@ -27,29 +27,35 @@ export const sslModeSchema = z.enum([
 ]) as z.ZodType<SslMode>;
 
 export const connectionInputSchema = z.object({
-  id: z.string().optional(),
-  name: z.string(),
-  db_type: databaseTypeSchema.optional().default("postgresql"),
-  host: z.string(),
-  port: z.number(),
-  database: z.string(),
-  username: z.string(),
-  password: z.string(),
-  ssl_mode: sslModeSchema,
-  url: z.string().regex(
-    /^(?:postgresql|postgres|mysql|mariadb|clickhouse|clickhouses|redis|rediss|sqlite):\/\/.+/,
-    "URL must use a supported database protocol",
-  ).optional(),
-  is_local: z.boolean().optional(),
-  connection_string: z.string().regex(
-    /^(?:postgresql|postgres|mysql|mariadb|clickhouse|clickhouses|redis|rediss|sqlite):\/\/.+/,
-    "Connection string must use a supported database protocol",
-  ).optional(),
-  engine_version: z.string().optional(),
-  postgres_version: z.string().optional(),
-  tag: z.string().optional(),
   color: z.string().optional(),
+  connection_string: z
+    .string()
+    .regex(
+      /^(?:postgresql|postgres|mysql|mariadb|clickhouse|clickhouses|redis|rediss|sqlite):\/\/.+/,
+      "Connection string must use a supported database protocol"
+    )
+    .optional(),
+  database: z.string(),
+  db_type: databaseTypeSchema.optional().default("postgresql"),
+  engine_version: z.string().optional(),
+  host: z.string(),
+  id: z.string().optional(),
+  is_local: z.boolean().optional(),
   local_auto_start: z.boolean().optional(),
+  name: z.string(),
+  password: z.string(),
+  port: z.number(),
+  postgres_version: z.string().optional(),
+  ssl_mode: sslModeSchema,
+  tag: z.string().optional(),
+  url: z
+    .string()
+    .regex(
+      /^(?:postgresql|postgres|mysql|mariadb|clickhouse|clickhouses|redis|rediss|sqlite):\/\/.+/,
+      "URL must use a supported database protocol"
+    )
+    .optional(),
+  username: z.string(),
 });
 
 export const connectionIdSchema = z.object({
@@ -62,8 +68,8 @@ export const idSchema = z.object({
 
 export const executeQuerySchema = z.object({
   connectionId: z.string(),
-  sql: z.string(),
   requestId: z.string().optional(),
+  sql: z.string(),
 });
 
 export const tableRefSchema = z.object({
@@ -96,120 +102,120 @@ export const tableFilterSchema = z.object({
 }) as z.ZodType<TableFilter>;
 
 export const listRowsInputSchema = z.object({
-  tableRef: tableRefSchema,
+  filters: z.array(tableFilterSchema),
   page: z.number(),
   pageSize: z.number(),
   sort: z.array(tableSortSchema),
-  filters: z.array(tableFilterSchema),
+  tableRef: tableRefSchema,
 });
 
 export const columnDefinitionSchema = z.object({
-  name: z.string(),
   dataType: z.string(),
+  defaultExpr: z.string().optional(),
   isNullable: z.boolean(),
   isPrimaryKey: z.boolean().optional(),
   isUnique: z.boolean().optional(),
-  defaultExpr: z.string().optional(),
+  name: z.string(),
   references: z.string().optional(),
 }) as z.ZodType<ColumnDefinition>;
 
 // DDL Schemas
 export const createTableInputSchema = z.object({
-  connectionId: z.string(),
-  schema: z.string(),
-  name: z.string(),
   columns: z.array(columnDefinitionSchema),
-  primaryKeyColumns: z.array(z.string()).optional(),
+  connectionId: z.string(),
   ifNotExists: z.boolean().optional(),
+  name: z.string(),
+  primaryKeyColumns: z.array(z.string()).optional(),
+  schema: z.string(),
 });
 
 export const dropTableInputSchema = z.object({
-  connectionId: z.string(),
-  schema: z.string(),
-  name: z.string(),
   cascade: z.boolean().optional(),
+  connectionId: z.string(),
   ifExists: z.boolean().optional(),
+  name: z.string(),
+  schema: z.string(),
 });
 
 export const renameTableInputSchema = z.object({
   connectionId: z.string(),
-  schema: z.string(),
-  oldName: z.string(),
   newName: z.string(),
+  oldName: z.string(),
+  schema: z.string(),
 });
 
 export const addColumnInputSchema = z.object({
+  column: columnDefinitionSchema,
   connectionId: z.string(),
+  ifNotExists: z.boolean().optional(),
   schema: z.string(),
   table: z.string(),
-  column: columnDefinitionSchema,
-  ifNotExists: z.boolean().optional(),
 });
 
 export const dropColumnInputSchema = z.object({
+  cascade: z.boolean().optional(),
+  column: z.string(),
   connectionId: z.string(),
+  ifExists: z.boolean().optional(),
   schema: z.string(),
   table: z.string(),
-  column: z.string(),
-  cascade: z.boolean().optional(),
-  ifExists: z.boolean().optional(),
 });
 
 export const renameColumnInputSchema = z.object({
   connectionId: z.string(),
+  newName: z.string(),
+  oldName: z.string(),
   schema: z.string(),
   table: z.string(),
-  oldName: z.string(),
-  newName: z.string(),
 });
 
 export const alterColumnTypeInputSchema = z.object({
+  column: z.string(),
   connectionId: z.string(),
+  newType: z.string(),
   schema: z.string(),
   table: z.string(),
-  column: z.string(),
-  newType: z.string(),
   usingExpr: z.string().optional(),
 });
 
 export const setColumnNullableInputSchema = z.object({
+  column: z.string(),
   connectionId: z.string(),
+  isNullable: z.boolean(),
   schema: z.string(),
   table: z.string(),
-  column: z.string(),
-  isNullable: z.boolean(),
 });
 
 export const setColumnDefaultInputSchema = z.object({
+  column: z.string(),
   connectionId: z.string(),
+  defaultExpr: z.string().optional(),
   schema: z.string(),
   table: z.string(),
-  column: z.string(),
-  defaultExpr: z.string().optional(),
 });
 
 export const createIndexInputSchema = z.object({
+  columns: z.array(z.string()),
   connectionId: z.string(),
+  ifNotExists: z.boolean().optional(),
+  name: z.string().optional(),
   schema: z.string(),
   table: z.string(),
-  name: z.string().optional(),
-  columns: z.array(z.string()),
   unique: z.boolean().optional(),
-  ifNotExists: z.boolean().optional(),
 });
 
 export const dropIndexInputSchema = z.object({
-  connectionId: z.string(),
-  schema: z.string(),
-  name: z.string(),
   cascade: z.boolean().optional(),
+  connectionId: z.string(),
   ifExists: z.boolean().optional(),
+  name: z.string(),
+  schema: z.string(),
 });
 
 export const createSchemaInputSchema = z.object({
   connectionId: z.string(),
-  name: z.string(),
   ifNotExists: z.boolean().optional(),
+  name: z.string(),
 });
 
 export const getTableDetailsSchema = z.object({
@@ -220,8 +226,8 @@ export const getTableDetailsSchema = z.object({
 
 // Table changes schemas
 export const tableUpdateChangeSchema = z.object({
-  primaryKey: z.record(z.string(), z.unknown()),
   changes: z.record(z.string(), z.unknown()),
+  primaryKey: z.record(z.string(), z.unknown()),
 });
 
 export const tableDeleteChangeSchema = z.object({
@@ -229,18 +235,18 @@ export const tableDeleteChangeSchema = z.object({
 });
 
 export const saveChangesInputSchema = z.object({
-  tableRef: tableRefSchema,
-  inserts: z.array(z.record(z.string(), z.unknown())),
-  updates: z.array(tableUpdateChangeSchema),
   deletes: z.array(tableDeleteChangeSchema),
+  inserts: z.array(z.record(z.string(), z.unknown())),
+  tableRef: tableRefSchema,
+  updates: z.array(tableUpdateChangeSchema),
 });
 
 export const fkLookupInputSchema = z.object({
-  tableRef: tableRefSchema,
   column: z.string(),
-  query: z.string(),
   page: z.number(),
   pageSize: z.number(),
+  query: z.string(),
+  tableRef: tableRefSchema,
 });
 
 export const tableTruncateSchema = z.object({
@@ -248,27 +254,30 @@ export const tableTruncateSchema = z.object({
 });
 
 // Local DB schemas
-export const localDbEngineSchema = z.enum(["postgresql", "sqlite"]) as z.ZodType<import("./types").LocalDbEngine>;
+export const localDbEngineSchema = z.enum([
+  "postgresql",
+  "sqlite",
+]) as z.ZodType<import("./types").LocalDbEngine>;
 
 export const createLocalDatabaseSchema = z.object({
-  name: z.string().trim().min(1, "Local database name is required"),
+  autoStart: z.boolean().optional(),
   databaseName: z.string().optional(),
-  username: z.string().optional(),
+  /** Engine type for the local DB. Defaults to "postgresql" for backward compat. */
+  engine: localDbEngineSchema.optional().default("postgresql"),
+  name: z.string().trim().min(1, "Local database name is required"),
   password: z.string().optional(),
   port: z.number().optional(),
   postgresVersion: z.string().optional(),
-  autoStart: z.boolean().optional(),
-  /** Engine type for the local DB. Defaults to "postgresql" for backward compat. */
-  engine: localDbEngineSchema.optional().default("postgresql"),
+  username: z.string().optional(),
 });
 
 // Clone to Local schemas
 export const exportTableDataSchema = z.object({
+  batchSize: z.number().min(1).max(5000).default(500),
   connectionId: z.string(),
+  offset: z.number().min(0).default(0),
   schema: z.string(),
   table: z.string(),
-  batchSize: z.number().min(1).max(5000).default(500),
-  offset: z.number().min(0).default(0),
 });
 
 export const executeBatchDdlSchema = z.object({
@@ -277,11 +286,11 @@ export const executeBatchDdlSchema = z.object({
 });
 
 export const importTableRowsSchema = z.object({
+  columns: z.array(z.string()),
   connectionId: z.string(),
+  rows: z.array(z.record(z.string(), z.unknown())),
   schema: z.string(),
   table: z.string(),
-  columns: z.array(z.string()),
-  rows: z.array(z.record(z.string(), z.unknown())),
 });
 
 export const importTableColumnsSchema = z.object({
@@ -291,25 +300,29 @@ export const importTableColumnsSchema = z.object({
 });
 
 export const importDryRunSchema = z.object({
+  batchSize: z.number().min(1).max(2000).default(250),
+  columns: z.array(z.string()),
   connectionId: z.string(),
+  rows: z.array(z.record(z.string(), z.unknown())),
   schema: z.string(),
   table: z.string(),
-  columns: z.array(z.string()),
-  rows: z.array(z.record(z.string(), z.unknown())),
-  batchSize: z.number().min(1).max(2000).default(250),
 });
 
 export const createTableFromImportSchema = z.object({
+  columns: z
+    .array(
+      z.object({
+        dataType: z.string().min(1),
+        isNullable: z.boolean(),
+        name: z.string().min(1),
+      })
+    )
+    .min(1),
   connectionId: z.string(),
+  ifNotExists: z.boolean().optional().default(true),
+  primaryKeyColumns: z.array(z.string()).optional(),
   schema: z.string(),
   table: z.string(),
-  ifNotExists: z.boolean().optional().default(true),
-  columns: z.array(z.object({
-    name: z.string().min(1),
-    dataType: z.string().min(1),
-    isNullable: z.boolean(),
-  })).min(1),
-  primaryKeyColumns: z.array(z.string()).optional(),
 });
 
 export const exportSchemaIndexesSchema = z.object({
@@ -320,8 +333,8 @@ export const exportSchemaIndexesSchema = z.object({
 
 export const waitForDatabaseSchema = z.object({
   connectionString: z.string(),
-  maxRetries: z.number().optional(),
   intervalMs: z.number().optional(),
+  maxRetries: z.number().optional(),
 });
 
 // Schema definition browsers — enums, functions, triggers
@@ -335,29 +348,33 @@ export const schemaDefinitionInputSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const createBranchSchema = z.object({
-  /** The local DB instance ID to create a branch on */
-  localDbId: z.string(),
-  /** The branch to branch from (defaults to active branch) */
-  parentBranchId: z.string().optional(),
-  /** User-chosen branch name */
-  name: z.string().min(1).max(63),
+  /** Tables to include data for (schema-only for all others) */
+  dataTables: z
+    .array(
+      z.object({
+        schema: z.string(),
+        table: z.string(),
+      })
+    )
+    .optional(),
   /** Optional description */
   description: z.string().optional(),
-  /** Tables to include data for (schema-only for all others) */
-  dataTables: z.array(z.object({
-    schema: z.string(),
-    table: z.string(),
-  })).optional(),
+  /** The local DB instance ID to create a branch on */
+  localDbId: z.string(),
+  /** User-chosen branch name */
+  name: z.string().min(1).max(63),
+  /** The branch to branch from (defaults to active branch) */
+  parentBranchId: z.string().optional(),
 });
 
 export const deleteBranchSchema = z.object({
-  localDbId: z.string(),
   branchId: z.string(),
+  localDbId: z.string(),
 });
 
 export const switchBranchSchema = z.object({
-  localDbId: z.string(),
   branchId: z.string(),
+  localDbId: z.string(),
 });
 
 export const listBranchesSchema = z.object({
@@ -365,24 +382,24 @@ export const listBranchesSchema = z.object({
 });
 
 export const renameBranchSchema = z.object({
-  localDbId: z.string(),
   branchId: z.string(),
+  localDbId: z.string(),
   newName: z.string().min(1).max(63),
 });
 
 export const getBranchInfoSchema = z.object({
-  localDbId: z.string(),
   branchId: z.string(),
+  localDbId: z.string(),
 });
 
 export const previewDeleteBranchSchema = z.object({
-  localDbId: z.string(),
   branchId: z.string(),
+  localDbId: z.string(),
 });
 
 export const mergeBranchSchemaSchema = z.object({
+  dryRun: z.boolean().optional(),
   localDbId: z.string(),
   sourceBranchId: z.string(),
   targetBranchId: z.string(),
-  dryRun: z.boolean().optional(),
 });

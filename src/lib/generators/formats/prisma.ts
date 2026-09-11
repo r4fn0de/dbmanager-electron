@@ -1,26 +1,55 @@
-import type { DatabaseType, SchemaColumn, SchemaForeignKey, SchemaIndex } from "@/ipc/db/types";
-import { getColumnType, pascalCase, isValidIdentifier, toLiteralKey } from "../utils";
+import type {
+  DatabaseType,
+  SchemaColumn,
+  SchemaForeignKey,
+  SchemaIndex,
+} from "@/ipc/db/types";
 import type { GeneratorFormat } from "../utils";
+import {
+  getColumnType,
+  isValidIdentifier,
+  pascalCase,
+  toLiteralKey,
+} from "../utils";
 
 function sanitizeModelName(table: string): string {
   const name = pascalCase(table);
-  return /^[A-Za-z][A-Za-z0-9_]*$/.test(name) ? name : `Model_${name.replace(/[^A-Za-z0-9_]/g, "_")}`;
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(name)
+    ? name
+    : `Model_${name.replace(/[^A-Za-z0-9_]/g, "_")}`;
 }
 
 function buildFieldLine(
   col: SchemaColumn,
   indexes: SchemaIndex[],
-  dialect: DatabaseType,
+  dialect: DatabaseType
 ): string {
-  const fieldName = isValidIdentifier(col.name) ? col.name : toLiteralKey(col.name);
-  let prismaType = getColumnType(col.data_type, "prisma" as GeneratorFormat, dialect);
+  const fieldName = isValidIdentifier(col.name)
+    ? col.name
+    : toLiteralKey(col.name);
+  let prismaType = getColumnType(
+    col.data_type,
+    "prisma" as GeneratorFormat,
+    dialect
+  );
 
   const attrs: string[] = [];
-  const isPrimary = indexes.some((idx) => idx.is_primary && idx.column_names.includes(col.name));
-  const isUnique = indexes.some((idx) => idx.is_unique && idx.column_names.length === 1 && idx.column_names[0] === col.name);
+  const isPrimary = indexes.some(
+    (idx) => idx.is_primary && idx.column_names.includes(col.name)
+  );
+  const isUnique = indexes.some(
+    (idx) =>
+      idx.is_unique &&
+      idx.column_names.length === 1 &&
+      idx.column_names[0] === col.name
+  );
 
-  if (isPrimary) attrs.push("@id");
-  if (isUnique && !isPrimary) attrs.push("@unique");
+  if (isPrimary) {
+    attrs.push("@id");
+  }
+  if (isUnique && !isPrimary) {
+    attrs.push("@unique");
+  }
 
   if (col.column_default) {
     const d = col.column_default.toLowerCase();
@@ -39,7 +68,7 @@ function buildFieldLine(
     prismaType += "?";
   }
 
-  const mappedNameAttr = col.name !== fieldName ? ` @map("${col.name}")` : "";
+  const mappedNameAttr = col.name === fieldName ? "" : ` @map("${col.name}")`;
   const attrsSuffix = attrs.length ? ` ${attrs.join(" ")}` : "";
 
   return `  ${fieldName} ${prismaType}${attrsSuffix}${mappedNameAttr}`;
@@ -60,14 +89,16 @@ export function generateSchemaPrisma(params: {
   }
 
   const modelName = sanitizeModelName(table);
-  const fieldLines = columns.map((col) => buildFieldLine(col, indexes, dialect));
+  const fieldLines = columns.map((col) =>
+    buildFieldLine(col, indexes, dialect)
+  );
 
   const modelAttrs: string[] = [];
   if (table !== modelName) {
-    modelAttrs.push(`@@map(\"${table}\")`);
+    modelAttrs.push(`@@map("${table}")`);
   }
   if (schema && dialect === "postgresql") {
-    modelAttrs.push(`@@schema(\"${schema}\")`);
+    modelAttrs.push(`@@schema("${schema}")`);
   }
 
   const lines: string[] = [];
@@ -75,7 +106,9 @@ export function generateSchemaPrisma(params: {
   lines.push(...fieldLines);
   if (modelAttrs.length > 0) {
     lines.push("");
-    for (const attr of modelAttrs) lines.push(`  ${attr}`);
+    for (const attr of modelAttrs) {
+      lines.push(`  ${attr}`);
+    }
   }
   lines.push("}");
 

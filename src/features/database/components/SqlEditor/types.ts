@@ -1,48 +1,52 @@
-import type { QueryResult, Connection, DatabaseType } from "@/ipc/db/types";
+import type { Connection, DatabaseType, QueryResult } from "@/ipc/db/types";
 import type { SchemaCompletionData } from "@/lib/monaco-sql-setup";
 
 export interface SqlDocument {
   id: string | null;
-  title: string;
   sql: string;
+  title: string;
   updatedAt: string;
 }
 
 export interface SqlRunResult {
+  durationMs: number;
+  error: string | null;
   id: string;
   query: string;
-  status: "success" | "error";
   result: QueryResult | null;
-  error: string | null;
-  durationMs: number;
   rowCount: number;
+  status: "success" | "error";
 }
 
 export interface SqlTab {
-  id: string;
   doc: SqlDocument;
+  id: string;
   lastSavedSql: string;
 }
 
 export interface SqlEditorProps {
   connections: Connection[];
-  selectedConnection: string | null;
-  onSelectConnection: (id: string) => void;
-  executeQuery: (connectionId: string, sql: string, requestId?: string) => Promise<QueryResult>;
-  showWorkspaceSidebar?: boolean;
-  onWorkspaceSidebarResize?: (widthPx: number) => void;
+  dbType?: DatabaseType;
+  executeQuery: (
+    connectionId: string,
+    sql: string,
+    requestId?: string
+  ) => Promise<QueryResult>;
+  insertRequest?: {
+    key: string;
+    text: string;
+  } | null;
+  isRouteActive?: boolean;
   loadRequest?: {
     key: string;
     title: string;
     sql: string;
     connectionId: null | string;
   } | null;
-  dbType?: DatabaseType;
-  schemaContext?: string;
+  onSelectConnection: (id: string) => void;
+  onWorkspaceSidebarResize?: (widthPx: number) => void;
   schemaCompletionData?: SchemaCompletionData;
-  isRouteActive?: boolean;
-  insertRequest?: {
-    key: string;
-    text: string;
-  } | null;
+  schemaContext?: string;
+  selectedConnection: string | null;
+  showWorkspaceSidebar?: boolean;
 }

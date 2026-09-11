@@ -5,24 +5,22 @@
  * so the IPC handlers can delegate operations without knowing the engine.
  */
 import type {
-  ColumnMeta,
-  ConnectionInput,
+  ConstraintInfo,
   DatabaseInfo,
   DatabaseSchema,
   DatabaseType,
   IndexInfo,
-  ConstraintInfo,
+  QueryPlanResult,
+  QueryResult,
   SchemaEnum,
   SchemaFunction,
-  SchemaTrigger,
-  TableStats,
-  QueryResult,
-  QueryPlanResult,
-  TableSampleResult,
   SchemaSummary,
   SchemaTableDetails,
+  SchemaTrigger,
   SslMode,
   TableRowsResponse,
+  TableSampleResult,
+  TableStats,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -31,13 +29,13 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface DriverConnectionConfig {
-  host: string;
-  port: number;
   database: string;
-  username: string;
+  host: string;
   password: string;
+  port: number;
   ssl_mode: SslMode;
   url?: string;
+  username: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,20 +43,27 @@ export interface DriverConnectionConfig {
 // ---------------------------------------------------------------------------
 
 export interface DatabaseDriver {
-  /** The engine this driver handles. */
-  readonly type: DatabaseType;
+  /** Execute ADD COLUMN and return the display SQL string. */
+  addColumn(
+    connectionString: string,
+    schema: string,
+    table: string,
+    columnName: string,
+    dataType: string,
+    isNullable?: boolean,
+    defaultExpr?: string,
+    ifNotExists?: boolean
+  ): Promise<string>;
 
-  /** Default port for this engine. */
-  readonly defaultPort: number;
-
-  /** Default database name for this engine. */
-  readonly defaultDatabase: string;
-
-  /** Default username for this engine. */
-  readonly defaultUsername: string;
-
-  /** SSL modes supported by this engine. */
-  readonly sslModes: SslMode[];
+  /** Execute ALTER COLUMN TYPE and return the display SQL string. */
+  alterColumnType(
+    connectionString: string,
+    schema: string,
+    table: string,
+    columnName: string,
+    newType: string,
+    usingExpr?: string
+  ): Promise<string>;
 
   /**
    * Build a connection string from structured config.
@@ -66,98 +71,23 @@ export interface DatabaseDriver {
    */
   buildConnectionString(config: DriverConnectionConfig): string;
 
-  /** Test whether a connection can be established. */
-  testConnection(config: DriverConnectionConfig): Promise<boolean>;
-
-  /** Execute a raw SQL query and return results. */
-  executeQuery(connectionString: string, sql: string, signal?: AbortSignal): Promise<QueryResult>;
-
-  /** Fetch database metadata (version, encoding, size, etc.). */
-  getDatabaseInfo(connectionString: string): Promise<DatabaseInfo>;
-
-  /** Fetch the full schema (all schemas, tables, columns, indexes, FKs). */
-  getSchema(connectionString: string): Promise<DatabaseSchema>;
-
-  /** Fetch a lightweight summary of the schema. */
-  getSchemaSummary(connectionString: string): Promise<SchemaSummary>;
-
-  /** Fetch details for a single table. */
-  getTableDetails(
+  /** Execute CREATE INDEX and return the display SQL string. */
+  createIndex(
     connectionString: string,
     schema: string,
     table: string,
-  ): Promise<SchemaTableDetails>;
+    indexName: string,
+    columns: string[],
+    unique?: boolean,
+    ifNotExists?: boolean
+  ): Promise<string>;
 
-  /** Fetch index details for a specific table. */
-  getIndexes(
+  /** Execute CREATE SCHEMA/DATABASE and return the display SQL string. */
+  createSchema(
     connectionString: string,
-    schema: string,
-    table: string,
-  ): Promise<IndexInfo[]>;
-
-  /** Fetch constraint details for a specific table. */
-  getConstraints(
-    connectionString: string,
-    schema: string,
-    table: string,
-  ): Promise<ConstraintInfo[]>;
-
-  /** Fetch all enums in a schema (or entire database for SQLite). */
-  getEnums(
-    connectionString: string,
-    schema: string,
-  ): Promise<SchemaEnum[]>;
-
-  /** Fetch all functions/procedures in a schema. */
-  getFunctions(
-    connectionString: string,
-    schema: string,
-  ): Promise<SchemaFunction[]>;
-
-  /** Fetch all triggers in a schema. */
-  getTriggers(
-    connectionString: string,
-    schema: string,
-  ): Promise<SchemaTrigger[]>;
-
-  /** Fetch statistics for a specific table. */
-  getTableStats(
-    connectionString: string,
-    schema: string,
-    table: string,
-  ): Promise<TableStats>;
-
-  /**
-   * Get query execution plan for a SQL query.
-   * Uses EXPLAIN (or equivalent) to show how the database will execute the query.
-   */
-  explainQuery(
-    connectionString: string,
-    sql: string,
-    analyze?: boolean,
-  ): Promise<QueryPlanResult>;
-
-  /**
-   * Get a representative sample of table data with column statistics.
-   * Returns distributed sample rows and statistical summaries for AI analysis.
-   */
-  getTableSample(
-    connectionString: string,
-    schema: string,
-    table: string,
-    sampleSize?: number,
-  ): Promise<TableSampleResult>;
-
-  /** List rows from a table with pagination, sorting and filtering. */
-  listRows(
-    connectionString: string,
-    schema: string,
-    table: string,
-    page: number,
-    pageSize: number,
-    sort?: Array<{ column: string; direction: "asc" | "desc" }>,
-    filters?: Array<{ column: string; operator: string; value?: unknown }>,
-  ): Promise<TableRowsResponse>;
+    schemaName: string,
+    ifNotExists?: boolean
+  ): Promise<string>;
 
   // ── DDL operations ────────────────────────────────────────────────
 
@@ -174,37 +104,17 @@ export interface DatabaseDriver {
       defaultExpr?: string;
     }>,
     primaryKeyColumns?: string[],
-    ifNotExists?: boolean,
+    ifNotExists?: boolean
   ): Promise<string>;
 
-  /** Execute DROP TABLE and return the display SQL string. */
-  dropTable(
-    connectionString: string,
-    schema: string,
-    tableName: string,
-    cascade?: boolean,
-    ifExists?: boolean,
-  ): Promise<string>;
+  /** Default database name for this engine. */
+  readonly defaultDatabase: string;
 
-  /** Execute RENAME TABLE and return the display SQL string. */
-  renameTable(
-    connectionString: string,
-    schema: string,
-    oldName: string,
-    newName: string,
-  ): Promise<string>;
+  /** Default port for this engine. */
+  readonly defaultPort: number;
 
-  /** Execute ADD COLUMN and return the display SQL string. */
-  addColumn(
-    connectionString: string,
-    schema: string,
-    table: string,
-    columnName: string,
-    dataType: string,
-    isNullable?: boolean,
-    defaultExpr?: string,
-    ifNotExists?: boolean,
-  ): Promise<string>;
+  /** Default username for this engine. */
+  readonly defaultUsername: string;
 
   /** Execute DROP COLUMN and return the display SQL string. */
   dropColumn(
@@ -213,55 +123,7 @@ export interface DatabaseDriver {
     table: string,
     columnName: string,
     cascade?: boolean,
-    ifExists?: boolean,
-  ): Promise<string>;
-
-  /** Execute RENAME COLUMN and return the display SQL string. */
-  renameColumn(
-    connectionString: string,
-    schema: string,
-    table: string,
-    oldName: string,
-    newName: string,
-  ): Promise<string>;
-
-  /** Execute ALTER COLUMN TYPE and return the display SQL string. */
-  alterColumnType(
-    connectionString: string,
-    schema: string,
-    table: string,
-    columnName: string,
-    newType: string,
-    usingExpr?: string,
-  ): Promise<string>;
-
-  /** Execute SET/DROP NOT NULL and return the display SQL string. */
-  setColumnNullable(
-    connectionString: string,
-    schema: string,
-    table: string,
-    columnName: string,
-    isNullable: boolean,
-  ): Promise<string>;
-
-  /** Execute SET/DROP DEFAULT and return the display SQL string. */
-  setColumnDefault(
-    connectionString: string,
-    schema: string,
-    table: string,
-    columnName: string,
-    defaultExpr?: string,
-  ): Promise<string>;
-
-  /** Execute CREATE INDEX and return the display SQL string. */
-  createIndex(
-    connectionString: string,
-    schema: string,
-    table: string,
-    indexName: string,
-    columns: string[],
-    unique?: boolean,
-    ifNotExists?: boolean,
+    ifExists?: boolean
   ): Promise<string>;
 
   /** Execute DROP INDEX and return the display SQL string. */
@@ -270,21 +132,44 @@ export interface DatabaseDriver {
     schema: string,
     indexName: string,
     cascade?: boolean,
-    ifExists?: boolean,
+    ifExists?: boolean
   ): Promise<string>;
 
-  /** Execute CREATE SCHEMA/DATABASE and return the display SQL string. */
-  createSchema(
+  /** Execute DROP TABLE and return the display SQL string. */
+  dropTable(
     connectionString: string,
-    schemaName: string,
-    ifNotExists?: boolean,
+    schema: string,
+    tableName: string,
+    cascade?: boolean,
+    ifExists?: boolean
   ): Promise<string>;
+
+  executeBatchDdl(
+    connectionString: string,
+    statements: string[],
+    throwOnError?: boolean
+  ): Promise<{ errors: Array<{ sql: string; error: string }> }>;
+
+  /** Execute a raw SQL query and return results. */
+  executeQuery(
+    connectionString: string,
+    sql: string,
+    signal?: AbortSignal
+  ): Promise<QueryResult>;
+
+  /**
+   * Get query execution plan for a SQL query.
+   * Uses EXPLAIN (or equivalent) to show how the database will execute the query.
+   */
+  explainQuery(
+    connectionString: string,
+    sql: string,
+    analyze?: boolean
+  ): Promise<QueryPlanResult>;
 
   // ── Clone / Export operations ──────────────────────────────────────
 
-  exportSchemaDdl(
-    connectionString: string,
-  ): Promise<{
+  exportSchemaDdl(connectionString: string): Promise<{
     scripts: Array<{
       type: string;
       schema: string;
@@ -300,7 +185,7 @@ export interface DatabaseDriver {
     schema: string,
     table: string,
     batchSize: number,
-    offset: number,
+    offset: number
   ): Promise<{
     rows: Record<string, unknown>[];
     columns: string[];
@@ -308,23 +193,134 @@ export interface DatabaseDriver {
     totalExported: number;
   }>;
 
-  executeBatchDdl(
+  /** Fetch constraint details for a specific table. */
+  getConstraints(
     connectionString: string,
-    statements: string[],
-    throwOnError?: boolean,
-  ): Promise<{ errors: Array<{ sql: string; error: string }> }>;
+    schema: string,
+    table: string
+  ): Promise<ConstraintInfo[]>;
 
-  waitForDatabase(
+  /** Fetch database metadata (version, encoding, size, etc.). */
+  getDatabaseInfo(connectionString: string): Promise<DatabaseInfo>;
+
+  /** Fetch all enums in a schema (or entire database for SQLite). */
+  getEnums(connectionString: string, schema: string): Promise<SchemaEnum[]>;
+
+  /** Fetch all functions/procedures in a schema. */
+  getFunctions(
     connectionString: string,
-    maxRetries?: number,
-    intervalMs?: number,
-  ): Promise<void>;
+    schema: string
+  ): Promise<SchemaFunction[]>;
+
+  /** Fetch index details for a specific table. */
+  getIndexes(
+    connectionString: string,
+    schema: string,
+    table: string
+  ): Promise<IndexInfo[]>;
+
+  /** Fetch the full schema (all schemas, tables, columns, indexes, FKs). */
+  getSchema(connectionString: string): Promise<DatabaseSchema>;
+
+  /** Fetch a lightweight summary of the schema. */
+  getSchemaSummary(connectionString: string): Promise<SchemaSummary>;
+
+  /** Fetch details for a single table. */
+  getTableDetails(
+    connectionString: string,
+    schema: string,
+    table: string
+  ): Promise<SchemaTableDetails>;
+
+  /**
+   * Get a representative sample of table data with column statistics.
+   * Returns distributed sample rows and statistical summaries for AI analysis.
+   */
+  getTableSample(
+    connectionString: string,
+    schema: string,
+    table: string,
+    sampleSize?: number
+  ): Promise<TableSampleResult>;
+
+  /** Fetch statistics for a specific table. */
+  getTableStats(
+    connectionString: string,
+    schema: string,
+    table: string
+  ): Promise<TableStats>;
+
+  /** Fetch all triggers in a schema. */
+  getTriggers(
+    connectionString: string,
+    schema: string
+  ): Promise<SchemaTrigger[]>;
 
   importTableRows(
     connectionString: string,
     schema: string,
     table: string,
     columns: string[],
-    rows: Record<string, unknown>[],
+    rows: Record<string, unknown>[]
   ): Promise<number>;
+
+  /** List rows from a table with pagination, sorting and filtering. */
+  listRows(
+    connectionString: string,
+    schema: string,
+    table: string,
+    page: number,
+    pageSize: number,
+    sort?: Array<{ column: string; direction: "asc" | "desc" }>,
+    filters?: Array<{ column: string; operator: string; value?: unknown }>
+  ): Promise<TableRowsResponse>;
+
+  /** Execute RENAME COLUMN and return the display SQL string. */
+  renameColumn(
+    connectionString: string,
+    schema: string,
+    table: string,
+    oldName: string,
+    newName: string
+  ): Promise<string>;
+
+  /** Execute RENAME TABLE and return the display SQL string. */
+  renameTable(
+    connectionString: string,
+    schema: string,
+    oldName: string,
+    newName: string
+  ): Promise<string>;
+
+  /** Execute SET/DROP DEFAULT and return the display SQL string. */
+  setColumnDefault(
+    connectionString: string,
+    schema: string,
+    table: string,
+    columnName: string,
+    defaultExpr?: string
+  ): Promise<string>;
+
+  /** Execute SET/DROP NOT NULL and return the display SQL string. */
+  setColumnNullable(
+    connectionString: string,
+    schema: string,
+    table: string,
+    columnName: string,
+    isNullable: boolean
+  ): Promise<string>;
+
+  /** SSL modes supported by this engine. */
+  readonly sslModes: SslMode[];
+
+  /** Test whether a connection can be established. */
+  testConnection(config: DriverConnectionConfig): Promise<boolean>;
+  /** The engine this driver handles. */
+  readonly type: DatabaseType;
+
+  waitForDatabase(
+    connectionString: string,
+    maxRetries?: number,
+    intervalMs?: number
+  ): Promise<void>;
 }

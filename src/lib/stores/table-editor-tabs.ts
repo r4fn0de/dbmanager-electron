@@ -3,75 +3,54 @@ import { persist } from "zustand/middleware";
 
 export interface TableEditorTab {
   key: string; // schema.table
+  label: string;
   schema: string;
   table: string;
-  label: string;
 }
 
 interface TableEditorTabsConnectionState {
-  openTabs: TableEditorTab[];
   activeTabKey: string | null;
+  openTabs: TableEditorTab[];
 }
 
 interface TableEditorTabsState {
-  byConnectionId: Record<string, TableEditorTabsConnectionState>;
-  openTab: (connectionId: string, tab: TableEditorTab) => void;
   activateTab: (connectionId: string, key: string | null) => void;
-  closeTab: (connectionId: string, key: string) => void;
-  closeOthers: (connectionId: string, keepKey: string) => void;
+  byConnectionId: Record<string, TableEditorTabsConnectionState>;
   closeAll: (connectionId: string) => void;
+  closeOthers: (connectionId: string, keepKey: string) => void;
+  closeTab: (connectionId: string, key: string) => void;
+  openTab: (connectionId: string, tab: TableEditorTab) => void;
+  removeMissingTabs: (
+    connectionId: string,
+    existingKeys: Set<string>
+  ) => string[];
   reorderTabs: (
     connectionId: string,
     fromIndex: number,
-    toIndex: number,
+    toIndex: number
   ) => void;
   replaceTabKey: (
     connectionId: string,
     oldKey: string,
-    nextTab: TableEditorTab,
+    nextTab: TableEditorTab
   ) => void;
-  removeMissingTabs: (
-    connectionId: string,
-    existingKeys: Set<string>,
-  ) => string[];
 }
 
 function getOrInitConnectionState(
   byConnectionId: Record<string, TableEditorTabsConnectionState>,
-  connectionId: string,
+  connectionId: string
 ): TableEditorTabsConnectionState {
-  return byConnectionId[connectionId] ?? { openTabs: [], activeTabKey: null };
+  return byConnectionId[connectionId] ?? { activeTabKey: null, openTabs: [] };
 }
 
 export const useTableEditorTabsStore = create<TableEditorTabsState>()(
   persist(
     (set) => ({
-      byConnectionId: {},
-
-      openTab: (connectionId, tab) =>
-        set((state) => {
-          const current = getOrInitConnectionState(
-            state.byConnectionId,
-            connectionId,
-          );
-          const exists = current.openTabs.some((t) => t.key === tab.key);
-          const openTabs = exists ? current.openTabs : [...current.openTabs, tab];
-          return {
-            byConnectionId: {
-              ...state.byConnectionId,
-              [connectionId]: {
-                openTabs,
-                activeTabKey: tab.key,
-              },
-            },
-          };
-        }),
-
       activateTab: (connectionId, key) =>
         set((state) => {
           const current = getOrInitConnectionState(
             state.byConnectionId,
-            connectionId,
+            connectionId
           );
           return {
             byConnectionId: {
@@ -83,15 +62,47 @@ export const useTableEditorTabsStore = create<TableEditorTabsState>()(
             },
           };
         }),
+      byConnectionId: {},
+
+      closeAll: (connectionId) =>
+        set((state) => ({
+          byConnectionId: {
+            ...state.byConnectionId,
+            [connectionId]: { activeTabKey: null, openTabs: [] },
+          },
+        })),
+
+      closeOthers: (connectionId, keepKey) =>
+        set((state) => {
+          const current = getOrInitConnectionState(
+            state.byConnectionId,
+            connectionId
+          );
+          const keep = current.openTabs.find((t) => t.key === keepKey);
+          if (!keep) {
+            return state;
+          }
+          return {
+            byConnectionId: {
+              ...state.byConnectionId,
+              [connectionId]: {
+                activeTabKey: keep.key,
+                openTabs: [keep],
+              },
+            },
+          };
+        }),
 
       closeTab: (connectionId, key) =>
         set((state) => {
           const current = getOrInitConnectionState(
             state.byConnectionId,
-            connectionId,
+            connectionId
           );
           const idx = current.openTabs.findIndex((t) => t.key === key);
-          if (idx < 0) return state;
+          if (idx < 0) {
+            return state;
+          }
 
           const openTabs = current.openTabs.filter((t) => t.key !== key);
           let activeTabKey = current.activeTabKey;
@@ -103,43 +114,72 @@ export const useTableEditorTabsStore = create<TableEditorTabsState>()(
           return {
             byConnectionId: {
               ...state.byConnectionId,
-              [connectionId]: { openTabs, activeTabKey },
+              [connectionId]: { activeTabKey, openTabs },
             },
           };
         }),
 
-      closeOthers: (connectionId, keepKey) =>
+      openTab: (connectionId, tab) =>
         set((state) => {
           const current = getOrInitConnectionState(
             state.byConnectionId,
-            connectionId,
+            connectionId
           );
-          const keep = current.openTabs.find((t) => t.key === keepKey);
-          if (!keep) return state;
+          const exists = current.openTabs.some((t) => t.key === tab.key);
+          const openTabs = exists
+            ? current.openTabs
+            : [...current.openTabs, tab];
           return {
             byConnectionId: {
               ...state.byConnectionId,
               [connectionId]: {
-                openTabs: [keep],
-                activeTabKey: keep.key,
+                activeTabKey: tab.key,
+                openTabs,
               },
             },
           };
         }),
 
-      closeAll: (connectionId) =>
-        set((state) => ({
-          byConnectionId: {
-            ...state.byConnectionId,
-            [connectionId]: { openTabs: [], activeTabKey: null },
-          },
-        })),
+      removeMissingTabs: (connectionId, existingKeys) => {
+        const removed: string[] = [];
+        set((state) => {
+          const current = getOrInitConnectionState(
+            state.byConnectionId,
+            connectionId
+          );
+          const openTabs = current.openTabs.filter((tab) => {
+            const keep = existingKeys.has(tab.key);
+            if (!keep) {
+              removed.push(tab.key);
+            }
+            return keep;
+          });
+
+          if (removed.length === 0) {
+            return state;
+          }
+
+          const activeTabKey = openTabs.some(
+            (t) => t.key === current.activeTabKey
+          )
+            ? current.activeTabKey
+            : (openTabs[0]?.key ?? null);
+
+          return {
+            byConnectionId: {
+              ...state.byConnectionId,
+              [connectionId]: { activeTabKey, openTabs },
+            },
+          };
+        });
+        return removed;
+      },
 
       reorderTabs: (connectionId, fromIndex, toIndex) =>
         set((state) => {
           const current = getOrInitConnectionState(
             state.byConnectionId,
-            connectionId,
+            connectionId
           );
           if (
             fromIndex === toIndex ||
@@ -152,7 +192,9 @@ export const useTableEditorTabsStore = create<TableEditorTabsState>()(
           }
           const next = [...current.openTabs];
           const [moved] = next.splice(fromIndex, 1);
-          if (!moved) return state;
+          if (!moved) {
+            return state;
+          }
           next.splice(toIndex, 0, moved);
           return {
             byConnectionId: {
@@ -169,66 +211,42 @@ export const useTableEditorTabsStore = create<TableEditorTabsState>()(
         set((state) => {
           const current = getOrInitConnectionState(
             state.byConnectionId,
-            connectionId,
+            connectionId
           );
           const idx = current.openTabs.findIndex((t) => t.key === oldKey);
-          if (idx < 0) return state;
+          if (idx < 0) {
+            return state;
+          }
           const openTabs = [...current.openTabs];
           openTabs[idx] = nextTab;
           return {
             byConnectionId: {
               ...state.byConnectionId,
               [connectionId]: {
-                openTabs,
                 activeTabKey:
                   current.activeTabKey === oldKey
                     ? nextTab.key
                     : current.activeTabKey,
+                openTabs,
               },
             },
           };
         }),
-
-      removeMissingTabs: (connectionId, existingKeys) => {
-        let removed: string[] = [];
-        set((state) => {
-          const current = getOrInitConnectionState(
-            state.byConnectionId,
-            connectionId,
-          );
-          const openTabs = current.openTabs.filter((tab) => {
-            const keep = existingKeys.has(tab.key);
-            if (!keep) removed.push(tab.key);
-            return keep;
-          });
-
-          if (removed.length === 0) return state;
-
-          const activeTabKey = openTabs.some((t) => t.key === current.activeTabKey)
-            ? current.activeTabKey
-            : (openTabs[0]?.key ?? null);
-
-          return {
-            byConnectionId: {
-              ...state.byConnectionId,
-              [connectionId]: { openTabs, activeTabKey },
-            },
-          };
-        });
-        return removed;
-      },
     }),
     {
       name: "table-editor-tabs",
-    },
-  ),
+    }
+  )
 );
 
-export function buildTableEditorTab(schema: string, table: string): TableEditorTab {
+export function buildTableEditorTab(
+  schema: string,
+  table: string
+): TableEditorTab {
   return {
     key: `${schema}.${table}`,
+    label: `${schema}.${table}`,
     schema,
     table,
-    label: `${schema}.${table}`,
   };
 }

@@ -3,71 +3,142 @@
  */
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import {
-  getSchemaSummary, getTableDetails, getSchemaConstraints,
-  getSchemaIndexes, getEnums, getFunctions, getTriggers,
-  tableListRows, getDatabaseInfo,
+  getDatabaseInfo,
+  getEnums,
+  getFunctions,
+  getSchemaConstraints,
+  getSchemaIndexes,
+  getSchemaSummary,
+  getTableDetails,
+  getTriggers,
+  tableListRows,
 } from "@/features/database/hooks/db-actions";
-import type { TableSort, TableFilter } from "@/ipc/db/types";
+import type { TableFilter, TableSort } from "@/ipc/db/types";
 
 export const dbQueryKeys = {
-  schemaSummary: (c: string) => ["schema-summary", c] as const,
-  databaseInfo: (c: string) => ["db-info", c] as const,
-  tableDetails: (c: string, s: string, t: string) => ["table-details", c, s, t] as const,
-  tableDetailsAll: (c: string) => ["table-details", c] as const,
-  tableRows: (c: string, s: string, t: string, p: number, ps: number, sort: TableSort[], f: TableFilter[]) =>
-    ["table-rows", c, s, t, p, ps, sort, f] as const,
-  tableRowsPrefix: (c: string, s: string, t: string) => ["table-rows", c, s, t] as const,
-  selectedSchemaDetails: (c: string, s: string, n: number) => ["selected-schema-details", c, s, n] as const,
-  selectedSchemaDetailsPrefix: (c: string) => ["selected-schema-details", c] as const,
-  schemaConstraints: (c: string, s: string) => ["schema-constraints", c, s] as const,
-  schemaEnums: (c: string, s: string) => ["schema-enums", c, s] as const,
-  schemaFunctions: (c: string, s: string) => ["schema-functions", c, s] as const,
-  schemaIndexes: (c: string, s: string) => ["schema-indexes", c, s] as const,
-  schemaTriggers: (c: string, s: string) => ["schema-triggers", c, s] as const,
   connections: () => ["connections"] as const,
+  databaseInfo: (c: string) => ["db-info", c] as const,
   localDatabases: () => ["local-databases"] as const,
+  schemaConstraints: (c: string, s: string) =>
+    ["schema-constraints", c, s] as const,
+  schemaEnums: (c: string, s: string) => ["schema-enums", c, s] as const,
+  schemaFunctions: (c: string, s: string) =>
+    ["schema-functions", c, s] as const,
+  schemaIndexes: (c: string, s: string) => ["schema-indexes", c, s] as const,
+  schemaSummary: (c: string) => ["schema-summary", c] as const,
+  schemaTriggers: (c: string, s: string) => ["schema-triggers", c, s] as const,
+  selectedSchemaDetails: (c: string, s: string, n: number) =>
+    ["selected-schema-details", c, s, n] as const,
+  selectedSchemaDetailsPrefix: (c: string) =>
+    ["selected-schema-details", c] as const,
+  tableDetails: (c: string, s: string, t: string) =>
+    ["table-details", c, s, t] as const,
+  tableDetailsAll: (c: string) => ["table-details", c] as const,
+  tableRows: (
+    c: string,
+    s: string,
+    t: string,
+    p: number,
+    ps: number,
+    sort: TableSort[],
+    f: TableFilter[]
+  ) => ["table-rows", c, s, t, p, ps, sort, f] as const,
+  tableRowsPrefix: (c: string, s: string, t: string) =>
+    ["table-rows", c, s, t] as const,
 };
 
 export const dbQueryOptions = {
-  schemaSummary: (c: string, enabled = true) => queryOptions({
-    queryKey: dbQueryKeys.schemaSummary(c), queryFn: () => getSchemaSummary(c),
-    enabled,
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-    retry: 0,
-    refetchOnWindowFocus: false,
-  }),
-  databaseInfo: (c: string) => queryOptions({
-    queryKey: dbQueryKeys.databaseInfo(c), queryFn: () => getDatabaseInfo(c),
-    staleTime: 5 * 60_000, gcTime: 30 * 60_000,
-  }),
-  tableDetails: (c: string, s: string, t: string, enabled = true) => queryOptions({
-    queryKey: dbQueryKeys.tableDetails(c, s, t), queryFn: () => getTableDetails(c, s, t),
-    enabled, staleTime: 2 * 60_000, gcTime: 15 * 60_000,
-  }),
-  tableRows: (c: string, s: string, t: string, p: number, ps: number, sort: TableSort[], f: TableFilter[]) => queryOptions({
-    queryKey: dbQueryKeys.tableRows(c, s, t, p, ps, sort, f),
-    queryFn: () => tableListRows({ tableRef: { connectionId: c, schema: s, table: t }, page: p + 1, pageSize: ps, sort, filters: f }),
-    staleTime: 5 * 60_000, gcTime: 10 * 60_000, placeholderData: keepPreviousData,
-  }),
-  schemaConstraints: (c: string, s: string, enabled = true) => queryOptions({
-    queryKey: dbQueryKeys.schemaConstraints(c, s), queryFn: () => getSchemaConstraints(c, s),
-    enabled, staleTime: 10 * 60_000, gcTime: 15 * 60_000, placeholderData: keepPreviousData,
-  }),
-  schemaEnums: (c: string, s: string, enabled = true) => queryOptions({
-    queryKey: dbQueryKeys.schemaEnums(c, s), queryFn: () => getEnums(c, s),
-    enabled, staleTime: 10 * 60_000, gcTime: 15 * 60_000, placeholderData: keepPreviousData,
-  }),
-  schemaFunctions: (c: string, s: string, enabled = true) => queryOptions({
-    queryKey: dbQueryKeys.schemaFunctions(c, s), queryFn: () => getFunctions(c, s),
-    enabled, staleTime: 10 * 60_000, gcTime: 15 * 60_000, placeholderData: keepPreviousData,
-  }),
-  schemaIndexes: (c: string, s: string, enabled = true) => queryOptions({
-    queryKey: dbQueryKeys.schemaIndexes(c, s), queryFn: () => getSchemaIndexes(c, s),
-    enabled, staleTime: 10 * 60_000, gcTime: 15 * 60_000, placeholderData: keepPreviousData,
-  }),
-  schemaTriggers: (c: string, s: string, enabled = true) => queryOptions({
-    queryKey: dbQueryKeys.schemaTriggers(c, s), queryFn: () => getTriggers(c, s),
-    enabled, staleTime: 10 * 60_000, gcTime: 15 * 60_000, placeholderData: keepPreviousData,
-  }),
+  databaseInfo: (c: string) =>
+    queryOptions({
+      gcTime: 30 * 60_000,
+      queryFn: () => getDatabaseInfo(c),
+      queryKey: dbQueryKeys.databaseInfo(c),
+      staleTime: 5 * 60_000,
+    }),
+  schemaConstraints: (c: string, s: string, enabled = true) =>
+    queryOptions({
+      enabled,
+      gcTime: 15 * 60_000,
+      placeholderData: keepPreviousData,
+      queryFn: () => getSchemaConstraints(c, s),
+      queryKey: dbQueryKeys.schemaConstraints(c, s),
+      staleTime: 10 * 60_000,
+    }),
+  schemaEnums: (c: string, s: string, enabled = true) =>
+    queryOptions({
+      enabled,
+      gcTime: 15 * 60_000,
+      placeholderData: keepPreviousData,
+      queryFn: () => getEnums(c, s),
+      queryKey: dbQueryKeys.schemaEnums(c, s),
+      staleTime: 10 * 60_000,
+    }),
+  schemaFunctions: (c: string, s: string, enabled = true) =>
+    queryOptions({
+      enabled,
+      gcTime: 15 * 60_000,
+      placeholderData: keepPreviousData,
+      queryFn: () => getFunctions(c, s),
+      queryKey: dbQueryKeys.schemaFunctions(c, s),
+      staleTime: 10 * 60_000,
+    }),
+  schemaIndexes: (c: string, s: string, enabled = true) =>
+    queryOptions({
+      enabled,
+      gcTime: 15 * 60_000,
+      placeholderData: keepPreviousData,
+      queryFn: () => getSchemaIndexes(c, s),
+      queryKey: dbQueryKeys.schemaIndexes(c, s),
+      staleTime: 10 * 60_000,
+    }),
+  schemaSummary: (c: string, enabled = true) =>
+    queryOptions({
+      enabled,
+      gcTime: 30 * 60_000,
+      queryFn: () => getSchemaSummary(c),
+      queryKey: dbQueryKeys.schemaSummary(c),
+      refetchOnWindowFocus: false,
+      retry: 0,
+      staleTime: 5 * 60_000,
+    }),
+  schemaTriggers: (c: string, s: string, enabled = true) =>
+    queryOptions({
+      enabled,
+      gcTime: 15 * 60_000,
+      placeholderData: keepPreviousData,
+      queryFn: () => getTriggers(c, s),
+      queryKey: dbQueryKeys.schemaTriggers(c, s),
+      staleTime: 10 * 60_000,
+    }),
+  tableDetails: (c: string, s: string, t: string, enabled = true) =>
+    queryOptions({
+      enabled,
+      gcTime: 15 * 60_000,
+      queryFn: () => getTableDetails(c, s, t),
+      queryKey: dbQueryKeys.tableDetails(c, s, t),
+      staleTime: 2 * 60_000,
+    }),
+  tableRows: (
+    c: string,
+    s: string,
+    t: string,
+    p: number,
+    ps: number,
+    sort: TableSort[],
+    f: TableFilter[]
+  ) =>
+    queryOptions({
+      gcTime: 10 * 60_000,
+      placeholderData: keepPreviousData,
+      queryFn: () =>
+        tableListRows({
+          filters: f,
+          page: p + 1,
+          pageSize: ps,
+          sort,
+          tableRef: { connectionId: c, schema: s, table: t },
+        }),
+      queryKey: dbQueryKeys.tableRows(c, s, t, p, ps, sort, f),
+      staleTime: 5 * 60_000,
+    }),
 };

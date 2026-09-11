@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,12 +10,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Icon } from "@/components/ui/Icon";
 import {
   createTableFromImport,
   exportSchemaIndexes,
@@ -23,47 +29,78 @@ import {
   importTableColumns,
   tableSaveChanges,
 } from "@/features/database/hooks/db-actions";
-import { applyColumnMapping, buildColumnMapping, getPreviewRows, inferColumnsFromRows, parseImportFile } from "@/features/database/utils/data-import";
-import { buildExportFileName, serializeExport, serializeExportToXlsx, type ExportFormat } from "@/features/database/utils/data-export";
+import {
+  buildExportFileName,
+  type ExportFormat,
+  serializeExport,
+  serializeExportToXlsx,
+} from "@/features/database/utils/data-export";
+import {
+  applyColumnMapping,
+  buildColumnMapping,
+  getPreviewRows,
+  inferColumnsFromRows,
+  parseImportFile,
+} from "@/features/database/utils/data-import";
 import {
   autoDetectGenerator,
   BASE_GENERATORS,
+  type ColumnMeta,
+  type ColumnSeedConfig,
   chooseSeedStrategy,
-  ColumnMeta,
-  ColumnSeedConfig,
+  type GeneratorGroup,
   generateRows,
   getGeneratorGroups,
   REFERENCE_GENERATOR,
-  type GeneratorGroup,
 } from "@/features/database/utils/data-seed";
+import type {
+  SchemaColumn,
+  SchemaForeignKey,
+  SchemaIndex,
+} from "@/ipc/db/types";
 import { ipc } from "@/ipc/manager";
-import type { SchemaColumn, SchemaForeignKey, SchemaIndex } from "@/ipc/db/types";
 
 interface BaseDialogProps {
+  connectionId: string;
+  defaultTableName: string;
   isOpen: boolean;
   onClose: () => void;
-  connectionId: string;
-  schema: string;
-  defaultTableName: string;
   onSuccess: () => void;
+  schema: string;
 }
 
-export function ImportDataDialog({ isOpen, onClose, connectionId, schema, defaultTableName, onSuccess }: BaseDialogProps) {
+export function ImportDataDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  defaultTableName,
+  onSuccess,
+}: BaseDialogProps) {
   const [tableName, setTableName] = useState(defaultTableName);
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
-  const [targetColumns, setTargetColumns] = useState<Array<{ name: string; dataType: string; isNullable: boolean }>>([]);
+  const [targetColumns, setTargetColumns] = useState<
+    Array<{ name: string; dataType: string; isNullable: boolean }>
+  >([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createTableIfMissing, setCreateTableIfMissing] = useState(false);
 
-  const mappedRows = useMemo(() => applyColumnMapping(rows, mapping), [rows, mapping]);
+  const mappedRows = useMemo(
+    () => applyColumnMapping(rows, mapping),
+    [rows, mapping]
+  );
   const previewRows = useMemo(() => getPreviewRows(mappedRows), [mappedRows]);
 
   const loadTableColumns = async (nextTableName: string) => {
     try {
-      const columns = await importTableColumns({ connectionId, schema, table: nextTableName });
+      const columns = await importTableColumns({
+        connectionId,
+        schema,
+        table: nextTableName,
+      });
       setTargetColumns(columns);
       const nextMapping = buildColumnMapping(headers, columns).mapping;
       setMapping(nextMapping);
@@ -74,30 +111,42 @@ export function ImportDataDialog({ isOpen, onClose, connectionId, schema, defaul
   };
 
   const handleFile = async (file: File | null) => {
-    if (!file) return;
+    if (!file) {
+      return;
+    }
     const parsed = await parseImportFile(file);
     setFileName(file.name);
     setRows(parsed.rows);
     setHeaders(parsed.headers);
 
     try {
-      const columns = await importTableColumns({ connectionId, schema, table: tableName.trim() });
+      const columns = await importTableColumns({
+        connectionId,
+        schema,
+        table: tableName.trim(),
+      });
       setTargetColumns(columns);
       setMapping(buildColumnMapping(parsed.headers, columns).mapping);
     } catch {
       const inferredColumns = inferColumnsFromRows(parsed.rows);
       setTargetColumns(inferredColumns);
       setMapping(
-        Object.fromEntries(parsed.headers.map((header) => [header, header])) as Record<string, string | null>,
+        Object.fromEntries(
+          parsed.headers.map((header) => [header, header])
+        ) as Record<string, string | null>
       );
       setCreateTableIfMissing(true);
     }
   };
 
   const handleImport = async () => {
-    if (mappedRows.length === 0) return;
+    if (mappedRows.length === 0) {
+      return;
+    }
     const targetTable = tableName.trim();
-    if (!targetTable) return;
+    if (!targetTable) {
+      return;
+    }
 
     setIsSubmitting(true);
     const toastId = toast.loading("Validating import...");
@@ -106,54 +155,64 @@ export function ImportDataDialog({ isOpen, onClose, connectionId, schema, defaul
       if (createTableIfMissing) {
         const inferredColumns = inferColumnsFromRows(mappedRows);
         await createTableFromImport({
+          columns: inferredColumns,
           connectionId,
+          ifNotExists: true,
           schema,
           table: targetTable,
-          columns: inferredColumns,
-          ifNotExists: true,
         });
       }
 
-      const selectedColumns = Object.values(mapping).filter((column): column is string => Boolean(column));
+      const selectedColumns = Object.values(mapping).filter(
+        (column): column is string => Boolean(column)
+      );
       const dryRun = await importDryRun({
+        columns: selectedColumns,
         connectionId,
+        rows: mappedRows,
         schema,
         table: targetTable,
-        columns: selectedColumns,
-        rows: mappedRows,
       });
 
       if (dryRun.invalidRows > 0) {
-        throw new Error(`Dry run blocked ${dryRun.invalidRows} rows. First error: ${dryRun.issues[0]?.message ?? "invalid row"}`);
+        throw new Error(
+          `Dry run blocked ${dryRun.invalidRows} rows. First error: ${dryRun.issues[0]?.message ?? "invalid row"}`
+        );
       }
 
       const chunkSize = 500;
       for (let index = 0; index < mappedRows.length; index += chunkSize) {
         const chunk = mappedRows.slice(index, index + chunkSize);
         await tableSaveChanges({
-          tableRef: { connectionId, schema, table: targetTable },
-          inserts: chunk,
-          updates: [],
           deletes: [],
+          inserts: chunk,
+          tableRef: { connectionId, schema, table: targetTable },
+          updates: [],
         });
       }
 
-      toast.success(`Import completed (${mappedRows.length} rows)`, { id: toastId });
+      toast.success(`Import completed (${mappedRows.length} rows)`, {
+        id: toastId,
+      });
       onSuccess();
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import failed", { id: toastId });
+      toast.error(error instanceof Error ? error.message : "Import failed", {
+        id: toastId,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
       <DialogContent className="sm:max-w-[840px]">
         <DialogHeader>
           <DialogTitle>Import Data (CSV/JSON/Excel)</DialogTitle>
-          <DialogDescription>Map columns, validate with dry run, and import in batches.</DialogDescription>
+          <DialogDescription>
+            Map columns, validate with dry run, and import in batches.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -161,23 +220,25 @@ export function ImportDataDialog({ isOpen, onClose, connectionId, schema, defaul
             <div className="space-y-1">
               <Label>Target table</Label>
               <Input
-                value={tableName}
                 onChange={(event) => {
                   const next = event.target.value;
                   setTableName(next);
-                  if (next.trim()) void loadTableColumns(next.trim());
+                  if (next.trim()) {
+                    void loadTableColumns(next.trim());
+                  }
                 }}
+                value={tableName}
               />
             </div>
             <div className="space-y-1">
               <Label>Source file</Label>
               <Input
-                type="file"
                 accept=".csv,.json,.xlsx,.xls"
                 onChange={(event) => {
                   const file = event.target.files?.[0] ?? null;
                   void handleFile(file);
                 }}
+                type="file"
               />
             </div>
           </div>
@@ -189,13 +250,21 @@ export function ImportDataDialog({ isOpen, onClose, connectionId, schema, defaul
 
           <div className="space-y-2">
             <Label>Column mapping</Label>
-            <div className="max-h-56 overflow-auto rounded border p-2 space-y-2">
+            <div className="max-h-56 space-y-2 overflow-auto rounded border p-2">
               {headers.map((header) => (
-                <div key={header} className="grid grid-cols-2 items-center gap-2 text-sm">
+                <div
+                  className="grid grid-cols-2 items-center gap-2 text-sm"
+                  key={header}
+                >
                   <span className="font-mono">{header}</span>
                   <Select
+                    onValueChange={(value) =>
+                      setMapping((current) => ({
+                        ...current,
+                        [header]: value === "__none__" ? null : value,
+                      }))
+                    }
                     value={mapping[header] ?? "__none__"}
-                    onValueChange={(value) => setMapping((current) => ({ ...current, [header]: value === "__none__" ? null : value }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Ignore column" />
@@ -216,19 +285,33 @@ export function ImportDataDialog({ isOpen, onClose, connectionId, schema, defaul
 
           <div className="space-y-2">
             <Label>Preview ({previewRows.length})</Label>
-            <pre className="max-h-48 overflow-auto rounded border bg-muted/50 p-2 text-xs">{JSON.stringify(previewRows, null, 2)}</pre>
+            <pre className="max-h-48 overflow-auto rounded border bg-muted/50 p-2 text-xs">
+              {JSON.stringify(previewRows, null, 2)}
+            </pre>
           </div>
 
           <div className="flex items-center gap-2">
-            <Switch checked={createTableIfMissing} onCheckedChange={setCreateTableIfMissing} />
-            <span className="text-sm">Create table automatically if it does not exist</span>
+            <Switch
+              checked={createTableIfMissing}
+              onCheckedChange={setCreateTableIfMissing}
+            />
+            <span className="text-sm">
+              Create table automatically if it does not exist
+            </span>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
-          <Button onClick={handleImport} disabled={isSubmitting || rows.length === 0}>
-            {isSubmitting && <Icon name="loader" className="size-3.5 animate-spin" />}
+          <Button disabled={isSubmitting} onClick={onClose} variant="outline">
+            Cancel
+          </Button>
+          <Button
+            disabled={isSubmitting || rows.length === 0}
+            onClick={handleImport}
+          >
+            {isSubmitting && (
+              <Icon className="size-3.5 animate-spin" name="loader" />
+            )}
             Import
           </Button>
         </DialogFooter>
@@ -237,7 +320,13 @@ export function ImportDataDialog({ isOpen, onClose, connectionId, schema, defaul
   );
 }
 
-export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaultTableName }: Omit<BaseDialogProps, "onSuccess">) {
+export function ExportDataDialog({
+  isOpen,
+  onClose,
+  connectionId,
+  schema,
+  defaultTableName,
+}: Omit<BaseDialogProps, "onSuccess">) {
   const [scope, setScope] = useState<"table" | "schema">("table");
   const [tableName, setTableName] = useState(defaultTableName);
   const [format, setFormat] = useState<ExportFormat>("sql");
@@ -252,7 +341,9 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
     const toastId = toast.loading("Generating export artifact...");
 
     try {
-      const exportSchema = await ipc.client.db.exportSchemaDdl({ id: connectionId });
+      const exportSchema = await ipc.client.db.exportSchemaDdl({
+        id: connectionId,
+      });
       const indexes = await exportSchemaIndexes({
         connectionId,
         schema,
@@ -260,8 +351,17 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
       });
 
       const summary = await getSchemaSummary(connectionId);
-      const scopedTables = summary.tables.filter((table) => table.schema === schema && (scope === "schema" || table.name === tableName));
-      const data: Array<{ schema: string; table: string; columns: string[]; rows: Record<string, unknown>[] }> = [];
+      const scopedTables = summary.tables.filter(
+        (table) =>
+          table.schema === schema &&
+          (scope === "schema" || table.name === tableName)
+      );
+      const data: Array<{
+        schema: string;
+        table: string;
+        columns: string[];
+        rows: Record<string, unknown>[];
+      }> = [];
 
       if (includeData) {
         for (const table of scopedTables) {
@@ -272,11 +372,11 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
 
           while (hasMore) {
             const page = await ipc.client.db.exportTableData({
+              batchSize: 500,
               connectionId,
+              offset,
               schema: table.schema,
               table: table.name,
-              batchSize: 500,
-              offset,
             });
             rows.push(...page.rows);
             columns = page.columns;
@@ -284,32 +384,36 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
             offset += page.rows.length;
           }
 
-          data.push({ schema: table.schema, table: table.name, columns, rows });
+          data.push({ columns, rows, schema: table.schema, table: table.name });
         }
       }
 
       const payload = {
-        metadata: {
-          scope,
-          schema,
-          table: scope === "table" ? tableName : undefined,
-          generatedAt: new Date().toISOString(),
-        },
         layers: {
-          schema: includeSchema ? exportSchema.scripts.filter((script) => script.schema === schema) : [],
-          indexes: includeIndexes ? indexes.scripts : [],
           data,
+          indexes: includeIndexes ? indexes.scripts : [],
+          schema: includeSchema
+            ? exportSchema.scripts.filter((script) => script.schema === schema)
+            : [],
+        },
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          schema,
+          scope,
+          table: scope === "table" ? tableName : undefined,
         },
       };
 
       const result = serializeExport(payload, format);
       setOutput(format === "xlsx" ? "[Binary XLSX output]" : result);
-      const mimeType = format === "xlsx"
-        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        : "text/plain;charset=utf-8";
-      const blob = format === "xlsx"
-        ? new Blob([serializeExportToXlsx(payload)], { type: mimeType })
-        : new Blob([result], { type: mimeType });
+      const mimeType =
+        format === "xlsx"
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : "text/plain;charset=utf-8";
+      const blob =
+        format === "xlsx"
+          ? new Blob([serializeExportToXlsx(payload)], { type: mimeType })
+          : new Blob([result], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -318,25 +422,34 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
       URL.revokeObjectURL(url);
       toast.success("Export completed", { id: toastId });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Export failed", { id: toastId });
+      toast.error(error instanceof Error ? error.message : "Export failed", {
+        id: toastId,
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[840px] max-h-[85vh] flex flex-col">
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-[840px]">
         <DialogHeader>
           <DialogTitle>Export data bundle</DialogTitle>
-          <DialogDescription>Export schema, data, and indexes in a single operation.</DialogDescription>
+          <DialogDescription>
+            Export schema, data, and indexes in a single operation.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3 overflow-y-auto flex-1 min-h-0">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label>Scope</Label>
-              <Select value={scope} onValueChange={(value) => setScope(value as "table" | "schema")}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                onValueChange={(value) => setScope(value as "table" | "schema")}
+                value={scope}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="table">Table</SelectItem>
                   <SelectItem value="schema">Schema</SelectItem>
@@ -345,12 +458,21 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
             </div>
             <div className="space-y-1">
               <Label>Table</Label>
-              <Input value={tableName} onChange={(event) => setTableName(event.target.value)} disabled={scope === "schema"} />
+              <Input
+                disabled={scope === "schema"}
+                onChange={(event) => setTableName(event.target.value)}
+                value={tableName}
+              />
             </div>
             <div className="space-y-1">
               <Label>Format</Label>
-              <Select value={format} onValueChange={(value) => setFormat(value as ExportFormat)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                onValueChange={(value) => setFormat(value as ExportFormat)}
+                value={format}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="sql">SQL</SelectItem>
                   <SelectItem value="csv">CSV</SelectItem>
@@ -363,17 +485,40 @@ export function ExportDataDialog({ isOpen, onClose, connectionId, schema, defaul
           </div>
 
           <div className="grid grid-cols-3 gap-3 text-sm">
-            <label className="flex items-center gap-2"><Switch checked={includeSchema} onCheckedChange={setIncludeSchema} /> Schema</label>
-            <label className="flex items-center gap-2"><Switch checked={includeData} onCheckedChange={setIncludeData} /> Data</label>
-            <label className="flex items-center gap-2"><Switch checked={includeIndexes} onCheckedChange={setIncludeIndexes} /> Indexes</label>
+            <label className="flex items-center gap-2">
+              <Switch
+                checked={includeSchema}
+                onCheckedChange={setIncludeSchema}
+              />{" "}
+              Schema
+            </label>
+            <label className="flex items-center gap-2">
+              <Switch checked={includeData} onCheckedChange={setIncludeData} />{" "}
+              Data
+            </label>
+            <label className="flex items-center gap-2">
+              <Switch
+                checked={includeIndexes}
+                onCheckedChange={setIncludeIndexes}
+              />{" "}
+              Indexes
+            </label>
           </div>
 
-          {output && <pre className="max-h-48 overflow-auto rounded border bg-muted/50 p-2 text-xs">{output.slice(0, 10000)}</pre>}
+          {output && (
+            <pre className="max-h-48 overflow-auto rounded border bg-muted/50 p-2 text-xs">
+              {output.slice(0, 10_000)}
+            </pre>
+          )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button onClick={handleExport} disabled={isLoading}>
-            {isLoading && <Icon name="loader" className="size-3.5 animate-spin" />}
+          <Button onClick={onClose} variant="outline">
+            Close
+          </Button>
+          <Button disabled={isLoading} onClick={handleExport}>
+            {isLoading && (
+              <Icon className="size-3.5 animate-spin" name="loader" />
+            )}
             Export
           </Button>
         </DialogFooter>
@@ -404,7 +549,9 @@ export function SeedDataDialog({
   const [seed, setSeed] = useState(42);
   const [preview, setPreview] = useState<Record<string, unknown>[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [columnConfigs, setColumnConfigs] = useState<Record<string, ColumnSeedConfig>>({});
+  const [columnConfigs, setColumnConfigs] = useState<
+    Record<string, ColumnSeedConfig>
+  >({});
   const [columns, setColumns] = useState<ColumnMeta[]>([]);
 
   const generatorGroups = useMemo(() => getGeneratorGroups(), []);
@@ -412,17 +559,21 @@ export function SeedDataDialog({
 
   // Build ColumnMeta[] and auto-detect generators when table details change
   useEffect(() => {
-    if (!isOpen || !tableColumns || tableColumns.length === 0) {
+    if (!(isOpen && tableColumns) || tableColumns.length === 0) {
       setColumns([]);
       setColumnConfigs({});
       return;
     }
 
     const pkCols = new Set(
-      (tableIndexes ?? []).filter((i) => i.is_primary).flatMap((i) => i.column_names),
+      (tableIndexes ?? [])
+        .filter((i) => i.is_primary)
+        .flatMap((i) => i.column_names)
     );
     const uniqueCols = new Set(
-      (tableIndexes ?? []).filter((i) => i.is_unique && !i.is_primary).flatMap((i) => i.column_names),
+      (tableIndexes ?? [])
+        .filter((i) => i.is_unique && !i.is_primary)
+        .flatMap((i) => i.column_names)
     );
 
     const fkMap = new Map<string, SchemaForeignKey>();
@@ -433,20 +584,20 @@ export function SeedDataDialog({
     const metas: ColumnMeta[] = tableColumns.map((col) => {
       const fk = fkMap.get(col.name);
       return {
-        name: col.name,
-        dataType: col.data_type,
-        udtName: col.udt_name,
-        isNullable: col.is_nullable,
         columnDefault: col.column_default,
-        isPrimaryKey: pkCols.has(col.name),
-        isUnique: uniqueCols.has(col.name),
+        dataType: col.data_type,
         foreignKey: fk
           ? {
+              referencedColumn: fk.referenced_column,
               referencedSchema: fk.referenced_schema || schema,
               referencedTable: fk.referenced_table,
-              referencedColumn: fk.referenced_column,
             }
           : undefined,
+        isNullable: col.is_nullable,
+        isPrimaryKey: pkCols.has(col.name),
+        isUnique: uniqueCols.has(col.name),
+        name: col.name,
+        udtName: col.udt_name,
       };
     });
 
@@ -458,7 +609,10 @@ export function SeedDataDialog({
       const generatorId = autoDetectGenerator(meta);
       configs[meta.name] = {
         generatorId,
-        nullable: meta.isNullable && generatorId !== "__skip__" && generatorId !== "__null__",
+        nullable:
+          meta.isNullable &&
+          generatorId !== "__skip__" &&
+          generatorId !== "__null__",
       };
     }
     setColumnConfigs(configs);
@@ -488,14 +642,17 @@ export function SeedDataDialog({
   const fetchReferenceData = async (): Promise<Record<string, unknown[]>> => {
     const data: Record<string, unknown[]> = {};
     for (const col of columns) {
-      if (col.foreignKey && columnConfigs[col.name]?.generatorId === REFERENCE_GENERATOR) {
+      if (
+        col.foreignKey &&
+        columnConfigs[col.name]?.generatorId === REFERENCE_GENERATOR
+      ) {
         try {
           const result = await ipc.client.db.tableFkLookup({
-            tableRef: { connectionId, schema, table: tableName },
             column: col.name,
-            query: "",
             page: 0,
             pageSize: 1000,
+            query: "",
+            tableRef: { connectionId, schema, table: tableName },
           });
           data[col.name] = result.options.map((opt) => opt.value);
         } catch {
@@ -520,28 +677,35 @@ export function SeedDataDialog({
         seed,
       });
 
-      toast.loading(`Inserting ${rowCount} rows (${strategy})...`, { id: toastId });
+      toast.loading(`Inserting ${rowCount} rows (${strategy})...`, {
+        id: toastId,
+      });
       const chunkSize = strategy === "client" ? 500 : 2000;
       for (let index = 0; index < generatedRows.length; index += chunkSize) {
         const chunk = generatedRows.slice(index, index + chunkSize);
         await tableSaveChanges({
-          tableRef: { connectionId, schema, table: tableName },
-          inserts: chunk,
-          updates: [],
           deletes: [],
+          inserts: chunk,
+          tableRef: { connectionId, schema, table: tableName },
+          updates: [],
         });
       }
       toast.success("Seed completed", { id: toastId });
       onSuccess();
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Seed failed", { id: toastId });
+      toast.error(error instanceof Error ? error.message : "Seed failed", {
+        id: toastId,
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const updateConfig = (columnName: string, patch: Partial<ColumnSeedConfig>) => {
+  const updateConfig = (
+    columnName: string,
+    patch: Partial<ColumnSeedConfig>
+  ) => {
     setColumnConfigs((prev) => ({
       ...prev,
       [columnName]: { ...prev[columnName], ...patch } as ColumnSeedConfig,
@@ -550,133 +714,179 @@ export function SeedDataDialog({
 
   const hasColumns = columns.length > 0;
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
-    <div className="absolute top-0 right-0 bottom-0 w-[400px] border-l border-border bg-background flex flex-col z-30 shadow-lg">
-      <div className="flex items-center justify-between p-3 border-b border-border">
+    <div className="absolute top-0 right-0 bottom-0 z-30 flex w-[400px] flex-col border-border border-l bg-background shadow-lg">
+      <div className="flex items-center justify-between border-border border-b p-3">
         <div>
-          <h3 className="text-sm font-medium">Seed data generator</h3>
-          <p className="text-xs text-muted-foreground">
+          <h3 className="font-medium text-sm">Seed data generator</h3>
+          <p className="text-muted-foreground text-xs">
             {hasColumns
               ? `${columns.length} columns in ${tableName}`
               : "Faker rules per column"}
           </p>
         </div>
-        <Button variant="ghost" size="icon-xs" onClick={onClose}>
-          <Icon name="x" className="size-3.5" />
+        <Button onClick={onClose} size="icon-xs" variant="ghost">
+          <Icon className="size-3.5" name="x" />
         </Button>
       </div>
 
-      <div className="space-y-4 overflow-y-auto flex-1 min-h-0 p-3">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label>Table</Label>
-            <Input value={tableName} onChange={(event) => setTableName(event.target.value)} />
+            <Input
+              onChange={(event) => setTableName(event.target.value)}
+              value={tableName}
+            />
           </div>
           <div className="space-y-1">
             <Label>Rows</Label>
-            <Input type="number" value={rowCount} onChange={(event) => setRowCount(Number(event.target.value) || 0)} />
+            <Input
+              onChange={(event) => setRowCount(Number(event.target.value) || 0)}
+              type="number"
+              value={rowCount}
+            />
           </div>
         </div>
         <div className="space-y-1">
           <Label>Seed</Label>
-          <Input type="number" value={seed} onChange={(event) => setSeed(Number(event.target.value) || 0)} />
+          <Input
+            onChange={(event) => setSeed(Number(event.target.value) || 0)}
+            type="number"
+            value={seed}
+          />
         </div>
 
-          {hasColumns ? (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label>Columns</Label>
-                <span className="text-xs text-muted-foreground">{strategy} strategy</span>
-              </div>
-              <div className="space-y-2 overflow-y-auto pr-1">
-                {columns.map((col) => {
-                  const config = columnConfigs[col.name];
-                  if (!config) return null;
-                  return (
-                    <SeedColumnRow
-                      key={col.name}
-                      column={col}
-                      config={config}
-                      generatorGroups={generatorGroups}
-                      onChange={(patch) => updateConfig(col.name, patch)}
-                    />
-                  );
-                })}
-              </div>
+        {hasColumns ? (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label>Columns</Label>
+              <span className="text-muted-foreground text-xs">
+                {strategy} strategy
+              </span>
             </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Manual rules</Label>
-              {Object.entries(columnConfigs).map(([colName, config]) => (
-                <div key={colName} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
-                  <Input
-                    value={colName}
-                    onChange={(event) => {
-                      const newName = event.target.value;
-                      setColumnConfigs((prev) => {
-                        const next = { ...prev };
-                        const old = next[colName];
-                        delete next[colName];
-                        if (newName && old) next[newName] = old;
-                        return next;
-                      });
-                    }}
-                    placeholder="column"
+            <div className="space-y-2 overflow-y-auto pr-1">
+              {columns.map((col) => {
+                const config = columnConfigs[col.name];
+                if (!config) {
+                  return null;
+                }
+                return (
+                  <SeedColumnRow
+                    column={col}
+                    config={config}
+                    generatorGroups={generatorGroups}
+                    key={col.name}
+                    onChange={(patch) => updateConfig(col.name, patch)}
                   />
-                  <Select
-                    value={config.generatorId}
-                    onValueChange={(value) => value && updateConfig(colName, { generatorId: value })}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {generatorGroups.map((group) => (
-                        <div key={group.value}>
-                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group.value}</div>
-                          {group.items.map((id) => (
-                            <SelectItem key={id} value={id}>{BASE_GENERATORS[id]?.label ?? id}</SelectItem>
-                          ))}
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>Manual rules</Label>
+            {Object.entries(columnConfigs).map(([colName, config]) => (
+              <div
+                className="grid grid-cols-[1fr_1fr_auto] items-center gap-2"
+                key={colName}
+              >
+                <Input
+                  onChange={(event) => {
+                    const newName = event.target.value;
+                    setColumnConfigs((prev) => {
+                      const next = { ...prev };
+                      const old = next[colName];
+                      delete next[colName];
+                      if (newName && old) {
+                        next[newName] = old;
+                      }
+                      return next;
+                    });
+                  }}
+                  placeholder="column"
+                  value={colName}
+                />
+                <Select
+                  onValueChange={(value) =>
+                    value && updateConfig(colName, { generatorId: value })
+                  }
+                  value={config.generatorId}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {generatorGroups.map((group) => (
+                      <div key={group.value}>
+                        <div className="px-2 py-1.5 font-semibold text-muted-foreground text-xs">
+                          {group.value}
                         </div>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setColumnConfigs((prev) => {
+                        {group.items.map((id) => (
+                          <SelectItem key={id} value={id}>
+                            {BASE_GENERATORS[id]?.label ?? id}
+                          </SelectItem>
+                        ))}
+                      </div>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={() =>
+                    setColumnConfigs((prev) => {
                       const next = { ...prev };
                       delete next[colName];
                       return next;
-                    })}
-                  >
-                    <Icon name="x" className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                onClick={() => setColumnConfigs((prev) => ({
+                    })
+                  }
+                  size="icon"
+                  variant="outline"
+                >
+                  <Icon className="size-3.5" name="x" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              onClick={() =>
+                setColumnConfigs((prev) => ({
                   ...prev,
-                  [""]: { generatorId: "lorem.sentence", nullable: false },
-                }))}
-              >
-                Add rule
-              </Button>
-            </div>
-          )}
+                  "": { generatorId: "lorem.sentence", nullable: false },
+                }))
+              }
+              variant="outline"
+            >
+              Add rule
+            </Button>
+          </div>
+        )}
 
-          {preview.length > 0 && (
-            <pre className="max-h-48 overflow-auto rounded border bg-muted/50 p-2 text-xs">
-              {JSON.stringify(preview, null, 2)}
-            </pre>
-          )}
-        </div>
+        {preview.length > 0 && (
+          <pre className="max-h-48 overflow-auto rounded border bg-muted/50 p-2 text-xs">
+            {JSON.stringify(preview, null, 2)}
+          </pre>
+        )}
+      </div>
 
-      <div className="flex gap-2 p-3 border-t border-border">
-        <Button variant="outline" className="flex-1" onClick={() => void handlePreview()}>Preview</Button>
-        <Button className="flex-1" onClick={() => void handleInsert()} disabled={isSubmitting}>
-          {isSubmitting && <Icon name="loader" className="size-3.5 animate-spin" />}
+      <div className="flex gap-2 border-border border-t p-3">
+        <Button
+          className="flex-1"
+          onClick={() => void handlePreview()}
+          variant="outline"
+        >
+          Preview
+        </Button>
+        <Button
+          className="flex-1"
+          disabled={isSubmitting}
+          onClick={() => void handleInsert()}
+        >
+          {isSubmitting && (
+            <Icon className="size-3.5 animate-spin" name="loader" />
+          )}
           Insert
         </Button>
       </div>
@@ -699,39 +909,62 @@ function SeedColumnRow({
   generatorGroups: GeneratorGroup[];
   onChange: (patch: Partial<ColumnSeedConfig>) => void;
 }) {
-  const currentLabel = BASE_GENERATORS[config.generatorId]?.label ?? config.generatorId;
+  const currentLabel =
+    BASE_GENERATORS[config.generatorId]?.label ?? config.generatorId;
 
   return (
-    <div className="rounded border p-2 space-y-2">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-sm font-medium truncate">{column.name}</span>
-        <Badge variant="outline" className="text-[10px] px-1 py-0">{column.dataType}</Badge>
-        {column.isPrimaryKey && <Badge variant="default" className="text-[10px] px-1 py-0">PK</Badge>}
-        {column.isUnique && <Badge variant="secondary" className="text-[10px] px-1 py-0">UQ</Badge>}
-        {column.foreignKey && (
-          <Badge variant="secondary" className="text-[10px] px-1 py-0">
-            FK → {column.foreignKey.referencedTable}.{column.foreignKey.referencedColumn}
+    <div className="space-y-2 rounded border p-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="truncate font-medium text-sm">{column.name}</span>
+        <Badge className="px-1 py-0 text-[10px]" variant="outline">
+          {column.dataType}
+        </Badge>
+        {column.isPrimaryKey && (
+          <Badge className="px-1 py-0 text-[10px]" variant="default">
+            PK
           </Badge>
         )}
-        {column.isNullable && <Badge variant="outline" className="text-[10px] px-1 py-0">NULL</Badge>}
+        {column.isUnique && (
+          <Badge className="px-1 py-0 text-[10px]" variant="secondary">
+            UQ
+          </Badge>
+        )}
+        {column.foreignKey && (
+          <Badge className="px-1 py-0 text-[10px]" variant="secondary">
+            FK → {column.foreignKey.referencedTable}.
+            {column.foreignKey.referencedColumn}
+          </Badge>
+        )}
+        {column.isNullable && (
+          <Badge className="px-1 py-0 text-[10px]" variant="outline">
+            NULL
+          </Badge>
+        )}
         {column.columnDefault && (
-          <Badge variant="outline" className="text-[10px] px-1 py-0 font-mono">
+          <Badge className="px-1 py-0 font-mono text-[10px]" variant="outline">
             = {column.columnDefault.slice(0, 30)}
           </Badge>
         )}
       </div>
 
       <div className="flex items-center gap-2">
-        <Select value={config.generatorId} onValueChange={(value) => value && onChange({ generatorId: value })}>
+        <Select
+          onValueChange={(value) => value && onChange({ generatorId: value })}
+          value={config.generatorId}
+        >
           <SelectTrigger className="flex-1">
             <SelectValue>{currentLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {generatorGroups.map((group) => (
               <div key={group.value}>
-                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group.value}</div>
+                <div className="px-2 py-1.5 font-semibold text-muted-foreground text-xs">
+                  {group.value}
+                </div>
                 {group.items.map((id) => (
-                  <SelectItem key={id} value={id}>{BASE_GENERATORS[id]?.label ?? id}</SelectItem>
+                  <SelectItem key={id} value={id}>
+                    {BASE_GENERATORS[id]?.label ?? id}
+                  </SelectItem>
                 ))}
               </div>
             ))}
@@ -739,11 +972,16 @@ function SeedColumnRow({
         </Select>
 
         {column.isNullable && (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Label htmlFor={`nullable-${column.name}`} className="text-xs text-muted-foreground">NULL</Label>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Label
+              className="text-muted-foreground text-xs"
+              htmlFor={`nullable-${column.name}`}
+            >
+              NULL
+            </Label>
             <Switch
-              id={`nullable-${column.name}`}
               checked={config.nullable}
+              id={`nullable-${column.name}`}
               onCheckedChange={(checked) => onChange({ nullable: checked })}
             />
           </div>

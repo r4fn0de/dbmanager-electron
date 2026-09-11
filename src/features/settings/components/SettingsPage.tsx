@@ -54,7 +54,7 @@ export function SettingsPage() {
         aria-label="Settings categories"
         className="flex w-44 shrink-0 flex-col gap-0.5 px-3 py-4"
       >
-        <p className="px-2.5 pb-2 font-medium text-[11px] text-muted-foreground/60 uppercase tracking-wider select-none">
+        <p className="select-none px-2.5 pb-2 font-medium text-[11px] text-muted-foreground/60 uppercase tracking-wider">
           Settings
         </p>
         {SETTINGS_ITEMS.map((item) => {
@@ -63,7 +63,7 @@ export function SettingsPage() {
             <button
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]",
+                "group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]",
                 isActive
                   ? "bg-muted/70 font-medium text-foreground"
                   : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"

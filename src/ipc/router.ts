@@ -6,10 +6,10 @@ import { theme } from "./theme";
 import { window } from "./window";
 
 export const router = {
+  ai: aiProcedures,
+  app,
+  db,
+  shell,
   theme,
   window,
-  app,
-  shell,
-  db,
-  ai: aiProcedures,
 };

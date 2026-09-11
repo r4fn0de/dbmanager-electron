@@ -4,31 +4,31 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/ipc/manager", () => ({
   ipc: {
     client: {
-      window: {
-        minimizeWindow: vi.fn().mockResolvedValue(undefined),
-        maximizeWindow: vi.fn().mockResolvedValue(undefined),
-        closeWindow: vi.fn().mockResolvedValue(undefined),
-        setUnsavedChanges: vi.fn().mockResolvedValue(undefined),
-      },
       app: {
-        currentPlatfom: vi.fn().mockReturnValue("darwin"),
         appVersion: vi.fn().mockReturnValue("1.0.0"),
+        currentPlatfom: vi.fn().mockReturnValue("darwin"),
       },
       shell: {
         openExternalLink: vi.fn().mockResolvedValue(undefined),
+      },
+      window: {
+        closeWindow: vi.fn().mockResolvedValue(undefined),
+        maximizeWindow: vi.fn().mockResolvedValue(undefined),
+        minimizeWindow: vi.fn().mockResolvedValue(undefined),
+        setUnsavedChanges: vi.fn().mockResolvedValue(undefined),
       },
     },
   },
 }));
 
+import { getAppVersion, getPlatform } from "@/features/shell/actions/app";
+import { openExternalLink } from "@/features/shell/actions/shell";
 import {
-  minimizeWindow,
-  maximizeWindow,
   closeWindow,
+  maximizeWindow,
+  minimizeWindow,
   setUnsavedChanges,
 } from "@/features/shell/actions/window";
-import { getPlatform, getAppVersion } from "@/features/shell/actions/app";
-import { openExternalLink } from "@/features/shell/actions/shell";
 import { ipc } from "@/ipc/manager";
 
 describe("shell actions — window", () => {
@@ -54,8 +54,8 @@ describe("shell actions — window", () => {
   it("setUnsavedChanges calls IPC with correct args", async () => {
     await setUnsavedChanges("sql-editor", true);
     expect(ipc.client.window.setUnsavedChanges).toHaveBeenCalledWith({
-      scope: "sql-editor",
       dirty: true,
+      scope: "sql-editor",
     });
   });
 });

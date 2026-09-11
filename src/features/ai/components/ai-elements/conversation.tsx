@@ -1,31 +1,31 @@
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/Icon";
-import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/Icon";
+import { cn } from "@/lib/utils";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
 export const conversationMotionPresets = {
+  chip: {
+    animate: { opacity: 1, scale: 1, y: 0 },
+    exit: { opacity: 0, scale: 0.97, y: -4 },
+    initial: { opacity: 0, scale: 0.95, y: -6 },
+    transition: {
+      damping: 30,
+      mass: 0.75,
+      stiffness: 440,
+      type: "spring",
+    },
+  },
   message: {
-    initial: { opacity: 0, y: 8, scale: 0.985 },
-    animate: { opacity: 1, y: 0, scale: 1 },
-    exit: { opacity: 0, y: 4, scale: 0.992 },
+    animate: { opacity: 1, scale: 1, y: 0 },
+    exit: { opacity: 0, scale: 0.992, y: 4 },
+    initial: { opacity: 0, scale: 0.985, y: 8 },
     transition: {
       duration: 0.22,
       ease: EASE_OUT,
-    },
-  },
-  chip: {
-    initial: { opacity: 0, y: -6, scale: 0.95 },
-    animate: { opacity: 1, y: 0, scale: 1 },
-    exit: { opacity: 0, y: -4, scale: 0.97 },
-    transition: {
-      type: "spring",
-      stiffness: 440,
-      damping: 30,
-      mass: 0.75,
     },
   },
 } as const;
@@ -36,16 +36,16 @@ export const conversationMotionPresets = {
  * the project's `AiChatMessage` (content-based).
  */
 export interface ConversationMessage {
-  role: string;
   content?: string;
   parts?: Array<{ type: string; text?: string }>;
+  role: string;
 }
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
 export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
-    className={cn("relative flex-1 min-h-0", className)}
+    className={cn("relative min-h-0 flex-1", className)}
     initial="smooth"
     resize="smooth"
     role="log"
@@ -62,8 +62,8 @@ export const ConversationContent = ({
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
-    scrollClassName="h-full overflow-y-auto overscroll-contain"
     className={cn("flex min-h-full flex-col gap-6 p-4", className)}
+    scrollClassName="h-full overflow-y-auto overscroll-contain"
     {...props}
   />
 );
@@ -93,7 +93,7 @@ export const ConversationEmptyState = ({
       <>
         {icon && <div className="text-muted-foreground/60">{icon}</div>}
         <div className="space-y-1.5">
-          <h3 className="font-medium text-sm text-foreground/80">{title}</h3>
+          <h3 className="font-medium text-foreground/80 text-sm">{title}</h3>
           {description && (
             <p className="text-muted-foreground/60 text-xs">{description}</p>
           )}
@@ -119,7 +119,7 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full size-7 border-border/30 bg-background/80 backdrop-blur-sm shadow-sm dark:bg-background/80 dark:hover:bg-muted/60",
+          "absolute bottom-4 left-[50%] size-7 translate-x-[-50%] rounded-full border-border/30 bg-background/80 shadow-sm backdrop-blur-sm dark:bg-background/80 dark:hover:bg-muted/60",
           "transition-all duration-150 ease-out hover:shadow-md",
           className
         )}
@@ -129,7 +129,7 @@ export const ConversationScrollButton = ({
         variant="outline"
         {...props}
       >
-        <Icon name="chevron-down" className="size-3.5" />
+        <Icon className="size-3.5" name="chevron-down" />
       </Button>
     )
   );
@@ -195,7 +195,7 @@ export const ConversationDownload = ({
   return (
     <Button
       className={cn(
-        "absolute top-4 right-4 rounded-full size-7 border-border/30 bg-background/80 backdrop-blur-sm shadow-sm dark:bg-background/80 dark:hover:bg-muted/60",
+        "absolute top-4 right-4 size-7 rounded-full border-border/30 bg-background/80 shadow-sm backdrop-blur-sm dark:bg-background/80 dark:hover:bg-muted/60",
         "transition-all duration-150 ease-out hover:shadow-md",
         className
       )}
@@ -205,7 +205,7 @@ export const ConversationDownload = ({
       variant="outline"
       {...props}
     >
-      {children ?? <Icon name="download" className="size-3.5" />}
+      {children ?? <Icon className="size-3.5" name="download" />}
     </Button>
   );
 };

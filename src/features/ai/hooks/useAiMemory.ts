@@ -7,30 +7,36 @@
  * - Get relevant context for AI prompts
  * - Manage memory lifecycle (cleanup, stats)
  */
-import { useCallback } from "react";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { ipc } from "@/ipc/manager";
 
 export const MEMORY_KEYS = {
   all: ["ai-memory"] as const,
-  stats: () => [...MEMORY_KEYS.all, "stats"] as const,
-  history: (connectionId?: string, conversationId?: string) =>
-    [...MEMORY_KEYS.all, "history", connectionId ?? "all", conversationId ?? "all"] as const,
-  search: (query: string) => [...MEMORY_KEYS.all, "search", query] as const,
   context: (query: string, connectionId?: string) =>
     [...MEMORY_KEYS.all, "context", query, connectionId ?? "all"] as const,
   embeddingStatus: () => [...MEMORY_KEYS.all, "embedding-status"] as const,
+  history: (connectionId?: string, conversationId?: string) =>
+    [
+      ...MEMORY_KEYS.all,
+      "history",
+      connectionId ?? "all",
+      conversationId ?? "all",
+    ] as const,
+  search: (query: string) => [...MEMORY_KEYS.all, "search", query] as const,
+  stats: () => [...MEMORY_KEYS.all, "stats"] as const,
 };
 
 export interface MemoryEntry {
-  id: string;
-  conversationId: string;
-  messageId: string;
   connectionId?: string;
-  role: "user" | "assistant";
   content: string;
-  timestamp: string;
+  conversationId: string;
+  id: string;
+  messageId: string;
   metadata?: string;
+  role: "user" | "assistant";
+  timestamp: string;
 }
 
 export interface MemorySearchResult {
@@ -40,7 +46,7 @@ export interface MemorySearchResult {
 
 export interface MemoryContext {
   mode?: "semantic" | "text-fallback";
-  recentMessages: Array<Pick<MemoryEntry, "id" | "role" | "content" | "timestamp" | "metadata">>;
+  recentMessages: Pick<MemoryEntry, "id" | "role" | "content" | "timestamp" | "metadata">[];
   similarPastQueries: Array<{
     query: string;
     response: string;
@@ -49,67 +55,82 @@ export interface MemoryContext {
 }
 
 export interface MemoryStats {
-  totalEntries: number;
-  withEmbeddings: number;
   conversations: number;
   oldestEntry: string | null;
+  totalEntries: number;
+  withEmbeddings: number;
 }
 
 export interface StoreMemoryInput {
-  conversationId: string;
-  messageId: string;
   connectionId?: string;
-  role: "user" | "assistant";
   content: string;
+  conversationId: string;
   generateEmbedding?: boolean;
+  messageId: string;
   metadata?: {
     schemaName?: string;
     tableName?: string;
     toolCalls?: string[];
     sqlGenerated?: boolean;
   };
+  role: "user" | "assistant";
 }
 
 export interface SearchMemoryInput {
-  query: string;
   connectionId?: string;
   conversationId?: string;
   limit?: number;
-  minSimilarity?: number;
   lookbackHours?: number;
+  minSimilarity?: number;
+  query: string;
 }
 
 export interface MemoryContextInput {
-  query: string;
   connectionId?: string;
   conversationId?: string;
+  query: string;
   recentLimit?: number;
   similarLimit?: number;
 }
 
 export interface UseAiMemoryReturn {
-  // Stats
-  stats: MemoryStats | undefined;
-  isStatsLoading: boolean;
-  statsError: string | null;
-  refetchStats: () => Promise<void>;
+  cleanupMemory: (
+    olderThanDays: number
+  ) => Promise<{ success: boolean; deletedCount: number }>;
+  clearMemory: (
+    connectionId: string
+  ) => Promise<{ success: boolean; deletedCount: number }>;
 
   // Embedding status
   embeddingStatus: { status: string; ready: boolean } | undefined;
-  memoryStatus: "ready" | "degraded";
-  isStatusLoading: boolean;
+  getMemoryContext: (input: MemoryContextInput) => Promise<MemoryContext>;
 
   // History
-  history: { messages: Array<Pick<MemoryEntry, "id" | "role" | "content" | "timestamp" | "metadata">> } | undefined;
+  history:
+    | {
+        messages: Pick<
+            MemoryEntry,
+            "id" | "role" | "content" | "timestamp" | "metadata"
+          >[];
+      }
+    | undefined;
   isHistoryLoading: boolean;
+  isStatsLoading: boolean;
+  isStatusLoading: boolean;
+  memoryStatus: "ready" | "degraded";
   refetchHistory: () => Promise<void>;
+  refetchStats: () => Promise<void>;
+  searchMemory: (
+    input: SearchMemoryInput
+  ) => Promise<{ method: string; results: MemorySearchResult[] }>;
+  // Stats
+  stats: MemoryStats | undefined;
+  statsError: string | null;
 
   // Actions
-  storeMemory: (input: StoreMemoryInput) => Promise<{ success: boolean; id: string; hasEmbedding: boolean }>;
-  searchMemory: (input: SearchMemoryInput) => Promise<{ method: string; results: MemorySearchResult[] }>;
-  getMemoryContext: (input: MemoryContextInput) => Promise<MemoryContext>;
-  clearMemory: (connectionId: string) => Promise<{ success: boolean; deletedCount: number }>;
-  cleanupMemory: (olderThanDays: number) => Promise<{ success: boolean; deletedCount: number }>;
+  storeMemory: (
+    input: StoreMemoryInput
+  ) => Promise<{ success: boolean; id: string; hasEmbedding: boolean }>;
 }
 
 export function useAiMemory(): UseAiMemoryReturn {
@@ -125,20 +146,17 @@ export function useAiMemory(): UseAiMemoryReturn {
     error: statsError,
     refetch: refetchStatsQuery,
   } = useQuery({
-    queryKey: MEMORY_KEYS.stats(),
-    queryFn: () => ipc.client.ai.getMemoryStats(),
-    staleTime: 60_000,
     gcTime: 5 * 60_000,
+    queryFn: () => ipc.client.ai.getMemoryStats(),
+    queryKey: MEMORY_KEYS.stats(),
+    staleTime: 60_000,
   });
 
-  const {
-    data: embeddingStatus,
-    isLoading: isStatusLoading,
-  } = useQuery({
-    queryKey: MEMORY_KEYS.embeddingStatus(),
-    queryFn: () => ipc.client.ai.getEmbeddingStatus(),
-    staleTime: 30_000,
+  const { data: embeddingStatus, isLoading: isStatusLoading } = useQuery({
     gcTime: 5 * 60_000,
+    queryFn: () => ipc.client.ai.getEmbeddingStatus(),
+    queryKey: MEMORY_KEYS.embeddingStatus(),
+    staleTime: 30_000,
   });
 
   const {
@@ -146,11 +164,11 @@ export function useAiMemory(): UseAiMemoryReturn {
     isLoading: isHistoryLoading,
     refetch: refetchHistoryQuery,
   } = useQuery({
-    queryKey: MEMORY_KEYS.history(),
-    queryFn: () => ipc.client.ai.getRecentHistory({ limit: 50 }),
-    staleTime: 10_000,
-    gcTime: 5 * 60_000,
     enabled: false, // Don't auto-fetch, manual trigger only
+    gcTime: 5 * 60_000,
+    queryFn: () => ipc.client.ai.getRecentHistory({ limit: 50 }),
+    queryKey: MEMORY_KEYS.history(),
+    staleTime: 10_000,
   });
 
   // -------------------------------------------------------------------------
@@ -166,18 +184,21 @@ export function useAiMemory(): UseAiMemoryReturn {
   });
 
   const { mutateAsync: getMemoryContextMutate } = useMutation({
-    mutationFn: (input: MemoryContextInput) => ipc.client.ai.getMemoryContext(input),
+    mutationFn: (input: MemoryContextInput) =>
+      ipc.client.ai.getMemoryContext(input),
   });
 
   const { mutateAsync: clearMemoryMutate } = useMutation({
-    mutationFn: (connectionId: string) => ipc.client.ai.clearMemory({ connectionId }),
+    mutationFn: (connectionId: string) =>
+      ipc.client.ai.clearMemory({ connectionId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: MEMORY_KEYS.all });
     },
   });
 
   const { mutateAsync: cleanupMemoryMutate } = useMutation({
-    mutationFn: (olderThanDays: number) => ipc.client.ai.cleanupMemory({ olderThanDays }),
+    mutationFn: (olderThanDays: number) =>
+      ipc.client.ai.cleanupMemory({ olderThanDays }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: MEMORY_KEYS.all });
     },
@@ -192,10 +213,12 @@ export function useAiMemory(): UseAiMemoryReturn {
       try {
         return await storeMemoryMutate(input);
       } catch (err) {
-        throw new Error(err instanceof Error ? err.message : "Failed to store memory");
+        throw new Error(
+          err instanceof Error ? err.message : "Failed to store memory"
+        );
       }
     },
-    [storeMemoryMutate],
+    [storeMemoryMutate]
   );
 
   const searchMemory = useCallback(
@@ -203,10 +226,12 @@ export function useAiMemory(): UseAiMemoryReturn {
       try {
         return await searchMemoryMutate(input);
       } catch (err) {
-        throw new Error(err instanceof Error ? err.message : "Failed to search memory");
+        throw new Error(
+          err instanceof Error ? err.message : "Failed to search memory"
+        );
       }
     },
-    [searchMemoryMutate],
+    [searchMemoryMutate]
   );
 
   const getMemoryContext = useCallback(
@@ -214,10 +239,12 @@ export function useAiMemory(): UseAiMemoryReturn {
       try {
         return await getMemoryContextMutate(input);
       } catch (err) {
-        throw new Error(err instanceof Error ? err.message : "Failed to get memory context");
+        throw new Error(
+          err instanceof Error ? err.message : "Failed to get memory context"
+        );
       }
     },
-    [getMemoryContextMutate],
+    [getMemoryContextMutate]
   );
 
   const clearMemory = useCallback(
@@ -225,10 +252,12 @@ export function useAiMemory(): UseAiMemoryReturn {
       try {
         return await clearMemoryMutate(connectionId);
       } catch (err) {
-        throw new Error(err instanceof Error ? err.message : "Failed to clear memory");
+        throw new Error(
+          err instanceof Error ? err.message : "Failed to clear memory"
+        );
       }
     },
-    [clearMemoryMutate],
+    [clearMemoryMutate]
   );
 
   const cleanupMemory = useCallback(
@@ -236,10 +265,12 @@ export function useAiMemory(): UseAiMemoryReturn {
       try {
         return await cleanupMemoryMutate(olderThanDays);
       } catch (err) {
-        throw new Error(err instanceof Error ? err.message : "Failed to cleanup memory");
+        throw new Error(
+          err instanceof Error ? err.message : "Failed to cleanup memory"
+        );
       }
     },
-    [cleanupMemoryMutate],
+    [cleanupMemoryMutate]
   );
 
   const memoryStatus: "ready" | "degraded" =
@@ -260,20 +291,20 @@ export function useAiMemory(): UseAiMemoryReturn {
   // -------------------------------------------------------------------------
 
   return {
-    stats,
-    isStatsLoading,
-    statsError: statsError instanceof Error ? statsError.message : null,
-    refetchStats,
+    cleanupMemory,
+    clearMemory,
     embeddingStatus,
-    memoryStatus,
-    isStatusLoading,
+    getMemoryContext,
     history,
     isHistoryLoading,
+    isStatsLoading,
+    isStatusLoading,
+    memoryStatus,
     refetchHistory,
-    storeMemory,
+    refetchStats,
     searchMemory,
-    getMemoryContext,
-    clearMemory,
-    cleanupMemory,
+    stats,
+    statsError: statsError instanceof Error ? statsError.message : null,
+    storeMemory,
   };
 }

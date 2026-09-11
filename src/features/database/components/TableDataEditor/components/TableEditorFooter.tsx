@@ -1,20 +1,20 @@
-import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/button";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
 
 interface TableEditorFooterProps {
-  page: number;
-  totalPages: number;
-  pageSize: number;
-  isLoading: boolean;
   hasDraftChanges: boolean;
+  isLoading: boolean;
   isSaving: boolean;
-  pressableClass: string;
-  onPrevPage: () => void;
+  onDiscardDrafts: () => void;
   onNextPage: () => void;
   onPageSizeChange: (size: number) => void;
-  onDiscardDrafts: () => void;
+  onPrevPage: () => void;
   onSaveChanges: () => void;
+  page: number;
+  pageSize: number;
+  pressableClass: string;
+  totalPages: number;
 }
 
 export function TableEditorFooter({
@@ -32,37 +32,39 @@ export function TableEditorFooter({
   onSaveChanges,
 }: TableEditorFooterProps) {
   return (
-    <div className="border-t bg-background/95 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-background/95 px-3 py-2 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-1">
         <Button
-          variant="outline"
-          size="icon-sm"
           className={pressableClass}
-          onClick={onPrevPage}
           disabled={page === 0 || isLoading}
+          onClick={onPrevPage}
+          size="icon-sm"
+          variant="outline"
         >
-          <UiIcon name="chevron-left" className="h-3.5 w-3.5" />
+          <UiIcon className="h-3.5 w-3.5" name="chevron-left" />
         </Button>
-        <span className="text-xs text-muted-foreground px-1">
+        <span className="px-1 text-muted-foreground text-xs">
           Page {page + 1} / {totalPages}
         </span>
         <Button
-          variant="outline"
-          size="icon-sm"
           className={pressableClass}
-          onClick={onNextPage}
           disabled={isLoading || page + 1 >= totalPages}
+          onClick={onNextPage}
+          size="icon-sm"
+          variant="outline"
         >
-          <UiIcon name="chevron-right" className="h-3.5 w-3.5" />
+          <UiIcon className="h-3.5 w-3.5" name="chevron-right" />
         </Button>
-        <span className="text-xs text-muted-foreground ml-2">Rows per page</span>
+        <span className="ml-2 text-muted-foreground text-xs">
+          Rows per page
+        </span>
         {[25, 50, 100].map((size) => (
           <Button
-            key={size}
-            variant={pageSize === size ? "secondary" : "outline"}
-            size="sm"
             className={pressableClass}
+            key={size}
             onClick={() => onPageSizeChange(size)}
+            size="sm"
+            variant={pageSize === size ? "secondary" : "outline"}
           >
             {size}
           </Button>
@@ -73,31 +75,31 @@ export function TableEditorFooter({
         className={cn(
           "flex items-center gap-2 overflow-hidden transition-[opacity,transform,max-width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
           hasDraftChanges
-            ? "opacity-100 scale-100 max-w-[400px]"
-            : "opacity-0 scale-[0.95] max-w-0 pointer-events-none",
+            ? "max-w-[400px] scale-100 opacity-100"
+            : "pointer-events-none max-w-0 scale-[0.95] opacity-0"
         )}
       >
         <Button
-          variant="outline"
-          size="sm"
           className={pressableClass}
-          onClick={onDiscardDrafts}
           disabled={isSaving}
+          onClick={onDiscardDrafts}
+          size="sm"
+          variant="outline"
         >
-          <UiIcon name="undo" className="h-3.5 w-3.5" />
+          <UiIcon className="h-3.5 w-3.5" name="undo" />
           Discard
         </Button>
         <Button
-          variant="default"
-          size="sm"
           className={pressableClass}
-          onClick={onSaveChanges}
           disabled={isSaving}
+          onClick={onSaveChanges}
+          size="sm"
+          variant="default"
         >
           {isSaving ? (
-            <UiIcon name="loader" className="h-3.5 w-3.5 animate-spin" />
+            <UiIcon className="h-3.5 w-3.5 animate-spin" name="loader" />
           ) : (
-            <UiIcon name="device-floppy" className="h-3.5 w-3.5" />
+            <UiIcon className="h-3.5 w-3.5" name="device-floppy" />
           )}
           Save Changes
         </Button>
@@ -105,4 +107,3 @@ export function TableEditorFooter({
     </div>
   );
 }
-

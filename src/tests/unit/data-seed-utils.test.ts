@@ -3,16 +3,16 @@ import {
   autoDetectGenerator,
   baseAutoDetectByName,
   baseAutoDetectByType,
-  chooseSeedStrategy,
-  generateRows,
-  getGeneratorGroups,
-  REFERENCE_GENERATOR,
-  ENUM_GENERATOR,
-  SKIP_GENERATOR,
-  NULL_GENERATOR,
-  SEED_SERVER_THRESHOLD,
   type ColumnMeta,
   type ColumnSeedConfig,
+  chooseSeedStrategy,
+  ENUM_GENERATOR,
+  generateRows,
+  getGeneratorGroups,
+  NULL_GENERATOR,
+  REFERENCE_GENERATOR,
+  SEED_SERVER_THRESHOLD,
+  SKIP_GENERATOR,
 } from "@/features/database/utils/data-seed";
 
 // ---------------------------------------------------------------------------
@@ -131,52 +131,56 @@ describe("baseAutoDetectByType", () => {
 describe("autoDetectGenerator", () => {
   it("returns reference for FK columns", () => {
     const col: ColumnMeta = {
-      name: "user_id",
-      dataType: "int4",
-      isNullable: false,
       columnDefault: null,
-      foreignKey: { referencedSchema: "public", referencedTable: "users", referencedColumn: "id" },
+      dataType: "int4",
+      foreignKey: {
+        referencedColumn: "id",
+        referencedSchema: "public",
+        referencedTable: "users",
+      },
+      isNullable: false,
+      name: "user_id",
     };
     expect(autoDetectGenerator(col)).toBe(REFERENCE_GENERATOR);
   });
 
   it("returns enum for enum columns", () => {
     const col: ColumnMeta = {
-      name: "status",
-      dataType: "USER-DEFINED",
-      isNullable: false,
       columnDefault: null,
+      dataType: "USER-DEFINED",
       enumValues: ["active", "inactive"],
+      isNullable: false,
+      name: "status",
     };
     expect(autoDetectGenerator(col)).toBe(ENUM_GENERATOR);
   });
 
   it("returns skip for columns with defaults", () => {
     const col: ColumnMeta = {
-      name: "created_at",
+      columnDefault: "now()",
       dataType: "timestamptz",
       isNullable: false,
-      columnDefault: "now()",
+      name: "created_at",
     };
     expect(autoDetectGenerator(col)).toBe(SKIP_GENERATOR);
   });
 
   it("falls back to type detection", () => {
     const col: ColumnMeta = {
-      name: "some_field",
+      columnDefault: null,
       dataType: "uuid",
       isNullable: false,
-      columnDefault: null,
+      name: "some_field",
     };
     expect(autoDetectGenerator(col)).toBe("string.uuidV4");
   });
 
   it("falls back to name detection", () => {
     const col: ColumnMeta = {
-      name: "email",
+      columnDefault: null,
       dataType: "text",
       isNullable: false,
-      columnDefault: null,
+      name: "email",
     };
     // Type detection matches first (text → lorem.sentence), but email name detection would also match
     // The function checks type first, then name
@@ -186,10 +190,10 @@ describe("autoDetectGenerator", () => {
 
   it("returns lorem.word as final fallback", () => {
     const col: ColumnMeta = {
-      name: "xyz",
+      columnDefault: null,
       dataType: "unknown_type",
       isNullable: false,
-      columnDefault: null,
+      name: "xyz",
     };
     expect(autoDetectGenerator(col)).toBe("lorem.word");
   });
@@ -222,9 +226,19 @@ describe("getGeneratorGroups", () => {
 describe("generateRows", () => {
   const makeColumns = (overrides: Partial<ColumnMeta>[] = []): ColumnMeta[] => {
     const defaults: ColumnMeta[] = [
-      { name: "id", dataType: "uuid", isNullable: false, columnDefault: null },
-      { name: "email", dataType: "text", isNullable: false, columnDefault: null },
-      { name: "active", dataType: "bool", isNullable: false, columnDefault: null },
+      { columnDefault: null, dataType: "uuid", isNullable: false, name: "id" },
+      {
+        columnDefault: null,
+        dataType: "text",
+        isNullable: false,
+        name: "email",
+      },
+      {
+        columnDefault: null,
+        dataType: "bool",
+        isNullable: false,
+        name: "active",
+      },
     ];
     return defaults.map((d, i) => ({ ...d, ...overrides[i] }));
   };
@@ -232,9 +246,9 @@ describe("generateRows", () => {
   it("generates deterministic rows with seed", () => {
     const columns = makeColumns();
     const configs: Record<string, ColumnSeedConfig> = {
-      id: { generatorId: "string.uuidV4", nullable: false },
-      email: { generatorId: "internet.email", nullable: false },
       active: { generatorId: "datatype.boolean", nullable: false },
+      email: { generatorId: "internet.email", nullable: false },
+      id: { generatorId: "string.uuidV4", nullable: false },
     };
 
     const a = generateRows({ columns, configs, count: 5, seed: 42 });
@@ -254,8 +268,8 @@ describe("generateRows", () => {
   it("skips columns with skip generator", () => {
     const columns = makeColumns();
     const configs: Record<string, ColumnSeedConfig> = {
-      id: { generatorId: SKIP_GENERATOR, nullable: false },
       email: { generatorId: "internet.email", nullable: false },
+      id: { generatorId: SKIP_GENERATOR, nullable: false },
     };
     const rows = generateRows({ columns, configs, count: 1, seed: 1 });
     expect(rows[0]).not.toHaveProperty("id");
@@ -272,22 +286,44 @@ describe("generateRows", () => {
   });
 
   it("uses reference data for FK columns", () => {
-    const columns = makeColumns([{ foreignKey: { referencedSchema: "public", referencedTable: "users", referencedColumn: "id" } }]);
+    const columns = makeColumns([
+      {
+        foreignKey: {
+          referencedColumn: "id",
+          referencedSchema: "public",
+          referencedTable: "users",
+        },
+      },
+    ]);
     const configs: Record<string, ColumnSeedConfig> = {
       id: { generatorId: REFERENCE_GENERATOR, nullable: false },
     };
     const referenceData = { id: ["uuid-1", "uuid-2", "uuid-3"] };
-    const rows = generateRows({ columns, configs, count: 10, referenceData, seed: 1 });
-    expect(rows.every((r) => referenceData.id.includes(r.id as string))).toBe(true);
+    const rows = generateRows({
+      columns,
+      configs,
+      count: 10,
+      referenceData,
+      seed: 1,
+    });
+    expect(rows.every((r) => referenceData.id.includes(r.id as string))).toBe(
+      true
+    );
   });
 
   it("picks random enum values", () => {
-    const columns = makeColumns([{ enumValues: ["active", "inactive", "pending"] }]);
+    const columns = makeColumns([
+      { enumValues: ["active", "inactive", "pending"] },
+    ]);
     const configs: Record<string, ColumnSeedConfig> = {
       id: { generatorId: ENUM_GENERATOR, nullable: false },
     };
     const rows = generateRows({ columns, configs, count: 20, seed: 1 });
-    expect(rows.every((r) => ["active", "inactive", "pending"].includes(r.id as string))).toBe(true);
+    expect(
+      rows.every((r) =>
+        ["active", "inactive", "pending"].includes(r.id as string)
+      )
+    ).toBe(true);
   });
 
   it("handles nullable columns", () => {

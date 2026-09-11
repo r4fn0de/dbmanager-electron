@@ -2,12 +2,12 @@
  * useAiFeedback — React hooks for AI feedback operations.
  */
 import { useCallback, useState } from "react";
-import { ipc } from "@/ipc/manager";
 import type { AiFeedbackEntry, FeedbackStats } from "@/ipc/ai/feedback-store";
+import { ipc } from "@/ipc/manager";
 
 export interface FeedbackState {
-  rating: "positive" | "negative" | null;
   isSubmitting: boolean;
+  rating: "positive" | "negative" | null;
 }
 
 /**
@@ -20,11 +20,11 @@ export function useMessageFeedback(
   response: string,
   connectionId?: string,
   schemaName?: string,
-  tableName?: string,
+  tableName?: string
 ) {
   const [state, setState] = useState<FeedbackState>({
-    rating: null,
     isSubmitting: false,
+    rating: null,
   });
 
   /**
@@ -46,22 +46,26 @@ export function useMessageFeedback(
    * Submit feedback (thumbs up/down).
    */
   const submitFeedback = useCallback(
-    async (rating: "positive" | "negative", category?: string, comment?: string) => {
+    async (
+      rating: "positive" | "negative",
+      category?: string,
+      comment?: string
+    ) => {
       setState((prev) => ({ ...prev, isSubmitting: true }));
       try {
         await ipc.client.ai.saveFeedback({
-          conversationId,
-          messageId,
-          connectionId,
-          schemaName,
-          tableName,
-          prompt: prompt.slice(0, 2000), // Limit size
-          response: response.slice(0, 4000), // Limit size
-          rating,
           category,
           comment,
+          connectionId,
+          conversationId,
+          messageId,
+          prompt: prompt.slice(0, 2000), // Limit size
+          rating,
+          response: response.slice(0, 4000), // Limit size
+          schemaName,
+          tableName,
         });
-        setState({ rating, isSubmitting: false });
+        setState({ isSubmitting: false, rating });
         return true;
       } catch (err) {
         console.error("[useAiFeedback] IPC call failed:", err);
@@ -69,7 +73,15 @@ export function useMessageFeedback(
         return false;
       }
     },
-    [conversationId, messageId, prompt, response, connectionId, schemaName, tableName],
+    [
+      conversationId,
+      messageId,
+      prompt,
+      response,
+      connectionId,
+      schemaName,
+      tableName,
+    ]
   );
 
   /**
@@ -82,7 +94,7 @@ export function useMessageFeedback(
         conversationId,
         messageId,
       });
-      setState({ rating: null, isSubmitting: false });
+      setState({ isSubmitting: false, rating: null });
       return true;
     } catch (err) {
       setState((prev) => ({ ...prev, isSubmitting: false }));
@@ -101,14 +113,14 @@ export function useMessageFeedback(
       }
       return submitFeedback(rating, category);
     },
-    [state.rating, submitFeedback, removeFeedback],
+    [state.rating, submitFeedback, removeFeedback]
   );
 
   return {
     ...state,
     loadFeedback,
-    submitFeedback,
     removeFeedback,
+    submitFeedback,
     toggleFeedback,
   };
 }
@@ -132,7 +144,7 @@ export function useFeedbackStats(connectionId?: string) {
     }
   }, [connectionId]);
 
-  return { stats, isLoading, loadStats };
+  return { isLoading, loadStats, stats };
 }
 
 /**
@@ -163,7 +175,13 @@ export function useFeedbackList(options?: {
     } finally {
       setIsLoading(false);
     }
-  }, [options?.conversationId, options?.connectionId, options?.category, options?.rating, options?.limit]);
+  }, [
+    options?.conversationId,
+    options?.connectionId,
+    options?.category,
+    options?.rating,
+    options?.limit,
+  ]);
 
-  return { entries, total, isLoading, loadEntries };
+  return { entries, isLoading, loadEntries, total };
 }

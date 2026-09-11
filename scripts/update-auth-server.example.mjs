@@ -1,18 +1,27 @@
 #!/usr/bin/env node
-import { createServer } from "node:http";
 import { createSign } from "node:crypto";
+import { createServer } from "node:http";
 import { URL } from "node:url";
 
 const port = Number.parseInt(process.env.PORT || "8788", 10);
-const baseOrigin = (process.env.UPDATE_BASE_ORIGIN || "https://updates.example.com").replace(/\/+$/, "");
+const baseOrigin = (
+  process.env.UPDATE_BASE_ORIGIN || "https://updates.example.com"
+).replace(/\/+$/, "");
 const defaultChannel = process.env.UPDATE_CHANNEL || "stable";
-const cookieDomain = process.env.UPDATE_COOKIE_DOMAIN || new URL(baseOrigin).hostname;
+const cookieDomain =
+  process.env.UPDATE_COOKIE_DOMAIN || new URL(baseOrigin).hostname;
 const keyPairId = process.env.CLOUDFRONT_KEY_PAIR_ID || "";
-const privateKeyPem = (process.env.CLOUDFRONT_PRIVATE_KEY_PEM || "").replace(/\\n/g, "\n");
+const privateKeyPem = (process.env.CLOUDFRONT_PRIVATE_KEY_PEM || "").replace(
+  /\\n/g,
+  "\n"
+);
 const authToken = process.env.UPDATE_AUTH_TOKEN || "";
-const ttlSeconds = Number.parseInt(process.env.UPDATE_TOKEN_TTL_SECONDS || "900", 10);
+const ttlSeconds = Number.parseInt(
+  process.env.UPDATE_TOKEN_TTL_SECONDS || "900",
+  10
+);
 
-if (!keyPairId || !privateKeyPem) {
+if (!(keyPairId && privateKeyPem)) {
   throw new Error("Set CLOUDFRONT_KEY_PAIR_ID and CLOUDFRONT_PRIVATE_KEY_PEM");
 }
 
@@ -20,7 +29,7 @@ function toCfBase64(value) {
   return Buffer.from(value)
     .toString("base64")
     .replace(/\+/g, "-")
-    .replace(/=/g, "_")
+    .replace(/[=]/g, "_")
     .replace(/\//g, "~");
 }
 
@@ -35,12 +44,12 @@ function buildSignedCookies(resourcePattern, expiresAtEpochSeconds) {
   const policy = JSON.stringify({
     Statement: [
       {
-        Resource: resourcePattern,
         Condition: {
           DateLessThan: {
             "AWS:EpochTime": expiresAtEpochSeconds,
           },
         },
+        Resource: resourcePattern,
       },
     ],
   });
@@ -55,8 +64,8 @@ function buildSignedCookies(resourcePattern, expiresAtEpochSeconds) {
 function sendJson(res, statusCode, payload) {
   const json = JSON.stringify(payload);
   res.writeHead(statusCode, {
-    "Content-Type": "application/json",
     "Cache-Control": "no-store",
+    "Content-Type": "application/json",
   });
   res.end(json);
 }
@@ -90,16 +99,16 @@ createServer((req, res) => {
 
     sendJson(res, 200, {
       baseUrl,
-      expiresAt: new Date(expiresAt * 1000).toISOString(),
       cookies: signedCookies.map((cookie) => ({
         ...cookie,
         domain: cookieDomain,
-        path: "/",
-        secure: true,
-        httpOnly: true,
-        sameSite: "no_restriction",
         expirationDate: expiresAt,
+        httpOnly: true,
+        path: "/",
+        sameSite: "no_restriction",
+        secure: true,
       })),
+      expiresAt: new Date(expiresAt * 1000).toISOString(),
     });
   } catch (error) {
     sendJson(res, 500, {

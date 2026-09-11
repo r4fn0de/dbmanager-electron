@@ -8,23 +8,24 @@
  * createTable, etc.) use the module-level functions from `db-actions`
  * — they cause zero re-renders since they have no React state.
  */
-import { useCallback } from "react";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ipc } from "@/ipc/manager";
+import { useCallback } from "react";
 import type { Connection, ConnectionInput } from "@/ipc/db/types";
+import { ipc } from "@/ipc/manager";
 
 import { dbQueryKeys } from "@/lib/query-options";
 
 interface UseConnectionsListReturn {
   connections: Connection[];
-  isLoading: boolean;
-  error: string | null;
-  refetch: () => Promise<void>;
-  saveConnection: (connection: ConnectionInput) => Promise<void>;
   deleteConnection: (
     id: string,
-    options?: { refresh?: boolean },
+    options?: { refresh?: boolean }
   ) => Promise<void>;
+  error: string | null;
+  isLoading: boolean;
+  refetch: () => Promise<void>;
+  saveConnection: (connection: ConnectionInput) => Promise<void>;
 }
 
 export function useConnectionsList(): UseConnectionsListReturn {
@@ -36,10 +37,10 @@ export function useConnectionsList(): UseConnectionsListReturn {
     error: queryError,
     refetch: queryRefetch,
   } = useQuery({
-    queryKey: dbQueryKeys.connections(),
-    queryFn: () => ipc.client.db.listConnections(),
-    staleTime: 30_000,
     gcTime: 5 * 60_000,
+    queryFn: () => ipc.client.db.listConnections(),
+    queryKey: dbQueryKeys.connections(),
+    staleTime: 30_000,
   });
 
   const error = queryError instanceof Error ? queryError.message : null;
@@ -81,11 +82,11 @@ export function useConnectionsList(): UseConnectionsListReturn {
         await saveMutateAsync(connection);
       } catch (err) {
         throw new Error(
-          err instanceof Error ? err.message : "Failed to save connection",
+          err instanceof Error ? err.message : "Failed to save connection"
         );
       }
     },
-    [saveMutateAsync],
+    [saveMutateAsync]
   );
 
   const deleteConnection = useCallback(
@@ -97,19 +98,19 @@ export function useConnectionsList(): UseConnectionsListReturn {
         });
       } catch (err) {
         throw new Error(
-          err instanceof Error ? err.message : "Failed to delete connection",
+          err instanceof Error ? err.message : "Failed to delete connection"
         );
       }
     },
-    [deleteMutateAsync],
+    [deleteMutateAsync]
   );
 
   return {
     connections,
-    isLoading,
+    deleteConnection,
     error,
+    isLoading,
     refetch,
     saveConnection,
-    deleteConnection,
   };
 }

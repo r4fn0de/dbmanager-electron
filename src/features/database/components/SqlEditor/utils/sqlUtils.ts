@@ -3,13 +3,29 @@ import type { QueryResult } from "@/ipc/db/types";
 const MAX_HISTORY_PREVIEW = 140;
 const MAX_HISTORY_RESULT_ROWS = 50;
 const MAX_HISTORY_RESULT_COLUMNS = 30;
-const DANGEROUS_SQL_KEYWORDS = ["DELETE", "UPDATE", "DROP", "RENAME", "TRUNCATE", "ALTER"] as const;
+const DANGEROUS_SQL_KEYWORDS = [
+  "DELETE",
+  "UPDATE",
+  "DROP",
+  "RENAME",
+  "TRUNCATE",
+  "ALTER",
+] as const;
 
-const READ_ONLY_SQL_KEYWORDS = ["SELECT", "WITH", "EXPLAIN", "SHOW", "DESCRIBE", "TABLE"] as const;
+const _READ_ONLY_SQL_KEYWORDS = [
+  "SELECT",
+  "WITH",
+  "EXPLAIN",
+  "SHOW",
+  "DESCRIBE",
+  "TABLE",
+] as const;
 
 export function previewSql(sql: string): string {
   const normalized = sql.replace(/\s+/g, " ").trim();
-  if (normalized.length <= MAX_HISTORY_PREVIEW) return normalized;
+  if (normalized.length <= MAX_HISTORY_PREVIEW) {
+    return normalized;
+  }
   return `${normalized.slice(0, MAX_HISTORY_PREVIEW)}...`;
 }
 
@@ -18,9 +34,9 @@ export function hasDangerousSqlKeywords(sql: string): boolean {
     .split("\n")
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
-  const dangerousKeywordsPattern = DANGEROUS_SQL_KEYWORDS
-    .map((keyword) => `\\b${keyword}\\b`)
-    .join("|");
+  const dangerousKeywordsPattern = DANGEROUS_SQL_KEYWORDS.map(
+    (keyword) => `\\b${keyword}\\b`
+  ).join("|");
   return new RegExp(dangerousKeywordsPattern, "gi").test(uncommentedLines);
 }
 
@@ -29,7 +45,9 @@ export function isReadOnlySql(sql: string): boolean {
 }
 
 export function truncateForContext(value: string, max: number): string {
-  if (value.length <= max) return value;
+  if (value.length <= max) {
+    return value;
+  }
   return `${value.slice(0, max)}\n...[truncated]`;
 }
 
@@ -45,7 +63,9 @@ export function splitSqlStatements(sql: string): string[] {
 
   const pushCurrent = () => {
     const trimmed = current.trim();
-    if (trimmed) statements.push(trimmed);
+    if (trimmed) {
+      statements.push(trimmed);
+    }
     current = "";
   };
 
@@ -55,7 +75,9 @@ export function splitSqlStatements(sql: string): string[] {
 
     if (inLineComment) {
       current += ch;
-      if (ch === "\n") inLineComment = false;
+      if (ch === "\n") {
+        inLineComment = false;
+      }
       continue;
     }
 
@@ -104,7 +126,9 @@ export function splitSqlStatements(sql: string): string[] {
 
     if (inBacktick) {
       current += ch;
-      if (ch === "`") inBacktick = false;
+      if (ch === "`") {
+        inBacktick = false;
+      }
       continue;
     }
 
@@ -179,7 +203,7 @@ export function toHistoryResultPreview(result: QueryResult): {
 
   return {
     columns,
-    rows,
     row_count: result.row_count,
+    rows,
   };
 }

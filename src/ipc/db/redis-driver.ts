@@ -8,21 +8,16 @@
  *
  * Uses ioredis for connection handling with SCAN for safe iteration.
  */
+
+import type Redis from "ioredis";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import type {
-  DatabaseType,
-  DatabaseInfo,
-  DatabaseSchema,
-  SchemaSummary,
-  SchemaTableDetails,
-  QueryResult,
   ColumnMeta,
+  DatabaseSchema,
+  DatabaseType,
+  SchemaTableDetails,
   SslMode,
-  TableStats,
-  TableSampleResult,
-  TableRowsResponse,
 } from "./types";
-import type Redis from "ioredis";
 
 const DB_TYPE = "redis" as DatabaseType;
 const SCAN_COUNT = 100; // Keys per SCAN iteration
@@ -33,26 +28,28 @@ const MAX_VALUE_ITEMS = 100; // Max items for list/set/zset preview
 const redisClients = new Map<string, Redis>();
 
 interface RedisInfo {
-  version: string;
+  connectedClients: number;
+  databases: number;
   mode: string;
   os: string;
-  uptime: number;
-  connectedClients: number;
-  usedMemoryHuman: string;
   totalKeys: number;
-  databases: number;
+  uptime: number;
+  usedMemoryHuman: string;
+  version: string;
 }
 
 async function getRedisClient(connectionString: string): Promise<Redis> {
   const existing = redisClients.get(connectionString);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
 
   const RedisModule = await import("ioredis");
   const client = new RedisModule.default(connectionString, {
-    retryStrategy: (times) => Math.min(times * 50, 2000),
-    maxRetriesPerRequest: 3,
     enableReadyCheck: true,
     lazyConnect: false,
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times) => Math.min(times * 50, 2000),
   });
 
   redisClients.set(connectionString, client);
@@ -72,9 +69,13 @@ function parseInfo(infoStr: string): RedisInfo {
   const result: Partial<RedisInfo> = {};
 
   for (const line of lines) {
-    if (!line || line.startsWith("#")) continue;
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
     const [key, value] = line.split(":");
-    if (!key || !value) continue;
+    if (!(key && value)) {
+      continue;
+    }
 
     switch (key) {
       case "redis_version":
@@ -87,10 +88,10 @@ function parseInfo(infoStr: string): RedisInfo {
         result.os = value;
         break;
       case "uptime_in_seconds":
-        result.uptime = parseInt(value, 10);
+        result.uptime = Number.parseInt(value, 10);
         break;
       case "connected_clients":
-        result.connectedClients = parseInt(value, 10);
+        result.connectedClients = Number.parseInt(value, 10);
         break;
       case "used_memory_human":
         result.usedMemoryHuman = value;
@@ -99,14 +100,14 @@ function parseInfo(infoStr: string): RedisInfo {
   }
 
   return {
-    version: result.version ?? "unknown",
+    connectedClients: result.connectedClients ?? 0,
+    databases: 16,
     mode: result.mode ?? "standalone",
     os: result.os ?? "unknown",
-    uptime: result.uptime ?? 0,
-    connectedClients: result.connectedClients ?? 0,
-    usedMemoryHuman: result.usedMemoryHuman ?? "N/A",
     totalKeys: 0,
-    databases: 16,
+    uptime: result.uptime ?? 0,
+    usedMemoryHuman: result.usedMemoryHuman ?? "N/A",
+    version: result.version ?? "unknown",
   };
 }
 
@@ -120,7 +121,9 @@ async function getTotalKeyCount(client: Redis): Promise<number> {
     for (const line of lines) {
       if (line.startsWith("db")) {
         const match = line.match(/keys=(\d+)/);
-        if (match) total += parseInt(match[1], 10);
+        if (match) {
+          total += Number.parseInt(match[1], 10);
+        }
       }
     }
 
@@ -131,11 +134,17 @@ async function getTotalKeyCount(client: Redis): Promise<number> {
 }
 
 // Scan keys iteratively — production-safe alternative to KEYS *
-async function* scanKeys(client: Redis, pattern: string = "*"): AsyncGenerator<string> {
+async function* scanKeys(client: Redis, pattern = "*"): AsyncGenerator<string> {
   let cursor = "0";
 
   do {
-    const result = await client.scan(cursor, "MATCH", pattern, "COUNT", SCAN_COUNT);
+    const result = await client.scan(
+      cursor,
+      "MATCH",
+      pattern,
+      "COUNT",
+      SCAN_COUNT
+    );
     cursor = result[0];
     const keys = result[1];
 
@@ -188,16 +197,22 @@ function parseRedisCommand(command: string): { cmd: string; args: string[] } {
   }
 
   const cmd = args.shift()?.toLowerCase() ?? "";
-  return { cmd, args };
+  return { args, cmd };
 }
 
 // Collect all keys from scan (use with caution on large datasets)
-async function collectKeys(client: Redis, pattern: string = "*", limit?: number): Promise<string[]> {
+async function collectKeys(
+  client: Redis,
+  pattern = "*",
+  limit?: number
+): Promise<string[]> {
   const keys: string[] = [];
 
   for await (const key of scanKeys(client, pattern)) {
     keys.push(key);
-    if (limit && keys.length >= limit) break;
+    if (limit && keys.length >= limit) {
+      break;
+    }
   }
 
   return keys;
@@ -210,20 +225,29 @@ async function getKeyType(client: Redis, key: string): Promise<string> {
 
 // Get value preview based on type (truncated for display)
 // Uses partial scans (HSCAN, SSCAN, ZRANGE) to avoid loading large structures
-async function getValuePreview(client: Redis, key: string, type: string): Promise<string> {
+async function getValuePreview(
+  client: Redis,
+  key: string,
+  type: string
+): Promise<string> {
   try {
     switch (type) {
       case "string": {
         const str = await client.get(key);
-        if (str === null) return "(nil)";
+        if (str === null) {
+          return "(nil)";
+        }
         if (str.length > MAX_PREVIEW_LENGTH) {
-          return str.substring(0, MAX_PREVIEW_LENGTH) + "...";
+          return `${str.substring(0, MAX_PREVIEW_LENGTH)}...`;
         }
         // Check if looks like JSON
         if (str.startsWith("{") || str.startsWith("[")) {
           try {
             const parsed = JSON.parse(str);
-            return JSON.stringify(parsed, null, 2).substring(0, MAX_PREVIEW_LENGTH);
+            return JSON.stringify(parsed, null, 2).substring(
+              0,
+              MAX_PREVIEW_LENGTH
+            );
           } catch {
             return str;
           }
@@ -232,7 +256,9 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
       }
       case "hash": {
         const hlen = await client.hlen(key);
-        if (hlen === 0) return "Hash (empty)";
+        if (hlen === 0) {
+          return "Hash (empty)";
+        }
         // Use HSCAN to get just a few fields instead of HGETALL
         const sampleFields: string[] = [];
         let cursor = "0";
@@ -241,7 +267,11 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
           const result = await client.hscan(key, cursor, "COUNT", 5);
           cursor = result[0];
           const fields = result[1];
-          for (let i = 0; i < fields.length && sampleFields.length < 3; i += 2) {
+          for (
+            let i = 0;
+            i < fields.length && sampleFields.length < 3;
+            i += 2
+          ) {
             sampleFields.push(fields[i]);
           }
           iterations++;
@@ -253,14 +283,20 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
       }
       case "list": {
         const llen = await client.llen(key);
-        if (llen === 0) return "List (empty)";
+        if (llen === 0) {
+          return "List (empty)";
+        }
         const items = await client.lrange(key, 0, 2);
         const preview = items.join(", ");
-        return llen > 3 ? `List (${llen} items: ${preview}...)` : `List (${llen} items: ${preview})`;
+        return llen > 3
+          ? `List (${llen} items: ${preview}...)`
+          : `List (${llen} items: ${preview})`;
       }
       case "set": {
         const scard = await client.scard(key);
-        if (scard === 0) return "Set (empty)";
+        if (scard === 0) {
+          return "Set (empty)";
+        }
         // Use SSCAN to get just a few members instead of SMEMBERS
         const sampleMembers: string[] = [];
         let cursor = "0";
@@ -272,18 +308,23 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
           iterations++;
         } while (cursor !== "0" && sampleMembers.length < 3 && iterations < 3);
         const preview = sampleMembers.slice(0, 3).join(", ");
-        return scard > 3 ? `Set (${scard} members: ${preview}...)` : `Set (${scard} members: ${preview})`;
+        return scard > 3
+          ? `Set (${scard} members: ${preview}...)`
+          : `Set (${scard} members: ${preview})`;
       }
       case "zset": {
         const zcard = await client.zcard(key);
-        if (zcard === 0) return "Sorted Set (empty)";
+        if (zcard === 0) {
+          return "Sorted Set (empty)";
+        }
         // Use ZRANGE with LIMIT to get just a few members
-        const items = await client.zrange(key, 0, 2, "WITHSCORES");
+        const _items = await client.zrange(key, 0, 2, "WITHSCORES");
         return `Sorted Set (${zcard} members)`;
       }
-      case "stream":
+      case "stream": {
         const xlen = await client.xlen(key);
         return `Stream (${xlen} entries)`;
+      }
       case "bitmap":
         return "Bitmap";
       case "none":
@@ -292,21 +333,27 @@ async function getValuePreview(client: Redis, key: string, type: string): Promis
         return type;
     }
   } catch {
-    return `(error getting preview)`;
+    return "(error getting preview)";
   }
 }
 
 // Get full value for a key (with strict limits to prevent memory issues)
 // For large structures, returns partial data with warning indicator
-async function getKeyValue(client: Redis, key: string, type: string): Promise<unknown> {
+async function getKeyValue(
+  client: Redis,
+  key: string,
+  type: string
+): Promise<unknown> {
   const LARGE_STRUCTURE_THRESHOLD = 1000; // Consider large if > 1000 items
 
   try {
     switch (type) {
       case "string": {
         const value = await client.get(key);
-        if (value && value.length > 10000) {
-          return value.substring(0, 10000) + "...[truncated: value exceeds 10KB]";
+        if (value && value.length > 10_000) {
+          return (
+            `${value.substring(0, 10_000)}...[truncated: value exceeds 10KB]`
+          );
         }
         return value;
       }
@@ -321,12 +368,17 @@ async function getKeyValue(client: Redis, key: string, type: string): Promise<un
             const result = await client.hscan(key, cursor, "COUNT", 100);
             cursor = result[0];
             const fields = result[1];
-            for (let i = 0; i < fields.length && count < MAX_VALUE_ITEMS; i += 2) {
+            for (
+              let i = 0;
+              i < fields.length && count < MAX_VALUE_ITEMS;
+              i += 2
+            ) {
               partialData[fields[i]] = fields[i + 1];
               count++;
             }
           } while (cursor !== "0" && count < MAX_VALUE_ITEMS);
-          partialData["__truncated__"] = `Showing ${count} of ${hlen} fields. Use HSCAN to iterate full hash.`;
+          partialData.__truncated__ =
+            `Showing ${count} of ${hlen} fields. Use HSCAN to iterate full hash.`;
           return partialData;
         }
         return await client.hgetall(key);
@@ -345,12 +397,16 @@ async function getKeyValue(client: Redis, key: string, type: string): Promise<un
             cursor = result[0];
             members.push(...result[1]);
             iterations++;
-          } while (cursor !== "0" && members.length < MAX_VALUE_ITEMS && iterations < 10);
+          } while (
+            cursor !== "0" &&
+            members.length < MAX_VALUE_ITEMS &&
+            iterations < 10
+          );
           return {
             __partial_set__: true,
-            members: members,
-            total: scard,
+            members,
             note: `Showing ${members.length} of ${scard} members. Use SSCAN to iterate full set.`,
+            total: scard,
           };
         }
         return await client.smembers(key);
@@ -370,9 +426,16 @@ async function getKeyValue(client: Redis, key: string, type: string): Promise<un
 }
 
 // Get memory usage for a key
-async function getKeyMemory(client: Redis, key: string): Promise<number | null> {
+async function getKeyMemory(
+  client: Redis,
+  key: string
+): Promise<number | null> {
   try {
-    const usage = await (client as unknown as { memory: (subcommand: string, key: string) => Promise<number | null> }).memory("USAGE", key);
+    const usage = await (
+      client as unknown as {
+        memory: (subcommand: string, key: string) => Promise<number | null>;
+      }
+    ).memory("USAGE", key);
     return usage;
   } catch {
     return null;
@@ -385,7 +448,8 @@ function groupKeysByPrefix(keys: string[]): Map<string, string[]> {
 
   for (const key of keys) {
     const colonIndex = key.indexOf(":");
-    const prefix = colonIndex > 0 ? key.substring(0, colonIndex) : "(no prefix)";
+    const prefix =
+      colonIndex > 0 ? key.substring(0, colonIndex) : "(no prefix)";
 
     if (!groups.has(prefix)) {
       groups.set(prefix, []);
@@ -412,7 +476,13 @@ async function* scanKeysWithFilter(
   let count = 0;
 
   do {
-    const result = await client.scan(cursor, "MATCH", pattern, "COUNT", SCAN_COUNT);
+    const result = await client.scan(
+      cursor,
+      "MATCH",
+      pattern,
+      "COUNT",
+      SCAN_COUNT
+    );
     cursor = result[0];
     const keys = result[1];
 
@@ -423,21 +493,27 @@ async function* scanKeysWithFilter(
       }
       yield key;
       count++;
-      if (count >= maxKeys) return;
+      if (count >= maxKeys) {
+        return;
+      }
     }
   } while (cursor !== "0");
 }
 
 export function createRedisDriver(): DatabaseDriver {
   return {
-    type: DB_TYPE,
-    defaultPort: 6379,
-    defaultDatabase: "0",
-    defaultUsername: "",
-    sslModes: ["disable", "require"] as SslMode[],
+    async addColumn() {
+      return "-- Redis does not support ADD COLUMN";
+    },
+
+    async alterColumnType() {
+      return "-- Redis does not support ALTER COLUMN";
+    },
 
     buildConnectionString(config: DriverConnectionConfig): string {
-      if (config.url) return config.url;
+      if (config.url) {
+        return config.url;
+      }
 
       const auth = config.password
         ? `${encodeURIComponent(config.username || "default")}:${encodeURIComponent(config.password)}@`
@@ -446,15 +522,36 @@ export function createRedisDriver(): DatabaseDriver {
       return `${ssl}${auth}${config.host}:${config.port}/${config.database}`;
     },
 
-    async testConnection(config) {
-      try {
-        const connStr = this.buildConnectionString(config);
-        const client = await getRedisClient(connStr);
-        await client.ping();
-        return true;
-      } catch {
-        return false;
-      }
+    async createIndex() {
+      return "-- Redis does not support CREATE INDEX";
+    },
+
+    async createSchema() {
+      return "-- Redis does not support CREATE SCHEMA";
+    },
+
+    // Redis DDL stubs - these don't apply to Redis
+    async createTable() {
+      return "-- Redis does not support CREATE TABLE";
+    },
+    defaultDatabase: "0",
+    defaultPort: 6379,
+    defaultUsername: "",
+
+    async dropColumn() {
+      return "-- Redis does not support DROP COLUMN";
+    },
+
+    async dropIndex() {
+      return "-- Redis does not support DROP INDEX";
+    },
+
+    async dropTable() {
+      return "-- Redis does not support DROP TABLE";
+    },
+
+    async executeBatchDdl() {
+      return { errors: [] };
     },
 
     async executeQuery(connectionString, command, _signal) {
@@ -488,12 +585,36 @@ export function createRedisDriver(): DatabaseDriver {
 
         return {
           columns,
-          rows,
           row_count: rows.length,
+          rows,
         };
       } catch (err) {
-        throw new Error(`Redis command error: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(
+          `Redis command error: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
+    },
+
+    // Redis doesn't support EXPLAIN
+    async explainQuery() {
+      return {
+        hasExecutionStats: false,
+        plan: "Redis does not support EXPLAIN",
+      };
+    },
+
+    // Export stubs
+    async exportSchemaDdl() {
+      return { scripts: [], tableRowCounts: [] };
+    },
+
+    async exportTableData() {
+      return { columns: [], hasMore: false, rows: [], totalExported: 0 };
+    },
+
+    // Redis doesn't have constraints
+    async getConstraints() {
+      return [];
     },
 
     async getDatabaseInfo(connectionString) {
@@ -505,18 +626,33 @@ export function createRedisDriver(): DatabaseDriver {
         const dbsize = await client.dbsize();
 
         return {
-          version: `Redis ${info.version} (${info.mode})`,
           encoding: "utf-8",
-          timezone: "UTC",
           size: `${info.usedMemoryHuman} — ${totalKeys.toLocaleString()} keys total (DB: ${dbsize.toLocaleString()})`,
+          timezone: "UTC",
+          version: `Redis ${info.version} (${info.mode})`,
         };
       } catch {
         return {
-          version: "Redis unknown",
           encoding: "utf-8",
           timezone: "UTC",
+          version: "Redis unknown",
         };
       }
+    },
+
+    // Redis doesn't have enums
+    async getEnums() {
+      return [];
+    },
+
+    // Redis doesn't have functions/procedures
+    async getFunctions() {
+      return [];
+    },
+
+    // Redis doesn't have traditional indexes
+    async getIndexes() {
+      return [];
     },
 
     async getSchema(connectionString) {
@@ -524,7 +660,7 @@ export function createRedisDriver(): DatabaseDriver {
 
       try {
         // Use SCAN to get keys iteratively (production-safe)
-        const keys = await collectKeys(client, "*", 10000); // Limit to prevent memory issues
+        const keys = await collectKeys(client, "*", 10_000); // Limit to prevent memory issues
         const schemas = new Set<string>(["default"]);
 
         // Group keys by prefix
@@ -534,19 +670,49 @@ export function createRedisDriver(): DatabaseDriver {
         for (const [group] of keyGroups) {
           // Fixed schema for key-value browsing
           tables.push({
-            name: group,
-            schema: "default",
             columns: [
-              { name: "key", data_type: "string", udt_name: null, is_nullable: false, column_default: null },
-              { name: "type", data_type: "string", udt_name: null, is_nullable: false, column_default: null },
-              { name: "ttl", data_type: "number", udt_name: null, is_nullable: true, column_default: null },
-              { name: "size", data_type: "string", udt_name: null, is_nullable: false, column_default: null },
-              { name: "value_preview", data_type: "string", udt_name: null, is_nullable: true, column_default: null },
+              {
+                column_default: null,
+                data_type: "string",
+                is_nullable: false,
+                name: "key",
+                udt_name: null,
+              },
+              {
+                column_default: null,
+                data_type: "string",
+                is_nullable: false,
+                name: "type",
+                udt_name: null,
+              },
+              {
+                column_default: null,
+                data_type: "number",
+                is_nullable: true,
+                name: "ttl",
+                udt_name: null,
+              },
+              {
+                column_default: null,
+                data_type: "string",
+                is_nullable: false,
+                name: "size",
+                udt_name: null,
+              },
+              {
+                column_default: null,
+                data_type: "string",
+                is_nullable: true,
+                name: "value_preview",
+                udt_name: null,
+              },
             ],
-            indexes: [],
             foreign_keys: [],
             has_rls: false,
+            indexes: [],
+            name: group,
             rls_policies: [],
+            schema: "default",
           });
         }
 
@@ -555,7 +721,9 @@ export function createRedisDriver(): DatabaseDriver {
           tables,
         };
       } catch (err) {
-        throw new Error(`Failed to get Redis schema: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(
+          `Failed to get Redis schema: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     },
 
@@ -564,22 +732,26 @@ export function createRedisDriver(): DatabaseDriver {
 
       try {
         // Use SCAN to get keys iteratively
-        const keys = await collectKeys(client, "*", 10000);
+        const keys = await collectKeys(client, "*", 10_000);
         const groups = groupKeysByPrefix(keys);
 
-        const tables = Array.from(groups.entries()).map(([name, groupKeys]) => ({
-          name,
-          schema: "default",
-          has_rls: false,
-          estimated_row_count: groupKeys.length,
-        }));
+        const tables = Array.from(groups.entries()).map(
+          ([name, groupKeys]) => ({
+            estimated_row_count: groupKeys.length,
+            has_rls: false,
+            name,
+            schema: "default",
+          })
+        );
 
         return {
           schemas: ["default"],
           tables,
         };
       } catch (err) {
-        throw new Error(`Failed to get Redis summary: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(
+          `Failed to get Redis summary: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     },
 
@@ -595,77 +767,71 @@ export function createRedisDriver(): DatabaseDriver {
         }
 
         const columns: SchemaTableDetails["columns"] = [
-          { name: "key", data_type: "string", udt_name: null, is_nullable: false, column_default: null },
-          { name: "type", data_type: "string", udt_name: null, is_nullable: false, column_default: null },
-          { name: "ttl", data_type: "number", udt_name: null, is_nullable: true, column_default: null },
-          { name: "size", data_type: "string", udt_name: null, is_nullable: false, column_default: null },
+          {
+            column_default: null,
+            data_type: "string",
+            is_nullable: false,
+            name: "key",
+            udt_name: null,
+          },
+          {
+            column_default: null,
+            data_type: "string",
+            is_nullable: false,
+            name: "type",
+            udt_name: null,
+          },
+          {
+            column_default: null,
+            data_type: "number",
+            is_nullable: true,
+            name: "ttl",
+            udt_name: null,
+          },
+          {
+            column_default: null,
+            data_type: "string",
+            is_nullable: false,
+            name: "size",
+            udt_name: null,
+          },
         ];
 
         // Sample first key for additional columns based on type
         if (keys.length > 0) {
           const type = await getKeyType(client, keys[0]);
           if (type === "hash") {
-            columns.push({ name: "field", data_type: "string", udt_name: null, is_nullable: false, column_default: null });
-            columns.push({ name: "value", data_type: "string", udt_name: null, is_nullable: true, column_default: null });
+            columns.push({
+              column_default: null,
+              data_type: "string",
+              is_nullable: false,
+              name: "field",
+              udt_name: null,
+            });
+            columns.push({
+              column_default: null,
+              data_type: "string",
+              is_nullable: true,
+              name: "value",
+              udt_name: null,
+            });
           }
         }
 
         return {
-          name: table,
-          schema: "default",
-          has_rls: false,
           columns,
-          indexes: [],
           foreign_keys: [],
+          has_rls: false,
+          indexes: [],
+          name: table,
           rls_policies: [],
+          schema: "default",
         };
       } catch (err) {
-        throw new Error(`Failed to get Redis table details: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(
+          `Failed to get Redis table details: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
-    },
-
-    // Redis doesn't have traditional indexes
-    async getIndexes() {
-      return [];
-    },
-
-    // Redis doesn't have constraints
-    async getConstraints() {
-      return [];
-    },
-
-    // Redis doesn't have enums
-    async getEnums() {
-      return [];
-    },
-
-    // Redis doesn't have functions/procedures
-    async getFunctions() {
-      return [];
-    },
-
-    // Redis doesn't have triggers
-    async getTriggers() {
-      return [];
-    },
-
-    // Redis doesn't have traditional table stats
-    async getTableStats() {
-      return {
-        schema: "default",
-        table: "",
-        rowCount: 0,
-        sizeBytes: 0,
-        sizeFormatted: "N/A",
-      };
-    },
-
-    // Redis doesn't support EXPLAIN
-    async explainQuery() {
-      return {
-        plan: "Redis does not support EXPLAIN",
-        hasExecutionStats: false,
-      };
     },
 
     // Sample keys from a "table" (prefix group)
@@ -687,26 +853,49 @@ export function createRedisDriver(): DatabaseDriver {
 
           rows.push({
             key,
-            type,
-            value_preview: await getValuePreview(client, key, type),
             ttl: ttl > 0 ? ttl : null,
+            type,
             value: type === "string" ? value : JSON.stringify(value),
+            value_preview: await getValuePreview(client, key, type),
           });
         }
 
         return {
-          rows,
           columnStats: [
             { columnName: "key", dataType: "string" },
             { columnName: "type", dataType: "string" },
             { columnName: "ttl", dataType: "number" },
           ],
-          totalRows: keys.length,
+          rows,
           sampleSize: rows.length,
+          totalRows: keys.length,
         };
       } catch (err) {
-        throw new Error(`Failed to get Redis sample: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(
+          `Failed to get Redis sample: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
+    },
+
+    // Redis doesn't have traditional table stats
+    async getTableStats() {
+      return {
+        rowCount: 0,
+        schema: "default",
+        sizeBytes: 0,
+        sizeFormatted: "N/A",
+        table: "",
+      };
+    },
+
+    // Redis doesn't have triggers
+    async getTriggers() {
+      return [];
+    },
+
+    async importTableRows() {
+      // Redis doesn't support table row imports
+      return 0;
     },
 
     // List "rows" from a "table" (keys matching prefix)
@@ -717,12 +906,16 @@ export function createRedisDriver(): DatabaseDriver {
         // For pagination with SCAN, we need to collect keys up to the page we need
         // This is not efficient for large pages but SCAN doesn't support offset
         // For Redis, we limit to a reasonable max to avoid memory issues
-        const MAX_SCAN_KEYS = 10000;
+        const MAX_SCAN_KEYS = 10_000;
         const targetCount = Math.min(page * pageSize, MAX_SCAN_KEYS);
 
         // Use scanKeysWithFilter for consistent (no prefix) handling
         const allKeys: string[] = [];
-        for await (const key of scanKeysWithFilter(client, table, targetCount)) {
+        for await (const key of scanKeysWithFilter(
+          client,
+          table,
+          targetCount
+        )) {
           allKeys.push(key);
         }
 
@@ -738,9 +931,9 @@ export function createRedisDriver(): DatabaseDriver {
 
           rows.push({
             key,
-            type,
+            size: size ? `${Math.round((size / 1024) * 100) / 100} KB` : "N/A",
             ttl: ttl > 0 ? ttl : null,
-            size: size ? `${Math.round(size / 1024 * 100) / 100} KB` : "N/A",
+            type,
             value_preview: await getValuePreview(client, key, type),
           });
         }
@@ -758,86 +951,50 @@ export function createRedisDriver(): DatabaseDriver {
             { name: "size", type_name: "string" },
             { name: "value_preview", type_name: "string" },
           ],
-          rows,
-          primaryKey: ["key"],
           foreignKeys: [],
           pageInfo: { page, pageSize },
+          primaryKey: ["key"],
+          rows,
           totalEstimate,
         };
       } catch (err) {
-        throw new Error(`Failed to list Redis rows: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(
+          `Failed to list Redis rows: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
-    },
-
-    // Redis DDL stubs - these don't apply to Redis
-    async createTable() {
-      return "-- Redis does not support CREATE TABLE";
-    },
-
-    async dropTable() {
-      return "-- Redis does not support DROP TABLE";
-    },
-
-    async renameTable() {
-      return "-- Redis does not support RENAME TABLE";
-    },
-
-    async addColumn() {
-      return "-- Redis does not support ADD COLUMN";
-    },
-
-    async dropColumn() {
-      return "-- Redis does not support DROP COLUMN";
     },
 
     async renameColumn() {
       return "-- Redis does not support RENAME COLUMN";
     },
 
-    async alterColumnType() {
-      return "-- Redis does not support ALTER COLUMN";
-    },
-
-    async setColumnNullable() {
-      return "-- Redis does not support SET NULLABLE";
+    async renameTable() {
+      return "-- Redis does not support RENAME TABLE";
     },
 
     async setColumnDefault() {
       return "-- Redis does not support SET DEFAULT";
     },
 
-    async createIndex() {
-      return "-- Redis does not support CREATE INDEX";
+    async setColumnNullable() {
+      return "-- Redis does not support SET NULLABLE";
     },
+    sslModes: ["disable", "require"] as SslMode[],
 
-    async dropIndex() {
-      return "-- Redis does not support DROP INDEX";
+    async testConnection(config) {
+      try {
+        const connStr = this.buildConnectionString(config);
+        const client = await getRedisClient(connStr);
+        await client.ping();
+        return true;
+      } catch {
+        return false;
+      }
     },
-
-    async createSchema() {
-      return "-- Redis does not support CREATE SCHEMA";
-    },
-
-    // Export stubs
-    async exportSchemaDdl() {
-      return { scripts: [], tableRowCounts: [] };
-    },
-
-    async exportTableData() {
-      return { rows: [], columns: [], hasMore: false, totalExported: 0 };
-    },
-
-    async executeBatchDdl() {
-      return { errors: [] };
-    },
+    type: DB_TYPE,
 
     async waitForDatabase() {
       // Redis is always ready
-    },
-
-    async importTableRows() {
-      // Redis doesn't support table row imports
-      return 0;
     },
   };
 }

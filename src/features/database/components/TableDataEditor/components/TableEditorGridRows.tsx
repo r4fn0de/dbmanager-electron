@@ -1,5 +1,5 @@
-import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { CellExpandPopover } from "../../CellExpandPopover";
@@ -50,12 +50,19 @@ export function TableEditorGridRows({
     <TableBody className="align-top">
       {topSpacerHeight > 0 && (
         <tr aria-hidden="true" className="border-0">
-          <td colSpan={visibleColumns.length + 1} className="border-0 p-0" style={{ height: topSpacerHeight }} />
+          <td
+            className="border-0 p-0"
+            colSpan={visibleColumns.length + 1}
+            style={{ height: topSpacerHeight }}
+          />
         </tr>
       )}
       {visibleDraftInserts.map(({ row, insertIndex }) => (
-        <TableRow key={`insert:${insertIndex}`} className="bg-emerald-500/5 hover:bg-emerald-500/10">
-          <TableCell className="sticky left-0 z-[1] w-12 min-w-12 border-r border-border bg-background px-2 py-0.5 text-center text-muted-foreground h-7">
+        <TableRow
+          className="bg-emerald-500/5 hover:bg-emerald-500/10"
+          key={`insert:${insertIndex}`}
+        >
+          <TableCell className="sticky left-0 z-[1] h-7 w-12 min-w-12 border-border border-r bg-background px-2 py-0.5 text-center text-muted-foreground">
             N
           </TableCell>
           {visibleColumns.map((columnName) => {
@@ -70,16 +77,18 @@ export function TableEditorGridRows({
             const width = resolveColumnWidth(columnName);
             return (
               <TableCell
+                className={`group/cell relative h-7 truncate border-border border-r px-2 py-0.5 align-middle font-mono last:border-r-0 ${isFocusedInsert ? "bg-primary/5 ring-2 ring-primary/40 ring-inset" : ""}`}
                 key={`insert:${insertIndex}:${columnName}`}
-                className={`group/cell relative truncate font-mono align-middle border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocusedInsert ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
-                style={{ width, minWidth: width, maxWidth: width }}
-                onDoubleClick={() => beginEditInsertCell(insertIndex, columnName)}
                 onClick={() =>
                   setFocusedCell({
-                    rowKey: `insert:${insertIndex}`,
                     column: columnName,
+                    rowKey: `insert:${insertIndex}`,
                   })
                 }
+                onDoubleClick={() =>
+                  beginEditInsertCell(insertIndex, columnName)
+                }
+                style={{ maxWidth: width, minWidth: width, width }}
               >
                 {isEditing ? (
                   <div className="relative">
@@ -87,20 +96,17 @@ export function TableEditorGridRows({
                       {normalizeDisplay(value)}
                     </span>
                     <Input
-                      value={editingValue}
+                      className="!text-xs md:!text-xs absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono leading-4 shadow-none focus-visible:ring-0"
+                      onBlur={() => persistEditing()}
                       onChange={(event) => {
                         setEditingValue(event.target.value);
                         loadFkOptionsDebounced(columnName, event.target.value);
                       }}
-                      onBlur={() => persistEditing()}
                       onFocus={(event) => {
-                        if (!suppressInlineEditorMouseUpRef.current) return;
+                        if (!suppressInlineEditorMouseUpRef.current) {
+                          return;
+                        }
                         event.currentTarget.select();
-                      }}
-                      onMouseUp={(event) => {
-                        if (!suppressInlineEditorMouseUpRef.current) return;
-                        event.preventDefault();
-                        suppressInlineEditorMouseUpRef.current = false;
                       }}
                       onKeyDown={(event) => {
                         keepCaretNavigationInsideInlineInput(event);
@@ -108,41 +114,59 @@ export function TableEditorGridRows({
                           event.preventDefault();
                           persistEditing();
                           const colIdx = visibleColumns.indexOf(columnName);
-                          if (colIdx >= 0 && colIdx < visibleColumns.length - 1) {
+                          if (
+                            colIdx >= 0 &&
+                            colIdx < visibleColumns.length - 1
+                          ) {
                             setFocusedCell({
-                              rowKey: `insert:${insertIndex}`,
                               column: visibleColumns[colIdx + 1],
+                              rowKey: `insert:${insertIndex}`,
                             });
                           }
                         }
-                        if (event.key === "Escape") cancelEditing();
+                        if (event.key === "Escape") {
+                          cancelEditing();
+                        }
                       }}
                       onMouseDown={(event) => event.stopPropagation()}
-                      className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono !text-xs leading-4 md:!text-xs shadow-none focus-visible:ring-0"
+                      onMouseUp={(event) => {
+                        if (!suppressInlineEditorMouseUpRef.current) {
+                          return;
+                        }
+                        event.preventDefault();
+                        suppressInlineEditorMouseUpRef.current = false;
+                      }}
+                      value={editingValue}
                     />
                   </div>
                 ) : (
                   <>
-                    <span className={`block truncate whitespace-nowrap select-text ${value === null || value === undefined ? "italic text-muted-foreground/60" : ""}`}>
+                    <span
+                      className={`block select-text truncate whitespace-nowrap ${value === null || value === undefined ? "text-muted-foreground/60 italic" : ""}`}
+                    >
                       {normalizeDisplay(value)}
                     </span>
                     <CellExpandPopover
-                      columnName={columnName}
                       column={columnMap[columnName]}
+                      columnName={columnName}
                       initialValue={value}
                       onSave={(rawText) =>
-                        applyExpandedEditToInsert(insertIndex, columnName, rawText)
+                        applyExpandedEditToInsert(
+                          insertIndex,
+                          columnName,
+                          rawText
+                        )
                       }
                       trigger={
                         <button
-                          type="button"
                           aria-label={`Expand ${columnName}`}
-                          title="Expand (open editor)"
+                          className={`absolute top-1/2 right-1 flex h-5 w-5 -translate-y-1/2 select-none items-center justify-center rounded border bg-background/95 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/cell:opacity-100 data-[popup-open]:opacity-100 ${isFocusedInsert ? "opacity-100" : ""}`}
                           onClick={(event) => event.stopPropagation()}
                           onMouseDown={(event) => event.stopPropagation()}
-                          className={`absolute right-1 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocusedInsert ? "opacity-100" : ""}`}
+                          title="Expand (open editor)"
+                          type="button"
                         >
-                          <UiIcon name="arrows-maximize" className="h-3 w-3" />
+                          <UiIcon className="h-3 w-3" name="arrows-maximize" />
                         </button>
                       }
                     />
@@ -157,30 +181,32 @@ export function TableEditorGridRows({
       {visibleEffectiveRows.map(({ row, rowKey, index }) => {
         const isSelected = selectedRowKeys.has(rowKey);
         const isRowUpdated = !!draftUpdates[rowKey];
-        const selectionCellBackground = isSelected ? "bg-muted" : "bg-background";
+        const selectionCellBackground = isSelected
+          ? "bg-muted"
+          : "bg-background";
         return (
           <TableRow
-            key={rowKey}
-            data-row-selection-scope="row"
             className={`group/row ${isSelected ? "bg-primary/10" : isRowUpdated ? "bg-amber-500/5" : index % 2 === 1 ? "bg-muted/30" : ""}`}
+            data-row-selection-scope="row"
+            key={rowKey}
             onClick={(e) => handleRowClick(rowKey, index, e)}
             onMouseEnter={(event) => {
               cancelPendingHoverClear();
               const rowRect = event.currentTarget.getBoundingClientRect();
               showFloatingRowButton({
-                rowKey,
-                row,
-                index,
-                top: rowRect.top + rowRect.height / 2,
-                left: rowRect.left,
-                width: rowRect.width,
                 height: rowRect.height,
+                index,
+                left: rowRect.left,
+                row,
+                rowKey,
+                top: rowRect.top + rowRect.height / 2,
+                width: rowRect.width,
               });
             }}
             onMouseLeave={scheduleHoverClear}
           >
             <TableCell
-              className={`sticky left-0 z-[1] w-12 min-w-12 border-r border-border px-2 ${selectionCellBackground}`}
+              className={`sticky left-0 z-[1] w-12 min-w-12 border-border border-r px-2 ${selectionCellBackground}`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="relative flex items-center justify-center">
@@ -198,22 +224,26 @@ export function TableEditorGridRows({
                 editingCell.rowKey === rowKey &&
                 editingCell.column === columnName;
               const isFocused =
-                focusedCell?.rowKey === rowKey && focusedCell?.column === columnName;
+                focusedCell?.rowKey === rowKey &&
+                focusedCell?.column === columnName;
               const fk = findFkForColumn(columnName);
-              const isNull = effectiveValue === null || effectiveValue === undefined;
+              const isNull =
+                effectiveValue === null || effectiveValue === undefined;
               const width = resolveColumnWidth(columnName);
 
               return (
                 <TableCell
+                  className={`group/cell relative h-7 truncate border-border border-r px-2 py-0.5 align-middle font-mono last:border-r-0 ${isFocused ? "bg-primary/5 ring-2 ring-primary/40 ring-inset" : ""}`}
                   key={`${rowKey}:${columnName}`}
-                  className={`group/cell relative font-mono align-middle truncate border-r border-border last:border-r-0 py-0.5 px-2 h-7 ${isFocused ? "ring-2 ring-primary/40 ring-inset bg-primary/5" : ""}`}
-                  style={{ width, minWidth: width, maxWidth: width }}
-                  title={getCellTitle(effectiveValue)}
-                  onDoubleClick={() => beginEditExistingCell(rowKey, row, columnName)}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setFocusedCell({ rowKey, column: columnName });
+                    setFocusedCell({ column: columnName, rowKey });
                   }}
+                  onDoubleClick={() =>
+                    beginEditExistingCell(rowKey, row, columnName)
+                  }
+                  style={{ maxWidth: width, minWidth: width, width }}
+                  title={getCellTitle(effectiveValue)}
                 >
                   {isEditing ? (
                     <div className="relative">
@@ -221,20 +251,20 @@ export function TableEditorGridRows({
                         {normalizeDisplay(effectiveValue)}
                       </span>
                       <Input
-                        value={editingValue}
+                        className="!text-xs md:!text-xs absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono leading-4 shadow-none focus-visible:ring-0"
+                        onBlur={() => persistEditing(row)}
                         onChange={(event) => {
                           setEditingValue(event.target.value);
-                          loadFkOptionsDebounced(columnName, event.target.value);
+                          loadFkOptionsDebounced(
+                            columnName,
+                            event.target.value
+                          );
                         }}
-                        onBlur={() => persistEditing(row)}
                         onFocus={(event) => {
-                          if (!suppressInlineEditorMouseUpRef.current) return;
+                          if (!suppressInlineEditorMouseUpRef.current) {
+                            return;
+                          }
                           event.currentTarget.select();
-                        }}
-                        onMouseUp={(event) => {
-                          if (!suppressInlineEditorMouseUpRef.current) return;
-                          event.preventDefault();
-                          suppressInlineEditorMouseUpRef.current = false;
                         }}
                         onKeyDown={(event) => {
                           keepCaretNavigationInsideInlineInput(event);
@@ -242,37 +272,57 @@ export function TableEditorGridRows({
                             event.preventDefault();
                             persistEditing(row);
                             const rowIndex = effectiveRowIndexByKey.get(rowKey);
-                            const columnIndex = visibleColumns.indexOf(columnName);
+                            const columnIndex =
+                              visibleColumns.indexOf(columnName);
                             const columnsCount = visibleColumns.length;
-                            if (rowIndex !== undefined && columnIndex >= 0 && columnsCount > 0) {
+                            if (
+                              rowIndex !== undefined &&
+                              columnIndex >= 0 &&
+                              columnsCount > 0
+                            ) {
                               const currentCellIndex = getGridCellIndex(
                                 rowIndex,
                                 columnIndex,
-                                columnsCount,
+                                columnsCount
                               );
                               const nextCellIndex = Math.min(
                                 currentCellIndex + 1,
-                                effectiveRowsRef.current.length * columnsCount - 1,
+                                effectiveRowsRef.current.length * columnsCount -
+                                  1
                               );
-                              const nextRowIndex = Math.floor(nextCellIndex / columnsCount);
-                              const nextColumnIndex = nextCellIndex % columnsCount;
-                              const nextRow = effectiveRowsRef.current[nextRowIndex];
-                              const nextColumn = visibleColumns[nextColumnIndex];
+                              const nextRowIndex = Math.floor(
+                                nextCellIndex / columnsCount
+                              );
+                              const nextColumnIndex =
+                                nextCellIndex % columnsCount;
+                              const nextRow =
+                                effectiveRowsRef.current[nextRowIndex];
+                              const nextColumn =
+                                visibleColumns[nextColumnIndex];
                               if (nextRow && nextColumn) {
                                 setFocusedCell({
-                                  rowKey: nextRow.rowKey,
                                   column: nextColumn,
+                                  rowKey: nextRow.rowKey,
                                 });
                               }
                             }
                           }
-                          if (event.key === "Escape") cancelEditing();
+                          if (event.key === "Escape") {
+                            cancelEditing();
+                          }
                         }}
                         onMouseDown={(event) => event.stopPropagation()}
-                        className="absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono !text-xs leading-4 md:!text-xs shadow-none focus-visible:ring-0"
+                        onMouseUp={(event) => {
+                          if (!suppressInlineEditorMouseUpRef.current) {
+                            return;
+                          }
+                          event.preventDefault();
+                          suppressInlineEditorMouseUpRef.current = false;
+                        }}
+                        value={editingValue}
                       />
                       {fk && (
-                        <div className="absolute left-0 top-full z-30 mt-1 max-h-24 min-w-[220px] overflow-auto rounded-md border bg-background shadow-lg">
+                        <div className="absolute top-full left-0 z-30 mt-1 max-h-24 min-w-[220px] overflow-auto rounded-md border bg-background shadow-lg">
                           {isLoadingFk && (
                             <div className="p-1 text-[10px] text-muted-foreground">
                               Loading...
@@ -281,13 +331,15 @@ export function TableEditorGridRows({
                           {!isLoadingFk &&
                             fkOptions?.options.map((option, idx) => (
                               <button
+                                className="w-full select-none px-2 py-1 text-left text-[10px] hover:bg-muted"
                                 key={`${idx}:${option.label}`}
-                                type="button"
-                                className="w-full text-left px-2 py-1 text-[10px] hover:bg-muted select-none"
                                 onMouseDown={(event) => {
                                   event.preventDefault();
-                                  setEditingValue(normalizeDisplay(option.value));
+                                  setEditingValue(
+                                    normalizeDisplay(option.value)
+                                  );
                                 }}
+                                type="button"
                               >
                                 {option.label}
                               </button>
@@ -299,48 +351,56 @@ export function TableEditorGridRows({
                     <>
                       <span
                         className={`block truncate whitespace-nowrap ${
-                          draftValue !== undefined
-                            ? "text-amber-700 dark:text-amber-400"
-                            : isNull
-                              ? "italic text-muted-foreground/60"
+                          draftValue === undefined
+                            ? isNull
+                              ? "text-muted-foreground/60 italic"
                               : ""
+                            : "text-amber-700 dark:text-amber-400"
                         } select-text`}
                       >
                         {normalizeDisplay(effectiveValue)}
                         {fk ? (
                           <button
-                            type="button"
-                            className="ml-1 text-[10px] text-muted-foreground/60 underline-offset-2 hover:underline hover:text-muted-foreground select-none"
+                            className="ml-1 select-none text-[10px] text-muted-foreground/60 underline-offset-2 hover:text-muted-foreground hover:underline"
                             onClick={(event) => {
                               event.stopPropagation();
                               onOpenRelatedTable?.(
                                 fk.referenced_schema ?? tableSchema,
-                                fk.referenced_table,
+                                fk.referenced_table
                               );
                             }}
+                            type="button"
                           >
                             ({fk.referenced_table}.{fk.referenced_column})
                           </button>
                         ) : null}
                       </span>
                       <CellExpandPopover
-                        columnName={columnName}
                         column={columnMap[columnName]}
+                        columnName={columnName}
                         initialValue={effectiveValue}
-                        readOnly={primaryKey.length === 0}
                         onSave={(rawText) =>
-                          applyExpandedEditToRow(rowKey, row, columnName, rawText)
+                          applyExpandedEditToRow(
+                            rowKey,
+                            row,
+                            columnName,
+                            rawText
+                          )
                         }
+                        readOnly={primaryKey.length === 0}
                         trigger={
                           <button
-                            type="button"
                             aria-label={`Expand ${columnName}`}
-                            title="Expand (open editor)"
+                            className={`absolute top-1/2 right-1 flex h-5 w-5 -translate-y-1/2 select-none items-center justify-center rounded border bg-background/95 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/cell:opacity-100 data-[popup-open]:opacity-100 ${isFocused ? "opacity-100" : ""}`}
                             onClick={(event) => event.stopPropagation()}
                             onMouseDown={(event) => event.stopPropagation()}
-                            className={`absolute right-1 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded border bg-background/95 text-muted-foreground shadow-sm opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 hover:text-foreground hover:bg-muted data-[popup-open]:opacity-100 select-none ${isFocused ? "opacity-100" : ""}`}
+                            title="Expand (open editor)"
+                            type="button"
                           >
-                            <UiIcon name="arrows-maximize" className="h-3 w-3" />
+                            <UiIcon
+                              className="h-3 w-3"
+                              name="arrows-maximize"
+                            />
                           </button>
                         }
                       />
@@ -354,14 +414,18 @@ export function TableEditorGridRows({
       })}
       {bottomSpacerHeight > 0 && (
         <tr aria-hidden="true" className="border-0">
-          <td colSpan={visibleColumns.length + 1} className="border-0 p-0" style={{ height: bottomSpacerHeight }} />
+          <td
+            className="border-0 p-0"
+            colSpan={visibleColumns.length + 1}
+            style={{ height: bottomSpacerHeight }}
+          />
         </tr>
       )}
       {totalVirtualRows === 0 && (
         <TableRow className="hover:bg-transparent">
           <TableCell
+            className="border-r-0 py-8 text-center text-muted-foreground/70"
             colSpan={Math.max(visibleColumns.length + 1, 1)}
-            className="text-center py-8 text-muted-foreground/70 border-r-0"
           >
             No rows found on this page.
           </TableCell>

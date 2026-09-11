@@ -2,7 +2,13 @@
 // Patches the system Electron.app bundle on macOS to show correct app name in dock
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,14 +32,18 @@ function setPlistString(plistPath, key, value) {
     ["-replace", key, "-string", value, plistPath],
     { encoding: "utf8" }
   );
-  if (replaceResult.status === 0) return;
+  if (replaceResult.status === 0) {
+    return;
+  }
 
   const insertResult = spawnSync(
     "plutil",
     ["-insert", key, "-string", value, plistPath],
     { encoding: "utf8" }
   );
-  if (insertResult.status === 0) return;
+  if (insertResult.status === 0) {
+    return;
+  }
 
   throw new Error(
     `Failed to update plist: ${replaceResult.stderr || insertResult.stderr}`
@@ -47,7 +57,9 @@ function findIconPath() {
     join(rootDir, "icons", "app-icon.png"),
   ];
   for (const p of paths) {
-    if (existsSync(p)) return p;
+    if (existsSync(p)) {
+      return p;
+    }
   }
   return null;
 }
@@ -86,12 +98,12 @@ function main() {
   // Check if already patched with current version
   const currentPatch = readJson(patchMarkerPath);
   const expectedPatch = {
-    version: PATCH_VERSION,
     appName: APP_DISPLAY_NAME,
     bundleId: APP_BUNDLE_ID,
     electronMtime: statSync(electronBundlePath).mtimeMs,
-    iconPath: iconPath || null,
     iconMtime: iconPath ? statSync(iconPath).mtimeMs : 0,
+    iconPath: iconPath || null,
+    version: PATCH_VERSION,
   };
 
   if (
@@ -126,7 +138,9 @@ function main() {
     writeFileSync(patchMarkerPath, JSON.stringify(expectedPatch, null, 2));
 
     console.log("[patch-electron] Patching complete!");
-    console.log("[patch-electron] NOTE: If Electron was updated, you may need to restart");
+    console.log(
+      "[patch-electron] NOTE: If Electron was updated, you may need to restart"
+    );
   } catch (error) {
     console.error("[patch-electron] Failed to patch:", error.message);
     // Don't exit with error - let electron-forge try anyway

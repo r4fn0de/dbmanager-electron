@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
-  pgEscId,
   buildPgWhereClause,
   mapPgType,
+  pgEscId,
 } from "@/ipc/db/pg-driver-adapter";
 import type { TableFilter } from "@/ipc/db/types";
 
@@ -56,7 +56,7 @@ describe("buildPgWhereClause", () => {
   test("eq with value produces parameterized condition", () => {
     const result = buildPgWhereClause(
       [{ column: "name", operator: "eq", value: "Alice" }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"name" = $1']);
     expect(result.params).toEqual(["Alice"]);
@@ -65,17 +65,14 @@ describe("buildPgWhereClause", () => {
   test("eq with null value produces IS NULL", () => {
     const result = buildPgWhereClause(
       [{ column: "name", operator: "eq", value: null }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"name" IS NULL']);
     expect(result.params).toEqual([]);
   });
 
   test("eq with undefined value produces IS NULL", () => {
-    const result = buildPgWhereClause(
-      [{ column: "name", operator: "eq" }],
-      1,
-    );
+    const result = buildPgWhereClause([{ column: "name", operator: "eq" }], 1);
     expect(result.conditions).toEqual(['"name" IS NULL']);
     expect(result.params).toEqual([]);
   });
@@ -83,7 +80,7 @@ describe("buildPgWhereClause", () => {
   test("neq with value produces parameterized condition", () => {
     const result = buildPgWhereClause(
       [{ column: "age", operator: "neq", value: 25 }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"age" != $1']);
     expect(result.params).toEqual([25]);
@@ -92,7 +89,7 @@ describe("buildPgWhereClause", () => {
   test("neq with null value produces IS NOT NULL", () => {
     const result = buildPgWhereClause(
       [{ column: "age", operator: "neq", value: null }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"age" IS NOT NULL']);
     expect(result.params).toEqual([]);
@@ -101,7 +98,7 @@ describe("buildPgWhereClause", () => {
   test("contains wraps value with % wildcards and uses ILIKE", () => {
     const result = buildPgWhereClause(
       [{ column: "name", operator: "contains", value: "li" }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"name"::text ILIKE $1']);
     expect(result.params).toEqual(["%li%"]);
@@ -110,7 +107,7 @@ describe("buildPgWhereClause", () => {
   test("starts_with appends % wildcard", () => {
     const result = buildPgWhereClause(
       [{ column: "name", operator: "starts_with", value: "Al" }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"name"::text ILIKE $1']);
     expect(result.params).toEqual(["Al%"]);
@@ -119,7 +116,7 @@ describe("buildPgWhereClause", () => {
   test("ends_with prepends % wildcard", () => {
     const result = buildPgWhereClause(
       [{ column: "name", operator: "ends_with", value: "ce" }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"name"::text ILIKE $1']);
     expect(result.params).toEqual(["%ce"]);
@@ -133,7 +130,7 @@ describe("buildPgWhereClause", () => {
         { column: "c", operator: "lt", value: 3 },
         { column: "d", operator: "lte", value: 4 },
       ],
-      3, // startIdx=3 like data queries ($1=LIMIT, $2=OFFSET)
+      3 // startIdx=3 like data queries ($1=LIMIT, $2=OFFSET)
     );
     expect(result.conditions).toEqual([
       '"a" > $3',
@@ -147,7 +144,7 @@ describe("buildPgWhereClause", () => {
   test("is_null produces condition with no params", () => {
     const result = buildPgWhereClause(
       [{ column: "deleted_at", operator: "is_null" }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"deleted_at" IS NULL']);
     expect(result.params).toEqual([]);
@@ -156,7 +153,7 @@ describe("buildPgWhereClause", () => {
   test("is_not_null produces condition with no params", () => {
     const result = buildPgWhereClause(
       [{ column: "deleted_at", operator: "is_not_null" }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"deleted_at" IS NOT NULL']);
     expect(result.params).toEqual([]);
@@ -164,8 +161,14 @@ describe("buildPgWhereClause", () => {
 
   test("default operator falls back to ILIKE contains", () => {
     const result = buildPgWhereClause(
-      [{ column: "name", operator: "unknown_op" as TableFilter["operator"], value: "test" }],
-      1,
+      [
+        {
+          column: "name",
+          operator: "unknown_op" as TableFilter["operator"],
+          value: "test",
+        },
+      ],
+      1
     );
     expect(result.conditions).toEqual(['"name"::text ILIKE $1']);
     expect(result.params).toEqual(["%test%"]);
@@ -177,7 +180,7 @@ describe("buildPgWhereClause", () => {
         { column: "a", operator: "eq", value: 1 },
         { column: "b", operator: "eq", value: 2 },
       ],
-      3, // data query: $1=LIMIT, $2=OFFSET, filters start at $3
+      3 // data query: $1=LIMIT, $2=OFFSET, filters start at $3
     );
     expect(result.conditions).toEqual(['"a" = $3', '"b" = $4']);
     expect(result.params).toEqual([1, 2]);
@@ -186,7 +189,7 @@ describe("buildPgWhereClause", () => {
   test("startIdx=1 for count queries", () => {
     const result = buildPgWhereClause(
       [{ column: "status", operator: "eq", value: "active" }],
-      1,
+      1
     );
     expect(result.conditions).toEqual(['"status" = $1']);
     expect(result.params).toEqual(["active"]);
@@ -200,7 +203,7 @@ describe("buildPgWhereClause", () => {
         { column: "active", operator: "is_null" },
         { column: "role", operator: "eq", value: "admin" },
       ],
-      1,
+      1
     );
     // contains→$1 (param), gte→$2 (param), is_null→no param, eq→$3 (param)
     expect(result.conditions).toEqual([
@@ -215,7 +218,7 @@ describe("buildPgWhereClause", () => {
   test("contains with empty value wraps %%", () => {
     const result = buildPgWhereClause(
       [{ column: "name", operator: "contains", value: "" }],
-      1,
+      1
     );
     expect(result.params).toEqual(["%%"]);
   });
@@ -223,7 +226,7 @@ describe("buildPgWhereClause", () => {
   test("contains with undefined value wraps %%", () => {
     const result = buildPgWhereClause(
       [{ column: "name", operator: "contains" }],
-      1,
+      1
     );
     expect(result.params).toEqual(["%%"]);
   });

@@ -17,21 +17,21 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import { driverRegistry } from "@/ipc/db/registry";
 import { loadConnections } from "@/ipc/db/connection-store";
-import type { DatabaseType } from "@/ipc/db/types";
 import type { DriverConnectionConfig } from "@/ipc/db/driver";
+import { driverRegistry } from "@/ipc/db/registry";
+import type { DatabaseType } from "@/ipc/db/types";
 import {
-  getCachedTableDetails,
-  getCachedIndexes,
   getCachedConstraints,
-  getCachedTableStats,
+  getCachedIndexes,
+  getCachedTableDetails,
   getCachedTableSample,
-  setCachedTableDetails,
-  setCachedIndexes,
+  getCachedTableStats,
   setCachedConstraints,
-  setCachedTableStats,
+  setCachedIndexes,
+  setCachedTableDetails,
   setCachedTableSample,
+  setCachedTableStats,
 } from "./schema-cache";
 
 // ---------------------------------------------------------------------------
@@ -42,17 +42,19 @@ import {
 async function resolveConnection(connectionId: string) {
   const connections = await loadConnections();
   const connection = connections.find((c) => c.id === connectionId);
-  if (!connection) throw new Error("Connection not found");
+  if (!connection) {
+    throw new Error("Connection not found");
+  }
   const dbType: DatabaseType = connection.db_type || "postgresql";
   const driver = driverRegistry.get(dbType);
   const config: DriverConnectionConfig = {
-    host: connection.host ?? "",
-    port: connection.port ?? driver.defaultPort,
     database: connection.database ?? driver.defaultDatabase,
-    username: connection.username ?? driver.defaultUsername,
+    host: connection.host ?? "",
     password: connection.password ?? "",
+    port: connection.port ?? driver.defaultPort,
     ssl_mode: connection.ssl_mode ?? "prefer",
     url: connection.url,
+    username: connection.username ?? driver.defaultUsername,
   };
   const connStr = driver.buildConnectionString(config);
   return { connection, connStr, dbType, driver };
@@ -69,7 +71,10 @@ function isValidIdentifier(id: string): boolean {
 /**
  * Generate a human-readable description of what a mutation SQL will do.
  */
-function describeMutation(sql: string): { description: string; warnings: string[] } {
+function describeMutation(sql: string): {
+  description: string;
+  warnings: string[];
+} {
   const normalized = sql.trim().toLowerCase().replace(/\s+/g, " ");
   const warnings: string[] = [];
   let description = "Execute a database mutation";
@@ -93,14 +98,18 @@ function describeMutation(sql: string): { description: string; warnings: string[
   }
 
   // Check for dangerous patterns
-  if (!/\bwhere\b/i.test(normalized) && !/^insert\b/i.test(normalized)) {
+  if (!(/\bwhere\b/i.test(normalized) || /^insert\b/i.test(normalized))) {
     warnings.push("No WHERE clause — this will affect ALL rows in the table.");
   }
   if (/\bdrop\b|\btruncate\b|\balter\b/i.test(normalized)) {
-    warnings.push("Contains DDL keywords — this modifies database structure, not just data.");
+    warnings.push(
+      "Contains DDL keywords — this modifies database structure, not just data."
+    );
   }
   if (/\bdrop\b|\btruncate\b/i.test(normalized)) {
-    warnings.push("Potentially destructive operation detected — double-check the target before approving.");
+    warnings.push(
+      "Potentially destructive operation detected — double-check the target before approving."
+    );
   }
 
   return { description, warnings };
@@ -113,8 +122,6 @@ function getIdentifierQuote(dbType: DatabaseType): string {
     case "mariadb":
     case "clickhouse":
       return "`";
-    case "postgresql":
-    case "sqlite":
     default:
       return '"';
   }
@@ -131,7 +138,7 @@ function quoteIdentifier(name: string, dbType: DatabaseType): string {
 function quoteTableRef(
   schema: string,
   table: string,
-  dbType: DatabaseType,
+  dbType: DatabaseType
 ): string {
   return `${quoteIdentifier(schema, dbType)}.${quoteIdentifier(table, dbType)}`;
 }
@@ -163,7 +170,10 @@ function stripStringLiterals(sql: string): string {
   // Uses bounded form to avoid catastrophic backtracking on malformed input
   let result = sql.replace(/'[^']*(?:''[^']*)*'/g, "''");
   // Also remove PostgreSQL dollar-quoted strings ($$..$$ and $tag$..$tag$)
-  result = result.replace(/\$(?:[a-zA-Z_]\w*)?\$[\s\S]*?\$(?:[a-zA-Z_]\w*)?\$/g, "$$");
+  result = result.replace(
+    /\$(?:[a-zA-Z_]\w*)?\$[\s\S]*?\$(?:[a-zA-Z_]\w*)?\$/g,
+    "$$"
+  );
   return result;
 }
 
@@ -191,7 +201,11 @@ function containsSqlInjection(value: string): string | null {
   }
 
   // Block dangerous DDL/DML embedded in WHERE (checked after stripping strings)
-  if (/\b(drop|truncate|alter|create|grant|revoke|insert|update|delete|merge)\b/i.test(normalized)) {
+  if (
+    /\b(drop|truncate|alter|create|grant|revoke|insert|update|delete|merge)\b/i.test(
+      normalized
+    )
+  ) {
     return "DDL/DML keywords are not allowed in WHERE clauses.";
   }
 
@@ -256,7 +270,7 @@ const autoDeny: ToolApprovalFn = async () => false;
  */
 export function createAiTools(
   connectionId: string,
-  requestApproval: ToolApprovalFn = autoDeny,
+  requestApproval: ToolApprovalFn = autoDeny
 ) {
   /**
    * List columns in a specific table — gives the AI column names, types,
@@ -265,14 +279,11 @@ export function createAiTools(
   const columns = tool({
     description:
       "Get the list of columns in a specific database table, including their data types, nullability, and defaults. Use this before writing SQL to ensure correct column names and types.",
-    inputSchema: z.object({
-      schemaName: z.string().describe("The schema name (e.g. 'public')"),
-      tableName: z.string().describe("The table name"),
-    }),
-    strict: true,
     execute: async ({ schemaName, tableName }, { abortSignal }) => {
-      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
-        return toolError("Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.");
+      if (!(isValidIdentifier(schemaName) && isValidIdentifier(tableName))) {
+        return toolError(
+          "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed."
+        );
       }
 
       // Check cache first
@@ -280,18 +291,25 @@ export function createAiTools(
 
       if (!details) {
         const { driver, connStr } = await resolveConnection(connectionId);
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
         details = await driver.getTableDetails(connStr, schemaName, tableName);
         setCachedTableDetails(connectionId, schemaName, tableName, details);
       }
 
       return details.columns.map((c) => ({
-        name: c.name,
-        type: c.data_type,
-        nullable: c.is_nullable,
         default: c.column_default,
+        name: c.name,
+        nullable: c.is_nullable,
+        type: c.data_type,
       }));
     },
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+    }),
+    strict: true,
   });
 
   /**
@@ -301,11 +319,11 @@ export function createAiTools(
   const enums = tool({
     description:
       "Get the list of enum types defined in the database. Returns schema, name, and allowed values for each enum. Only supported for PostgreSQL.",
-    inputSchema: z.object({}),
-    strict: true,
     execute: async (_input, { abortSignal }) => {
       const { driver, connStr, dbType } = await resolveConnection(connectionId);
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
       // Enums are only meaningful for PostgreSQL
       if (dbType !== "postgresql") {
         return toolError("Enums are not supported for this database type.");
@@ -314,10 +332,17 @@ export function createAiTools(
       // Extract enum-like info from columns with enum types
       const enumCols = schema.tables
         .flatMap((t) => t.columns)
-        .filter((c) => c.data_type === "USER-DEFINED" || c.udt_name?.startsWith("enum_"))
+        .filter(
+          (c) =>
+            c.data_type === "USER-DEFINED" || c.udt_name?.startsWith("enum_")
+        )
         .map((c) => ({ column: c.name, type: c.udt_name ?? c.data_type }));
-      return enumCols.length > 0 ? enumCols : toolError("No enum types found in this database.");
+      return enumCols.length > 0
+        ? enumCols
+        : toolError("No enum types found in this database.");
     },
+    inputSchema: z.object({}),
+    strict: true,
   });
 
   /**
@@ -327,25 +352,33 @@ export function createAiTools(
   const tables = tool({
     description:
       "Get the list of tables in a specific database schema. Returns table names and whether they have row-level security. Use this to discover available tables before querying.",
-    inputSchema: z.object({
-      schemaName: z.string().describe("The schema name (e.g. 'public')"),
-    }),
-    strict: true,
     execute: async ({ schemaName }, { abortSignal }) => {
       if (!isValidIdentifier(schemaName)) {
-        return toolError("Invalid schema name — only alphanumeric characters, underscores, and dollar signs are allowed.");
+        return toolError(
+          "Invalid schema name — only alphanumeric characters, underscores, and dollar signs are allowed."
+        );
       }
 
       const { driver, connStr } = await resolveConnection(connectionId);
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
       const schema = await driver.getSchema(connStr);
       const tablesInSchema = schema.tables
         .filter((t) => t.schema === schemaName)
-        .map((t) => ({ name: t.name, columns: t.columns.length, hasRls: t.has_rls }));
+        .map((t) => ({
+          columns: t.columns.length,
+          hasRls: t.has_rls,
+          name: t.name,
+        }));
       return tablesInSchema.length > 0
         ? tablesInSchema
         : toolError(`No tables found in schema '${schemaName}'.`);
     },
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+    }),
+    strict: true,
   });
 
   /**
@@ -356,13 +389,99 @@ export function createAiTools(
   const select = tool({
     description:
       "Query a small sample of data from a database table. Use this to understand the actual data in a table. IMPORTANT: Only select non-sensitive columns. Never select password, token, secret, or API key columns. Limit results to 10 rows max.",
+    // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
+    // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
+    execute: async (
+      { schemaName, tableName, selectColumns, limit: rawLimit },
+      { abortSignal }
+    ) => {
+      // Validate identifiers to prevent SQL injection
+      if (!(isValidIdentifier(schemaName) && isValidIdentifier(tableName))) {
+        return toolError(
+          "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed."
+        );
+      }
+
+      if (selectColumns) {
+        for (const col of selectColumns) {
+          if (!isValidIdentifier(col)) {
+            return toolError(
+              `Invalid column name '${col}' — only alphanumeric characters, underscores, and dollar signs are allowed.`
+            );
+          }
+        }
+      }
+
+      const { driver, connStr, dbType } = await resolveConnection(connectionId);
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
+
+      const limit = rawLimit ?? 10;
+      const tableDetails = await driver.getTableDetails(
+        connStr,
+        schemaName,
+        tableName
+      );
+      const allColumns = tableDetails.columns.map((c) => c.name);
+      const allowedColumns = allColumns.filter(
+        (col: string) => !isSensitiveColumnName(col)
+      );
+
+      let finalColumns: string[];
+      if (selectColumns && selectColumns.length > 0) {
+        const unknownColumns = selectColumns.filter(
+          (col: string) => !allColumns.includes(col)
+        );
+        if (unknownColumns.length > 0) {
+          return toolError(
+            `Unknown column(s): ${unknownColumns.join(", ")}. Use the columns tool first to inspect valid names.`
+          );
+        }
+
+        const blockedColumns = selectColumns.filter((col: string) =>
+          isSensitiveColumnName(col)
+        );
+        if (blockedColumns.length > 0) {
+          return toolError(
+            `Refusing to query sensitive column(s): ${blockedColumns.join(", ")}.`
+          );
+        }
+
+        finalColumns = [...selectColumns];
+      } else {
+        if (allowedColumns.length === 0) {
+          return toolError(
+            "No non-sensitive columns available to sample in this table."
+          );
+        }
+        finalColumns = allowedColumns;
+      }
+
+      // Use identifier quoting based on database type for safe SQL construction
+      const cols = finalColumns
+        .map((c) => quoteIdentifier(c, dbType))
+        .join(", ");
+      const tableRef = quoteTableRef(schemaName, tableName, dbType);
+      const sql = `SELECT ${cols} FROM ${tableRef} LIMIT ${limit}`;
+
+      try {
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
+        const result = await driver.executeQuery(connStr, sql);
+        return {
+          columns: result.columns.map((c) => c.name),
+          rowCount: result.row_count,
+          rows: result.rows,
+        };
+      } catch (err) {
+        return toolError(
+          `Error executing query: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    },
     inputSchema: z.object({
-      schemaName: z.string().describe("The schema name"),
-      tableName: z.string().describe("The table name"),
-      selectColumns: z
-        .array(z.string())
-        .optional()
-        .describe("Specific columns to select. Omit for all columns."),
       limit: z
         .number()
         .int()
@@ -370,68 +489,13 @@ export function createAiTools(
         .max(20)
         .optional()
         .describe("Maximum rows to return (default 10, max 20)"),
+      schemaName: z.string().describe("The schema name"),
+      selectColumns: z
+        .array(z.string())
+        .optional()
+        .describe("Specific columns to select. Omit for all columns."),
+      tableName: z.string().describe("The table name"),
     }),
-    // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
-    // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
-    execute: async ({ schemaName, tableName, selectColumns, limit: rawLimit }, { abortSignal }) => {
-      // Validate identifiers to prevent SQL injection
-      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
-        return toolError("Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.");
-      }
-
-      if (selectColumns) {
-        for (const col of selectColumns) {
-          if (!isValidIdentifier(col)) {
-            return toolError(`Invalid column name '${col}' — only alphanumeric characters, underscores, and dollar signs are allowed.`);
-          }
-        }
-      }
-
-      const { driver, connStr, dbType } = await resolveConnection(connectionId);
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
-
-      const limit = rawLimit ?? 10;
-      const tableDetails = await driver.getTableDetails(connStr, schemaName, tableName);
-      const allColumns = tableDetails.columns.map((c) => c.name);
-      const allowedColumns = allColumns.filter((col: string) => !isSensitiveColumnName(col));
-
-      let finalColumns: string[];
-      if (selectColumns && selectColumns.length > 0) {
-        const unknownColumns = selectColumns.filter((col: string) => !allColumns.includes(col));
-        if (unknownColumns.length > 0) {
-          return toolError(`Unknown column(s): ${unknownColumns.join(", ")}. Use the columns tool first to inspect valid names.`);
-        }
-
-        const blockedColumns = selectColumns.filter((col: string) => isSensitiveColumnName(col));
-        if (blockedColumns.length > 0) {
-          return toolError(`Refusing to query sensitive column(s): ${blockedColumns.join(", ")}.`);
-        }
-
-        finalColumns = [...selectColumns];
-      } else {
-        if (allowedColumns.length === 0) {
-          return toolError("No non-sensitive columns available to sample in this table.");
-        }
-        finalColumns = allowedColumns;
-      }
-
-      // Use identifier quoting based on database type for safe SQL construction
-      const cols = finalColumns.map((c) => quoteIdentifier(c, dbType)).join(", ");
-      const tableRef = quoteTableRef(schemaName, tableName, dbType);
-      const sql = `SELECT ${cols} FROM ${tableRef} LIMIT ${limit}`;
-
-      try {
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
-        const result = await driver.executeQuery(connStr, sql);
-        return {
-          columns: result.columns.map((c) => c.name),
-          rows: result.rows,
-          rowCount: result.row_count,
-        };
-      } catch (err) {
-        return toolError(`Error executing query: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
   });
 
   /**
@@ -441,14 +505,11 @@ export function createAiTools(
   const indexes = tool({
     description:
       "Get the list of indexes on a specific database table, including index names, columns, uniqueness, and index types. Use this to understand query optimization opportunities and existing constraints.",
-    inputSchema: z.object({
-      schemaName: z.string().describe("The schema name (e.g. 'public')"),
-      tableName: z.string().describe("The table name"),
-    }),
-    strict: true,
     execute: async ({ schemaName, tableName }, { abortSignal }) => {
-      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
-        return toolError("Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.");
+      if (!(isValidIdentifier(schemaName) && isValidIdentifier(tableName))) {
+        return toolError(
+          "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed."
+        );
       }
 
       // Check cache first
@@ -456,19 +517,26 @@ export function createAiTools(
 
       if (!indexList) {
         const { driver, connStr } = await resolveConnection(connectionId);
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
         indexList = await driver.getIndexes(connStr, schemaName, tableName);
         setCachedIndexes(connectionId, schemaName, tableName, indexList);
       }
 
       return indexList.map((idx) => ({
-        name: idx.name,
         columns: idx.columns,
-        isUnique: idx.isUnique,
         isPrimary: idx.isPrimary,
+        isUnique: idx.isUnique,
+        name: idx.name,
         type: idx.type,
       }));
     },
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+    }),
+    strict: true,
   });
 
   /**
@@ -478,36 +546,53 @@ export function createAiTools(
   const constraints = tool({
     description:
       "Get the list of constraints on a specific database table, including primary keys, foreign keys, unique constraints, and check constraints. Use this to understand table relationships and validation rules.",
+    execute: async ({ schemaName, tableName }, { abortSignal }) => {
+      if (!(isValidIdentifier(schemaName) && isValidIdentifier(tableName))) {
+        return toolError(
+          "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed."
+        );
+      }
+
+      // Check cache first
+      let constraintList = getCachedConstraints(
+        connectionId,
+        schemaName,
+        tableName
+      );
+
+      if (!constraintList) {
+        const { driver, connStr } = await resolveConnection(connectionId);
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
+        constraintList = await driver.getConstraints(
+          connStr,
+          schemaName,
+          tableName
+        );
+        setCachedConstraints(
+          connectionId,
+          schemaName,
+          tableName,
+          constraintList
+        );
+      }
+
+      return constraintList.map((c) => ({
+        columns: c.columns,
+        deleteRule: c.deleteRule,
+        name: c.name,
+        referencedColumns: c.referencedColumns,
+        referencedTable: c.referencedTable,
+        type: c.type,
+        updateRule: c.updateRule,
+      }));
+    },
     inputSchema: z.object({
       schemaName: z.string().describe("The schema name (e.g. 'public')"),
       tableName: z.string().describe("The table name"),
     }),
     strict: true,
-    execute: async ({ schemaName, tableName }, { abortSignal }) => {
-      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
-        return toolError("Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.");
-      }
-
-      // Check cache first
-      let constraintList = getCachedConstraints(connectionId, schemaName, tableName);
-
-      if (!constraintList) {
-        const { driver, connStr } = await resolveConnection(connectionId);
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
-        constraintList = await driver.getConstraints(connStr, schemaName, tableName);
-        setCachedConstraints(connectionId, schemaName, tableName, constraintList);
-      }
-
-      return constraintList.map((c) => ({
-        name: c.name,
-        type: c.type,
-        columns: c.columns,
-        referencedTable: c.referencedTable,
-        referencedColumns: c.referencedColumns,
-        updateRule: c.updateRule,
-        deleteRule: c.deleteRule,
-      }));
-    },
   });
 
   /**
@@ -517,14 +602,11 @@ export function createAiTools(
   const tableStats = tool({
     description:
       "Get statistics for a specific database table, including row count, table size, and last maintenance timestamps (vacuum/analyze). Use this to understand table scale and performance characteristics.",
-    inputSchema: z.object({
-      schemaName: z.string().describe("The schema name (e.g. 'public')"),
-      tableName: z.string().describe("The table name"),
-    }),
-    strict: true,
     execute: async ({ schemaName, tableName }, { abortSignal }) => {
-      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
-        return toolError("Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.");
+      if (!(isValidIdentifier(schemaName) && isValidIdentifier(tableName))) {
+        return toolError(
+          "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed."
+        );
       }
 
       // Check cache first
@@ -532,18 +614,25 @@ export function createAiTools(
 
       if (!stats) {
         const { driver, connStr } = await resolveConnection(connectionId);
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
         stats = await driver.getTableStats(connStr, schemaName, tableName);
         setCachedTableStats(connectionId, schemaName, tableName, stats);
       }
 
       return {
+        lastAnalyze: stats.lastAnalyze,
+        lastVacuum: stats.lastVacuum,
         rowCount: stats.rowCount,
         size: stats.sizeFormatted,
-        lastVacuum: stats.lastVacuum,
-        lastAnalyze: stats.lastAnalyze,
       };
     },
+    inputSchema: z.object({
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+    }),
+    strict: true,
   });
 
   /**
@@ -554,50 +643,63 @@ export function createAiTools(
   const tableSample = tool({
     description:
       "Get a representative sample of table data with column statistics. Returns random sample rows plus statistical summaries (min/max/avg for numeric columns, most frequent values for categorical columns, null percentages). Use this to understand the shape and distribution of data before writing queries, especially for unfamiliar tables.",
-    inputSchema: z.object({
-      schemaName: z.string().describe("The schema name (e.g. 'public')"),
-      tableName: z.string().describe("The table name"),
-      sampleSize: z
-        .number()
-        .optional()
-        .describe("Number of sample rows to return (default: 50, max: 200)"),
-    }),
     // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
     // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
     execute: async ({ schemaName, tableName, sampleSize }, { abortSignal }) => {
-      if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
-        return toolError("Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed.");
+      if (!(isValidIdentifier(schemaName) && isValidIdentifier(tableName))) {
+        return toolError(
+          "Invalid identifier — only alphanumeric characters, underscores, and dollar signs are allowed."
+        );
       }
 
       // Clamp sample size to reasonable bounds
       const clampedSize = Math.max(10, Math.min(sampleSize ?? 50, 200));
 
       // Check cache first
-      let sampleResult = getCachedTableSample(connectionId, schemaName, tableName);
+      let sampleResult = getCachedTableSample(
+        connectionId,
+        schemaName,
+        tableName
+      );
 
       if (!sampleResult) {
         const { driver, connStr } = await resolveConnection(connectionId);
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
-        sampleResult = await driver.getTableSample(connStr, schemaName, tableName, clampedSize);
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
+        sampleResult = await driver.getTableSample(
+          connStr,
+          schemaName,
+          tableName,
+          clampedSize
+        );
         setCachedTableSample(connectionId, schemaName, tableName, sampleResult);
       }
 
       return {
-        totalRows: sampleResult.totalRows,
-        sampleSize: sampleResult.sampleSize,
-        rows: sampleResult.rows,
         columnStats: sampleResult.columnStats.map((stat) => ({
+          avg: stat.avg,
           columnName: stat.columnName,
           dataType: stat.dataType,
-          min: stat.min,
           max: stat.max,
-          avg: stat.avg,
-          uniqueCount: stat.uniqueCount,
+          min: stat.min,
           nullPercentage: stat.nullPercentage,
           topValues: stat.topValues?.slice(0, 5),
+          uniqueCount: stat.uniqueCount,
         })),
+        rows: sampleResult.rows,
+        sampleSize: sampleResult.sampleSize,
+        totalRows: sampleResult.totalRows,
       };
     },
+    inputSchema: z.object({
+      sampleSize: z
+        .number()
+        .optional()
+        .describe("Number of sample rows to return (default: 50, max: 200)"),
+      schemaName: z.string().describe("The schema name (e.g. 'public')"),
+      tableName: z.string().describe("The table name"),
+    }),
   });
 
   /**
@@ -609,46 +711,65 @@ export function createAiTools(
   const explain = tool({
     description:
       "Analyze the execution plan of a SQL query. Returns detailed information about how the database will execute the query, including scan types (sequential scan, index scan), join methods, estimated costs, and row counts. Use this to optimize slow queries, understand performance bottlenecks, or verify that indexes are being used effectively.",
-    inputSchema: z.object({
-      sql: z.string().describe("The SQL query to analyze (e.g. 'SELECT * FROM users WHERE id = 1')"),
-      analyze: z
-        .boolean()
-        .optional()
-        .describe("If true, execute the query and show actual execution stats (timing, actual rows). Only use for SELECT queries that you know are safe to run."),
-    }),
     // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
     // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
     execute: async ({ sql, analyze }, { abortSignal }) => {
       // Basic SQL validation - only allow SELECT, WITH, and EXPLAIN queries
       const trimmed = sql.trim().toLowerCase();
       if (!trimmed.match(/^(select|with|explain)\s/)) {
-        return toolError("Only SELECT, WITH, and EXPLAIN queries can be analyzed. DDL and DML operations are not supported.");
+        return toolError(
+          "Only SELECT, WITH, and EXPLAIN queries can be analyzed. DDL and DML operations are not supported."
+        );
       }
 
       // Validate subqueries don't contain dangerous operations (strip string literals first)
       const strippedForCheck = stripStringLiterals(trimmed);
-      const dangerousSubquery = /\b(drop|truncate|alter|grant|revoke|insert|update|delete|merge)\b/i;
+      const dangerousSubquery =
+        /\b(drop|truncate|alter|grant|revoke|insert|update|delete|merge)\b/i;
       if (dangerousSubquery.test(strippedForCheck)) {
-        return toolError("Query contains dangerous DDL/DML keywords. Only read-only queries can be analyzed.");
+        return toolError(
+          "Query contains dangerous DDL/DML keywords. Only read-only queries can be analyzed."
+        );
       }
 
       try {
         const { driver, connStr } = await resolveConnection(connectionId);
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
 
-        const planResult = await driver.explainQuery(connStr, sql, analyze ?? false);
+        const planResult = await driver.explainQuery(
+          connStr,
+          sql,
+          analyze ?? false
+        );
 
         return {
-          plan: planResult.plan,
-          hasExecutionStats: planResult.hasExecutionStats,
-          totalCost: planResult.totalCost,
           estimatedRows: planResult.estimatedRows,
           executionTimeMs: planResult.executionTimeMs,
+          hasExecutionStats: planResult.hasExecutionStats,
+          plan: planResult.plan,
+          totalCost: planResult.totalCost,
         };
       } catch (err) {
-        return toolError(`Error analyzing query plan: ${err instanceof Error ? err.message : String(err)}`);
+        return toolError(
+          `Error analyzing query plan: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     },
+    inputSchema: z.object({
+      analyze: z
+        .boolean()
+        .optional()
+        .describe(
+          "If true, execute the query and show actual execution stats (timing, actual rows). Only use for SELECT queries that you know are safe to run."
+        ),
+      sql: z
+        .string()
+        .describe(
+          "The SQL query to analyze (e.g. 'SELECT * FROM users WHERE id = 1')"
+        ),
+    }),
   });
 
   // ── Phase 1 — Quick Wins (Schema Discovery) ──────────────────────────
@@ -660,11 +781,11 @@ export function createAiTools(
   const listSchemas = tool({
     description:
       "List all schemas available in the connected database, including the number of tables in each. Use this before querying to pick the correct schema instead of assuming 'public'.",
-    inputSchema: z.object({}),
-    strict: true,
     execute: async (_input, { abortSignal }) => {
       const { driver, connStr } = await resolveConnection(connectionId);
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
       const summary = await driver.getSchemaSummary(connStr);
       const tableCounts = new Map<string, number>();
       for (const t of summary.tables) {
@@ -675,6 +796,8 @@ export function createAiTools(
         tableCount: tableCounts.get(name) ?? 0,
       }));
     },
+    inputSchema: z.object({}),
+    strict: true,
   });
 
   /**
@@ -684,16 +807,13 @@ export function createAiTools(
   const searchSchema = tool({
     description:
       "Search for tables and columns that match a keyword. Returns matching tables, columns, and the type of match (table name, column name, or data type). Use this to discover relevant entities in large databases without manually browsing every schema.",
-    inputSchema: z.object({
-      query: z.string().min(1).describe("Search term (case-insensitive)"),
-      schemaName: z.string().optional().describe("Optional schema to restrict the search"),
-      limit: z.number().int().min(1).max(100).optional().describe("Max results to return (default 20, max 100)"),
-    }),
     // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
     // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
     execute: async ({ query, schemaName, limit }, { abortSignal }) => {
       const { driver, connStr } = await resolveConnection(connectionId);
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
       const schema = await driver.getSchema(connStr);
       const term = query.toLowerCase();
       const effectiveLimit = limit ?? 20;
@@ -705,36 +825,60 @@ export function createAiTools(
       }> = [];
 
       for (const table of schema.tables) {
-        if (schemaName && table.schema !== schemaName) continue;
+        if (schemaName && table.schema !== schemaName) {
+          continue;
+        }
 
         if (table.name.toLowerCase().includes(term)) {
-          results.push({ schema: table.schema, table: table.name, matchType: "table_name" });
+          results.push({
+            matchType: "table_name",
+            schema: table.schema,
+            table: table.name,
+          });
         }
 
         for (const col of table.columns) {
-          if (results.length >= effectiveLimit) break;
+          if (results.length >= effectiveLimit) {
+            break;
+          }
           if (col.name.toLowerCase().includes(term)) {
             results.push({
-              schema: table.schema,
-              table: table.name,
               column: col.name,
               matchType: "column_name",
+              schema: table.schema,
+              table: table.name,
             });
           } else if (col.data_type.toLowerCase().includes(term)) {
             results.push({
-              schema: table.schema,
-              table: table.name,
               column: col.name,
               matchType: "data_type",
+              schema: table.schema,
+              table: table.name,
             });
           }
         }
 
-        if (results.length >= effectiveLimit) break;
+        if (results.length >= effectiveLimit) {
+          break;
+        }
       }
 
       return results;
     },
+    inputSchema: z.object({
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe("Max results to return (default 20, max 100)"),
+      query: z.string().min(1).describe("Search term (case-insensitive)"),
+      schemaName: z
+        .string()
+        .optional()
+        .describe("Optional schema to restrict the search"),
+    }),
   });
 
   /**
@@ -744,38 +888,52 @@ export function createAiTools(
   const getRelationsGraph = tool({
     description:
       "Get the foreign-key relationship graph for tables in a schema. Returns which columns reference which tables and columns. Use this to suggest accurate JOINs based on real database constraints.",
-    inputSchema: z.object({
-      schemaName: z.string().optional().describe("Schema to inspect (defaults to all user schemas)"),
-      tables: z.array(z.string()).optional().describe("Optional list of table names to restrict the graph"),
-    }),
     // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
     // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
     execute: async ({ schemaName, tables }, { abortSignal }) => {
       const { driver, connStr } = await resolveConnection(connectionId);
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
       const schema = await driver.getSchema(connStr);
-      const tableFilter = tables ? new Set(tables.map((t) => t.toLowerCase())) : null;
+      const tableFilter = tables
+        ? new Set(tables.map((t) => t.toLowerCase()))
+        : null;
 
       const relations = [];
       for (const table of schema.tables) {
-        if (schemaName && table.schema !== schemaName) continue;
-        if (tableFilter && !tableFilter.has(table.name.toLowerCase())) continue;
+        if (schemaName && table.schema !== schemaName) {
+          continue;
+        }
+        if (tableFilter && !tableFilter.has(table.name.toLowerCase())) {
+          continue;
+        }
 
         for (const fk of table.foreign_keys) {
           relations.push({
-            fromTable: table.name,
-            fromSchema: table.schema,
-            fromColumn: fk.column_name,
-            toTable: fk.referenced_table,
-            toSchema: fk.referenced_schema ?? table.schema,
-            toColumn: fk.referenced_column,
             constraintName: fk.name,
+            fromColumn: fk.column_name,
+            fromSchema: table.schema,
+            fromTable: table.name,
+            toColumn: fk.referenced_column,
+            toSchema: fk.referenced_schema ?? table.schema,
+            toTable: fk.referenced_table,
           });
         }
       }
 
       return relations;
     },
+    inputSchema: z.object({
+      schemaName: z
+        .string()
+        .optional()
+        .describe("Schema to inspect (defaults to all user schemas)"),
+      tables: z
+        .array(z.string())
+        .optional()
+        .describe("Optional list of table names to restrict the graph"),
+    }),
   });
 
   // ── Phase 2 — Safety & Governance ─────────────────────────────────────
@@ -787,11 +945,6 @@ export function createAiTools(
   const validateSqlSafety = tool({
     description:
       "Analyze a SQL query and classify its safety level: 'safe' for read-only queries (SELECT/WITH/EXPLAIN), 'risky' for mutations (UPDATE/DELETE/INSERT), or 'blocked' for dangerous operations (DROP, TRUNCATE, ALTER, GRANT, etc). Returns the classification and a list of reasons.",
-    inputSchema: z.object({
-      sql: z.string().min(1).describe("The SQL query to classify"),
-    }),
-    outputSchema: safetyOutputSchema,
-    strict: true,
     // inputExamples omitted — incompatible with AI SDK v6 tool() overloads
     execute: async ({ sql }) => {
       const normalized = sql.trim().toLowerCase().replace(/\s+/g, " ");
@@ -799,13 +952,37 @@ export function createAiTools(
 
       // Risky patterns — DML/DDL/admin mutations requiring explicit approval
       const riskyPatterns = [
-        { pattern: /\b(update|delete|insert|merge|upsert|replace)\b/, reason: "Contains UPDATE/DELETE/INSERT/MERGE which modifies data." },
-        { pattern: /\b(drop|truncate)\b/, reason: "Contains DROP/TRUNCATE which can destroy data or structures." },
-        { pattern: /\b(alter\s+(table|schema|database|index|sequence|view|materialized\s+view))\b/, reason: "Contains ALTER which modifies database structure." },
-        { pattern: /\b(create\s+(table|schema|database|index|sequence|view|materialized\s+view|or\s+replace))\b/, reason: "Contains CREATE which modifies database structure." },
-        { pattern: /\b(grant|revoke)\b/, reason: "Contains GRANT/REVOKE which changes permissions." },
-        { pattern: /\b(comment\s+on)\b/, reason: "Contains COMMENT ON which modifies metadata." },
-        { pattern: /\b(copy\s+.*\s+from)\b/, reason: "Contains COPY FROM which imports data." },
+        {
+          pattern: /\b(update|delete|insert|merge|upsert|replace)\b/,
+          reason: "Contains UPDATE/DELETE/INSERT/MERGE which modifies data.",
+        },
+        {
+          pattern: /\b(drop|truncate)\b/,
+          reason:
+            "Contains DROP/TRUNCATE which can destroy data or structures.",
+        },
+        {
+          pattern:
+            /\b(alter\s+(table|schema|database|index|sequence|view|materialized\s+view))\b/,
+          reason: "Contains ALTER which modifies database structure.",
+        },
+        {
+          pattern:
+            /\b(create\s+(table|schema|database|index|sequence|view|materialized\s+view|or\s+replace))\b/,
+          reason: "Contains CREATE which modifies database structure.",
+        },
+        {
+          pattern: /\b(grant|revoke)\b/,
+          reason: "Contains GRANT/REVOKE which changes permissions.",
+        },
+        {
+          pattern: /\b(comment\s+on)\b/,
+          reason: "Contains COMMENT ON which modifies metadata.",
+        },
+        {
+          pattern: /\b(copy\s+.*\s+from)\b/,
+          reason: "Contains COPY FROM which imports data.",
+        },
       ];
 
       for (const { pattern, reason } of riskyPatterns) {
@@ -821,11 +998,22 @@ export function createAiTools(
       // Safe — only SELECT, WITH, EXPLAIN, SHOW, DESCRIBE
       const safePrefix = /^(select|with|explain|show|describe|table)\b/;
       if (safePrefix.test(normalized)) {
-        return { classification: "safe" as const, reasons: ["Query is read-only (SELECT/WITH/EXPLAIN)."] };
+        return {
+          classification: "safe" as const,
+          reasons: ["Query is read-only (SELECT/WITH/EXPLAIN)."],
+        };
       }
 
-      return { classification: "blocked" as const, reasons: ["Unrecognized or unsupported query type."] };
+      return {
+        classification: "blocked" as const,
+        reasons: ["Unrecognized or unsupported query type."],
+      };
     },
+    inputSchema: z.object({
+      sql: z.string().min(1).describe("The SQL query to classify"),
+    }),
+    outputSchema: safetyOutputSchema,
+    strict: true,
   });
 
   /**
@@ -835,10 +1023,6 @@ export function createAiTools(
   const runReadOnlySql = tool({
     description:
       "Execute a read-only SQL query (SELECT, WITH, or EXPLAIN) and return the results. Only safe queries are allowed — DDL and DML are rejected. Use this when the AI needs to run custom SQL to answer a user's question.",
-    inputSchema: z.object({
-      sql: z.string().min(1).describe("The read-only SQL query to execute"),
-      limit: z.number().int().min(1).max(500).optional().describe("Maximum rows to return (default 100, max 500)"),
-    }),
     // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
     // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
     // NOTE: timeoutMs removed from inputSchema — not wired to driver.executeQuery
@@ -847,13 +1031,17 @@ export function createAiTools(
 
       // Allow only SELECT, WITH, EXPLAIN, SHOW, DESCRIBE, TABLE
       if (!/^(select|with|explain|show|describe|table)\b/.test(trimmed)) {
-        return toolError("Only read-only queries (SELECT, WITH, EXPLAIN, SHOW, DESCRIBE, TABLE) are allowed.");
+        return toolError(
+          "Only read-only queries (SELECT, WITH, EXPLAIN, SHOW, DESCRIBE, TABLE) are allowed."
+        );
       }
 
       // Reject dangerous sub-patterns even inside SELECT (FIX: corrected regex)
       const dangerous = /\b(into\s+(outfile|dumpfile)|copy\s+.*\s+to)|;\s*\w+/;
       if (dangerous.test(trimmed)) {
-        return toolError("Query contains dangerous patterns (INTO OUTFILE, COPY TO, or multiple statements).");
+        return toolError(
+          "Query contains dangerous patterns (INTO OUTFILE, COPY TO, or multiple statements)."
+        );
       }
 
       // Reject DML keywords even inside CTEs — prevents data-modifying CTEs
@@ -862,13 +1050,19 @@ export function createAiTools(
       // false positives on values like 'delete_pending'.
       const strippedForDmlCheck = stripStringLiterals(trimmed);
       if (/\b(insert|update|delete|merge)\b/i.test(strippedForDmlCheck)) {
-        return toolError("Query contains data modification keywords (INSERT, UPDATE, DELETE, MERGE). Use executeMutation for data changes — it requires user approval.");
+        return toolError(
+          "Query contains data modification keywords (INSERT, UPDATE, DELETE, MERGE). Use executeMutation for data changes — it requires user approval."
+        );
       }
 
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
 
       const { driver, connStr } = await resolveConnection(connectionId);
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
 
       // Inject LIMIT if not present and query looks like a simple SELECT
       let finalSql = sql;
@@ -882,18 +1076,35 @@ export function createAiTools(
       }
 
       try {
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
         const result = await driver.executeQuery(connStr, finalSql);
         return {
           columns: result.columns.map((c) => c.name),
-          rows: result.rows,
+          limitApplied:
+            !hasLimit && trimmed.startsWith("select")
+              ? effectiveLimit
+              : undefined,
           rowCount: result.row_count,
-          limitApplied: !hasLimit && trimmed.startsWith("select") ? effectiveLimit : undefined,
+          rows: result.rows,
         };
       } catch (err) {
-        return toolError(`Error executing query: ${err instanceof Error ? err.message : String(err)}`);
+        return toolError(
+          `Error executing query: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     },
+    inputSchema: z.object({
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Maximum rows to return (default 100, max 500)"),
+      sql: z.string().min(1).describe("The read-only SQL query to execute"),
+    }),
   });
 
   /**
@@ -903,10 +1114,6 @@ export function createAiTools(
   const dryRunMutation = tool({
     description:
       "Estimate the impact of an UPDATE or DELETE query before running it. Converts the query to a SELECT COUNT(*) to show how many rows would be affected, and returns a sample of rows that match the WHERE clause. Use this to preview mutations and avoid accidental mass updates or deletes.",
-    inputSchema: z.object({
-      sql: z.string().min(1).describe("The UPDATE or DELETE query to preview"),
-      sampleSize: z.number().int().min(1).max(50).optional().describe("Number of sample rows to preview (default 5, max 50)"),
-    }),
     // strict: true omitted — Zod 4 .optional() causes TS2769 with FlexibleSchema
     // inputExamples omitted — incompatible with ZodOptional fields in AI SDK v6
     execute: async ({ sql, sampleSize }, { abortSignal }) => {
@@ -914,7 +1121,9 @@ export function createAiTools(
       const effectiveSample = Math.min(sampleSize ?? 5, 50);
 
       if (!/^(update|delete)\b/.test(normalized)) {
-        return toolError("Only UPDATE and DELETE queries can be dry-run. For SELECT queries, use runReadOnlySql instead.");
+        return toolError(
+          "Only UPDATE and DELETE queries can be dry-run. For SELECT queries, use runReadOnlySql instead."
+        );
       }
 
       const { driver, connStr, dbType } = await resolveConnection(connectionId);
@@ -924,21 +1133,27 @@ export function createAiTools(
         // since DELETE/UPDATE are the very keywords this tool is designed for)
         const strippedFullSql = stripStringLiterals(sql);
         if (/;/.test(strippedFullSql)) {
-          return toolError("Semicolons are not allowed (prevents multi-statement injection).");
+          return toolError(
+            "Semicolons are not allowed (prevents multi-statement injection)."
+          );
         }
         if (/--|\/\*|\*\//.test(strippedFullSql)) {
           return toolError("SQL comments are not allowed.");
         }
 
         // Extract WHERE clause
-        const whereMatch = normalized.match(/\bwhere\b(.+?)(?:\blimit\b|\border\b|;|$)/i);
+        const whereMatch = normalized.match(
+          /\bwhere\b(.+?)(?:\blimit\b|\border\b|;|$)/i
+        );
         const whereClause = whereMatch ? whereMatch[1].trim() : null;
 
         // Validate WHERE clause for injection patterns (FIX: #3)
         if (whereClause) {
           const injectionError = containsSqlInjection(whereClause);
           if (injectionError) {
-            return toolError(`WHERE clause validation failed: ${injectionError}`);
+            return toolError(
+              `WHERE clause validation failed: ${injectionError}`
+            );
           }
         }
 
@@ -949,20 +1164,26 @@ export function createAiTools(
 
         if (normalized.startsWith("delete")) {
           // DELETE FROM schema.table ... or DELETE FROM table ...
-          const deleteMatch = normalized.match(/delete\s+from\s+((?:["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?\s*\.\s*)?["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?)/);
+          const deleteMatch = normalized.match(
+            /delete\s+from\s+((?:["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?\s*\.\s*)?["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?)/
+          );
           if (deleteMatch) {
             tableRef = deleteMatch[1].replace(/["']/g, "").trim();
           }
         } else if (normalized.startsWith("update")) {
           // UPDATE schema.table SET ... or UPDATE table SET ...
-          const updateMatch = normalized.match(/update\s+((?:["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?\s*\.\s*)?["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?)/);
+          const updateMatch = normalized.match(
+            /update\s+((?:["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?\s*\.\s*)?["']?[a-zA-Z_][a-zA-Z0-9_$]*["']?)/
+          );
           if (updateMatch) {
             tableRef = updateMatch[1].replace(/["']/g, "").trim();
           }
         }
 
         if (!tableRef) {
-          return toolError("Could not parse the table reference from the query.");
+          return toolError(
+            "Could not parse the table reference from the query."
+          );
         }
 
         const parts = tableRef.split(".").map((p) => p.trim());
@@ -973,11 +1194,13 @@ export function createAiTools(
           tableName = parts[0];
         }
 
-        if (!isValidIdentifier(schemaName) || !isValidIdentifier(tableName)) {
+        if (!(isValidIdentifier(schemaName) && isValidIdentifier(tableName))) {
           return toolError("Invalid schema or table name parsed from query.");
         }
 
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
 
         // Build count query using safe identifier quoting
         const safeTableRef = quoteTableRef(schemaName, tableName, dbType);
@@ -1004,25 +1227,43 @@ export function createAiTools(
 
         const warnings: string[] = [];
         if (!whereClause) {
-          warnings.push("No WHERE clause detected — this would affect ALL rows in the table.");
+          warnings.push(
+            "No WHERE clause detected — this would affect ALL rows in the table."
+          );
         }
-        if (estimatedAffectedRows > 10000) {
-          warnings.push(`Large number of rows affected (${estimatedAffectedRows}) — consider narrowing the WHERE clause.`);
+        if (estimatedAffectedRows > 10_000) {
+          warnings.push(
+            `Large number of rows affected (${estimatedAffectedRows}) — consider narrowing the WHERE clause.`
+          );
         }
         if (normalized.startsWith("delete") && !whereClause) {
-          warnings.push("DELETE without WHERE will remove every row in the table.");
+          warnings.push(
+            "DELETE without WHERE will remove every row in the table."
+          );
         }
 
         return {
           estimatedAffectedRows,
+          originalQuery: sql.trim(),
           samplePreview,
           warnings,
-          originalQuery: sql.trim(),
         };
       } catch (err) {
-        return toolError(`Error analyzing query: ${err instanceof Error ? err.message : String(err)}`);
+        return toolError(
+          `Error analyzing query: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     },
+    inputSchema: z.object({
+      sampleSize: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Number of sample rows to preview (default 5, max 50)"),
+      sql: z.string().min(1).describe("The UPDATE or DELETE query to preview"),
+    }),
   });
 
   /**
@@ -1038,24 +1279,30 @@ export function createAiTools(
   const executeMutation = tool({
     description:
       "Execute a database mutation SQL statement (DML or DDL) on the connected database. IMPORTANT: This tool requires user approval before execution — the user will see the SQL and must explicitly approve it. Always use validateSqlSafety first to check the query classification.",
-    inputSchema: z.object({
-      sql: z.string().min(1).describe("The mutation SQL statement to execute (e.g. INSERT, UPDATE, DELETE, MERGE, CREATE, ALTER, DROP, TRUNCATE)"),
-    }),
-    strict: true,
     execute: async ({ sql }, { abortSignal, toolCallId }) => {
       const normalizedSql = sql.trim();
       const sqlWithoutTrailingSemicolon = normalizedSql.replace(/;\s*$/, "");
-      const trimmed = sqlWithoutTrailingSemicolon.toLowerCase().replace(/\s+/g, " ");
+      const trimmed = sqlWithoutTrailingSemicolon
+        .toLowerCase()
+        .replace(/\s+/g, " ");
 
       // Only allow mutation/admin statements that require explicit approval
-      if (!/^\b(insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|comment)\b/i.test(trimmed)) {
-        return toolError("Unsupported mutation type. Use this tool for DML/DDL statements that modify data, schema, or permissions.");
+      if (
+        !/^\b(insert|update|delete|merge|create|alter|drop|truncate|grant|revoke|comment)\b/i.test(
+          trimmed
+        )
+      ) {
+        return toolError(
+          "Unsupported mutation type. Use this tool for DML/DDL statements that modify data, schema, or permissions."
+        );
       }
 
       // Block multi-statement injection
       const strippedForCheck = stripStringLiterals(trimmed);
       if (/;/.test(strippedForCheck)) {
-        return toolError("Semicolons are not allowed (prevents multi-statement injection).");
+        return toolError(
+          "Semicolons are not allowed (prevents multi-statement injection)."
+        );
       }
 
       // Block comment injection
@@ -1075,54 +1322,74 @@ export function createAiTools(
       // ── Request user approval before executing ──
       const { description, warnings } = describeMutation(sql);
       const approved = await requestApproval({
-        toolCallId,
-        toolName: "executeMutation",
         args: { sql: sqlWithoutTrailingSemicolon },
         description,
         preview: sqlWithoutTrailingSemicolon,
+        toolCallId,
+        toolName: "executeMutation",
         warnings: warnings.length > 0 ? warnings : undefined,
       });
 
       if (!approved) {
-        return toolError("User rejected the mutation. Do not retry without asking the user first.");
+        return toolError(
+          "User rejected the mutation. Do not retry without asking the user first."
+        );
       }
 
-      if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+      if (isAborted(abortSignal)) {
+        return toolError("Operation was aborted.");
+      }
 
       try {
         const { driver, connStr } = await resolveConnection(connectionId);
-        if (isAborted(abortSignal)) return toolError("Operation was aborted.");
+        if (isAborted(abortSignal)) {
+          return toolError("Operation was aborted.");
+        }
 
-        const result = await driver.executeQuery(connStr, sqlWithoutTrailingSemicolon);
+        const result = await driver.executeQuery(
+          connStr,
+          sqlWithoutTrailingSemicolon
+        );
         return {
-          success: true,
-          command: sqlWithoutTrailingSemicolon,
-          rowsAffected: result.row_count,
           columns: result.columns.map((c) => c.name),
+          command: sqlWithoutTrailingSemicolon,
           rows: result.rows,
+          rowsAffected: result.row_count,
+          success: true,
         };
       } catch (err) {
-        return toolError(`Error executing mutation: ${err instanceof Error ? err.message : String(err)}`);
+        return toolError(
+          `Error executing mutation: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     },
+    inputSchema: z.object({
+      sql: z
+        .string()
+        .min(1)
+        .describe(
+          "The mutation SQL statement to execute (e.g. INSERT, UPDATE, DELETE, MERGE, CREATE, ALTER, DROP, TRUNCATE)"
+        ),
+    }),
+    strict: true,
   });
 
   return {
     columns,
-    enums,
-    tables,
-    select,
-    indexes,
     constraints,
-    tableStats,
-    tableSample,
-    explain,
-    listSchemas,
-    searchSchema,
-    getRelationsGraph,
-    validateSqlSafety,
-    runReadOnlySql,
     dryRunMutation,
+    enums,
     executeMutation,
+    explain,
+    getRelationsGraph,
+    indexes,
+    listSchemas,
+    runReadOnlySql,
+    searchSchema,
+    select,
+    tableSample,
+    tableStats,
+    tables,
+    validateSqlSafety,
   };
 }

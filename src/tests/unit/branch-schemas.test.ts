@@ -1,26 +1,32 @@
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   createBranchSchema,
   deleteBranchSchema,
-  switchBranchSchema,
-  listBranchesSchema,
-  renameBranchSchema,
   getBranchInfoSchema,
-  previewDeleteBranchSchema,
+  listBranchesSchema,
   mergeBranchSchemaSchema,
+  previewDeleteBranchSchema,
+  renameBranchSchema,
+  switchBranchSchema,
 } from "@/ipc/db/schemas";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Expect parsing to succeed and return the parsed value. */
-function expectValid<T>(schema: { parse: (v: unknown) => T }, input: unknown): T {
+function expectValid<T>(
+  schema: { parse: (v: unknown) => T },
+  input: unknown
+): T {
   const result = schema.parse(input);
   expect(result).toBeDefined();
   return result;
 }
 
 /** Expect parsing to fail (Zod throws on invalid input). */
-function expectInvalid(schema: { parse: (v: unknown) => unknown }, input: unknown): void {
+function expectInvalid(
+  schema: { parse: (v: unknown) => unknown },
+  input: unknown
+): void {
   expect(() => schema.parse(input)).toThrow();
 }
 
@@ -28,7 +34,7 @@ function expectInvalid(schema: { parse: (v: unknown) => unknown }, input: unknow
 function expectInvalidWithMessage(
   schema: { parse: (v: unknown) => unknown },
   input: unknown,
-  messageFragment: string,
+  messageFragment: string
 ): void {
   try {
     schema.parse(input);
@@ -55,7 +61,10 @@ describe("listBranchesSchema", () => {
   });
 
   test("strips unknown keys", () => {
-    const result = listBranchesSchema.parse({ localDbId: "db-001", extra: true });
+    const result = listBranchesSchema.parse({
+      extra: true,
+      localDbId: "db-001",
+    });
     expect((result as any).extra).toBeUndefined();
   });
 });
@@ -72,14 +81,14 @@ describe("createBranchSchema", () => {
 
   test("accepts full valid input with all optional fields", () => {
     const input = {
-      localDbId: "db-001",
-      parentBranchId: "branch-parent",
-      name: "feature-x",
-      description: "A new feature branch",
       dataTables: [
         { schema: "public", table: "users" },
         { schema: "public", table: "orders" },
       ],
+      description: "A new feature branch",
+      localDbId: "db-001",
+      name: "feature-x",
+      parentBranchId: "branch-parent",
     };
     const result = expectValid(createBranchSchema, input);
     expect(result).toMatchObject(input);
@@ -94,19 +103,26 @@ describe("createBranchSchema", () => {
   });
 
   test("rejects empty name", () => {
-    expectInvalidWithMessage(createBranchSchema, { localDbId: "db-001", name: "" }, "min");
+    expectInvalidWithMessage(
+      createBranchSchema,
+      { localDbId: "db-001", name: "" },
+      "min"
+    );
   });
 
   test("rejects name exceeding 63 characters", () => {
     expectInvalidWithMessage(
       createBranchSchema,
       { localDbId: "db-001", name: "a".repeat(64) },
-      "max",
+      "max"
     );
   });
 
   test("accepts name at exactly 63 characters", () => {
-    expectValid(createBranchSchema, { localDbId: "db-001", name: "a".repeat(63) });
+    expectValid(createBranchSchema, {
+      localDbId: "db-001",
+      name: "a".repeat(63),
+    });
   });
 
   test("accepts name at exactly 1 character", () => {
@@ -122,34 +138,42 @@ describe("createBranchSchema", () => {
   });
 
   test("rejects non-string parentBranchId", () => {
-    expectInvalid(createBranchSchema, { localDbId: "db-001", name: "x", parentBranchId: 42 });
+    expectInvalid(createBranchSchema, {
+      localDbId: "db-001",
+      name: "x",
+      parentBranchId: 42,
+    });
   });
 
   test("rejects non-string description", () => {
-    expectInvalid(createBranchSchema, { localDbId: "db-001", name: "x", description: 123 });
+    expectInvalid(createBranchSchema, {
+      description: 123,
+      localDbId: "db-001",
+      name: "x",
+    });
   });
 
   test("rejects invalid dataTables entries", () => {
     expectInvalid(createBranchSchema, {
+      dataTables: [{ schema: "public" }], // missing table
       localDbId: "db-001",
       name: "x",
-      dataTables: [{ schema: "public" }], // missing table
     });
   });
 
   test("rejects non-object dataTables entries", () => {
     expectInvalid(createBranchSchema, {
+      dataTables: ["not-an-object"],
       localDbId: "db-001",
       name: "x",
-      dataTables: ["not-an-object"],
     });
   });
 
   test("accepts empty dataTables array (schema-only branch)", () => {
     const result = expectValid(createBranchSchema, {
+      dataTables: [],
       localDbId: "db-001",
       name: "schema-only-branch",
-      dataTables: [],
     });
     expect(result.dataTables).toEqual([]);
   });
@@ -160,9 +184,9 @@ describe("createBranchSchema", () => {
       name: "full-copy-branch",
     });
     const withEmpty = createBranchSchema.parse({
+      dataTables: [],
       localDbId: "db-001",
       name: "schema-only-branch",
-      dataTables: [],
     });
     // undefined = copy all data (backend default), [] = schema-only (truncate all)
     expect(withUndefined.dataTables).toBeUndefined();
@@ -171,17 +195,17 @@ describe("createBranchSchema", () => {
 
   test("rejects non-array dataTables", () => {
     expectInvalid(createBranchSchema, {
+      dataTables: "not-an-array",
       localDbId: "db-001",
       name: "x",
-      dataTables: "not-an-array",
     });
   });
 
   test("strips unknown keys", () => {
     const result = createBranchSchema.parse({
+      extra: true,
       localDbId: "db-001",
       name: "feature-x",
-      extra: true,
     } as any);
     expect((result as any).extra).toBeUndefined();
   });
@@ -190,8 +214,8 @@ describe("createBranchSchema", () => {
 describe("deleteBranchSchema", () => {
   test("accepts valid input", () => {
     const result = expectValid(deleteBranchSchema, {
-      localDbId: "db-001",
       branchId: "branch-001",
+      localDbId: "db-001",
     });
     expect(result.localDbId).toBe("db-001");
     expect(result.branchId).toBe("branch-001");
@@ -206,15 +230,22 @@ describe("deleteBranchSchema", () => {
   });
 
   test("rejects non-string localDbId", () => {
-    expectInvalid(deleteBranchSchema, { localDbId: 123, branchId: "branch-001" });
+    expectInvalid(deleteBranchSchema, {
+      branchId: "branch-001",
+      localDbId: 123,
+    });
   });
 
   test("rejects non-string branchId", () => {
-    expectInvalid(deleteBranchSchema, { localDbId: "db-001", branchId: null });
+    expectInvalid(deleteBranchSchema, { branchId: null, localDbId: "db-001" });
   });
 
   test("strips unknown keys", () => {
-    const result = deleteBranchSchema.parse({ localDbId: "db-001", branchId: "b1", extra: 1 } as any);
+    const result = deleteBranchSchema.parse({
+      branchId: "b1",
+      extra: 1,
+      localDbId: "db-001",
+    } as any);
     expect((result as any).extra).toBeUndefined();
   });
 });
@@ -222,8 +253,8 @@ describe("deleteBranchSchema", () => {
 describe("switchBranchSchema", () => {
   test("accepts valid input", () => {
     const result = expectValid(switchBranchSchema, {
-      localDbId: "db-001",
       branchId: "branch-001",
+      localDbId: "db-001",
     });
     expect(result.localDbId).toBe("db-001");
     expect(result.branchId).toBe("branch-001");
@@ -238,19 +269,19 @@ describe("switchBranchSchema", () => {
   });
 
   test("rejects non-string localDbId", () => {
-    expectInvalid(switchBranchSchema, { localDbId: [], branchId: "b1" });
+    expectInvalid(switchBranchSchema, { branchId: "b1", localDbId: [] });
   });
 
   test("rejects non-string branchId", () => {
-    expectInvalid(switchBranchSchema, { localDbId: "db-001", branchId: {} });
+    expectInvalid(switchBranchSchema, { branchId: {}, localDbId: "db-001" });
   });
 });
 
 describe("getBranchInfoSchema", () => {
   test("accepts valid input", () => {
     const result = expectValid(getBranchInfoSchema, {
-      localDbId: "db-001",
       branchId: "branch-001",
+      localDbId: "db-001",
     });
     expect(result.localDbId).toBe("db-001");
     expect(result.branchId).toBe("branch-001");
@@ -265,11 +296,15 @@ describe("getBranchInfoSchema", () => {
   });
 
   test("rejects non-string localDbId", () => {
-    expectInvalid(getBranchInfoSchema, { localDbId: false, branchId: "b1" });
+    expectInvalid(getBranchInfoSchema, { branchId: "b1", localDbId: false });
   });
 
   test("strips unknown keys", () => {
-    const result = getBranchInfoSchema.parse({ localDbId: "db-001", branchId: "b1", extra: 1 } as any);
+    const result = getBranchInfoSchema.parse({
+      branchId: "b1",
+      extra: 1,
+      localDbId: "db-001",
+    } as any);
     expect((result as any).extra).toBeUndefined();
   });
 });
@@ -277,8 +312,8 @@ describe("getBranchInfoSchema", () => {
 describe("renameBranchSchema", () => {
   test("accepts valid input", () => {
     const result = expectValid(renameBranchSchema, {
-      localDbId: "db-001",
       branchId: "branch-001",
+      localDbId: "db-001",
       newName: "renamed-feature",
     });
     expect(result.localDbId).toBe("db-001");
@@ -295,55 +330,63 @@ describe("renameBranchSchema", () => {
   });
 
   test("rejects missing newName", () => {
-    expectInvalid(renameBranchSchema, { localDbId: "db-001", branchId: "b1" });
+    expectInvalid(renameBranchSchema, { branchId: "b1", localDbId: "db-001" });
   });
 
   test("rejects empty newName", () => {
-    expectInvalidWithMessage(renameBranchSchema, {
-      localDbId: "db-001",
-      branchId: "b1",
-      newName: "",
-    }, "min");
+    expectInvalidWithMessage(
+      renameBranchSchema,
+      {
+        branchId: "b1",
+        localDbId: "db-001",
+        newName: "",
+      },
+      "min"
+    );
   });
 
   test("rejects newName exceeding 63 characters", () => {
-    expectInvalidWithMessage(renameBranchSchema, {
-      localDbId: "db-001",
-      branchId: "b1",
-      newName: "n".repeat(64),
-    }, "max");
+    expectInvalidWithMessage(
+      renameBranchSchema,
+      {
+        branchId: "b1",
+        localDbId: "db-001",
+        newName: "n".repeat(64),
+      },
+      "max"
+    );
   });
 
   test("accepts newName at exactly 63 characters", () => {
     expectValid(renameBranchSchema, {
-      localDbId: "db-001",
       branchId: "b1",
+      localDbId: "db-001",
       newName: "n".repeat(63),
     });
   });
 
   test("accepts newName at exactly 1 character", () => {
     expectValid(renameBranchSchema, {
-      localDbId: "db-001",
       branchId: "b1",
+      localDbId: "db-001",
       newName: "x",
     });
   });
 
   test("rejects non-string newName", () => {
     expectInvalid(renameBranchSchema, {
-      localDbId: "db-001",
       branchId: "b1",
+      localDbId: "db-001",
       newName: 42,
     });
   });
 
   test("strips unknown keys", () => {
     const result = renameBranchSchema.parse({
-      localDbId: "db-001",
       branchId: "b1",
-      newName: "new",
       extra: true,
+      localDbId: "db-001",
+      newName: "new",
     } as any);
     expect((result as any).extra).toBeUndefined();
   });
@@ -352,8 +395,8 @@ describe("renameBranchSchema", () => {
 describe("previewDeleteBranchSchema", () => {
   test("accepts valid input", () => {
     const result = expectValid(previewDeleteBranchSchema, {
-      localDbId: "db-001",
       branchId: "branch-001",
+      localDbId: "db-001",
     });
     expect(result.localDbId).toBe("db-001");
     expect(result.branchId).toBe("branch-001");
@@ -368,10 +411,10 @@ describe("previewDeleteBranchSchema", () => {
 describe("mergeBranchSchemaSchema", () => {
   test("accepts valid input", () => {
     const result = expectValid(mergeBranchSchemaSchema, {
+      dryRun: true,
       localDbId: "db-001",
       sourceBranchId: "branch-a",
       targetBranchId: "branch-b",
-      dryRun: true,
     });
     expect(result.dryRun).toBe(true);
   });

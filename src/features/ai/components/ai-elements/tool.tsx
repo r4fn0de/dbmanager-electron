@@ -1,5 +1,6 @@
-"use no memo"
+"use no memo";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -8,9 +9,8 @@ import {
 import { Icon } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
 
-export type ChatToolPart = {
+export interface ChatToolPart {
   type: string;
   state:
     | "input-streaming"
@@ -28,9 +28,9 @@ export type ChatToolPart = {
     preview?: string;
     warnings?: string[];
   };
-};
+}
 
-export type ChatToolProps = {
+export interface ChatToolProps {
   toolPart: ChatToolPart;
   defaultOpen?: boolean;
   className?: string;
@@ -38,17 +38,18 @@ export type ChatToolProps = {
   onApprove?: (toolCallId: string) => void;
   /** Callback when user rejects a pending tool call */
   onReject?: (toolCallId: string) => void;
-};
+}
 
 /** Tiny status dot — pulses when running, colored by state otherwise. */
 function StatusDot({ state }: { state: ChatToolPart["state"] }) {
-  const dotColor = {
-    "input-streaming": "bg-blue-500",
-    "input-available": "bg-orange-400",
-    "output-available": "bg-emerald-500 dark:bg-emerald-400",
-    "output-error": "bg-red-500 dark:bg-red-400",
-    "pending-approval": "bg-amber-500 dark:bg-amber-400",
-  }[state] ?? "bg-muted-foreground";
+  const dotColor =
+    {
+      "input-available": "bg-orange-400",
+      "input-streaming": "bg-blue-500",
+      "output-available": "bg-emerald-500 dark:bg-emerald-400",
+      "output-error": "bg-red-500 dark:bg-red-400",
+      "pending-approval": "bg-amber-500 dark:bg-amber-400",
+    }[state] ?? "bg-muted-foreground";
 
   return (
     <span className="relative flex size-1.5 shrink-0">
@@ -57,7 +58,7 @@ function StatusDot({ state }: { state: ChatToolPart["state"] }) {
           className={cn(
             "absolute inline-flex size-full animate-ping rounded-full opacity-40",
             dotColor,
-            "animation-duration-[1.5s] ease-out",
+            "animation-duration-[1.5s] ease-out"
           )}
         />
       )}
@@ -68,19 +69,27 @@ function StatusDot({ state }: { state: ChatToolPart["state"] }) {
 
 /** Subtle state label — only shown while processing. */
 function StateLabel({ state }: { state: ChatToolPart["state"] }) {
-  if (state === "output-available") return null;
+  if (state === "output-available") {
+    return null;
+  }
   const label = {
-    "input-streaming": "Running",
     "input-available": "Ready",
+    "input-streaming": "Running",
     "output-error": "Error",
     "pending-approval": "Awaiting approval",
   }[state];
-  if (!label) return null;
+  if (!label) {
+    return null;
+  }
   return (
-    <span className={cn(
-      "text-[10px]",
-      state === "pending-approval" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/70",
-    )}>
+    <span
+      className={cn(
+        "text-[10px]",
+        state === "pending-approval"
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-muted-foreground/70"
+      )}
+    >
       {label}
     </span>
   );
@@ -88,9 +97,15 @@ function StateLabel({ state }: { state: ChatToolPart["state"] }) {
 
 /** Format a value for display — keeps output compact. */
 function formatCompact(value: unknown): string {
-  if (value === null) return "null";
-  if (value === undefined) return "";
-  if (typeof value === "string") return value;
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
   try {
     return JSON.stringify(value, null, 2);
   } catch {
@@ -107,14 +122,25 @@ function formatCompact(value: unknown): string {
  *   output all contribute to a feeling of precision without shouting
  * - Beauty is leverage — this component makes the AI chat feel professional
  */
-export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, onReject }: ChatToolProps) {
+export function ChatTool({
+  toolPart,
+  defaultOpen = true,
+  className,
+  onApprove,
+  onReject,
+}: ChatToolProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  const { state, input, output, errorText, approvalRequest, toolCallId } = toolPart;
+  const { state, input, output, errorText, approvalRequest, toolCallId } =
+    toolPart;
 
   const hasInput = input && Object.keys(input).length > 0;
   const hasOutput = output !== undefined && output !== null;
   const isPendingApproval = state === "pending-approval";
-  const hasExpandableContent = hasInput || hasOutput || (state === "output-error" && errorText) || isPendingApproval;
+  const hasExpandableContent =
+    hasInput ||
+    hasOutput ||
+    (state === "output-error" && errorText) ||
+    isPendingApproval;
 
   // Auto-open collapsible when expandable content first appears (tool result arrives)
   const hadExpandableRef = useRef(hasExpandableContent);
@@ -130,23 +156,29 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
   // Enter is guarded: ignored when focus is in an input/textarea/contenteditable
   // so the user can still type in the chat prompt.
   const handleApprove = useCallback(() => {
-    if (toolCallId && onApprove) onApprove(toolCallId);
+    if (toolCallId && onApprove) {
+      onApprove(toolCallId);
+    }
   }, [toolCallId, onApprove]);
 
   const handleReject = useCallback(() => {
-    if (toolCallId && onReject) onReject(toolCallId);
+    if (toolCallId && onReject) {
+      onReject(toolCallId);
+    }
   }, [toolCallId, onReject]);
 
   useEffect(() => {
-    if (!isPendingApproval || !toolCallId) return;
+    if (!(isPendingApproval && toolCallId)) {
+      return;
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept if focus is inside an input, textarea, or contenteditable element
       const active = document.activeElement;
       const isTyping =
-        active instanceof HTMLInputElement
-        || active instanceof HTMLTextAreaElement
-        || (active instanceof HTMLElement && active.isContentEditable);
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        (active instanceof HTMLElement && active.isContentEditable);
 
       if (e.key === "Enter" && !isTyping) {
         e.preventDefault();
@@ -165,52 +197,52 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
     <div
       className={cn(
         "overflow-hidden rounded-lg border border-border/10 bg-muted/15",
-        className,
+        className
       )}
     >
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Collapsible onOpenChange={setIsOpen} open={isOpen}>
         <CollapsibleTrigger
           className={cn(
             "flex w-full items-center justify-between gap-2 px-3 py-2",
             "text-left transition-colors duration-150 ease-out",
             "hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             hasExpandableContent && "cursor-pointer",
-            !hasExpandableContent && "cursor-default",
+            !hasExpandableContent && "cursor-default"
           )}
         >
           <div className="flex min-w-0 items-center gap-2">
             <StatusDot state={state} />
-            <span className="truncate font-mono text-xs font-medium text-foreground/80">
+            <span className="truncate font-medium font-mono text-foreground/80 text-xs">
               {toolPart.type}
             </span>
             <StateLabel state={state} />
           </div>
           {hasExpandableContent && (
             <Icon
-              name="chevron-down"
               className={cn(
                 "size-3.5 shrink-0 text-muted-foreground/40 transition-transform duration-200 ease-out",
-                isOpen && "rotate-180",
+                isOpen && "rotate-180"
               )}
+              name="chevron-down"
             />
           )}
         </CollapsibleTrigger>
 
         {hasExpandableContent && (
-          <CollapsibleContent
-            className="data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden"
-          >
+          <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
             <div className="space-y-2 px-3 py-2 text-xs">
               {hasInput && (
                 <div>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                  <span className="font-medium text-[10px] text-muted-foreground/50 uppercase tracking-wider">
                     Input
                   </span>
                   <div className="mt-1 max-h-40 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] leading-relaxed">
                     {Object.entries(input ?? {}).map(([key, value]) => (
-                      <div key={key} className="flex gap-1.5">
+                      <div className="flex gap-1.5" key={key}>
                         <span className="text-muted-foreground/60">{key}:</span>
-                        <span className="break-all text-foreground/80">{formatCompact(value)}</span>
+                        <span className="break-all text-foreground/80">
+                          {formatCompact(value)}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -219,11 +251,11 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
 
               {hasOutput && (
                 <div>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                  <span className="font-medium text-[10px] text-muted-foreground/50 uppercase tracking-wider">
                     Output
                   </span>
                   <div className="mt-1 max-h-48 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] leading-relaxed">
-                    <pre className="whitespace-pre-wrap wrap-break-word text-foreground/80">
+                    <pre className="wrap-break-word whitespace-pre-wrap text-foreground/80">
                       {formatCompact(output)}
                     </pre>
                   </div>
@@ -232,7 +264,7 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
 
               {state === "output-error" && errorText && (
                 <div>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-red-500/70">
+                  <span className="font-medium text-[10px] text-red-500/70 uppercase tracking-wider">
                     Error
                   </span>
                   <div className="mt-1 rounded-md border border-red-200/30 bg-red-500/5 p-2 text-[11px] text-red-600 dark:border-red-900/20 dark:text-red-400">
@@ -246,7 +278,7 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
                 <div className="space-y-2.5">
                   {/* Description */}
                   {approvalRequest?.description && (
-                    <p className="text-xs text-foreground/80">
+                    <p className="text-foreground/80 text-xs">
                       {approvalRequest.description}
                     </p>
                   )}
@@ -254,59 +286,67 @@ export function ChatTool({ toolPart, defaultOpen = true, className, onApprove, o
                   {/* SQL preview */}
                   {approvalRequest?.preview && (
                     <div>
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                      <span className="font-medium text-[10px] text-muted-foreground/50 uppercase tracking-wider">
                         SQL
                       </span>
-                      <pre className="mt-1 max-h-32 overflow-auto rounded-md bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/60 p-2 font-mono text-[11px] text-foreground/80 leading-relaxed">
                         {approvalRequest.preview}
                       </pre>
                     </div>
                   )}
 
                   {/* Warnings */}
-                  {approvalRequest?.warnings && approvalRequest.warnings.length > 0 && (
-                    <div className="space-y-1">
-                      {approvalRequest.warnings.map((warning, index) => (
-                        <div
-                          key={index}
-                          className="flex items-start gap-1.5 rounded-md border border-amber-200/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-700 dark:border-amber-800/20 dark:text-amber-400"
-                        >
-                          <Icon name="alert-triangle" className="mt-px size-3 shrink-0" />
-                          <span>{warning}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {approvalRequest?.warnings &&
+                    approvalRequest.warnings.length > 0 && (
+                      <div className="space-y-1">
+                        {approvalRequest.warnings.map((warning, index) => (
+                          <div
+                            className="flex items-start gap-1.5 rounded-md border border-amber-200/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-700 dark:border-amber-800/20 dark:text-amber-400"
+                            key={index}
+                          >
+                            <Icon
+                              className="mt-px size-3 shrink-0"
+                              name="alert-triangle"
+                            />
+                            <span>{warning}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                   {/* Approve / Reject buttons */}
                   <div className="flex items-center gap-2 pt-1">
                     <button
-                      type="button"
-                      onClick={() => toolCallId && onApprove?.(toolCallId)}
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium text-xs",
                         "bg-foreground text-background",
                         "hover:bg-foreground/90 active:bg-foreground/80",
-                        "transition-[background,transform] duration-150 ease-out active:scale-[0.97]",
+                        "transition-[background,transform] duration-150 ease-out active:scale-[0.97]"
                       )}
+                      onClick={() => toolCallId && onApprove?.(toolCallId)}
+                      type="button"
                     >
-                      <Icon name="check" className="size-3" />
+                      <Icon className="size-3" name="check" />
                       Approve
-                      <Kbd className="ml-1 h-4 min-w-4 bg-white/15 text-background/60">↵</Kbd>
+                      <Kbd className="ml-1 h-4 min-w-4 bg-white/15 text-background/60">
+                        ↵
+                      </Kbd>
                     </button>
                     <button
-                      type="button"
-                      onClick={() => toolCallId && onReject?.(toolCallId)}
                       className={cn(
-                        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium",
+                        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium text-xs",
                         "border border-border/20 bg-transparent text-muted-foreground",
                         "hover:bg-muted/30 hover:text-foreground",
-                        "transition-[background,color,transform] duration-150 ease-out active:scale-[0.97]",
+                        "transition-[background,color,transform] duration-150 ease-out active:scale-[0.97]"
                       )}
+                      onClick={() => toolCallId && onReject?.(toolCallId)}
+                      type="button"
                     >
-                      <Icon name="x" className="size-3" />
+                      <Icon className="size-3" name="x" />
                       Reject
-                      <Kbd className="ml-1 h-4 min-w-4 bg-muted/40 text-muted-foreground/50">⎋</Kbd>
+                      <Kbd className="ml-1 h-4 min-w-4 bg-muted/40 text-muted-foreground/50">
+                        ⎋
+                      </Kbd>
                     </button>
                   </div>
                 </div>

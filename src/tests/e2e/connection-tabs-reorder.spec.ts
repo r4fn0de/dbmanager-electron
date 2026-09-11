@@ -40,7 +40,7 @@ test.describe("Connection tab reorder", () => {
 
     const sourceBox = await source.boundingBox();
     const targetBox = await target.boundingBox();
-    if (!sourceBox || !targetBox) {
+    if (!(sourceBox && targetBox)) {
       throw new Error("Could not measure tabs for overlap test");
     }
 

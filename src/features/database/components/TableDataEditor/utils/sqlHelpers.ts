@@ -3,10 +3,15 @@ export function quoteIdentifier(identifier: string): string {
 }
 
 export function quoteValue(value: unknown): string {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "number")
+  if (value === null || value === undefined) {
+    return "NULL";
+  }
+  if (typeof value === "number") {
     return Number.isFinite(value) ? `${value}` : "NULL";
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  }
+  if (typeof value === "boolean") {
+    return value ? "TRUE" : "FALSE";
+  }
   if (typeof value === "object") {
     return `'${JSON.stringify(value).replaceAll("'", "''")}'::jsonb`;
   }

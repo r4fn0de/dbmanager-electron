@@ -1,16 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import type { SchemaColumn } from "@/ipc/db/types";
+import { cn } from "@/lib/utils";
 import type { RowRecord } from "../types";
 import { EditableField } from "./EditableField";
 
 interface TableEditorRowDetailsOverlayProps {
-  tableSchema: string;
-  tableName: string;
-  primaryKey: string[];
   columns: SchemaColumn[];
-  readOnly?: boolean;
-  hasDraftChanges?: boolean;
   expandedRow: {
     rowKey: string;
     row: RowRecord;
@@ -29,10 +24,15 @@ interface TableEditorRowDetailsOverlayProps {
     width: number;
     height: number;
   } | null;
+  hasDraftChanges?: boolean;
+  onClose: () => void;
+  onDiscard: () => void;
   onFieldSave: (columnName: string, rawText: string) => void;
   onSaveAll: () => void;
-  onDiscard: () => void;
-  onClose: () => void;
+  primaryKey: string[];
+  readOnly?: boolean;
+  tableName: string;
+  tableSchema: string;
 }
 
 export function TableEditorRowDetailsOverlay({
@@ -58,10 +58,10 @@ export function TableEditorRowDetailsOverlay({
         <div
           className="pointer-events-none fixed z-10 rounded-sm border border-primary/70"
           style={{
-            top: expandedRowOutline.top,
-            left: expandedRowOutline.left,
-            width: expandedRowOutline.width,
             height: expandedRowOutline.height,
+            left: expandedRowOutline.left,
+            top: expandedRowOutline.top,
+            width: expandedRowOutline.width,
           }}
         />
       )}
@@ -69,18 +69,18 @@ export function TableEditorRowDetailsOverlay({
       {expandedRow && (
         <div className="absolute inset-0 z-40">
           <button
-            type="button"
             aria-label="Close row details"
             className="absolute inset-0 bg-background/35"
             onClick={onClose}
+            type="button"
           />
           <div className="absolute inset-y-0 right-0 w-[520px] max-w-[95%] border-l bg-background shadow-2xl">
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b px-4 py-3">
-                <p className="text-left text-sm font-semibold">
+                <p className="text-left font-semibold text-sm">
                   {tableSchema}.{tableName}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {`Row #${expandedRow.index + 1}${
                     primaryKey.length > 0
                       ? ` · PK: ${primaryKey.map((column) => String(expandedRow.row[column] ?? "NULL")).join(", ")}`
@@ -92,15 +92,17 @@ export function TableEditorRowDetailsOverlay({
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
                 {expandedRowFields.map((field) => {
                   const column = columnMap.get(field.name);
-                  if (!column) return null;
+                  if (!column) {
+                    return null;
+                  }
                   return (
                     <EditableField
-                      key={field.name}
                       column={column}
-                      value={field.value}
-                      readOnly={readOnly}
                       hasPendingChange={field.hasPendingChange}
+                      key={field.name}
                       onSave={(rawText) => onFieldSave(field.name, rawText)}
+                      readOnly={readOnly}
+                      value={field.value}
                     />
                   );
                 })}
@@ -108,34 +110,36 @@ export function TableEditorRowDetailsOverlay({
 
               <div className="border-t px-4 py-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="relative flex items-center min-w-0">
+                  <div className="relative flex min-w-0 items-center">
                     <div
                       className={cn(
                         "flex items-center gap-2 overflow-hidden transition-[opacity,transform,max-width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
                         hasDraftChanges && !readOnly
-                          ? "opacity-100 scale-100 max-w-[400px]"
-                          : "opacity-0 scale-[0.95] max-w-0 pointer-events-none",
+                          ? "max-w-[400px] scale-100 opacity-100"
+                          : "pointer-events-none max-w-0 scale-[0.95] opacity-0"
                       )}
                     >
-                      <Button size="sm" onClick={onSaveAll}>
+                      <Button onClick={onSaveAll} size="sm">
                         Save All Changes
                       </Button>
-                      <Button variant="outline" size="sm" onClick={onDiscard}>
+                      <Button onClick={onDiscard} size="sm" variant="outline">
                         Discard
                       </Button>
                     </div>
                     <span
                       className={cn(
-                        "text-xs text-muted-foreground whitespace-nowrap transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+                        "whitespace-nowrap text-muted-foreground text-xs transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
                         !hasDraftChanges || readOnly
-                          ? "opacity-100 scale-100"
-                          : "opacity-0 scale-[0.95] absolute pointer-events-none",
+                          ? "scale-100 opacity-100"
+                          : "pointer-events-none absolute scale-[0.95] opacity-0"
                       )}
                     >
-                      {readOnly ? "Read-only (no primary key)." : "No pending changes."}
+                      {readOnly
+                        ? "Read-only (no primary key)."
+                        : "No pending changes."}
                     </span>
                   </div>
-                  <Button variant="outline" size="sm" onClick={onClose}>
+                  <Button onClick={onClose} size="sm" variant="outline">
                     Close
                   </Button>
                 </div>

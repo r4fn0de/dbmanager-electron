@@ -14,10 +14,10 @@ import { persistQueryClientSave } from "@tanstack/react-query-persist-client";
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
       gcTime: 5 * 60_000,
       refetchOnWindowFocus: false,
       retry: 1,
+      staleTime: 60_000,
     },
   },
 });
@@ -58,16 +58,6 @@ function createIdbStorage() {
         req.onerror = () => reject(req.error);
       });
     },
-    setItem: async (key: string, value: string): Promise<void> => {
-      const db = await openDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readwrite");
-        const store = tx.objectStore(STORE_NAME);
-        store.put(value, key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    },
     removeItem: async (key: string): Promise<void> => {
       const db = await openDb();
       return new Promise((resolve, reject) => {
@@ -78,17 +68,28 @@ function createIdbStorage() {
         tx.onerror = () => reject(tx.error);
       });
     },
+    setItem: async (key: string, value: string): Promise<void> => {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        store.put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    },
   };
 }
 
 // Only persist schema-related queries (not table-rows which can be large)
 const persistFilter = (key: readonly unknown[]) => {
   const str = String(key[0]);
-  return str === "schema-summary" || str === "table-details" || str === "db-info";
+  return (
+    str === "schema-summary" || str === "table-details" || str === "db-info"
+  );
 };
 
 persistQueryClientSave({
-  queryClient: queryClient as Parameters<typeof persistQueryClientSave>[0]["queryClient"],
   persister: {
     persistClient: async (client) => {
       // Filter to only schema-related queries before persisting
@@ -97,26 +98,29 @@ persistQueryClientSave({
         clientState: {
           ...client.clientState,
           queries: client.clientState.queries.filter((q) =>
-            persistFilter(q.queryKey as readonly unknown[]),
+            persistFilter(q.queryKey as readonly unknown[])
           ),
         },
       };
       const storage = createIdbStorage();
       await storage.setItem(PERSIST_PREFIX, JSON.stringify(filtered));
     },
-    restoreClient: async () => {
-      const storage = createIdbStorage();
-      const stored = await storage.getItem(PERSIST_PREFIX);
-      if (!stored) return undefined;
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return undefined;
-      }
-    },
     removeClient: async () => {
       const storage = createIdbStorage();
       await storage.removeItem(PERSIST_PREFIX);
     },
+    restoreClient: async () => {
+      const storage = createIdbStorage();
+      const stored = await storage.getItem(PERSIST_PREFIX);
+      if (!stored) {
+        return;
+      }
+      try {
+        return JSON.parse(stored);
+      } catch {}
+    },
   },
+  queryClient: queryClient as Parameters<
+    typeof persistQueryClientSave
+  >[0]["queryClient"],
 });

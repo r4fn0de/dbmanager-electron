@@ -95,10 +95,10 @@ describe("isLocalBaseURL", () => {
 describe("custom provider CRUD", () => {
   test("adds, updates and removes a custom provider", () => {
     const created = config.addCustomProvider({
-      label: "LM Studio",
-      baseURL: "http://localhost:1234/v1",
       apiKey: "lm-key",
+      baseURL: "http://localhost:1234/v1",
       defaultModel: "qwen3",
+      label: "LM Studio",
     });
     expect(created.id.startsWith("custom:")).toBe(true);
     expect(created.label).toBe("LM Studio");
@@ -106,10 +106,10 @@ describe("custom provider CRUD", () => {
     const info = config.getProvidersInfo();
     expect(info.customProviders).toHaveLength(1);
     expect(info.customProviders[0]).toMatchObject({
-      id: created.id,
-      label: "LM Studio",
       hasApiKey: true,
+      id: created.id,
       isLocal: true,
+      label: "LM Studio",
     });
 
     const updated = config.updateCustomProvider({
@@ -124,26 +124,32 @@ describe("custom provider CRUD", () => {
   });
 
   test("rejects duplicates and invalid input", () => {
-    config.addCustomProvider({ label: "VLLM", baseURL: "http://10.0.0.5:8000/v1" });
+    config.addCustomProvider({
+      baseURL: "http://10.0.0.5:8000/v1",
+      label: "VLLM",
+    });
     expect(() =>
-      config.addCustomProvider({ label: "vllm", baseURL: "http://10.0.0.6:8000/v1" }),
+      config.addCustomProvider({
+        baseURL: "http://10.0.0.6:8000/v1",
+        label: "vllm",
+      })
     ).toThrow(/already exists/);
     expect(() =>
-      config.addCustomProvider({ label: "Bad", baseURL: "notaurl" }),
+      config.addCustomProvider({ baseURL: "notaurl", label: "Bad" })
     ).toThrow(/Invalid base URL/);
-    expect(() => config.addCustomProvider({ label: "", baseURL: "http://x/v1" })).toThrow(
-      /name is required/,
-    );
-    expect(() => config.updateCustomProvider({ id: "custom:missing", label: "X" })).toThrow(
-      /not found/,
-    );
+    expect(() =>
+      config.addCustomProvider({ baseURL: "http://x/v1", label: "" })
+    ).toThrow(/name is required/);
+    expect(() =>
+      config.updateCustomProvider({ id: "custom:missing", label: "X" })
+    ).toThrow(/not found/);
   });
 
   test("selecting a custom provider persists and falls back on removal", () => {
     const created = config.addCustomProvider({
-      label: "Remote",
       baseURL: "https://llm.example.com/v1",
       defaultModel: "gpt-x",
+      label: "Remote",
     });
     config.updateAiSettings({ provider: created.id });
     expect(config.getAiSettings().provider).toBe(created.id);
@@ -155,14 +161,14 @@ describe("custom provider CRUD", () => {
 
   test("rejects selecting an unknown custom id", () => {
     expect(() =>
-      config.updateAiSettings({ provider: "custom:does-not-exist" }),
+      config.updateAiSettings({ provider: "custom:does-not-exist" })
     ).toThrow(/Invalid AI provider/);
   });
 
   test("stores the custom key encrypted and reports hasApiKey", () => {
     const created = config.addCustomProvider({
-      label: "Keyed",
       baseURL: "https://llm.example.com/v1",
+      label: "Keyed",
     });
     expect(config.getProvidersInfo().customProviders[0]?.hasApiKey).toBe(false);
     config.setCustomProviderApiKey(created.id, "secret-1");
@@ -177,28 +183,30 @@ describe("checkProviderEndpoint", () => {
       .fn()
       .mockRejectedValueOnce(new Error("connection refused"))
       .mockResolvedValueOnce({
-        ok: true,
         json: async () => ({ models: [{ name: "llama3" }] }),
+        ok: true,
       });
     vi.stubGlobal("fetch", fetchMock);
 
     const status = await config.checkProviderEndpoint("http://localhost:11434");
-    expect(status).toMatchObject({ reachable: true, endpoint: "api/tags" });
+    expect(status).toMatchObject({ endpoint: "api/tags", reachable: true });
     expect(status.models).toEqual([{ id: "llama3", label: "llama3" }]);
   });
 
   test("reports unreachable when every probe fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockRejectedValue(new Error("connection refused")),
+      vi.fn().mockRejectedValue(new Error("connection refused"))
     );
-    const status = await config.checkProviderEndpoint("http://localhost:9999/v1");
-    expect(status).toEqual({ reachable: false, models: [], endpoint: null });
+    const status = await config.checkProviderEndpoint(
+      "http://localhost:9999/v1"
+    );
+    expect(status).toEqual({ endpoint: null, models: [], reachable: false });
   });
 
   test("rejects invalid URLs", async () => {
     await expect(config.checkProviderEndpoint("notaurl")).rejects.toThrow(
-      /Invalid base URL/,
+      /Invalid base URL/
     );
   });
 });
@@ -206,14 +214,14 @@ describe("checkProviderEndpoint", () => {
 describe("custom models on custom providers", () => {
   test("adds, lists and removes models on a custom id", () => {
     const created = config.addCustomProvider({
-      label: "Models",
       baseURL: "http://localhost:1234/v1",
+      label: "Models",
     });
     config.addCustomModel(created.id, "qwen3:8b");
     config.addCustomModel(created.id, "qwen3:8b");
     let info = config.getProvidersInfo();
     expect(info.customProviders[0]?.customModels).toEqual([
-      { id: "qwen3:8b", label: "qwen3:8b", isCustom: true },
+      { id: "qwen3:8b", isCustom: true, label: "qwen3:8b" },
     ]);
     config.removeCustomModel(created.id, "qwen3:8b");
     info = config.getProvidersInfo();
@@ -221,8 +229,12 @@ describe("custom models on custom providers", () => {
   });
 
   test("rejects unknown provider refs", () => {
-    expect(() => config.addCustomModel("custom:nope", "m")).toThrow(/Invalid AI provider/);
-    expect(() => config.removeCustomModel("nope", "m")).toThrow(/Invalid AI provider/);
+    expect(() => config.addCustomModel("custom:nope", "m")).toThrow(
+      /Invalid AI provider/
+    );
+    expect(() => config.removeCustomModel("nope", "m")).toThrow(
+      /Invalid AI provider/
+    );
   });
 });
 
@@ -236,7 +248,9 @@ describe("legacy sync for custom providers", () => {
       | Record<string, unknown>
       | undefined;
     if (connections) {
-      for (const key of Object.keys(connections)) delete connections[key];
+      for (const key of Object.keys(connections)) {
+        delete connections[key];
+      }
       Object.assign(connections, {
         connections: [],
         defaultConnectionId: null,
@@ -248,7 +262,9 @@ describe("legacy sync for custom providers", () => {
       | Record<string, unknown>
       | undefined;
     if (secrets) {
-      for (const key of Object.keys(secrets)) delete secrets[key];
+      for (const key of Object.keys(secrets)) {
+        delete secrets[key];
+      }
       Object.assign(secrets, { values: {} });
     }
   }
@@ -260,10 +276,10 @@ describe("legacy sync for custom providers", () => {
       customModels: {},
       customProviders: [
         {
-          id: "custom:abc",
-          label: "Local LLM",
           baseURL: "http://localhost:1234/v1",
           defaultModel: "qwen3",
+          id: "custom:abc",
+          label: "Local LLM",
         },
       ],
       model: "",
@@ -280,21 +296,23 @@ describe("legacy sync for custom providers", () => {
       provider: "openai-compatible",
       type: "api",
     });
-    expect(connectionsStore.getConnectionApiKey(profile.id)).toBe("custom-secret");
+    expect(connectionsStore.getConnectionApiKey(profile.id)).toBe(
+      "custom-secret"
+    );
   });
 
   test("carries custom-added models onto the default connection", () => {
     resetConnectionStores();
     const created = config.addCustomProvider({
-      label: "WithModels",
       baseURL: "http://localhost:1234/v1",
       defaultModel: "qwen3",
+      label: "WithModels",
     });
     config.addCustomModel(created.id, "extra-model");
     config.updateAiSettings({ provider: created.id });
 
     const profile = connectionsStore.migrateLegacyAiSettings(
-      config.getAiSettings(),
+      config.getAiSettings()
     );
     expect(profile.models.map((m) => m.id)).toContain("extra-model");
     expect(profile.models.map((m) => m.id)).toContain("qwen3");

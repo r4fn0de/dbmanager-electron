@@ -5,9 +5,10 @@
  * Uses Kysely's .compile() method which returns { sql, parameters } without
  * executing the query — no real database connection needed.
  */
+
+import { Kysely, MysqlDialect, PostgresDialect } from "kysely";
 import { describe, expect, test } from "vitest";
-import { Kysely, PostgresDialect, MysqlDialect } from "kysely";
-import type { PgDatabase, MysqlDatabase } from "@/ipc/db/kysely-types";
+import type { MysqlDatabase, PgDatabase } from "@/ipc/db/kysely-types";
 
 // ---------------------------------------------------------------------------
 // Helpers — create lightweight Kysely instances for compilation-only testing
@@ -113,12 +114,12 @@ describe("PostgreSQL Kysely queries — SQL compilation", () => {
       .innerJoin("key_column_usage as kcu", (join) =>
         join
           .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-          .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+          .onRef("tc.constraint_schema", "=", "kcu.constraint_schema")
       )
       .innerJoin("constraint_column_usage as ccu", (join) =>
         join
           .onRef("ccu.constraint_name", "=", "tc.constraint_name")
-          .onRef("ccu.constraint_schema", "=", "tc.constraint_schema"),
+          .onRef("ccu.constraint_schema", "=", "tc.constraint_schema")
       )
       .select([
         "tc.table_schema",
@@ -148,7 +149,11 @@ describe("PostgreSQL Kysely queries — SQL compilation", () => {
     expect(compiled.sql).toContain("!=");
 
     // Verify all parameters — FOREIGN KEY, pg_%, information_schema
-    expect(compiled.parameters).toEqual(["FOREIGN KEY", "pg_%", "information_schema"]);
+    expect(compiled.parameters).toEqual([
+      "FOREIGN KEY",
+      "pg_%",
+      "information_schema",
+    ]);
   });
 
   test("PK query compiles for specific schema.table", () => {
@@ -157,7 +162,7 @@ describe("PostgreSQL Kysely queries — SQL compilation", () => {
       .innerJoin("key_column_usage as kcu", (join) =>
         join
           .onRef("tc.constraint_name", "=", "kcu.constraint_name")
-          .onRef("tc.constraint_schema", "=", "kcu.constraint_schema"),
+          .onRef("tc.constraint_schema", "=", "kcu.constraint_schema")
       )
       .select("kcu.column_name")
       .where("tc.constraint_type", "=", "PRIMARY KEY")
@@ -193,7 +198,12 @@ describe("PostgreSQL Kysely queries — SQL compilation", () => {
 
 describe("MySQL Kysely queries — SQL compilation", () => {
   const db = createMysqlKyselyForCompile();
-  const excludedSchemas = ["mysql", "information_schema", "performance_schema", "sys"];
+  const excludedSchemas = [
+    "mysql",
+    "information_schema",
+    "performance_schema",
+    "sys",
+  ];
 
   test("schemata query compiles with NOT IN filter", () => {
     const compiled = db
@@ -270,7 +280,7 @@ describe("MySQL Kysely queries — SQL compilation", () => {
       .innerJoin("table_constraints as tc", (join) =>
         join
           .onRef("tc.CONSTRAINT_NAME", "=", "kcu.CONSTRAINT_NAME")
-          .onRef("tc.CONSTRAINT_SCHEMA", "=", "kcu.CONSTRAINT_SCHEMA"),
+          .onRef("tc.CONSTRAINT_SCHEMA", "=", "kcu.CONSTRAINT_SCHEMA")
       )
       .select([
         "kcu.CONSTRAINT_SCHEMA",

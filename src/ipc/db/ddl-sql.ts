@@ -20,7 +20,11 @@ export function qi(dbType: DatabaseType, identifier: string): string {
 }
 
 /** Quote a qualified name: schema.table */
-export function qt(dbType: DatabaseType, schema: string, table: string): string {
+export function qt(
+  dbType: DatabaseType,
+  schema: string,
+  table: string
+): string {
   return `${qi(dbType, schema)}.${qi(dbType, table)}`;
 }
 
@@ -41,19 +45,25 @@ export function buildCreateTableSql(
     references?: string;
   }>,
   primaryKeyColumns: string[],
-  ifNotExists: boolean,
+  ifNotExists: boolean
 ): string {
   const columnDefs: string[] = [];
   for (const col of columns) {
     let def = `${qi(dbType, col.name)} ${col.dataType}`;
-    if (!col.isNullable) def += " NOT NULL";
-    if (col.defaultExpr) def += ` DEFAULT ${col.defaultExpr}`;
-    if (col.references) def += ` REFERENCES ${col.references}`;
+    if (!col.isNullable) {
+      def += " NOT NULL";
+    }
+    if (col.defaultExpr) {
+      def += ` DEFAULT ${col.defaultExpr}`;
+    }
+    if (col.references) {
+      def += ` REFERENCES ${col.references}`;
+    }
     columnDefs.push(def);
   }
   if (primaryKeyColumns.length > 0) {
     columnDefs.push(
-      `PRIMARY KEY (${primaryKeyColumns.map((c) => qi(dbType, c)).join(", ")})`,
+      `PRIMARY KEY (${primaryKeyColumns.map((c) => qi(dbType, c)).join(", ")})`
     );
   }
   // Add UNIQUE constraints for columns marked isUnique (not already in PK)
@@ -72,7 +82,7 @@ export function buildDropTableSql(
   schema: string,
   tableName: string,
   cascade: boolean,
-  ifExists: boolean,
+  ifExists: boolean
 ): string {
   const ifExistsClause = ifExists ? "IF EXISTS " : "";
   // MySQL/SQLite don't support CASCADE in DROP TABLE
@@ -84,7 +94,7 @@ export function buildRenameTableSql(
   dbType: DatabaseType,
   schema: string,
   oldName: string,
-  newName: string,
+  newName: string
 ): string {
   // MySQL uses RENAME TABLE; PostgreSQL/SQLite use ALTER TABLE ... RENAME TO
   if (dbType === "mysql" || dbType === "mariadb") {
@@ -101,11 +111,15 @@ export function buildAddColumnSql(
   dataType: string,
   isNullable: boolean,
   defaultExpr: string | undefined,
-  ifNotExists: boolean,
+  ifNotExists: boolean
 ): string {
   let def = `${qi(dbType, columnName)} ${dataType}`;
-  if (!isNullable) def += " NOT NULL";
-  if (defaultExpr) def += ` DEFAULT ${defaultExpr}`;
+  if (!isNullable) {
+    def += " NOT NULL";
+  }
+  if (defaultExpr) {
+    def += ` DEFAULT ${defaultExpr}`;
+  }
   // IF NOT EXISTS support varies by engine and version:
   //   PostgreSQL: always supported
   //   MariaDB 10.0.2+: supported
@@ -122,7 +136,7 @@ export function buildDropColumnSql(
   table: string,
   columnName: string,
   cascade: boolean,
-  ifExists: boolean,
+  ifExists: boolean
 ): string {
   const ifExistsClause = ifExists ? "IF EXISTS " : "";
   // MySQL/SQLite don't support CASCADE for DROP COLUMN
@@ -137,15 +151,23 @@ export function buildRenameColumnSql(
   oldName: string,
   newName: string,
   /** Required for MariaDB — column metadata for CHANGE COLUMN. Ignored for PostgreSQL/MySQL. */
-  columnInfo?: { columnType: string; isNullable: boolean; defaultExpr?: string | null },
+  columnInfo?: {
+    columnType: string;
+    isNullable: boolean;
+    defaultExpr?: string | null;
+  }
 ): string {
   // MariaDB < 10.5 doesn't support RENAME COLUMN — use CHANGE COLUMN instead,
   // which works in all MySQL/MariaDB versions but requires the full column definition.
   if (dbType === "mariadb") {
     const type = columnInfo?.columnType ?? "TEXT";
     const parts = [type];
-    if (!columnInfo?.isNullable) parts.push("NOT NULL");
-    if (columnInfo?.defaultExpr) parts.push(`DEFAULT ${columnInfo.defaultExpr}`);
+    if (!columnInfo?.isNullable) {
+      parts.push("NOT NULL");
+    }
+    if (columnInfo?.defaultExpr) {
+      parts.push(`DEFAULT ${columnInfo.defaultExpr}`);
+    }
     return `ALTER TABLE ${qt(dbType, schema, table)} CHANGE COLUMN ${qi(dbType, oldName)} ${qi(dbType, newName)} ${parts.join(" ")}`;
   }
   return `ALTER TABLE ${qt(dbType, schema, table)} RENAME COLUMN ${qi(dbType, oldName)} TO ${qi(dbType, newName)}`;
@@ -157,7 +179,7 @@ export function buildAlterColumnTypeSql(
   table: string,
   columnName: string,
   newType: string,
-  usingExpr: string | undefined,
+  usingExpr: string | undefined
 ): string {
   // PostgreSQL: ALTER COLUMN ... TYPE ... USING ...
   // MySQL: MODIFY COLUMN ... (no USING clause)
@@ -175,7 +197,7 @@ export function buildSetColumnNullableSql(
   columnName: string,
   isNullable: boolean,
   /** Required for MySQL — the current COLUMN_TYPE (e.g. "varchar(255)"). Ignored for PostgreSQL. */
-  columnType?: string,
+  columnType?: string
 ): string {
   if (dbType === "mysql" || dbType === "mariadb") {
     const type = columnType ?? "TEXT";
@@ -195,7 +217,7 @@ export function buildSetColumnDefaultSql(
   /** Required for MySQL — the current COLUMN_TYPE. Ignored for PostgreSQL. */
   columnType?: string,
   /** Required for MySQL — whether the column is nullable. Ignored for PostgreSQL. */
-  isNullable?: boolean,
+  isNullable?: boolean
 ): string {
   if (dbType === "mysql" || dbType === "mariadb") {
     const type = columnType ?? "TEXT";
@@ -216,7 +238,7 @@ export function buildCreateIndexSql(
   indexName: string,
   columns: string[],
   unique: boolean,
-  ifNotExists: boolean,
+  ifNotExists: boolean
 ): string {
   const uniqueKeyword = unique ? "UNIQUE " : "";
   // IF NOT EXISTS support varies by engine and version:
@@ -237,7 +259,7 @@ export function buildDropIndexSql(
   cascade: boolean,
   ifExists: boolean,
   /** Required for MySQL — the table the index belongs to. Ignored for PostgreSQL. */
-  tableName?: string,
+  tableName?: string
 ): string {
   const ifExistsClause = ifExists ? "IF EXISTS " : "";
   if (dbType === "mysql" || dbType === "mariadb") {
@@ -255,10 +277,11 @@ export function buildDropIndexSql(
 export function buildCreateSchemaSql(
   dbType: DatabaseType,
   schemaName: string,
-  ifNotExists: boolean,
+  ifNotExists: boolean
 ): string {
   const ifNotExistsClause = ifNotExists ? "IF NOT EXISTS " : "";
   // MySQL maps "schema" to "database"
-  const keyword = dbType === "mysql" || dbType === "mariadb" ? "DATABASE" : "SCHEMA";
+  const keyword =
+    dbType === "mysql" || dbType === "mariadb" ? "DATABASE" : "SCHEMA";
   return `CREATE ${keyword} ${ifNotExistsClause}${qi(dbType, schemaName)}`;
 }

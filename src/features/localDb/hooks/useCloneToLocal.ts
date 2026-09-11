@@ -1,42 +1,41 @@
 import { useCallback, useRef, useState } from "react";
-import { ipc } from "@/ipc/manager";
+import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
 import type {
   Connection,
   ConnectionInput,
   DdlScript,
   ExportSchemaResult,
-  TableRowCount,
 } from "@/ipc/db/types";
-import { LOCAL_DB_DEFAULT_PASSWORD } from "@/ipc/db/constants";
+import { ipc } from "@/ipc/manager";
 
 export interface CloneToLocalTableSelection {
-  schema: string;
-  table: string;
   importData: boolean;
   rowCount?: number;
+  schema: string;
+  table: string;
 }
 
 export interface CloneToLocalProgress {
-  stage: "schema" | "data" | "indexes" | "constraints" | "complete" | "error";
   currentTable?: string;
+  message: string;
+  rowsProcessed: number;
+  stage: "schema" | "data" | "indexes" | "constraints" | "complete" | "error";
   tablesProcessed: number;
   totalTables: number;
-  rowsProcessed: number;
-  message: string;
 }
 
 interface UseCloneToLocalReturn {
-  isLoading: boolean;
-  progress: CloneToLocalProgress | null;
-  error: string | null;
-  exportSchema: (connectionId: string) => Promise<ExportSchemaResult | null>;
+  cancelClone: () => void;
   cloneToLocal: (
     sourceConnection: Connection,
     targetName: string,
     selectedTables: CloneToLocalTableSelection[],
-    postgresVersion?: string,
+    postgresVersion?: string
   ) => Promise<Connection | null>;
-  cancelClone: () => void;
+  error: string | null;
+  exportSchema: (connectionId: string) => Promise<ExportSchemaResult | null>;
+  isLoading: boolean;
+  progress: CloneToLocalProgress | null;
   reset: () => void;
 }
 
@@ -81,11 +80,13 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
       try {
         return await ipc.client.db.exportSchemaDdl({ id: connectionId });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to export schema");
+        setError(
+          err instanceof Error ? err.message : "Failed to export schema"
+        );
         return null;
       }
     },
-    [],
+    []
   );
 
   const cloneToLocal = useCallback(
@@ -93,7 +94,7 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
       sourceConnection: Connection,
       targetName: string,
       selectedTables: CloneToLocalTableSelection[],
-      postgresVersion?: string,
+      postgresVersion?: string
     ): Promise<Connection | null> => {
       const normalizedTargetName = targetName.trim();
       if (!normalizedTargetName) {
@@ -104,11 +105,11 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
       setIsLoading(true);
       setError(null);
       setProgress({
+        message: "Exporting schema from source database...",
+        rowsProcessed: 0,
         stage: "schema",
         tablesProcessed: 0,
         totalTables: selectedTables.length,
-        rowsProcessed: 0,
-        message: "Exporting schema from source database...",
       });
 
       let createdLocalDbId: string | null = null;
@@ -135,37 +136,41 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
 
         // Step 2: Create local database
         setProgress({
+          message: "Creating local database...",
+          rowsProcessed: 0,
           stage: "schema",
           tablesProcessed: 0,
           totalTables: selectedTables.length,
-          rowsProcessed: 0,
-          message: "Creating local database...",
         });
 
         const password = LOCAL_DB_DEFAULT_PASSWORD;
 
         // Find an available port with fallback logic (avoids hard dependency on extra RPC endpoints)
-        let localDb: Awaited<ReturnType<typeof ipc.client.db.createLocalDatabase>> | null = null;
+        let localDb: Awaited<
+          ReturnType<typeof ipc.client.db.createLocalDatabase>
+        > | null = null;
         let lastCreateError: unknown = null;
 
         for (let i = 0; i < PORT_ATTEMPTS; i++) {
           const port = PORT_START + i;
           try {
             localDb = await ipc.client.db.createLocalDatabase({
-              name: normalizedTargetName,
+              autoStart: true,
               databaseName: "postgres",
-              username: "postgres",
+              name: normalizedTargetName,
               password,
               port,
               postgresVersion: postgresVersion || "16.13.0",
-              autoStart: true,
+              username: "postgres",
             });
             break;
           } catch (err) {
             lastCreateError = err;
             const message = getErrorMessage(err).toLowerCase();
             if (!message.includes("already in use")) {
-              throw new Error(normalizeCloneError(err, "local database creation"));
+              throw new Error(
+                normalizeCloneError(err, "local database creation")
+              );
             }
           }
         }
@@ -174,19 +179,19 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           throw new Error(
             normalizeCloneError(
               lastCreateError ?? "No available local port",
-              "local database creation",
-            ),
+              "local database creation"
+            )
           );
         }
         createdLocalDbId = localDb.id;
 
         // Wait for database to be ready using polling with retry
         setProgress({
+          message: "Waiting for local database to be ready...",
+          rowsProcessed: 0,
           stage: "schema",
           tablesProcessed: 0,
           totalTables: selectedTables.length,
-          rowsProcessed: 0,
-          message: "Waiting for local database to be ready...",
         });
 
         try {
@@ -194,44 +199,48 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
             connectionString: localDb.connection_string,
           });
         } catch (err) {
-          throw new Error(normalizeCloneError(err, "waiting for local database"));
+          throw new Error(
+            normalizeCloneError(err, "waiting for local database")
+          );
         }
 
         // Save the connection immediately so subsequent IPC calls can find it
         const localConnection: Connection = {
-          id: localDb.id,
-          name: localDb.name,
-          db_type: "postgresql",
-          host: "localhost",
-          port: localDb.port ?? 5432,
+          connection_string: localDb.connection_string,
           database: localDb.database_name || "postgres",
-          username: localDb.username || "postgres",
+          db_type: "postgresql",
+          engine_version:
+            localDb.postgres_version ?? postgresVersion ?? "16.13.0",
+          host: "localhost",
+          id: localDb.id,
+          is_local: true,
+          local_auto_start: localDb.auto_start,
+          name: localDb.name,
           password,
+          port: localDb.port ?? 5432,
+          postgres_version:
+            localDb.postgres_version ?? postgresVersion ?? "16.13.0",
           ssl_mode: "disable",
           url: localDb.connection_string,
-          is_local: true,
-          connection_string: localDb.connection_string,
-          engine_version: localDb.postgres_version ?? postgresVersion ?? "16.13.0",
-          postgres_version: localDb.postgres_version ?? postgresVersion ?? "16.13.0",
-          local_auto_start: localDb.auto_start,
+          username: localDb.username || "postgres",
         };
 
         const connectionInput: ConnectionInput = {
-          id: localConnection.id,
-          name: localConnection.name,
-          db_type: localConnection.db_type,
-          host: localConnection.host,
-          port: localConnection.port,
+          connection_string: localConnection.connection_string,
           database: localConnection.database,
-          username: localConnection.username,
+          db_type: localConnection.db_type,
+          engine_version: localConnection.engine_version,
+          host: localConnection.host,
+          id: localConnection.id,
+          is_local: localConnection.is_local,
+          local_auto_start: localConnection.local_auto_start,
+          name: localConnection.name,
           password: localConnection.password,
+          port: localConnection.port,
+          postgres_version: localConnection.postgres_version,
           ssl_mode: localConnection.ssl_mode,
           url: localConnection.url,
-          is_local: localConnection.is_local,
-          connection_string: localConnection.connection_string,
-          engine_version: localConnection.engine_version,
-          postgres_version: localConnection.postgres_version,
-          local_auto_start: localConnection.local_auto_start,
+          username: localConnection.username,
         };
 
         try {
@@ -247,58 +256,62 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
 
         // Step 3: Execute schema DDL on local database
         setProgress({
+          message: "Creating schema structure...",
+          rowsProcessed: 0,
           stage: "schema",
           tablesProcessed: 0,
           totalTables: selectedTables.length,
-          rowsProcessed: 0,
-          message: "Creating schema structure...",
         });
 
         // Separate scripts by type for proper execution order
         const sequenceScripts = schemaResult.scripts.filter(
-          (s: DdlScript) => s.type === "sequence",
+          (s: DdlScript) => s.type === "sequence"
         );
         const schemaScripts = schemaResult.scripts.filter(
-          (s: DdlScript) => s.type === "schema",
+          (s: DdlScript) => s.type === "schema"
         );
         const typeScripts = schemaResult.scripts.filter(
-          (s: DdlScript) => s.type === "type",
+          (s: DdlScript) => s.type === "type"
         );
         const tableScripts = schemaResult.scripts.filter(
-          (s: DdlScript) => s.type === "table",
+          (s: DdlScript) => s.type === "table"
         );
         const indexScripts = schemaResult.scripts.filter(
-          (s: DdlScript) => s.type === "index",
+          (s: DdlScript) => s.type === "index"
         );
         const constraintScripts = schemaResult.scripts.filter(
-          (s: DdlScript) => s.type === "constraint",
+          (s: DdlScript) => s.type === "constraint"
         );
 
         // Execute in strict order and fail fast on base schema errors.
         const runBatch = async (
           scripts: DdlScript[],
           step: string,
-          failOnError: boolean,
+          failOnError: boolean
         ): Promise<void> => {
-          if (scripts.length === 0) return;
+          if (scripts.length === 0) {
+            return;
+          }
 
           const result = await ipc.client.db.executeBatchDdl({
             connectionId: localDb.id,
             statements: scripts.map((s: DdlScript) => s.sql),
           });
 
-          if (result.errors.length === 0) return;
+          if (result.errors.length === 0) {
+            return;
+          }
 
           if (failOnError) {
             const first = result.errors[0];
             throw new Error(
-              `Failed at ${step}: ${first.error}\nSQL: ${first.sql}`,
+              `Failed at ${step}: ${first.error}\nSQL: ${first.sql}`
             );
           }
 
           console.warn(
             `[clone] ${result.errors.length} ${step} error(s):`,
-            result.errors,
+            result.errors
           );
         };
 
@@ -324,12 +337,12 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           const table = tablesWithData[i];
 
           setProgress({
-            stage: "data",
             currentTable: `${table.schema}.${table.table}`,
+            message: `Importing data for ${table.schema}.${table.table}...`,
+            rowsProcessed,
+            stage: "data",
             tablesProcessed: i,
             totalTables: tablesWithData.length,
-            rowsProcessed,
-            message: `Importing data for ${table.schema}.${table.table}...`,
           });
 
           // Export data in batches and import using parameterized queries
@@ -337,21 +350,23 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           let offset = 0;
 
           while (hasMore && !cancelRef.current) {
-            let dataResult: Awaited<ReturnType<typeof ipc.client.db.exportTableData>>;
+            let dataResult: Awaited<
+              ReturnType<typeof ipc.client.db.exportTableData>
+            >;
             try {
               dataResult = await ipc.client.db.exportTableData({
+                batchSize: BATCH_SIZE,
                 connectionId: sourceConnection.id,
+                offset,
                 schema: table.schema,
                 table: table.table,
-                batchSize: BATCH_SIZE,
-                offset,
               });
             } catch (err) {
               throw new Error(
                 normalizeCloneError(
                   err,
-                  `exporting table data (${table.schema}.${table.table})`,
-                ),
+                  `exporting table data (${table.schema}.${table.table})`
+                )
               );
             }
 
@@ -363,18 +378,18 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
             let imported: number;
             try {
               imported = await ipc.client.db.importTableRows({
+                columns: dataResult.columns,
                 connectionId: localDb.id,
+                rows: dataResult.rows,
                 schema: table.schema,
                 table: table.table,
-                columns: dataResult.columns,
-                rows: dataResult.rows,
               });
             } catch (err) {
               throw new Error(
                 normalizeCloneError(
                   err,
-                  `importing table rows (${table.schema}.${table.table})`,
-                ),
+                  `importing table rows (${table.schema}.${table.table})`
+                )
               );
             }
 
@@ -383,12 +398,12 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
             offset += dataResult.rows.length;
 
             setProgress({
-              stage: "data",
               currentTable: `${table.schema}.${table.table}`,
+              message: `Imported ${rowsProcessed} rows into ${table.schema}.${table.table}...`,
+              rowsProcessed,
+              stage: "data",
               tablesProcessed: i,
               totalTables: tablesWithData.length,
-              rowsProcessed,
-              message: `Imported ${rowsProcessed} rows into ${table.schema}.${table.table}...`,
             });
           }
         }
@@ -400,14 +415,16 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
         // Step 5: Apply foreign key constraints last (after all data is imported)
         if (constraintScripts.length > 0) {
           setProgress({
+            message: "Applying foreign key constraints...",
+            rowsProcessed,
             stage: "constraints",
             tablesProcessed: tablesWithData.length,
             totalTables: tablesWithData.length,
-            rowsProcessed,
-            message: "Applying foreign key constraints...",
           });
 
-          let constraintResult: Awaited<ReturnType<typeof ipc.client.db.executeBatchDdl>>;
+          let constraintResult: Awaited<
+            ReturnType<typeof ipc.client.db.executeBatchDdl>
+          >;
           try {
             constraintResult = await ipc.client.db.executeBatchDdl({
               connectionId: localDb.id,
@@ -420,18 +437,18 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           if (constraintResult.errors.length > 0) {
             console.warn(
               `[clone] ${constraintResult.errors.length} constraint error(s):`,
-              constraintResult.errors,
+              constraintResult.errors
             );
           }
         }
 
         // Step 6: Done
         setProgress({
+          message: "Clone completed successfully!",
+          rowsProcessed,
           stage: "complete",
           tablesProcessed: tablesWithData.length,
           totalTables: tablesWithData.length,
-          rowsProcessed,
-          message: "Clone completed successfully!",
         });
 
         return localConnection;
@@ -439,11 +456,13 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
         // Best-effort cleanup for partially created local resources when clone fails.
         if (savedLocalConnectionId) {
           try {
-            await ipc.client.db.deleteConnection({ id: savedLocalConnectionId });
+            await ipc.client.db.deleteConnection({
+              id: savedLocalConnectionId,
+            });
           } catch (cleanupErr) {
             console.warn(
               "[clone] Failed to cleanup local connection:",
-              cleanupErr,
+              cleanupErr
             );
           }
         }
@@ -451,7 +470,10 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           try {
             await ipc.client.db.deleteLocalDatabase({ id: createdLocalDbId });
           } catch (cleanupErr) {
-            console.warn("[clone] Failed to cleanup local database:", cleanupErr);
+            console.warn(
+              "[clone] Failed to cleanup local database:",
+              cleanupErr
+            );
           }
         }
 
@@ -459,27 +481,27 @@ export function useCloneToLocal(): UseCloneToLocalReturn {
           err instanceof Error ? err.message : "Clone to local failed";
         setError(errorMessage);
         setProgress({
+          message: errorMessage,
+          rowsProcessed: 0,
           stage: "error",
           tablesProcessed: 0,
           totalTables: selectedTables.length,
-          rowsProcessed: 0,
-          message: errorMessage,
         });
         return null;
       } finally {
         setIsLoading(false);
       }
     },
-    [],
+    []
   );
 
   return {
-    isLoading,
-    progress,
+    cancelClone,
+    cloneToLocal,
     error,
     exportSchema,
-    cloneToLocal,
-    cancelClone,
+    isLoading,
+    progress,
     reset,
   };
 }

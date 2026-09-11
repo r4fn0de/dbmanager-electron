@@ -7,21 +7,24 @@
  */
 
 interface ActiveQuery {
-  requestId: string;
-  connectionId?: string;
   abortController: AbortController;
+  connectionId?: string;
+  requestId: string;
   startedAt: number;
 }
 
 const activeQueries = new Map<string, ActiveQuery>();
 
 /** Register a new query and return its AbortController. */
-export function registerQuery(requestId: string, connectionId?: string): AbortController {
+export function registerQuery(
+  requestId: string,
+  connectionId?: string
+): AbortController {
   const abortController = new AbortController();
   activeQueries.set(requestId, {
-    requestId,
-    connectionId,
     abortController,
+    connectionId,
+    requestId,
     startedAt: Date.now(),
   });
   return abortController;
@@ -30,7 +33,9 @@ export function registerQuery(requestId: string, connectionId?: string): AbortCo
 /** Cancel a running query by requestId. Returns true if found and aborted. */
 export function cancelQuery(requestId: string): boolean {
   const query = activeQueries.get(requestId);
-  if (!query) return false;
+  if (!query) {
+    return false;
+  }
   query.abortController.abort();
   activeQueries.delete(requestId);
   return true;
@@ -48,7 +53,9 @@ export function getActiveQueryCount(): number {
 
 export function hasActiveQueryForConnection(connectionId: string): boolean {
   for (const query of activeQueries.values()) {
-    if (query.connectionId === connectionId) return true;
+    if (query.connectionId === connectionId) {
+      return true;
+    }
   }
   return false;
 }

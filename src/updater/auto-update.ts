@@ -11,25 +11,25 @@ export type UpdateStage =
   | "error";
 
 export interface UpdateStatus {
-  stage: UpdateStage;
-  enabled: boolean;
-  currentVersion: string;
   availableVersion: string | null;
+  currentVersion: string;
   downloadProgress: number;
+  enabled: boolean;
+  feedUrl: string | null;
   lastCheckedAt: string | null;
   lastError: string | null;
-  feedUrl: string | null;
+  stage: UpdateStage;
 }
 
 const updateStatus: UpdateStatus = {
-  stage: "disabled",
-  enabled: false,
-  currentVersion: app.getVersion(),
   availableVersion: null,
+  currentVersion: app.getVersion(),
   downloadProgress: 0,
+  enabled: false,
+  feedUrl: null,
   lastCheckedAt: null,
   lastError: "Automatic updates are disabled. Use latest.json manual updates.",
-  feedUrl: null,
+  stage: "disabled",
 };
 
 export function initializeAutoUpdates(): void {

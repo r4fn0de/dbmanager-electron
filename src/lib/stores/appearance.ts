@@ -2,27 +2,26 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 interface AppearanceState {
-  solidBackground: boolean;
-  setSolidBackground: (value: boolean) => void;
-  themePreset: "default" | "neo";
-  setThemePreset: (value: "default" | "neo") => void;
   hasHydrated: boolean;
   setHasHydrated: (value: boolean) => void;
+  setSolidBackground: (value: boolean) => void;
+  setThemePreset: (value: "default" | "neo") => void;
+  solidBackground: boolean;
+  themePreset: "default" | "neo";
 }
 
 export const useAppearanceStore = create<AppearanceState>()(
   persist(
     (set) => ({
-      solidBackground: false,
-      setSolidBackground: (value) => set({ solidBackground: value }),
-      themePreset: "default",
-      setThemePreset: (value) => set({ themePreset: value }),
       hasHydrated: false,
       setHasHydrated: (value) => set({ hasHydrated: value }),
+      setSolidBackground: (value) => set({ solidBackground: value }),
+      setThemePreset: (value) => set({ themePreset: value }),
+      solidBackground: false,
+      themePreset: "default",
     }),
     {
       name: "appearance:v2",
-      storage: createJSONStorage(() => localStorage),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -30,6 +29,7 @@ export const useAppearanceStore = create<AppearanceState>()(
         solidBackground: state.solidBackground,
         themePreset: state.themePreset,
       }),
-    },
-  ),
+      storage: createJSONStorage(() => localStorage),
+    }
+  )
 );

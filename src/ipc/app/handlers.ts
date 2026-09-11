@@ -8,21 +8,15 @@ import {
 } from "@/updater/auto-update";
 import { checkManualUpdate } from "@/updater/manual-update";
 
-export const currentPlatfom = os.handler(() => {
-  return process.platform;
-});
+export const currentPlatfom = os.handler(() => process.platform);
 
-export const appVersion = os.handler(() => {
-  return app.getVersion();
-});
+export const appVersion = os.handler(() => app.getVersion());
 
-export const updateStatus = os.handler(() => {
-  return getAutoUpdateStatus();
-});
+export const updateStatus = os.handler(() => getAutoUpdateStatus());
 
-export const checkForUpdates = os.handler(async () => {
-  return await checkForUpdatesNow();
-});
+export const checkForUpdates = os.handler(
+  async () => await checkForUpdatesNow()
+);
 
 export const restartAndInstallUpdate = os
   .input(z.object({ confirm: z.literal(true) }))
@@ -30,6 +24,6 @@ export const restartAndInstallUpdate = os
     restartToApplyUpdate();
   });
 
-export const checkManualUpdateInfo = os.handler(async () => {
-  return await checkManualUpdate();
-});
+export const checkManualUpdateInfo = os.handler(
+  async () => await checkManualUpdate()
+);

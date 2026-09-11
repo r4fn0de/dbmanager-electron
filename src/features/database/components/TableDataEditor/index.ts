@@ -1,2 +1,7 @@
 export { TableDataEditor } from "./TableDataEditor";
-export type { TableDataEditorProps, RowRecord, RowUpdateDraft, DeleteDraft } from "./types";
+export type {
+  DeleteDraft,
+  RowRecord,
+  RowUpdateDraft,
+  TableDataEditorProps,
+} from "./types";

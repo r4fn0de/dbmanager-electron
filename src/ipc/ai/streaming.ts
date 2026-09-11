@@ -10,52 +10,50 @@
  * - Reduce prompt-injection risk from schema/memory context
  * - Keep memory persistence best-effort and non-blocking
  */
+
+import { type ModelMessage, smoothStream, stepCountIs, streamText } from "ai";
 import {
-  ipcMain,
   BrowserWindow,
   type IpcMainEvent,
+  ipcMain,
   type WebContents,
 } from "electron";
-import {
-  streamText,
-  type ModelMessage,
-  stepCountIs,
-  smoothStream,
-} from "ai";
-
-import { getCurrentModel, getAiSettings, getPrivacySettings } from "./config";
-import { createAiTools, type ToolApprovalFn } from "./tools";
 import { AI_IPC_CHANNELS } from "@/constants";
-import type { DatabaseType } from "@/ipc/db/types";
 import { loadConnections } from "@/ipc/db/connection-store";
-import type { ToolApprovalRequestPayload, ToolApprovalResponsePayload } from "@/shared/ai/streaming-contracts";
-import type { PrivacySettings } from "@/shared/ai/streaming-contracts";
-import {
-  saveMemory,
-  searchSimilarMemories,
-  searchMemoriesByText,
-  getRecentMemories,
-} from "./memory-store";
+import type { DatabaseType } from "@/ipc/db/types";
+import type {
+  PrivacySettings,
+  ToolApprovalRequestPayload,
+  ToolApprovalResponsePayload,
+} from "@/shared/ai/streaming-contracts";
+import { getAiSettings, getCurrentModel, getPrivacySettings } from "./config";
 import {
   generateEmbedding,
   getEmbeddingStatus,
   optimizeQueryForSearch,
 } from "./embedding-service";
+import {
+  getRecentMemories,
+  saveMemory,
+  searchMemoriesByText,
+  searchSimilarMemories,
+} from "./memory-store";
+import { createAiTools, type ToolApprovalFn } from "./tools";
 
 // Keep tool loops short to avoid repeated "ready" calls and excessive retries.
 // 3 steps still allows: plan -> tool execution -> final response.
 const MAX_TOOL_STEPS = 3;
 
 const CHAT_TIMEOUT = {
-  totalMs: 120_000,
-  stepMs: 60_000,
   chunkMs: 30_000,
+  stepMs: 60_000,
+  totalMs: 120_000,
 } as const;
 
 const INLINE_TIMEOUT = {
-  totalMs: 60_000,
-  stepMs: 30_000,
   chunkMs: 20_000,
+  stepMs: 30_000,
+  totalMs: 60_000,
 } as const;
 
 const MAX_SCHEMA_CONTEXT_CHARS = 24_000;
@@ -64,7 +62,7 @@ const MAX_MEMORY_QUERY_CHARS = 220;
 const MAX_MEMORY_RESPONSE_CHARS = 500;
 
 /** Context limits for local models (tighter to fit smaller context windows) */
-const LOCAL_MAX_SCHEMA_CONTEXT_CHARS = 8_000;
+const LOCAL_MAX_SCHEMA_CONTEXT_CHARS = 8000;
 const LOCAL_MAX_MEMORY_MESSAGES = 3;
 const LOCAL_MAX_SIMILAR_QUERIES = 1;
 
@@ -77,12 +75,6 @@ interface ChatStartInput {
   chatId: string;
   /** Connection ID for the active database (optional in global mode) */
   connectionId: string | null;
-  /** Connection ID mentioned via @mention (optional) */
-  mentionedConnectionId?: string | null;
-  /** Database type (postgresql, mysql, etc.) */
-  dbType: DatabaseType;
-  /** Optional schema context to inject into system prompt */
-  schemaContext?: string;
   /** Optional connection metadata so the AI knows host/port/local-vs-remote */
   connectionInfo?: {
     name: string;
@@ -92,6 +84,16 @@ interface ChatStartInput {
     isLocal?: boolean;
     branch?: string | null;
   };
+  /** Database type (postgresql, mysql, etc.) */
+  dbType: DatabaseType;
+  /** Connection ID mentioned via @mention (optional) */
+  mentionedConnectionId?: string | null;
+  /** Chat messages in ModelMessage format */
+  messages: ModelMessage[];
+  /** Privacy settings for context gating */
+  privacySettings?: PrivacySettings;
+  /** Optional schema context to inject into system prompt */
+  schemaContext?: string;
   /** Global snapshot of all user connections for cross-connection questions */
   userConnectionsContext?: {
     total: number;
@@ -107,44 +109,47 @@ interface ChatStartInput {
       scope: "local" | "remote";
     }>;
   };
-  /** Chat messages in ModelMessage format */
-  messages: ModelMessage[];
-  /** Privacy settings for context gating */
-  privacySettings?: PrivacySettings;
 }
 
 interface InlineGenerateStartInput {
-  /** Unique ID for this inline generation request */
-  requestId: string;
   /** Database type (postgresql, mysql, etc.) */
   dbType: DatabaseType;
   /** Natural language instruction */
   prompt: string;
-  /** Existing SQL/command to update (optional) */
-  sql?: string;
+  /** Unique ID for this inline generation request */
+  requestId: string;
   /** Optional schema context */
   schemaContext?: string;
+  /** Existing SQL/command to update (optional) */
+  sql?: string;
 }
 
 interface MemoryContextData {
   mode: "semantic" | "text-fallback";
   recentMessages: Array<{ role: "user" | "assistant"; content: string }>;
-  similarQueries: Array<{ query: string; response: string; similarity: number }>;
+  similarQueries: Array<{
+    query: string;
+    response: string;
+    similarity: number;
+  }>;
 }
 
 const activeAbortControllers = new Map<string, AbortController>();
 const activeInlineAbortControllers = new Map<string, AbortController>();
 
 /** Pending tool approvals — keyed by `${chatId}:${toolCallId}` */
-const pendingApprovals = new Map<string, {
-  resolve: (approved: boolean) => void;
-  reject: (reason?: unknown) => void;
-}>();
+const pendingApprovals = new Map<
+  string,
+  {
+    resolve: (approved: boolean) => void;
+    reject: (reason?: unknown) => void;
+  }
+>();
 
 let handlersRegistered = false;
 
 function isUsableWebContents(
-  contents: WebContents | null | undefined,
+  contents: WebContents | null | undefined
 ): contents is WebContents {
   return Boolean(contents && !contents.isDestroyed());
 }
@@ -152,9 +157,11 @@ function isUsableWebContents(
 function safeSend(
   contents: WebContents | null | undefined,
   channel: string,
-  payload: unknown,
+  payload: unknown
 ): void {
-  if (!isUsableWebContents(contents)) return;
+  if (!isUsableWebContents(contents)) {
+    return;
+  }
 
   try {
     contents.send(channel, payload);
@@ -174,7 +181,9 @@ function getSenderWindow(event: IpcMainEvent): BrowserWindow | null {
 
 function abortStream(chatId: string): void {
   const controller = activeAbortControllers.get(chatId);
-  if (!controller) return;
+  if (!controller) {
+    return;
+  }
 
   controller.abort();
   activeAbortControllers.delete(chatId);
@@ -190,7 +199,9 @@ function abortStream(chatId: string): void {
 
 function abortInlineStream(requestId: string): void {
   const controller = activeInlineAbortControllers.get(requestId);
-  if (!controller) return;
+  if (!controller) {
+    return;
+  }
 
   controller.abort();
   activeInlineAbortControllers.delete(requestId);
@@ -211,24 +222,24 @@ function approvalKey(chatId: string, toolCallId: string): string {
  */
 function createIpcApprovalFn(
   contents: WebContents,
-  chatId: string,
+  chatId: string
 ): ToolApprovalFn {
   return async (request) => {
     const key = approvalKey(chatId, request.toolCallId);
 
     // Create a promise that will be resolved when the renderer responds
     const approvalPromise = new Promise<boolean>((resolve, reject) => {
-      pendingApprovals.set(key, { resolve, reject });
+      pendingApprovals.set(key, { reject, resolve });
     });
 
     // Send approval request to renderer
     const payload: ToolApprovalRequestPayload = {
-      chatId,
-      toolCallId: request.toolCallId,
-      toolName: request.toolName,
       args: request.args,
+      chatId,
       description: request.description,
       preview: request.preview,
+      toolCallId: request.toolCallId,
+      toolName: request.toolName,
       warnings: request.warnings,
     };
 
@@ -256,24 +267,29 @@ function createIpcApprovalFn(
 /** Handle a tool approval response from the renderer. */
 function onToolApprovalResponse(
   _event: IpcMainEvent,
-  payload: ToolApprovalResponsePayload,
+  payload: ToolApprovalResponsePayload
 ): void {
   const key = approvalKey(payload.chatId, payload.toolCallId);
   const entry = pendingApprovals.get(key);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
 
   pendingApprovals.delete(key);
   entry.resolve(payload.approved);
 }
 
 function isAbortError(err: unknown): boolean {
-  if (!err) return false;
+  if (!err) {
+    return false;
+  }
 
   if (err instanceof Error && err.name === "AbortError") {
     return true;
   }
 
-  const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+  const message =
+    err instanceof Error ? `${err.name}: ${err.message}` : String(err);
   return /abort/i.test(message);
 }
 
@@ -299,7 +315,9 @@ function isValidInlineInput(input: InlineGenerateStartInput): boolean {
 }
 
 function truncateText(value: string, max: number): string {
-  if (value.length <= max) return value;
+  if (value.length <= max) {
+    return value;
+  }
   return `${value.slice(0, max)}...`;
 }
 
@@ -315,9 +333,11 @@ function sanitizeForPrompt(value: string, maxChars: number): string {
 function formatUntrustedSection(
   title: string,
   value: string | undefined,
-  maxChars: number,
+  maxChars: number
 ): string {
-  if (!value?.trim()) return "";
+  if (!value?.trim()) {
+    return "";
+  }
 
   const sanitized = sanitizeForPrompt(value, maxChars);
   return `
@@ -339,42 +359,78 @@ function createMessageId(scopeId: string, role: "user" | "assistant"): string {
 function buildEnhancedErrorMessage(
   err: unknown,
   providerName: string,
-  modelId: string | undefined,
+  modelId: string | undefined
 ): string {
   const rawMessage = err instanceof Error ? err.message : String(err);
   const errorName = err instanceof Error ? err.name : "UnknownError";
 
   const prefix = modelId ? `[${providerName}/${modelId}]` : `[${providerName}]`;
 
-  if (rawMessage.includes("401") || rawMessage.toLowerCase().includes("unauthorized") || rawMessage.toLowerCase().includes("invalid api key")) {
+  if (
+    rawMessage.includes("401") ||
+    rawMessage.toLowerCase().includes("unauthorized") ||
+    rawMessage.toLowerCase().includes("invalid api key")
+  ) {
     return `${prefix} Authentication failed. Check that your ${providerName} API key is correct and has not expired.`;
   }
 
-  if (rawMessage.includes("429") || rawMessage.toLowerCase().includes("rate limit") || rawMessage.toLowerCase().includes("too many requests")) {
+  if (
+    rawMessage.includes("429") ||
+    rawMessage.toLowerCase().includes("rate limit") ||
+    rawMessage.toLowerCase().includes("too many requests")
+  ) {
     return `${prefix} Rate limit exceeded. Wait a moment and try again, or check your ${providerName} plan limits.`;
   }
 
-  if (rawMessage.includes("402") || rawMessage.toLowerCase().includes("insufficient") || rawMessage.toLowerCase().includes("quota") || rawMessage.toLowerCase().includes("billing")) {
+  if (
+    rawMessage.includes("402") ||
+    rawMessage.toLowerCase().includes("insufficient") ||
+    rawMessage.toLowerCase().includes("quota") ||
+    rawMessage.toLowerCase().includes("billing")
+  ) {
     return `${prefix} Billing or quota issue. Check your ${providerName} account has sufficient credits.`;
   }
 
-  if (rawMessage.includes("503") || rawMessage.includes("502") || rawMessage.includes("504") || rawMessage.toLowerCase().includes("service unavailable") || rawMessage.toLowerCase().includes("overloaded")) {
+  if (
+    rawMessage.includes("503") ||
+    rawMessage.includes("502") ||
+    rawMessage.includes("504") ||
+    rawMessage.toLowerCase().includes("service unavailable") ||
+    rawMessage.toLowerCase().includes("overloaded")
+  ) {
     return `${prefix} The AI provider is temporarily unavailable. Try again in a few moments.`;
   }
 
-  if (rawMessage.toLowerCase().includes("not found") || rawMessage.toLowerCase().includes("does not exist") || rawMessage.toLowerCase().includes("unknown model") || rawMessage.toLowerCase().includes("model_not_found")) {
+  if (
+    rawMessage.toLowerCase().includes("not found") ||
+    rawMessage.toLowerCase().includes("does not exist") ||
+    rawMessage.toLowerCase().includes("unknown model") ||
+    rawMessage.toLowerCase().includes("model_not_found")
+  ) {
     return `${prefix} Model "${modelId ?? "unknown"}" is not available or does not exist. Update the model in AI Settings.`;
   }
 
-  if (rawMessage.toLowerCase().includes("timeout") || rawMessage.toLowerCase().includes("timed out")) {
+  if (
+    rawMessage.toLowerCase().includes("timeout") ||
+    rawMessage.toLowerCase().includes("timed out")
+  ) {
     return `${prefix} The request timed out. The model took too long to respond. Try a simpler query or switch to a faster model.`;
   }
 
-  if (rawMessage.toLowerCase().includes("content filter") || rawMessage.toLowerCase().includes("safety") || rawMessage.toLowerCase().includes("moderation")) {
+  if (
+    rawMessage.toLowerCase().includes("content filter") ||
+    rawMessage.toLowerCase().includes("safety") ||
+    rawMessage.toLowerCase().includes("moderation")
+  ) {
     return `${prefix} The response was blocked by content moderation. Rephrase your question.`;
   }
 
-  if (rawMessage.toLowerCase().includes("context length") || rawMessage.toLowerCase().includes("context_length") || rawMessage.toLowerCase().includes("maximum context") || rawMessage.toLowerCase().includes("token limit")) {
+  if (
+    rawMessage.toLowerCase().includes("context length") ||
+    rawMessage.toLowerCase().includes("context_length") ||
+    rawMessage.toLowerCase().includes("maximum context") ||
+    rawMessage.toLowerCase().includes("token limit")
+  ) {
     return `${prefix} Context limit exceeded. The conversation is too long for this model. Start a new conversation.`;
   }
 
@@ -385,13 +441,14 @@ function buildEnhancedErrorMessage(
   return `${prefix} ${rawMessage}`;
 }
 
-function findLastUserMessage(messages: ModelMessage[]): ModelMessage | undefined {
+function findLastUserMessage(
+  messages: ModelMessage[]
+): ModelMessage | undefined {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i]?.role === "user") {
       return messages[i];
     }
   }
-  return undefined;
 }
 
 function getIdentifierQuote(dbType: DatabaseType): string {
@@ -400,8 +457,6 @@ function getIdentifierQuote(dbType: DatabaseType): string {
     case "mariadb":
     case "clickhouse":
       return "`";
-    case "postgresql":
-    case "sqlite":
     default:
       return `"`;
   }
@@ -414,33 +469,6 @@ function getQuotedExampleTable(dbType: DatabaseType): string {
 
 function getDatabaseSpecificGuidance(dbType: DatabaseType): string {
   const guidance: Record<DatabaseType, string> = {
-    postgresql: `- Use double quotes for identifiers
-- String literals use single quotes
-- Prefer ILIKE for case-insensitive matching
-- Use RETURNING on INSERT/UPDATE/DELETE when useful
-- Supports CTEs, window functions, JSONB operators, and LATERAL joins
-- Respect RLS contexts when mentioned`,
-
-    mysql: `- Use backticks for identifiers
-- String literals use single quotes
-- Use LIMIT for pagination
-- MySQL 8+ supports CTEs and window functions
-- Use JSON functions/operators where available
-- AUTO_INCREMENT is standard for generated integer keys`,
-
-    mariadb: `- Use backticks for identifiers
-- String literals use single quotes
-- Use LIMIT for pagination
-- Supports CTEs and window functions in modern versions
-- AUTO_INCREMENT is standard for generated integer keys`,
-
-    sqlite: `- Double quotes are acceptable for identifiers
-- String literals use single quotes
-- ALTER TABLE support is more limited than PostgreSQL/MySQL
-- Booleans are often represented as 0/1
-- Use LIMIT/OFFSET for pagination
-- Date/time operations differ from server databases`,
-
     clickhouse: `- Use backticks for identifiers
 - Optimized for analytics and large scans
 - Engine choice matters
@@ -448,11 +476,37 @@ function getDatabaseSpecificGuidance(dbType: DatabaseType): string {
 - Write queries with aggregation efficiency in mind
 - OLTP-style mutation patterns may be expensive or limited`,
 
+    mariadb: `- Use backticks for identifiers
+- String literals use single quotes
+- Use LIMIT for pagination
+- Supports CTEs and window functions in modern versions
+- AUTO_INCREMENT is standard for generated integer keys`,
+
+    mysql: `- Use backticks for identifiers
+- String literals use single quotes
+- Use LIMIT for pagination
+- MySQL 8+ supports CTEs and window functions
+- Use JSON functions/operators where available
+- AUTO_INCREMENT is standard for generated integer keys`,
+    postgresql: `- Use double quotes for identifiers
+- String literals use single quotes
+- Prefer ILIKE for case-insensitive matching
+- Use RETURNING on INSERT/UPDATE/DELETE when useful
+- Supports CTEs, window functions, JSONB operators, and LATERAL joins
+- Respect RLS contexts when mentioned`,
+
     redis: `- Redis is not SQL-based
 - Use Redis commands such as GET, SET, HGETALL, LRANGE, ZRANGE, TTL, EXPIRE
 - Think in keys, prefixes, data structures, and TTL semantics
 - Prefer pipelines/batching for repeated operations
 - Be explicit about key patterns and data types`,
+
+    sqlite: `- Double quotes are acceptable for identifiers
+- String literals use single quotes
+- ALTER TABLE support is more limited than PostgreSQL/MySQL
+- Booleans are often represented as 0/1
+- Use LIMIT/OFFSET for pagination
+- Date/time operations differ from server databases`,
   };
 
   return guidance[dbType] ?? guidance.postgresql;
@@ -466,11 +520,13 @@ function buildSystemPrompt(
   connectionInfo?: ChatStartInput["connectionInfo"],
   userConnectionsContext?: ChatStartInput["userConnectionsContext"],
   privacySettings?: PrivacySettings,
-  isLocal = false,
+  isLocal = false
 ): string {
   const now = new Date().toISOString();
   const isRedis = dbType === "redis";
-  const effectiveMaxSchema = isLocal ? LOCAL_MAX_SCHEMA_CONTEXT_CHARS : MAX_SCHEMA_CONTEXT_CHARS;
+  const effectiveMaxSchema = isLocal
+    ? LOCAL_MAX_SCHEMA_CONTEXT_CHARS
+    : MAX_SCHEMA_CONTEXT_CHARS;
 
   let prompt = `You are an expert ${isRedis ? "database and Redis command" : "SQL"} assistant embedded in a desktop database management application.
 
@@ -516,7 +572,7 @@ function buildSystemPrompt(
       .slice(0, 50)
       .map(
         (connection) =>
-          `- ${connection.name} (${connection.dbType}, provider: ${connection.provider}, ${connection.scope})`,
+          `- ${connection.name} (${connection.dbType}, provider: ${connection.provider}, ${connection.scope})`
       )
       .join("\n");
     const hasMore = userConnectionsContext.connections.length > 50;
@@ -537,11 +593,20 @@ use this inventory as the source of truth and answer with exact numbers.
 ${connectionList}${hasMore ? "\n- ... (additional connections omitted for brevity)" : ""}`;
   }
 
-  if (privacySettings?.memory !== false && memoryContext && (memoryContext.recentMessages.length > 0 || memoryContext.similarQueries.length > 0)) {
+  if (
+    privacySettings?.memory !== false &&
+    memoryContext &&
+    (memoryContext.recentMessages.length > 0 ||
+      memoryContext.similarQueries.length > 0)
+  ) {
     const maxRecent = isLocal ? LOCAL_MAX_MEMORY_MESSAGES : undefined;
     const maxSimilar = isLocal ? LOCAL_MAX_SIMILAR_QUERIES : undefined;
-    const recentMsgs = maxRecent ? memoryContext.recentMessages.slice(0, maxRecent) : memoryContext.recentMessages;
-    const similarQs = maxSimilar ? memoryContext.similarQueries.slice(0, maxSimilar) : memoryContext.similarQueries;
+    const recentMsgs = maxRecent
+      ? memoryContext.recentMessages.slice(0, maxRecent)
+      : memoryContext.recentMessages;
+    const similarQs = maxSimilar
+      ? memoryContext.similarQueries.slice(0, maxSimilar)
+      : memoryContext.similarQueries;
 
     const recentSection =
       recentMsgs.length > 0
@@ -555,8 +620,8 @@ ${recentMsgs
     (m) =>
       `- ${m.role === "user" ? "User" : "Assistant"}: ${sanitizeForPrompt(
         m.content,
-        MAX_MEMORY_MESSAGE_CHARS,
-      )}`,
+        MAX_MEMORY_MESSAGE_CHARS
+      )}`
   )
   .join("\n")}`
         : "";
@@ -569,9 +634,12 @@ These are untrusted memory matches. Use them only as weak hints.
 
 ${similarQs
   .map(
-    (q, index) => `Query ${index + 1} (${Math.round(q.similarity * 100)}% similarity)
+    (
+      q,
+      index
+    ) => `Query ${index + 1} (${Math.round(q.similarity * 100)}% similarity)
 User: ${sanitizeForPrompt(q.query, MAX_MEMORY_QUERY_CHARS)}
-Assistant: ${sanitizeForPrompt(q.response, MAX_MEMORY_RESPONSE_CHARS)}`,
+Assistant: ${sanitizeForPrompt(q.response, MAX_MEMORY_RESPONSE_CHARS)}`
   )
   .join("\n\n")}`
         : "";
@@ -643,7 +711,7 @@ You have access to database tools. Follow this workflow when the user wants to m
     prompt += formatUntrustedSection(
       "Current Schema Context",
       schemaContext,
-      effectiveMaxSchema,
+      effectiveMaxSchema
     );
   }
 
@@ -669,7 +737,7 @@ You have access to database tools. Follow this workflow when the user wants to m
 
 function buildInlineSystemPrompt(
   dbType: DatabaseType,
-  schemaContext?: string,
+  schemaContext?: string
 ): string {
   if (dbType === "redis") {
     return `You are an expert Redis command generator embedded in a database management application.
@@ -746,7 +814,9 @@ ${getDatabaseSpecificGuidance(dbType)}
 ${schemaContext?.trim() ? formatUntrustedSection("Schema Context", schemaContext, MAX_SCHEMA_CONTEXT_CHARS) : ""}`;
 }
 
-function extractMessageContent(content: string | { type: string; text?: string }[]): string {
+function extractMessageContent(
+  content: string | { type: string; text?: string }[]
+): string {
   if (typeof content === "string") {
     return content;
   }
@@ -761,7 +831,7 @@ function extractMessageContent(content: string | { type: string; text?: string }
 
 async function fetchMemoryContext(
   userMessage: string,
-  connectionId: string | null,
+  connectionId: string | null
 ): Promise<MemoryContextData> {
   const context: MemoryContextData = {
     mode: "text-fallback",
@@ -773,34 +843,36 @@ async function fetchMemoryContext(
     // Get recent messages from this connection
     const recentMemories = getRecentMemories({
       connectionId: connectionId ?? undefined,
-      limit: 6,
       hours: 24,
+      limit: 6,
     });
 
     context.recentMessages = recentMemories.map((m) => ({
-      role: m.role,
       content: m.content,
+      role: m.role,
     }));
 
     // Get semantically similar queries if model is ready
     if (getEmbeddingStatus() === "ready") {
       try {
         const queryEmbedding = await generateEmbedding(
-          optimizeQueryForSearch(userMessage),
+          optimizeQueryForSearch(userMessage)
         );
 
         const similarResults = searchSimilarMemories(queryEmbedding, {
           connectionId: connectionId ?? undefined,
           limit: 10,
-          minSimilarity: 0.75,
           lookbackHours: 168, // 7 days
+          minSimilarity: 0.75,
         });
 
         // Pair user-assistant messages from similar conversations
         const seenConversations = new Set<string>();
         for (const result of similarResults) {
           const convId = result.entry.conversationId;
-          if (seenConversations.has(convId)) continue;
+          if (seenConversations.has(convId)) {
+            continue;
+          }
 
           // Get conversation context
           const conversationMemories = getRecentMemories({
@@ -813,7 +885,10 @@ async function fetchMemoryContext(
             const userMsg = conversationMemories[i];
             const assistantMsg = conversationMemories[i + 1];
 
-            if (userMsg?.role === "user" && assistantMsg?.role === "assistant") {
+            if (
+              userMsg?.role === "user" &&
+              assistantMsg?.role === "assistant"
+            ) {
               context.similarQueries.push({
                 query: userMsg.content,
                 response: assistantMsg.content,
@@ -824,7 +899,9 @@ async function fetchMemoryContext(
           }
 
           seenConversations.add(convId);
-          if (context.similarQueries.length >= 3) break;
+          if (context.similarQueries.length >= 3) {
+            break;
+          }
         }
         context.mode = "semantic";
       } catch (err) {
@@ -839,16 +916,20 @@ async function fetchMemoryContext(
       });
 
       for (const match of fallbackMatches) {
-        if (match.role !== "user") continue;
+        if (match.role !== "user") {
+          continue;
+        }
 
         const conversationMemories = getRecentMemories({
           conversationId: match.conversationId,
           limit: 10,
         });
         const assistantMatch = conversationMemories.find(
-          (m) => m.role === "assistant" && m.messageId === match.messageId,
+          (m) => m.role === "assistant" && m.messageId === match.messageId
         );
-        if (!assistantMatch) continue;
+        if (!assistantMatch) {
+          continue;
+        }
 
         context.similarQueries.push({
           query: match.content,
@@ -856,7 +937,9 @@ async function fetchMemoryContext(
           similarity: 0.6,
         });
 
-        if (context.similarQueries.length >= 3) break;
+        if (context.similarQueries.length >= 3) {
+          break;
+        }
       }
     }
   } catch (err) {
@@ -872,21 +955,25 @@ function handleStreamChunk(
   requestIdKey: "chatId" | "requestId",
   requestId: string,
   chunk: any,
-  collectText?: (text: string) => void,
+  collectText?: (text: string) => void
 ): void {
-  if (!chunk || typeof chunk !== "object") return;
+  if (!chunk || typeof chunk !== "object") {
+    return;
+  }
 
   switch (chunk.type) {
     case "text":
     case "text-delta": {
       const text = typeof chunk.text === "string" ? chunk.text : "";
-      if (!text) return;
+      if (!text) {
+        return;
+      }
 
       collectText?.(text);
       safeSend(contents, channel, {
         [requestIdKey]: requestId,
-        type: "text",
         text,
+        type: "text",
       });
       return;
     }
@@ -894,12 +981,14 @@ function handleStreamChunk(
     case "reasoning":
     case "reasoning-delta": {
       const text = typeof chunk.text === "string" ? chunk.text : "";
-      if (!text) return;
+      if (!text) {
+        return;
+      }
 
       safeSend(contents, channel, {
         [requestIdKey]: requestId,
-        type: "reasoning",
         text,
+        type: "reasoning",
       });
       return;
     }
@@ -907,8 +996,8 @@ function handleStreamChunk(
     case "source": {
       safeSend(contents, channel, {
         [requestIdKey]: requestId,
-        type: "source",
         source: chunk.source,
+        type: "source",
       });
       return;
     }
@@ -926,11 +1015,11 @@ function handleStreamChunk(
             : chunk.type;
       safeSend(contents, channel, {
         [requestIdKey]: requestId,
-        type: mappedType,
+        argsTextDelta: chunk.argsTextDelta,
+        input: chunk.input,
         toolCallId: chunk.toolCallId,
         toolName: chunk.toolName,
-        input: chunk.input,
-        argsTextDelta: chunk.argsTextDelta,
+        type: mappedType,
       });
       return;
     }
@@ -938,11 +1027,11 @@ function handleStreamChunk(
     case "tool-result": {
       safeSend(contents, channel, {
         [requestIdKey]: requestId,
-        type: "tool-result",
+        input: chunk.input,
+        result: chunk.output ?? chunk.result,
         toolCallId: chunk.toolCallId,
         toolName: chunk.toolName,
-        result: chunk.output ?? chunk.result,
-        input: chunk.input,
+        type: "tool-result",
       });
       return;
     }
@@ -954,26 +1043,38 @@ function handleStreamChunk(
 
 function hasDbWriteIntent(text: string): boolean {
   const normalized = text.toLowerCase();
-  return /\b(create|alter|drop|truncate|insert|update|delete|merge|upsert|grant|revoke)\b/.test(normalized)
-    || /\b(criar|alterar|deletar|apagar|inserir|atualizar|tabela|schema)\b/.test(normalized);
+  return (
+    /\b(create|alter|drop|truncate|insert|update|delete|merge|upsert|grant|revoke)\b/.test(
+      normalized
+    ) ||
+    /\b(criar|alterar|deletar|apagar|inserir|atualizar|tabela|schema)\b/.test(
+      normalized
+    )
+  );
 }
 
 async function inferConnectionIdFromMessage(
-  userMessage: string,
+  userMessage: string
 ): Promise<string | null> {
   const text = userMessage.trim().toLowerCase();
-  if (!text) return null;
+  if (!text) {
+    return null;
+  }
 
   try {
     const connections = await loadConnections();
     const matches = connections.filter((conn) => {
       const name = (conn.name ?? "").trim().toLowerCase();
       const id = (conn.id ?? "").trim().toLowerCase();
-      if (!name && !id) return false;
+      if (!(name || id)) {
+        return false;
+      }
       return (name && text.includes(name)) || (id && text.includes(id));
     });
 
-    if (matches.length === 1) return matches[0]?.id ?? null;
+    if (matches.length === 1) {
+      return matches[0]?.id ?? null;
+    }
     return null;
   } catch {
     return null;
@@ -982,7 +1083,7 @@ async function inferConnectionIdFromMessage(
 
 async function handleChatStart(
   contents: WebContents,
-  input: ChatStartInput,
+  input: ChatStartInput
 ): Promise<void> {
   const {
     chatId,
@@ -1018,7 +1119,7 @@ async function handleChatStart(
     return;
   }
 
-  let streamError: unknown = undefined;
+  let streamError: unknown;
   let model: ReturnType<typeof getCurrentModel> | undefined;
   let providerName = "";
   let modelId: string | undefined;
@@ -1031,47 +1132,55 @@ async function handleChatStart(
     const isLocal = isLocalProvider(providerName);
     const privacy = input.privacySettings ?? getPrivacySettings();
 
-    const memoryContext = privacy.memory !== false
-      ? await fetchMemoryContext(userContent, effectiveConnectionId)
-      : { mode: "text-fallback" as const, recentMessages: [], similarQueries: [] };
+    const memoryContext =
+      privacy.memory === false
+        ? {
+            mode: "text-fallback" as const,
+            recentMessages: [],
+            similarQueries: [],
+          }
+        : await fetchMemoryContext(userContent, effectiveConnectionId);
 
     // When WebContents is unavailable, deny all approvals rather than auto-approving.
     // This prevents mutations from executing without user consent if the IPC bridge is broken.
     const denyApproval: ToolApprovalFn = async () => false;
-    const approvalFn = contents ? createIpcApprovalFn(contents, chatId) : denyApproval;
+    const approvalFn = contents
+      ? createIpcApprovalFn(contents, chatId)
+      : denyApproval;
     const tools = effectiveConnectionId
       ? createAiTools(effectiveConnectionId, approvalFn)
       : undefined;
 
     // Only force tool invocation when we have a resolved connection and clear write intent.
     // This avoids unnecessary forced tool calls on ambiguous prompts.
-    const forceToolCall = Boolean(tools && effectiveConnectionId) && dbWriteIntent;
+    const forceToolCall =
+      Boolean(tools && effectiveConnectionId) && dbWriteIntent;
     const result = streamText({
+      messages,
       model,
       system: buildSystemPrompt(
         dbType,
-        privacy.schema !== false ? schemaContext : undefined,
+        privacy.schema === false ? undefined : schemaContext,
         Boolean(effectiveConnectionId),
         memoryContext,
-        privacy.connectionInfo !== false ? input.connectionInfo : undefined,
-        privacy.connectionsList !== false ? input.userConnectionsContext : undefined,
+        privacy.connectionInfo === false ? undefined : input.connectionInfo,
+        privacy.connectionsList === false
+          ? undefined
+          : input.userConnectionsContext,
         privacy,
-        isLocal,
+        isLocal
       ),
-      messages,
       ...(tools ? { tools } : {}),
       ...(forceToolCall ? { toolChoice: "required" as const } : {}),
       abortSignal: abortController.signal,
-      timeout: CHAT_TIMEOUT,
-      stopWhen: stepCountIs(MAX_TOOL_STEPS),
       experimental_transform: smoothStream({ chunking: "word" }),
       onChunk(event) {
         const chunkType = event.chunk?.type;
         if (
-          chunkType === "tool-call"
-          || chunkType === "tool-result"
-          || chunkType === "tool-input-start"
-          || chunkType === "tool-input-delta"
+          chunkType === "tool-call" ||
+          chunkType === "tool-result" ||
+          chunkType === "tool-input-start" ||
+          chunkType === "tool-input-delta"
         ) {
           sawToolCall = true;
         }
@@ -1084,7 +1193,7 @@ async function handleChatStart(
           event.chunk,
           (text) => {
             assistantResponse += text;
-          },
+          }
         );
       },
       onError(event) {
@@ -1092,6 +1201,8 @@ async function handleChatStart(
         streamError = event.error;
         abortController.abort();
       },
+      stopWhen: stepCountIs(MAX_TOOL_STEPS),
+      timeout: CHAT_TIMEOUT,
     });
 
     for await (const _ of result.textStream) {
@@ -1106,13 +1217,14 @@ async function handleChatStart(
       assistantResponse += tail;
       safeSend(contents, AI_IPC_CHANNELS.CHAT_CHUNK, {
         chatId,
-        type: "text",
         text: tail,
+        type: "text",
       });
     }
 
     if (forceToolCall && !sawToolCall) {
-      const looksLikePseudoToolSyntax = /<\s*tool_call\b|tool_call>|<tool>/i.test(assistantResponse);
+      const looksLikePseudoToolSyntax =
+        /<\s*tool_call\b|tool_call>|<tool>/i.test(assistantResponse);
       const message = looksLikePseudoToolSyntax
         ? "O modelo atual retornou pseudo tool-call em texto (por exemplo, '<tool_call>') em vez de chamada de tool real. Troque para um modelo com tool calling nativo para executar consultas no banco."
         : "O modelo atual não executou tool calls reais para esta ação no banco. Troque para um modelo com suporte nativo a tool calling.";
@@ -1139,7 +1251,7 @@ async function handleChatStart(
         if (getEmbeddingStatus() === "ready") {
           try {
             userEmbedding = await generateEmbedding(
-              optimizeQueryForSearch(userContent),
+              optimizeQueryForSearch(userContent)
             );
           } catch (embErr) {
             console.warn("[ai:memory] Failed to generate embedding:", embErr);
@@ -1147,20 +1259,20 @@ async function handleChatStart(
         }
 
         saveMemory({
-          conversationId: chatId,
-          messageId: createMessageId(chatId, "user"),
           connectionId: connectionId ?? undefined,
-          role: "user",
           content: userContent,
+          conversationId: chatId,
           embedding: userEmbedding,
+          messageId: createMessageId(chatId, "user"),
+          role: "user",
         });
 
         saveMemory({
+          connectionId: connectionId ?? undefined,
+          content: assistantResponse,
           conversationId: chatId,
           messageId: createMessageId(chatId, "assistant"),
-          connectionId: connectionId ?? undefined,
           role: "assistant",
-          content: assistantResponse,
         });
       } catch (memErr) {
         console.warn("[ai:memory] Failed to save memory:", memErr);
@@ -1171,7 +1283,7 @@ async function handleChatStart(
       const message = buildEnhancedErrorMessage(
         streamError ?? err ?? "AI stream aborted before completion.",
         providerName,
-        modelId,
+        modelId
       );
       safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
         chatId,
@@ -1195,7 +1307,7 @@ async function handleChatStart(
 
 async function handleInlineGenerateStart(
   contents: WebContents,
-  input: InlineGenerateStartInput,
+  input: InlineGenerateStartInput
 ): Promise<void> {
   const { requestId, dbType, prompt, sql, schemaContext } = input;
 
@@ -1204,7 +1316,7 @@ async function handleInlineGenerateStart(
   const abortController = new AbortController();
   activeInlineAbortControllers.set(requestId, abortController);
 
-  let inlineStreamError: unknown = undefined;
+  let inlineStreamError: unknown;
   let inlineModel: ReturnType<typeof getCurrentModel> | undefined;
   let inlineProviderName = "";
   let inlineModelId: string | undefined;
@@ -1227,13 +1339,9 @@ ${instruction}`
       : instruction;
 
     const result = streamText({
-      model: inlineModel,
-      system: buildInlineSystemPrompt(dbType, schemaContext),
-      prompt: finalPrompt,
       abortSignal: abortController.signal,
-      timeout: INLINE_TIMEOUT,
-      temperature: 0,
       experimental_transform: smoothStream({ chunking: "word" }),
+      model: inlineModel,
       onChunk(event) {
         handleStreamChunk(
           contents,
@@ -1243,7 +1351,7 @@ ${instruction}`
           event.chunk,
           (text) => {
             inlineResponse += text;
-          },
+          }
         );
       },
       onError(event) {
@@ -1251,6 +1359,10 @@ ${instruction}`
         inlineStreamError = event.error;
         abortController.abort();
       },
+      prompt: finalPrompt,
+      system: buildInlineSystemPrompt(dbType, schemaContext),
+      temperature: 0,
+      timeout: INLINE_TIMEOUT,
     });
 
     for await (const _ of result.textStream) {
@@ -1264,8 +1376,8 @@ ${instruction}`
     if (inlineTail) {
       safeSend(contents, AI_IPC_CHANNELS.INLINE_CHUNK, {
         requestId,
-        type: "text",
         text: inlineTail,
+        type: "text",
       });
     }
 
@@ -1273,8 +1385,8 @@ ${instruction}`
     const usage = await result.usage;
 
     safeSend(contents, AI_IPC_CHANNELS.INLINE_DONE, {
-      requestId,
       finishReason,
+      requestId,
       usage,
     });
   } catch (err) {
@@ -1282,20 +1394,24 @@ ${instruction}`
       const message = buildEnhancedErrorMessage(
         inlineStreamError ?? err ?? "Inline stream aborted before completion.",
         inlineProviderName,
-        inlineModelId,
+        inlineModelId
       );
       safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
-        requestId,
         message,
+        requestId,
       });
       return;
     }
 
-    const message = buildEnhancedErrorMessage(err, inlineProviderName, inlineModelId);
+    const message = buildEnhancedErrorMessage(
+      err,
+      inlineProviderName,
+      inlineModelId
+    );
 
     safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
-      requestId,
       message,
+      requestId,
     });
   } finally {
     if (activeInlineAbortControllers.get(requestId) === abortController) {
@@ -1324,17 +1440,26 @@ function onChatStart(event: IpcMainEvent, input: ChatStartInput): void {
     const settings = getAiSettings();
     safeSend(contents, AI_IPC_CHANNELS.CHAT_ERROR, {
       chatId: input.chatId,
-      message: buildEnhancedErrorMessage(err, settings.provider, settings.model),
+      message: buildEnhancedErrorMessage(
+        err,
+        settings.provider,
+        settings.model
+      ),
     });
   });
 }
 
 function onChatAbort(_event: IpcMainEvent, chatId: string): void {
-  if (!isNonEmptyString(chatId)) return;
+  if (!isNonEmptyString(chatId)) {
+    return;
+  }
   abortStream(chatId);
 }
 
-function onInlineStart(event: IpcMainEvent, input: InlineGenerateStartInput): void {
+function onInlineStart(
+  event: IpcMainEvent,
+  input: InlineGenerateStartInput
+): void {
   const contents = getSenderContents(event);
 
   if (!contents) {
@@ -1343,8 +1468,8 @@ function onInlineStart(event: IpcMainEvent, input: InlineGenerateStartInput): vo
 
   if (!isValidInlineInput(input)) {
     safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
-      requestId: input?.requestId ?? "unknown",
       message: "Invalid inline generation payload.",
+      requestId: input?.requestId ?? "unknown",
     });
     return;
   }
@@ -1353,14 +1478,20 @@ function onInlineStart(event: IpcMainEvent, input: InlineGenerateStartInput): vo
     console.error("[ai] Inline generation stream error:", err);
     const settings = getAiSettings();
     safeSend(contents, AI_IPC_CHANNELS.INLINE_ERROR, {
+      message: buildEnhancedErrorMessage(
+        err,
+        settings.provider,
+        settings.model
+      ),
       requestId: input.requestId,
-      message: buildEnhancedErrorMessage(err, settings.provider, settings.model),
     });
   });
 }
 
 function onInlineAbort(_event: IpcMainEvent, requestId: string): void {
-  if (!isNonEmptyString(requestId)) return;
+  if (!isNonEmptyString(requestId)) {
+    return;
+  }
   abortInlineStream(requestId);
 }
 
@@ -1388,7 +1519,10 @@ export function unregisterAiStreamingHandlers(): void {
   ipcMain.removeListener(AI_IPC_CHANNELS.CHAT_ABORT, onChatAbort);
   ipcMain.removeListener(AI_IPC_CHANNELS.INLINE_START, onInlineStart);
   ipcMain.removeListener(AI_IPC_CHANNELS.INLINE_ABORT, onInlineAbort);
-  ipcMain.removeListener(AI_IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, onToolApprovalResponse);
+  ipcMain.removeListener(
+    AI_IPC_CHANNELS.TOOL_APPROVAL_RESPONSE,
+    onToolApprovalResponse
+  );
 
   handlersRegistered = false;
   console.log("[ai] Streaming chat handlers unregistered");

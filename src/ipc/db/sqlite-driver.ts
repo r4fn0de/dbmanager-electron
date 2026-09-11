@@ -5,34 +5,51 @@
  * It uses pragma-based introspection instead of information_schema.
  * Connection strings use the format: sqlite:///absolute/path/to/file.db
  */
-import path from "node:path";
-import os from "node:os";
+
 import { createRequire } from "node:module";
-import type { DatabaseType, SslMode, SchemaEnum, SchemaFunction, SchemaTrigger } from "./types";
-import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
+import os from "node:os";
+import path from "node:path";
 import {
+  buildCreateIndexSql,
   buildCreateTableSql,
   buildDropTableSql,
-  buildAddColumnSql,
-  buildCreateIndexSql,
 } from "./ddl-sql";
+import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
+import type {
+  DatabaseType,
+  SchemaEnum,
+  SchemaFunction,
+  SchemaTrigger,
+  SslMode,
+} from "./types";
 
 const DB_TYPE = "sqlite" as DatabaseType;
 
 type BetterSqlite3Ctor = new (...args: any[]) => any;
 const requireFromHere = createRequire(
-  path.join(process.resourcesPath || process.cwd(), "package.json"),
+  path.join(process.resourcesPath || process.cwd(), "package.json")
 );
 let betterSqlite3Cached: BetterSqlite3Ctor | null = null;
 
 function getBetterSqlite3(): BetterSqlite3Ctor {
-  if (betterSqlite3Cached) return betterSqlite3Cached;
+  if (betterSqlite3Cached) {
+    return betterSqlite3Cached;
+  }
 
   const resourceBase = process.resourcesPath;
   const candidates = [
     "better-sqlite3",
-    resourceBase ? path.join(resourceBase, "node_modules", "better-sqlite3") : null,
-    resourceBase ? path.join(resourceBase, "app.asar.unpacked", "node_modules", "better-sqlite3") : null,
+    resourceBase
+      ? path.join(resourceBase, "node_modules", "better-sqlite3")
+      : null,
+    resourceBase
+      ? path.join(
+          resourceBase,
+          "app.asar.unpacked",
+          "node_modules",
+          "better-sqlite3"
+        )
+      : null,
     resourceBase ? path.join(resourceBase, "better-sqlite3") : null,
   ].filter(Boolean) as string[];
 
@@ -50,7 +67,7 @@ function getBetterSqlite3(): BetterSqlite3Ctor {
   throw new Error(
     `Failed to load better-sqlite3 from known locations. Last error: ${
       lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
+    }`
   );
 }
 
@@ -60,14 +77,16 @@ function getBetterSqlite3(): BetterSqlite3Ctor {
 
 interface CachedDb {
   db: any;
-  stmtCache: Map<string, any>;
   ddlVersion: number;
+  stmtCache: Map<string, any>;
 }
 
 function getCachedStmt(cached: CachedDb, sql: string): any {
   const key = `${cached.ddlVersion}:${sql}`;
   const existing = cached.stmtCache.get(key);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const stmt = cached.db.prepare(sql);
   cached.stmtCache.set(key, stmt);
   return stmt;
@@ -107,25 +126,54 @@ export function buildSqliteConnectionString(filePath: string): string {
 // ---------------------------------------------------------------------------
 
 function mapSqliteType(declType: string | undefined): string {
-  if (!declType) return "unknown";
+  if (!declType) {
+    return "unknown";
+  }
   const upper = declType.toUpperCase();
 
   // SQLite type affinity rules
-  if (upper.includes("INT")) return "number";
-  if (upper.includes("REAL") || upper.includes("FLOA") || upper.includes("DOUB") || upper.includes("NUMERIC") || upper.includes("DECIMAL"))
+  if (upper.includes("INT")) {
     return "number";
-  if (upper.includes("BOOL")) return "boolean";
-  if (upper.includes("CHAR") || upper.includes("CLOB") || upper.includes("TEXT"))
+  }
+  if (
+    upper.includes("REAL") ||
+    upper.includes("FLOA") ||
+    upper.includes("DOUB") ||
+    upper.includes("NUMERIC") ||
+    upper.includes("DECIMAL")
+  ) {
+    return "number";
+  }
+  if (upper.includes("BOOL")) {
+    return "boolean";
+  }
+  if (
+    upper.includes("CHAR") ||
+    upper.includes("CLOB") ||
+    upper.includes("TEXT")
+  ) {
     return "string";
-  if (upper === "BLOB") return "binary";
-  if (upper.includes("DATE") || upper.includes("TIME"))
+  }
+  if (upper === "BLOB") {
+    return "binary";
+  }
+  if (upper.includes("DATE") || upper.includes("TIME")) {
     return "datetime";
-  if (upper === "JSON") return "json";
+  }
+  if (upper === "JSON") {
+    return "json";
+  }
 
   // Common SQLite-specific declarations
-  if (upper === "INTEGER") return "number";
-  if (upper === "TEXT") return "string";
-  if (upper === "REAL") return "number";
+  if (upper === "INTEGER") {
+    return "number";
+  }
+  if (upper === "TEXT") {
+    return "string";
+  }
+  if (upper === "REAL") {
+    return "number";
+  }
 
   return "string"; // SQLite default affinity
 }
@@ -166,7 +214,7 @@ function getDb(connectionString: string): CachedDb {
   const BetterSqlite3 = getBetterSqlite3();
   const db = new BetterSqlite3(filePath);
   configurePragmas(db);
-  const cached: CachedDb = { db, stmtCache: new Map(), ddlVersion: 0 };
+  const cached: CachedDb = { db, ddlVersion: 0, stmtCache: new Map() };
   dbCache.set(connectionString, cached);
   return cached;
 }
@@ -192,36 +240,36 @@ export function closeAllSqliteDbs(): void {
 
 interface SqliteColumnInfo {
   cid: number;
-  name: string;
-  type: string;
-  notnull: number;
   dflt_value: string | null;
+  name: string;
+  notnull: number;
   pk: number;
+  type: string;
 }
 
 interface SqliteIndexInfo {
-  seq: number;
   name: string;
-  unique: number;
   origin: string;
   partial: number;
+  seq: number;
+  unique: number;
 }
 
 interface SqliteIndexColumn {
-  seqno: number;
   cid: number;
   name: string | null;
+  seqno: number;
 }
 
 interface SqliteForeignKey {
+  from: string;
   id: number;
+  match: string;
+  on_delete: string;
+  on_update: string;
   seq: number;
   table: string;
-  from: string;
   to: string;
-  on_update: string;
-  on_delete: string;
-  match: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,30 +278,180 @@ interface SqliteForeignKey {
 
 export function createSqliteDriver(): DatabaseDriver {
   return {
-    type: DB_TYPE,
-    defaultPort: 0, // SQLite has no port
-    defaultDatabase: "main",
-    defaultUsername: "",
-    sslModes: ["disable"] as SslMode[], // SQLite doesn't support SSL
+    async addColumn(
+      connectionString,
+      _schema,
+      table,
+      columnName,
+      dataType,
+      isNullable,
+      defaultExpr,
+      _ifNotExists
+    ) {
+      // SQLite doesn't support IF NOT EXISTS for ADD COLUMN
+      let def = `"${columnName.replace(/"/g, '""')}" ${dataType}`;
+      if (!(isNullable ?? true)) {
+        def += " NOT NULL";
+      }
+      if (defaultExpr) {
+        def += ` DEFAULT ${defaultExpr}`;
+      }
+      const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" ADD COLUMN ${def}`;
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      db.exec(sql);
+      cachedDb.ddlVersion++;
+      return sql;
+    },
+
+    async alterColumnType(
+      _connectionString,
+      _schema,
+      table,
+      columnName,
+      _newType
+    ) {
+      // SQLite doesn't support ALTER COLUMN TYPE directly.
+      // The standard approach is: recreate table, but that's very complex.
+      // For now, throw a clear error.
+      throw new Error(
+        `SQLite does not support ALTER COLUMN TYPE. To change the type of "${columnName}" in "${table}", ` +
+          "you need to create a new table with the desired schema, copy data, drop the old table, and rename."
+      );
+    },
 
     buildConnectionString(config: DriverConnectionConfig): string {
       // For SQLite, the "database" field is the file path
-      if (config.url) return config.url;
+      if (config.url) {
+        return config.url;
+      }
       return buildSqliteConnectionString(config.database);
     },
 
-    async testConnection(config) {
-      try {
-        const connStr = this.buildConnectionString(config);
-        const filePath = parseConnectionString(connStr);
-        const BetterSqlite3 = getBetterSqlite3();
-        const db = new BetterSqlite3(filePath);
-        db.prepare("SELECT 1").get();
-        db.close();
-        return true;
-      } catch {
-        return false;
+    async createIndex(
+      connectionString,
+      schema,
+      table,
+      indexName,
+      columns,
+      unique,
+      ifNotExists
+    ) {
+      const sql = buildCreateIndexSql(
+        DB_TYPE,
+        schema,
+        table,
+        indexName,
+        columns,
+        unique ?? false,
+        ifNotExists ?? false
+      );
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      db.exec(sql);
+      cachedDb.ddlVersion++;
+      return sql;
+    },
+
+    async createSchema(_connectionString, schemaName, _ifNotExists) {
+      // SQLite doesn't support CREATE SCHEMA — it only has "main" and "temp".
+      // For compatibility, we silently ignore this.
+      console.warn(
+        `SQLite does not support CREATE SCHEMA. Ignoring createSchema("${schemaName}")`
+      );
+      return `-- SQLite does not support CREATE SCHEMA. Schema "${schemaName}" not created.`;
+    },
+
+    // ── DDL ─────────────────────────────────────────────────────────
+
+    async createTable(
+      connectionString,
+      schema,
+      tableName,
+      columns,
+      primaryKeyColumns,
+      ifNotExists
+    ) {
+      const sql = buildCreateTableSql(
+        DB_TYPE,
+        schema,
+        tableName,
+        columns,
+        primaryKeyColumns ?? [],
+        ifNotExists ?? false
+      );
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      db.exec(sql);
+      cachedDb.ddlVersion++;
+      return sql;
+    },
+    defaultDatabase: "main",
+    defaultPort: 0, // SQLite has no port
+    defaultUsername: "",
+
+    async dropColumn(
+      connectionString,
+      _schema,
+      table,
+      columnName,
+      _cascade,
+      _ifExists
+    ) {
+      // SQLite 3.35.0+ supports DROP COLUMN
+      const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" DROP COLUMN "${columnName.replace(/"/g, '""')}"`;
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      db.exec(sql);
+      cachedDb.ddlVersion++;
+      return sql;
+    },
+
+    async dropIndex(connectionString, _schema, indexName, _cascade, ifExists) {
+      // SQLite: DROP INDEX if_exists? index_name
+      const ifExistsClause = ifExists ? "IF EXISTS " : "";
+      const sql = `DROP INDEX ${ifExistsClause}"${indexName.replace(/"/g, '""')}"`;
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      db.exec(sql);
+      cachedDb.ddlVersion++;
+      return sql;
+    },
+
+    async dropTable(connectionString, schema, tableName, cascade, ifExists) {
+      const sql = buildDropTableSql(
+        DB_TYPE,
+        schema,
+        tableName,
+        cascade ?? false,
+        ifExists ?? false
+      );
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      db.exec(sql);
+      cachedDb.ddlVersion++;
+      return sql;
+    },
+
+    async executeBatchDdl(connectionString, statements, throwOnError) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      const errors: Array<{ sql: string; error: string }> = [];
+
+      for (const sql of statements) {
+        try {
+          db.exec(sql);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          errors.push({ error: errMsg, sql });
+          if (throwOnError) {
+            throw new Error(`DDL execution failed: ${errMsg}\nSQL: ${sql}`);
+          }
+        }
       }
+      cachedDb.ddlVersion++;
+
+      return { errors };
     },
 
     async executeQuery(connectionString, sql, _signal) {
@@ -273,22 +471,27 @@ export function createSqliteDriver(): DatabaseDriver {
                 const type = typeof val;
                 return {
                   name,
-                  type_name: type === "object" && val instanceof Date ? "datetime"
-                    : type === "number" ? "number"
-                    : type === "string" ? "string"
-                    : type === "boolean" ? "boolean"
-                    : "unknown",
+                  type_name:
+                    type === "object" && val instanceof Date
+                      ? "datetime"
+                      : type === "number"
+                        ? "number"
+                        : type === "string"
+                          ? "string"
+                          : type === "boolean"
+                            ? "boolean"
+                            : "unknown",
                 };
               }),
-              rows: rows.map((row) => Object.values(row)),
               row_count: rows.length,
+              rows: rows.map((row) => Object.values(row)),
             };
           }
           const info = stmt.run();
           return {
             columns: [],
-            rows: [],
             row_count: info.changes,
+            rows: [],
           };
         } catch (err) {
           if (isSqliteBusyError(err) && attempts < 3) {
@@ -296,367 +499,16 @@ export function createSqliteDriver(): DatabaseDriver {
             await new Promise((r) => setTimeout(r, 100 * attempts));
             continue;
           }
-          throw new Error(`SQLite query error: ${err instanceof Error ? err.message : String(err)}`);
+          throw new Error(
+            `SQLite query error: ${err instanceof Error ? err.message : String(err)}`
+          );
         }
       }
     },
 
-    async getDatabaseInfo(connectionString) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      const version = (getCachedStmt(cachedDb, "SELECT sqlite_version()").get() as Record<string, string>)?.["sqlite_version()"] ?? "unknown";
-      const filePath = parseConnectionString(connectionString);
-
-      // Compute database file size
-      let size: string | undefined;
-      try {
-        const fs = await import("node:fs/promises");
-        const stat = await fs.stat(filePath);
-        const bytes = stat.size;
-        if (bytes < 1024) size = `${bytes} B`;
-        else if (bytes < 1024 * 1024) size = `${(bytes / 1024).toFixed(2)} KB`;
-        else if (bytes < 1024 * 1024 * 1024) size = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-        else size = `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-      } catch {
-        // File may not be stat-able (e.g. in-memory or WAL mode)
-      }
-
-      return {
-        version: `SQLite ${version}`,
-        encoding: "UTF-8",
-        timezone: "UTC",
-        size,
-        databaseName: path.basename(filePath),
-      };
-    },
-
-    async getSchema(connectionString) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-
-      // SQLite has a single "main" schema (plus temp)
-      const schemas = ["main"];
-
-      // Get all table names (excluding sqlite_ internal tables)
-      const tables = getCachedStmt(cachedDb, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as Array<{ name: string }>;
-
-      const schemaTables = tables.map((t) => {
-        const tableName = t.name;
-
-        // Columns
-        const colInfo = db.pragma(`table_info("${tableName}")`) as unknown as SqliteColumnInfo[];
-        const columns = colInfo.map((c) => ({
-          name: c.name,
-          data_type: c.type || "TEXT",
-          udt_name: c.type || null,
-          is_nullable: c.notnull === 0,
-          column_default: c.dflt_value,
-        }));
-
-        // Indexes
-        const indexList = db.pragma(`index_list("${tableName}")`) as unknown as SqliteIndexInfo[];
-        const indexes = indexList
-          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
-          .map((idx) => {
-            const idxCols = db.pragma(`index_xinfo("${idx.name}")`) as unknown as SqliteIndexColumn[];
-            return {
-              name: idx.name,
-              is_unique: idx.unique === 1,
-              is_primary: idx.origin === "pk",
-              column_names: idxCols
-                .filter((ic) => ic.cid >= 0 && ic.name)
-                .map((ic) => ic.name!),
-            };
-          });
-
-        // Foreign keys
-        const fkList = db.pragma(`foreign_key_list("${tableName}")`) as unknown as SqliteForeignKey[];
-        const foreignKeys = fkList.map((fk) => ({
-          name: `${tableName}_${fk.from}_fkey`,
-          column_name: fk.from,
-          referenced_schema: "main",
-          referenced_table: fk.table,
-          referenced_column: fk.to,
-        }));
-
-        return {
-          name: tableName,
-          schema: "main",
-          columns,
-          indexes,
-          foreign_keys: foreignKeys,
-          has_rls: false,
-          rls_policies: [],
-        };
-      });
-
-      return {
-        schemas,
-        tables: schemaTables,
-      };
-    },
-
-    async getSchemaSummary(connectionString) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-
-      // SQLite has a single "main" schema — no need for full introspection
-      const schemas = ["main"];
-      const tableRows = getCachedStmt(cachedDb, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as Array<{ name: string }>;
-
-      // Get row counts for each table (SQLite requires per-table COUNT)
-      const tablesWithCounts = tableRows.map((t) => {
-        let rowCount = 0;
-        try {
-          const countRow = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`).get() as Record<string, number>;
-          rowCount = countRow?.cnt ?? 0;
-        } catch {
-          // Table may be a virtual table or otherwise unreadable
-        }
-        return {
-          schema: "main",
-          name: t.name,
-          has_rls: false,
-          estimated_row_count: rowCount,
-        };
-      });
-
-      return {
-        schemas,
-        tables: tablesWithCounts,
-      };
-    },
-
-    async getTableDetails(connectionString, schema, table) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-
-      try {
-        // 1. Columns for this specific table only
-        const colInfo = db.pragma(`table_info("${table}")`) as unknown as SqliteColumnInfo[];
-        const columns = colInfo.map((c) => ({
-          name: c.name,
-          data_type: c.type || "TEXT",
-          udt_name: c.type || null,
-          is_nullable: c.notnull === 0,
-          column_default: c.dflt_value,
-        }));
-
-        // 2. Indexes for this specific table
-        const indexList = db.pragma(`index_list("${table}")`) as unknown as SqliteIndexInfo[];
-        const indexes = indexList
-          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
-          .map((idx) => {
-            const idxCols = db.pragma(`index_xinfo("${idx.name}")`) as unknown as SqliteIndexColumn[];
-            return {
-              name: idx.name,
-              is_unique: idx.unique === 1,
-              is_primary: idx.origin === "pk",
-              column_names: idxCols
-                .filter((ic) => ic.cid >= 0 && ic.name)
-                .map((ic) => ic.name!),
-            };
-          });
-
-        // 3. Foreign keys for this specific table
-        const fkList = db.pragma(`foreign_key_list("${table}")`) as unknown as SqliteForeignKey[];
-        const foreignKeys = fkList.map((fk) => ({
-          name: `${table}_${fk.from}_fkey`,
-          column_name: fk.from,
-          referenced_schema: "main",
-          referenced_table: fk.table,
-          referenced_column: fk.to,
-        }));
-
-        return {
-          name: table,
-          schema: "main",
-          has_rls: false,
-          columns,
-          indexes,
-          foreign_keys: foreignKeys,
-          rls_policies: [],
-        };
-      } catch (err) {
-        throw new Error(`SQLite table details error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-
-    async getIndexes(connectionString, schema, table) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-
-      try {
-        const indexList = db.pragma(`index_list("${table}")`) as unknown as SqliteIndexInfo[];
-
-        return indexList
-          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
-          .map((idx) => {
-            const idxCols = db.pragma(`index_xinfo("${idx.name}")`) as unknown as SqliteIndexColumn[];
-            return {
-              name: idx.name,
-              schema: "main",
-              table,
-              columns: idxCols
-                .filter((ic) => ic.cid >= 0 && ic.name)
-                .map((ic) => ic.name!),
-              isUnique: idx.unique === 1,
-              isPrimary: idx.origin === "pk",
-              type: "btree", // SQLite only supports btree indexes
-            };
-          });
-      } catch (err) {
-        throw new Error(`SQLite getIndexes error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-
-    async getConstraints(connectionString, schema, table) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      const constraints: import("./types").ConstraintInfo[] = [];
-
-      try {
-        // Get primary key info from table_info pragma
-        const colInfo = db.pragma(`table_info("${table}")`) as unknown as SqliteColumnInfo[];
-        const pkColumns = colInfo.filter((c) => c.pk > 0).sort((a, b) => a.pk - b.pk).map((c) => c.name);
-
-        if (pkColumns.length > 0) {
-          constraints.push({
-            name: `${table}_pkey`,
-            schema: "main",
-            table,
-            type: "primary_key",
-            columns: pkColumns,
-          });
-        }
-
-        // Get foreign keys from foreign_key_list pragma
-        const fkList = db.pragma(`foreign_key_list("${table}")`) as unknown as SqliteForeignKey[];
-        const fkMap = new Map<number, import("./types").ConstraintInfo>();
-
-        for (const fk of fkList) {
-          if (!fkMap.has(fk.id)) {
-            fkMap.set(fk.id, {
-              name: `${table}_${fk.from}_fkey`,
-              schema: "main",
-              table,
-              type: "foreign_key",
-              columns: [],
-              referencedSchema: "main",
-              referencedTable: fk.table,
-              referencedColumns: [],
-            });
-          }
-          const constraint = fkMap.get(fk.id)!;
-          constraint.columns.push(fk.from);
-          constraint.referencedColumns!.push(fk.to);
-        }
-
-        constraints.push(...fkMap.values());
-
-        // Get unique constraints from index_list pragma
-        const indexList = db.pragma(`index_list("${table}")`) as unknown as SqliteIndexInfo[];
-        for (const idx of indexList) {
-          if (idx.unique === 1 && idx.origin === "c") {
-            const idxCols = db.pragma(`index_xinfo("${idx.name}")`) as unknown as SqliteIndexColumn[];
-            constraints.push({
-              name: idx.name,
-              schema: "main",
-              table,
-              type: "unique",
-              columns: idxCols
-                .filter((ic) => ic.cid >= 0 && ic.name)
-                .map((ic) => ic.name!),
-            });
-          }
-        }
-
-        return constraints;
-      } catch (err) {
-        throw new Error(`SQLite getConstraints error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-
-    async getEnums(_connectionString, _schema): Promise<SchemaEnum[]> {
-      // SQLite doesn't have native enum types
-      return [];
-    },
-
-    async getFunctions(connectionString, _schema): Promise<SchemaFunction[]> {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      try {
-        // SQLite doesn't have user-defined functions accessible via SQL
-        // Application-defined functions are not introspectable
-        return [];
-      } catch {
-        return [];
-      }
-    },
-
-    async getTriggers(connectionString, _schema): Promise<SchemaTrigger[]> {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      try {
-        const triggers = getCachedStmt(cachedDb, "SELECT name, tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, name")
-          .all() as Array<{ name: string; tbl_name: string; sql: string | null }>;
-
-        return triggers.map((t) => {
-          // Parse event and timing from the trigger SQL
-          const sql = t.sql ?? "";
-          const eventMatch = sql.match(/\b(AFTER|BEFORE|INSTEAD OF)\s+(INSERT|UPDATE|DELETE)\b/i);
-          return {
-            name: t.name,
-            schema: "main",
-            table: t.tbl_name,
-            event: eventMatch?.[2]?.toUpperCase() ?? "UNKNOWN",
-            timing: eventMatch?.[1]?.toUpperCase() ?? "AFTER",
-            enabled: true, // SQLite doesn't have disabled triggers
-            function_name: null,
-            definition: t.sql ?? null,
-          };
-        });
-      } catch {
-        return [];
-      }
-    },
-
-    async getTableStats(connectionString, schema, table) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-
-      try {
-        // Get approximate row count via SELECT COUNT(*)
-        const countRow = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"`).get() as Record<string, number>;
-        const rowCount = countRow?.cnt ?? 0;
-
-        // Get page count and size via pragma page_count and page_size
-        const pageCount = db.pragma("page_count") as number;
-        const pageSize = db.pragma("page_size") as number;
-        const sizeBytes = pageCount * pageSize;
-
-        // Format size
-        let sizeFormatted = "0 B";
-        if (sizeBytes > 0) {
-          if (sizeBytes < 1024) {
-            sizeFormatted = `${sizeBytes} B`;
-          } else if (sizeBytes < 1024 * 1024) {
-            sizeFormatted = `${(sizeBytes / 1024).toFixed(2)} KB`;
-          } else {
-            sizeFormatted = `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
-          }
-        }
-
-        return {
-          schema: "main",
-          table,
-          rowCount,
-          sizeBytes,
-          sizeFormatted,
-          lastVacuum: null, // SQLite doesn't track vacuum time
-          lastAnalyze: null, // SQLite doesn't have analyze
-          lastAutoanalyze: null,
-        };
-      } catch (err) {
-        throw new Error(`SQLite getTableStats error for ${table}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-
-    async explainQuery(connectionString, sql, analyze = false) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
+    async explainQuery(connectionString, sql, _analyze = false) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
 
       try {
         // SQLite uses EXPLAIN QUERY PLAN for the execution plan
@@ -664,13 +516,13 @@ export function createSqliteDriver(): DatabaseDriver {
         // We can only get the query plan, not actual execution stats
         const explainSql = `EXPLAIN QUERY PLAN ${sql}`;
         const stmt = db.prepare(explainSql);
-        const rows = stmt.all() as Array<Record<string, unknown>>;
+        const rows = stmt.all() as Record<string, unknown>[];
 
         // Format the plan as a readable tree
         const planLines = rows.map((row) => {
-          const id = row.id ?? row.id;
-          const parent = row.parent ?? row.parent;
-          const notUsed = row.notused ?? row.notused;
+          const _id = row.id ?? row.id;
+          const _parent = row.parent ?? row.parent;
+          const _notUsed = row.notused ?? row.notused;
           const detail = row.detail ?? row.detail;
           const depth = row.parent === 0 ? 0 : 1; // Simple depth estimation
           const indent = "  ".repeat(depth as number);
@@ -692,9 +544,9 @@ export function createSqliteDriver(): DatabaseDriver {
         }
 
         return {
-          plan: planText,
-          hasExecutionStats: false, // SQLite doesn't support ANALYZE in EXPLAIN
           estimatedRows,
+          hasExecutionStats: false, // SQLite doesn't support ANALYZE in EXPLAIN
+          plan: planText,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -702,23 +554,475 @@ export function createSqliteDriver(): DatabaseDriver {
       }
     },
 
-    async getTableSample(connectionString, schema, table, sampleSize = 100) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
+    // ── Clone / Export ──────────────────────────────────────────────
+
+    async exportSchemaDdl(connectionString) {
+      const cachedDb = getDb(connectionString);
+      const _db = cachedDb.db;
+
+      const tables = getCachedStmt(
+        cachedDb,
+        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      ).all() as Array<{ name: string; sql: string | null }>;
+
+      const indexes = getCachedStmt(
+        cachedDb,
+        "SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      ).all() as Array<{ name: string; sql: string | null }>;
+
+      const scripts: Array<{
+        type: string;
+        schema: string;
+        name: string;
+        sql: string;
+        dependsOn?: string[];
+      }> = [];
+
+      for (const t of tables) {
+        if (t.sql) {
+          scripts.push({
+            name: t.name,
+            schema: "main",
+            sql: t.sql.endsWith(";") ? t.sql : `${t.sql};`,
+            type: "table",
+          });
+        }
+      }
+
+      for (const idx of indexes) {
+        if (idx.sql) {
+          scripts.push({
+            name: idx.name,
+            schema: "main",
+            sql: idx.sql.endsWith(";") ? idx.sql : `${idx.sql};`,
+            type: "index",
+          });
+        }
+      }
+
+      // Row counts
+      const tableRowCounts: Array<{
+        schema: string;
+        table: string;
+        rowCount: number;
+      }> = [];
+      for (const t of tables) {
+        try {
+          const countRow = getCachedStmt(
+            cachedDb,
+            `SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`
+          ).get() as Record<string, number>;
+          tableRowCounts.push({
+            rowCount: countRow.cnt,
+            schema: "main",
+            table: t.name,
+          });
+        } catch {
+          tableRowCounts.push({ rowCount: 0, schema: "main", table: t.name });
+        }
+      }
+
+      return { scripts, tableRowCounts };
+    },
+
+    async exportTableData(connectionString, _schema, table, batchSize, offset) {
+      const cachedDb = getDb(connectionString);
+      const _db = cachedDb.db;
+      const rows = getCachedStmt(
+        cachedDb,
+        `SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT ? OFFSET ?`
+      ).all(batchSize + 1, offset) as Record<string, unknown>[];
+
+      const hasMore = rows.length > batchSize;
+      const resultRows = hasMore ? rows.slice(0, batchSize) : rows;
+
+      const columns = resultRows.length > 0 ? Object.keys(resultRows[0]) : [];
+
+      return {
+        columns,
+        hasMore,
+        rows: resultRows,
+        totalExported: offset + resultRows.length,
+      };
+    },
+
+    async getConstraints(connectionString, _schema, table) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      const constraints: import("./types").ConstraintInfo[] = [];
+
+      try {
+        // Get primary key info from table_info pragma
+        const colInfo = db.pragma(
+          `table_info("${table}")`
+        ) as unknown as SqliteColumnInfo[];
+        const pkColumns = colInfo
+          .filter((c) => c.pk > 0)
+          .sort((a, b) => a.pk - b.pk)
+          .map((c) => c.name);
+
+        if (pkColumns.length > 0) {
+          constraints.push({
+            columns: pkColumns,
+            name: `${table}_pkey`,
+            schema: "main",
+            table,
+            type: "primary_key",
+          });
+        }
+
+        // Get foreign keys from foreign_key_list pragma
+        const fkList = db.pragma(
+          `foreign_key_list("${table}")`
+        ) as unknown as SqliteForeignKey[];
+        const fkMap = new Map<number, import("./types").ConstraintInfo>();
+
+        for (const fk of fkList) {
+          if (!fkMap.has(fk.id)) {
+            fkMap.set(fk.id, {
+              columns: [],
+              name: `${table}_${fk.from}_fkey`,
+              referencedColumns: [],
+              referencedSchema: "main",
+              referencedTable: fk.table,
+              schema: "main",
+              table,
+              type: "foreign_key",
+            });
+          }
+          const constraint = fkMap.get(fk.id)!;
+          constraint.columns.push(fk.from);
+          constraint.referencedColumns!.push(fk.to);
+        }
+
+        constraints.push(...fkMap.values());
+
+        // Get unique constraints from index_list pragma
+        const indexList = db.pragma(
+          `index_list("${table}")`
+        ) as unknown as SqliteIndexInfo[];
+        for (const idx of indexList) {
+          if (idx.unique === 1 && idx.origin === "c") {
+            const idxCols = db.pragma(
+              `index_xinfo("${idx.name}")`
+            ) as unknown as SqliteIndexColumn[];
+            constraints.push({
+              columns: idxCols
+                .filter((ic) => ic.cid >= 0 && ic.name)
+                .map((ic) => ic.name!),
+              name: idx.name,
+              schema: "main",
+              table,
+              type: "unique",
+            });
+          }
+        }
+
+        return constraints;
+      } catch (err) {
+        throw new Error(
+          `SQLite getConstraints error for ${table}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    },
+
+    async getDatabaseInfo(connectionString) {
+      const cachedDb = getDb(connectionString);
+      const _db = cachedDb.db;
+      const version =
+        (
+          getCachedStmt(cachedDb, "SELECT sqlite_version()").get() as Record<
+            string,
+            string
+          >
+        )?.["sqlite_version()"] ?? "unknown";
+      const filePath = parseConnectionString(connectionString);
+
+      // Compute database file size
+      let size: string | undefined;
+      try {
+        const fs = await import("node:fs/promises");
+        const stat = await fs.stat(filePath);
+        const bytes = stat.size;
+        if (bytes < 1024) {
+          size = `${bytes} B`;
+        } else if (bytes < 1024 * 1024) {
+          size = `${(bytes / 1024).toFixed(2)} KB`;
+        } else if (bytes < 1024 * 1024 * 1024) {
+          size = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+        } else {
+          size = `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+        }
+      } catch {
+        // File may not be stat-able (e.g. in-memory or WAL mode)
+      }
+
+      return {
+        databaseName: path.basename(filePath),
+        encoding: "UTF-8",
+        size,
+        timezone: "UTC",
+        version: `SQLite ${version}`,
+      };
+    },
+
+    async getEnums(_connectionString, _schema): Promise<SchemaEnum[]> {
+      // SQLite doesn't have native enum types
+      return [];
+    },
+
+    async getFunctions(connectionString, _schema): Promise<SchemaFunction[]> {
+      const cachedDb = getDb(connectionString);
+      const _db = cachedDb.db;
+      try {
+        // SQLite doesn't have user-defined functions accessible via SQL
+        // Application-defined functions are not introspectable
+        return [];
+      } catch {
+        return [];
+      }
+    },
+
+    async getIndexes(connectionString, _schema, table) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+
+      try {
+        const indexList = db.pragma(
+          `index_list("${table}")`
+        ) as unknown as SqliteIndexInfo[];
+
+        return indexList
+          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
+          .map((idx) => {
+            const idxCols = db.pragma(
+              `index_xinfo("${idx.name}")`
+            ) as unknown as SqliteIndexColumn[];
+            return {
+              columns: idxCols
+                .filter((ic) => ic.cid >= 0 && ic.name)
+                .map((ic) => ic.name!),
+              isPrimary: idx.origin === "pk",
+              isUnique: idx.unique === 1,
+              name: idx.name,
+              schema: "main",
+              table,
+              type: "btree", // SQLite only supports btree indexes
+            };
+          });
+      } catch (err) {
+        throw new Error(
+          `SQLite getIndexes error for ${table}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    },
+
+    async getSchema(connectionString) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+
+      // SQLite has a single "main" schema (plus temp)
+      const schemas = ["main"];
+
+      // Get all table names (excluding sqlite_ internal tables)
+      const tables = getCachedStmt(
+        cachedDb,
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      ).all() as Array<{ name: string }>;
+
+      const schemaTables = tables.map((t) => {
+        const tableName = t.name;
+
+        // Columns
+        const colInfo = db.pragma(
+          `table_info("${tableName}")`
+        ) as unknown as SqliteColumnInfo[];
+        const columns = colInfo.map((c) => ({
+          column_default: c.dflt_value,
+          data_type: c.type || "TEXT",
+          is_nullable: c.notnull === 0,
+          name: c.name,
+          udt_name: c.type || null,
+        }));
+
+        // Indexes
+        const indexList = db.pragma(
+          `index_list("${tableName}")`
+        ) as unknown as SqliteIndexInfo[];
+        const indexes = indexList
+          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
+          .map((idx) => {
+            const idxCols = db.pragma(
+              `index_xinfo("${idx.name}")`
+            ) as unknown as SqliteIndexColumn[];
+            return {
+              column_names: idxCols
+                .filter((ic) => ic.cid >= 0 && ic.name)
+                .map((ic) => ic.name!),
+              is_primary: idx.origin === "pk",
+              is_unique: idx.unique === 1,
+              name: idx.name,
+            };
+          });
+
+        // Foreign keys
+        const fkList = db.pragma(
+          `foreign_key_list("${tableName}")`
+        ) as unknown as SqliteForeignKey[];
+        const foreignKeys = fkList.map((fk) => ({
+          column_name: fk.from,
+          name: `${tableName}_${fk.from}_fkey`,
+          referenced_column: fk.to,
+          referenced_schema: "main",
+          referenced_table: fk.table,
+        }));
+
+        return {
+          columns,
+          foreign_keys: foreignKeys,
+          has_rls: false,
+          indexes,
+          name: tableName,
+          rls_policies: [],
+          schema: "main",
+        };
+      });
+
+      return {
+        schemas,
+        tables: schemaTables,
+      };
+    },
+
+    async getSchemaSummary(connectionString) {
+      const cachedDb = getDb(connectionString);
+      const _db = cachedDb.db;
+
+      // SQLite has a single "main" schema — no need for full introspection
+      const schemas = ["main"];
+      const tableRows = getCachedStmt(
+        cachedDb,
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+      ).all() as Array<{ name: string }>;
+
+      // Get row counts for each table (SQLite requires per-table COUNT)
+      const tablesWithCounts = tableRows.map((t) => {
+        let rowCount = 0;
+        try {
+          const countRow = getCachedStmt(
+            cachedDb,
+            `SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`
+          ).get() as Record<string, number>;
+          rowCount = countRow?.cnt ?? 0;
+        } catch {
+          // Table may be a virtual table or otherwise unreadable
+        }
+        return {
+          estimated_row_count: rowCount,
+          has_rls: false,
+          name: t.name,
+          schema: "main",
+        };
+      });
+
+      return {
+        schemas,
+        tables: tablesWithCounts,
+      };
+    },
+
+    async getTableDetails(connectionString, _schema, table) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+
+      try {
+        // 1. Columns for this specific table only
+        const colInfo = db.pragma(
+          `table_info("${table}")`
+        ) as unknown as SqliteColumnInfo[];
+        const columns = colInfo.map((c) => ({
+          column_default: c.dflt_value,
+          data_type: c.type || "TEXT",
+          is_nullable: c.notnull === 0,
+          name: c.name,
+          udt_name: c.type || null,
+        }));
+
+        // 2. Indexes for this specific table
+        const indexList = db.pragma(
+          `index_list("${table}")`
+        ) as unknown as SqliteIndexInfo[];
+        const indexes = indexList
+          .filter((idx) => idx.origin !== "c") // Skip auto-indexes for constraints
+          .map((idx) => {
+            const idxCols = db.pragma(
+              `index_xinfo("${idx.name}")`
+            ) as unknown as SqliteIndexColumn[];
+            return {
+              column_names: idxCols
+                .filter((ic) => ic.cid >= 0 && ic.name)
+                .map((ic) => ic.name!),
+              is_primary: idx.origin === "pk",
+              is_unique: idx.unique === 1,
+              name: idx.name,
+            };
+          });
+
+        // 3. Foreign keys for this specific table
+        const fkList = db.pragma(
+          `foreign_key_list("${table}")`
+        ) as unknown as SqliteForeignKey[];
+        const foreignKeys = fkList.map((fk) => ({
+          column_name: fk.from,
+          name: `${table}_${fk.from}_fkey`,
+          referenced_column: fk.to,
+          referenced_schema: "main",
+          referenced_table: fk.table,
+        }));
+
+        return {
+          columns,
+          foreign_keys: foreignKeys,
+          has_rls: false,
+          indexes,
+          name: table,
+          rls_policies: [],
+          schema: "main",
+        };
+      } catch (err) {
+        throw new Error(
+          `SQLite table details error for ${table}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    },
+
+    async getTableSample(connectionString, _schema, table, sampleSize = 100) {
+      const cachedDb = getDb(connectionString);
+      const _db = cachedDb.db;
 
       try {
         // Get total row count
-        const totalRows = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${table}"`).get() as { cnt: number };
+        const totalRows = getCachedStmt(
+          cachedDb,
+          `SELECT COUNT(*) as cnt FROM "${table}"`
+        ).get() as { cnt: number };
 
         // Get sample rows using random ordering (SQLite uses RANDOM())
-        const sampleStmt = getCachedStmt(cachedDb, `
+        const sampleStmt = getCachedStmt(
+          cachedDb,
+          `
           SELECT * FROM "${table}"
           ORDER BY RANDOM()
           LIMIT ${sampleSize}
-        `);
+        `
+        );
         const rows = sampleStmt.all() as Record<string, unknown>[];
 
         // Get column information from PRAGMA
-        const columns = getCachedStmt(cachedDb, `PRAGMA table_info("${table}")`).all() as Array<{ name: string; type: string; notnull: number }>;
+        const columns = getCachedStmt(
+          cachedDb,
+          `PRAGMA table_info("${table}")`
+        ).all() as Array<{ name: string; type: string; notnull: number }>;
 
         // Build column statistics
         const columnStats: import("./types").ColumnStat[] = [];
@@ -726,11 +1030,11 @@ export function createSqliteDriver(): DatabaseDriver {
         for (const col of columns) {
           const colName = col.name;
           const dataType = col.type || "TEXT";
-          const isNullable = col.notnull === 0;
+          const _isNullable = col.notnull === 0;
 
           const stat: import("./types").ColumnStat = {
             columnName: colName,
-            dataType: dataType,
+            dataType,
           };
 
           // Try to get min/max/avg for numeric types
@@ -743,7 +1047,9 @@ export function createSqliteDriver(): DatabaseDriver {
             dataType.toLowerCase().includes("decimal")
           ) {
             try {
-              const statsStmt = getCachedStmt(cachedDb, `
+              const statsStmt = getCachedStmt(
+                cachedDb,
+                `
                 SELECT
                   MIN("${colName}") as min_val,
                   MAX("${colName}") as max_val,
@@ -751,20 +1057,30 @@ export function createSqliteDriver(): DatabaseDriver {
                   COUNT(DISTINCT "${colName}") as unique_count,
                   COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM "${table}"), 0) as null_pct
                 FROM "${table}"
-              `);
+              `
+              );
               const row = statsStmt.get() as Record<string, unknown>;
               stat.min = row.min_val as number | string | undefined;
               stat.max = row.max_val as number | string | undefined;
-              stat.avg = row.avg_val ? Number.parseFloat(row.avg_val as string) : undefined;
-              stat.uniqueCount = Number.parseInt(row.unique_count as string, 10);
-              stat.nullPercentage = row.null_pct ? Number.parseFloat(row.null_pct as string) : 0;
+              stat.avg = row.avg_val
+                ? Number.parseFloat(row.avg_val as string)
+                : undefined;
+              stat.uniqueCount = Number.parseInt(
+                row.unique_count as string,
+                10
+              );
+              stat.nullPercentage = row.null_pct
+                ? Number.parseFloat(row.null_pct as string)
+                : 0;
             } catch {
               // Ignore stats errors
             }
           } else {
             // For string/categorical columns, get top values
             try {
-              const topValuesStmt = getCachedStmt(cachedDb, `
+              const topValuesStmt = getCachedStmt(
+                cachedDb,
+                `
                 SELECT
                   "${colName}" as value,
                   COUNT(*) as count
@@ -773,23 +1089,35 @@ export function createSqliteDriver(): DatabaseDriver {
                 GROUP BY "${colName}"
                 ORDER BY count DESC
                 LIMIT 5
-              `);
-              const topValues = topValuesStmt.all() as Array<{ value: unknown; count: number }>;
+              `
+              );
+              const topValues = topValuesStmt.all() as Array<{
+                value: unknown;
+                count: number;
+              }>;
               stat.topValues = topValues.map((r) => ({
-                value: String(r.value),
                 count: r.count,
+                value: String(r.value),
               }));
 
               // Get unique count and null percentage
-              const uniqueStmt = getCachedStmt(cachedDb, `
+              const uniqueStmt = getCachedStmt(
+                cachedDb,
+                `
                 SELECT
                   COUNT(DISTINCT "${colName}") as unique_count,
                   COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM "${table}"), 0) as null_pct
                 FROM "${table}"
-              `);
+              `
+              );
               const uniqueRow = uniqueStmt.get() as Record<string, unknown>;
-              stat.uniqueCount = Number.parseInt(uniqueRow.unique_count as string, 10);
-              stat.nullPercentage = uniqueRow.null_pct ? Number.parseFloat(uniqueRow.null_pct as string) : 0;
+              stat.uniqueCount = Number.parseInt(
+                uniqueRow.unique_count as string,
+                10
+              );
+              stat.nullPercentage = uniqueRow.null_pct
+                ? Number.parseFloat(uniqueRow.null_pct as string)
+                : 0;
             } catch {
               // Ignore stats errors
             }
@@ -799,10 +1127,10 @@ export function createSqliteDriver(): DatabaseDriver {
         }
 
         return {
-          rows,
           columnStats,
-          totalRows: totalRows.cnt,
+          rows,
           sampleSize: rows.length,
+          totalRows: totalRows.cnt,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -810,8 +1138,125 @@ export function createSqliteDriver(): DatabaseDriver {
       }
     },
 
-    async listRows(connectionString, schema, table, page, pageSize, sort, filters) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
+    async getTableStats(connectionString, _schema, table) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+
+      try {
+        // Get approximate row count via SELECT COUNT(*)
+        const countRow = getCachedStmt(
+          cachedDb,
+          `SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"`
+        ).get() as Record<string, number>;
+        const rowCount = countRow?.cnt ?? 0;
+
+        // Get page count and size via pragma page_count and page_size
+        const pageCount = db.pragma("page_count") as number;
+        const pageSize = db.pragma("page_size") as number;
+        const sizeBytes = pageCount * pageSize;
+
+        // Format size
+        let sizeFormatted = "0 B";
+        if (sizeBytes > 0) {
+          if (sizeBytes < 1024) {
+            sizeFormatted = `${sizeBytes} B`;
+          } else if (sizeBytes < 1024 * 1024) {
+            sizeFormatted = `${(sizeBytes / 1024).toFixed(2)} KB`;
+          } else {
+            sizeFormatted = `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
+          }
+        }
+
+        return {
+          lastAnalyze: null, // SQLite doesn't have analyze
+          lastAutoanalyze: null,
+          lastVacuum: null, // SQLite doesn't track vacuum time
+          rowCount,
+          schema: "main",
+          sizeBytes,
+          sizeFormatted,
+          table,
+        };
+      } catch (err) {
+        throw new Error(
+          `SQLite getTableStats error for ${table}: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    },
+
+    async getTriggers(connectionString, _schema): Promise<SchemaTrigger[]> {
+      const cachedDb = getDb(connectionString);
+      const _db = cachedDb.db;
+      try {
+        const triggers = getCachedStmt(
+          cachedDb,
+          "SELECT name, tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name NOT LIKE 'sqlite_%' ORDER BY tbl_name, name"
+        ).all() as Array<{
+          name: string;
+          tbl_name: string;
+          sql: string | null;
+        }>;
+
+        return triggers.map((t) => {
+          // Parse event and timing from the trigger SQL
+          const sql = t.sql ?? "";
+          const eventMatch = sql.match(
+            /\b(AFTER|BEFORE|INSTEAD OF)\s+(INSERT|UPDATE|DELETE)\b/i
+          );
+          return {
+            definition: t.sql ?? null,
+            enabled: true, // SQLite doesn't have disabled triggers
+            event: eventMatch?.[2]?.toUpperCase() ?? "UNKNOWN",
+            function_name: null,
+            name: t.name,
+            schema: "main",
+            table: t.tbl_name,
+            timing: eventMatch?.[1]?.toUpperCase() ?? "AFTER",
+          };
+        });
+      } catch {
+        return [];
+      }
+    },
+
+    async importTableRows(connectionString, _schema, table, columns, rows) {
+      if (rows.length === 0) {
+        return 0;
+      }
+
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      const quotedCols = columns
+        .map((c) => `"${c.replace(/"/g, '""')}"`)
+        .join(", ");
+      const placeholders = columns.map(() => "?").join(", ");
+      const insertSql = `INSERT INTO "${table.replace(/"/g, '""')}" (${quotedCols}) VALUES (${placeholders})`;
+
+      const stmt = db.prepare(insertSql);
+      const insertMany = db.transaction(
+        (allRows: Record<string, unknown>[]) => {
+          for (const row of allRows) {
+            const values = columns.map((col) => row[col]);
+            stmt.run(...values);
+          }
+        }
+      );
+
+      insertMany(rows);
+      return rows.length;
+    },
+
+    async listRows(
+      connectionString,
+      _schema,
+      table,
+      page,
+      pageSize,
+      sort,
+      filters
+    ) {
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
       const offset = (page - 1) * pageSize;
 
       // Build WHERE clause
@@ -822,12 +1267,20 @@ export function createSqliteDriver(): DatabaseDriver {
           const col = `"${f.column.replace(/"/g, '""')}"`;
           switch (f.operator) {
             case "eq":
-              if (f.value == null) whereParts.push(`${col} IS NULL`);
-              else { whereParts.push(`${col} = ?`); params.push(f.value); }
+              if (f.value == null) {
+                whereParts.push(`${col} IS NULL`);
+              } else {
+                whereParts.push(`${col} = ?`);
+                params.push(f.value);
+              }
               break;
             case "neq":
-              if (f.value == null) whereParts.push(`${col} IS NOT NULL`);
-              else { whereParts.push(`${col} != ?`); params.push(f.value); }
+              if (f.value == null) {
+                whereParts.push(`${col} IS NOT NULL`);
+              } else {
+                whereParts.push(`${col} != ?`);
+                params.push(f.value);
+              }
               break;
             case "contains":
               whereParts.push(`${col} LIKE ?`);
@@ -869,24 +1322,34 @@ export function createSqliteDriver(): DatabaseDriver {
           }
         }
       }
-      const where = whereParts.length > 0 ? ` WHERE ${whereParts.join(" AND ")}` : "";
+      const where =
+        whereParts.length > 0 ? ` WHERE ${whereParts.join(" AND ")}` : "";
 
       // Build ORDER BY
-      const orderBy = sort && sort.length > 0
-        ? ` ORDER BY ${sort.map((s) => `"${s.column.replace(/"/g, '""')}" ${s.direction.toUpperCase()}`).join(", ")}`
-        : "";
+      const orderBy =
+        sort && sort.length > 0
+          ? ` ORDER BY ${sort.map((s) => `"${s.column.replace(/"/g, '""')}" ${s.direction.toUpperCase()}`).join(", ")}`
+          : "";
 
       // Rows
-      const rows = db.prepare(`SELECT * FROM "${table.replace(/"/g, '""')}"${where}${orderBy} LIMIT ? OFFSET ?`)
+      const rows = db
+        .prepare(
+          `SELECT * FROM "${table.replace(/"/g, '""')}"${where}${orderBy} LIMIT ? OFFSET ?`
+        )
         .all(...params, pageSize, offset) as Record<string, unknown>[];
 
       // Count
-      const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"${where}`)
+      const countRow = db
+        .prepare(
+          `SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"${where}`
+        )
         .get(...params) as Record<string, number>;
       const totalEstimate = countRow?.cnt ?? 0;
 
       // Get column types from pragma for more accurate type info
-      const colInfo = db.pragma(`table_info("${table}")`) as unknown as SqliteColumnInfo[];
+      const colInfo = db.pragma(
+        `table_info("${table}")`
+      ) as unknown as SqliteColumnInfo[];
       const colTypeMap = new Map(colInfo.map((c) => [c.name, c.type]));
       const columnsWithTypes = Object.keys(rows[0] ?? {}).map((name) => ({
         name,
@@ -897,219 +1360,90 @@ export function createSqliteDriver(): DatabaseDriver {
       const primaryKey = colInfo.filter((c) => c.pk > 0).map((c) => c.name);
 
       // Foreign keys
-      const fkList = db.pragma(`foreign_key_list("${table}")`) as unknown as SqliteForeignKey[];
+      const fkList = db.pragma(
+        `foreign_key_list("${table}")`
+      ) as unknown as SqliteForeignKey[];
       const foreignKeys = fkList.map((fk) => ({
-        name: `${table}_${fk.from}_fkey`,
         column_name: fk.from,
+        name: `${table}_${fk.from}_fkey`,
+        referenced_column: fk.to,
         referenced_schema: "main",
         referenced_table: fk.table,
-        referenced_column: fk.to,
       }));
 
       return {
         columns: columnsWithTypes,
-        rows,
-        primaryKey,
         foreignKeys,
         pageInfo: { page, pageSize },
+        primaryKey,
+        rows,
         totalEstimate,
       };
     },
 
-    // ── DDL ─────────────────────────────────────────────────────────
-
-    async createTable(connectionString, schema, tableName, columns, primaryKeyColumns, ifNotExists) {
-      const sql = buildCreateTableSql(DB_TYPE, schema, tableName, columns, primaryKeyColumns ?? [], ifNotExists ?? false);
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      db.exec(sql);
-      cachedDb.ddlVersion++;
-      return sql;
-    },
-
-    async dropTable(connectionString, schema, tableName, cascade, ifExists) {
-      const sql = buildDropTableSql(DB_TYPE, schema, tableName, cascade ?? false, ifExists ?? false);
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      db.exec(sql);
-      cachedDb.ddlVersion++;
-      return sql;
-    },
-
-    async renameTable(connectionString, schema, oldName, newName) {
-      // SQLite uses: ALTER TABLE ... RENAME TO ...
-      const sql = `ALTER TABLE "${oldName.replace(/"/g, '""')}" RENAME TO "${newName.replace(/"/g, '""')}"`;
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      db.exec(sql);
-      cachedDb.ddlVersion++;
-      return sql;
-    },
-
-    async addColumn(connectionString, schema, table, columnName, dataType, isNullable, defaultExpr, ifNotExists) {
-      // SQLite doesn't support IF NOT EXISTS for ADD COLUMN
-      let def = `"${columnName.replace(/"/g, '""')}" ${dataType}`;
-      if (!(isNullable ?? true)) def += " NOT NULL";
-      if (defaultExpr) def += ` DEFAULT ${defaultExpr}`;
-      const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" ADD COLUMN ${def}`;
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      db.exec(sql);
-      cachedDb.ddlVersion++;
-      return sql;
-    },
-
-    async dropColumn(connectionString, schema, table, columnName, _cascade, _ifExists) {
-      // SQLite 3.35.0+ supports DROP COLUMN
-      const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" DROP COLUMN "${columnName.replace(/"/g, '""')}"`;
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      db.exec(sql);
-      cachedDb.ddlVersion++;
-      return sql;
-    },
-
-    async renameColumn(connectionString, schema, table, oldName, newName) {
+    async renameColumn(connectionString, _schema, table, oldName, newName) {
       // SQLite 3.25.0+ supports RENAME COLUMN
       const sql = `ALTER TABLE "${table.replace(/"/g, '""')}" RENAME COLUMN "${oldName.replace(/"/g, '""')}" TO "${newName.replace(/"/g, '""')}"`;
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
       db.exec(sql);
       cachedDb.ddlVersion++;
       return sql;
     },
 
-    async alterColumnType(connectionString, schema, table, columnName, newType) {
-      // SQLite doesn't support ALTER COLUMN TYPE directly.
-      // The standard approach is: recreate table, but that's very complex.
-      // For now, throw a clear error.
-      throw new Error(
-        `SQLite does not support ALTER COLUMN TYPE. To change the type of "${columnName}" in "${table}", ` +
-        `you need to create a new table with the desired schema, copy data, drop the old table, and rename.`
-      );
+    async renameTable(connectionString, _schema, oldName, newName) {
+      // SQLite uses: ALTER TABLE ... RENAME TO ...
+      const sql = `ALTER TABLE "${oldName.replace(/"/g, '""')}" RENAME TO "${newName.replace(/"/g, '""')}"`;
+      const cachedDb = getDb(connectionString);
+      const db = cachedDb.db;
+      db.exec(sql);
+      cachedDb.ddlVersion++;
+      return sql;
     },
 
-    async setColumnNullable(connectionString, schema, table, columnName, isNullable) {
-      // SQLite doesn't support changing nullability directly.
-      throw new Error(
-        `SQLite does not support changing column nullability directly. To change nullability of "${columnName}" in "${table}", ` +
-        `you need to recreate the table with the desired schema.`
-      );
-    },
-
-    async setColumnDefault(connectionString, schema, table, columnName, defaultExpr) {
+    async setColumnDefault(
+      _connectionString,
+      _schema,
+      table,
+      columnName,
+      _defaultExpr
+    ) {
       // SQLite doesn't support SET/DROP DEFAULT directly.
       throw new Error(
         `SQLite does not support changing column defaults directly. To change the default of "${columnName}" in "${table}", ` +
-        `you need to recreate the table with the desired schema.`
+          "you need to recreate the table with the desired schema."
       );
     },
 
-    async createIndex(connectionString, schema, table, indexName, columns, unique, ifNotExists) {
-      const sql = buildCreateIndexSql(DB_TYPE, schema, table, indexName, columns, unique ?? false, ifNotExists ?? false);
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      db.exec(sql);
-      cachedDb.ddlVersion++;
-      return sql;
+    async setColumnNullable(
+      _connectionString,
+      _schema,
+      table,
+      columnName,
+      _isNullable
+    ) {
+      // SQLite doesn't support changing nullability directly.
+      throw new Error(
+        `SQLite does not support changing column nullability directly. To change nullability of "${columnName}" in "${table}", ` +
+          "you need to recreate the table with the desired schema."
+      );
     },
+    sslModes: ["disable"] as SslMode[], // SQLite doesn't support SSL
 
-    async dropIndex(connectionString, schema, indexName, _cascade, ifExists) {
-      // SQLite: DROP INDEX if_exists? index_name
-      const ifExistsClause = ifExists ? "IF EXISTS " : "";
-      const sql = `DROP INDEX ${ifExistsClause}"${indexName.replace(/"/g, '""')}"`;
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      db.exec(sql);
-      cachedDb.ddlVersion++;
-      return sql;
-    },
-
-    async createSchema(connectionString, schemaName, ifNotExists) {
-      // SQLite doesn't support CREATE SCHEMA — it only has "main" and "temp".
-      // For compatibility, we silently ignore this.
-      console.warn(`SQLite does not support CREATE SCHEMA. Ignoring createSchema("${schemaName}")`);
-      return `-- SQLite does not support CREATE SCHEMA. Schema "${schemaName}" not created.`;
-    },
-
-    // ── Clone / Export ──────────────────────────────────────────────
-
-    async exportSchemaDdl(connectionString) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-
-      const tables = getCachedStmt(cachedDb, "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as Array<{ name: string; sql: string | null }>;
-
-      const indexes = getCachedStmt(cachedDb, "SELECT name, sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name")
-        .all() as Array<{ name: string; sql: string | null }>;
-
-      const scripts: Array<{ type: string; schema: string; name: string; sql: string; dependsOn?: string[] }> = [];
-
-      for (const t of tables) {
-        if (t.sql) {
-          scripts.push({
-            type: "table",
-            schema: "main",
-            name: t.name,
-            sql: t.sql.endsWith(";") ? t.sql : `${t.sql};`,
-          });
-        }
+    async testConnection(config) {
+      try {
+        const connStr = this.buildConnectionString(config);
+        const filePath = parseConnectionString(connStr);
+        const BetterSqlite3 = getBetterSqlite3();
+        const db = new BetterSqlite3(filePath);
+        db.prepare("SELECT 1").get();
+        db.close();
+        return true;
+      } catch {
+        return false;
       }
-
-      for (const idx of indexes) {
-        if (idx.sql) {
-          scripts.push({
-            type: "index",
-            schema: "main",
-            name: idx.name,
-            sql: idx.sql.endsWith(";") ? idx.sql : `${idx.sql};`,
-          });
-        }
-      }
-
-      // Row counts
-      const tableRowCounts: Array<{ schema: string; table: string; rowCount: number }> = [];
-      for (const t of tables) {
-        try {
-          const countRow = getCachedStmt(cachedDb, `SELECT COUNT(*) as cnt FROM "${t.name.replace(/"/g, '""')}"`).get() as Record<string, number>;
-          tableRowCounts.push({ schema: "main", table: t.name, rowCount: countRow.cnt });
-        } catch {
-          tableRowCounts.push({ schema: "main", table: t.name, rowCount: 0 });
-        }
-      }
-
-      return { scripts, tableRowCounts };
     },
-
-    async exportTableData(connectionString, _schema, table, batchSize, offset) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      const rows = getCachedStmt(cachedDb, `SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT ? OFFSET ?`)
-        .all(batchSize + 1, offset) as Record<string, unknown>[];
-
-      const hasMore = rows.length > batchSize;
-      const resultRows = hasMore ? rows.slice(0, batchSize) : rows;
-
-      const columns = resultRows.length > 0 ? Object.keys(resultRows[0]) : [];
-
-      return {
-        rows: resultRows,
-        columns,
-        hasMore,
-        totalExported: offset + resultRows.length,
-      };
-    },
-
-    async executeBatchDdl(connectionString, statements, throwOnError) {
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      const errors: Array<{ sql: string; error: string }> = [];
-
-      for (const sql of statements) {
-        try {
-          db.exec(sql);
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          errors.push({ sql, error: errMsg });
-          if (throwOnError) {
-            throw new Error(`DDL execution failed: ${errMsg}\nSQL: ${sql}`);
-          }
-        }
-      }
-      cachedDb.ddlVersion++;
-
-      return { errors };
-    },
+    type: DB_TYPE,
 
     async waitForDatabase(connectionString, maxRetries, intervalMs) {
       // SQLite doesn't need to wait for a server — file existence check
@@ -1122,30 +1456,14 @@ export function createSqliteDriver(): DatabaseDriver {
           db.close();
           return;
         } catch {
-          await new Promise((resolve) => setTimeout(resolve, intervalMs ?? 250));
+          await new Promise((resolve) =>
+            setTimeout(resolve, intervalMs ?? 250)
+          );
         }
       }
-      throw new Error(`SQLite database not ready after ${(maxRetries ?? 20) * (intervalMs ?? 250)}ms: ${filePath}`);
-    },
-
-    async importTableRows(connectionString, _schema, table, columns, rows) {
-      if (rows.length === 0) return 0;
-
-      const cachedDb = getDb(connectionString); const db = cachedDb.db;
-      const quotedCols = columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(", ");
-      const placeholders = columns.map(() => "?").join(", ");
-      const insertSql = `INSERT INTO "${table.replace(/"/g, '""')}" (${quotedCols}) VALUES (${placeholders})`;
-
-      const stmt = db.prepare(insertSql);
-      const insertMany = db.transaction((allRows: Record<string, unknown>[]) => {
-        for (const row of allRows) {
-          const values = columns.map((col) => row[col]);
-          stmt.run(...values);
-        }
-      });
-
-      insertMany(rows);
-      return rows.length;
+      throw new Error(
+        `SQLite database not ready after ${(maxRetries ?? 20) * (intervalMs ?? 250)}ms: ${filePath}`
+      );
     },
   };
 }

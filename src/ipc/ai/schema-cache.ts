@@ -6,7 +6,14 @@
  * - Invalidation: automatic on DDL operations detected
  * - Scope: per connection, per schema/table
  */
-import type { DatabaseSchema, SchemaTableDetails, IndexInfo, ConstraintInfo, TableStats, TableSampleResult } from "@/ipc/db/types";
+import type {
+  ConstraintInfo,
+  DatabaseSchema,
+  IndexInfo,
+  SchemaTableDetails,
+  TableSampleResult,
+  TableStats,
+} from "@/ipc/db/types";
 
 // ---------------------------------------------------------------------------
 // Cache entry types
@@ -14,17 +21,17 @@ import type { DatabaseSchema, SchemaTableDetails, IndexInfo, ConstraintInfo, Tab
 
 interface CacheEntry<T> {
   data: T;
-  timestamp: number;
   key: string;
+  timestamp: number;
 }
 
 interface SchemaCache {
-  fullSchema?: CacheEntry<DatabaseSchema>;
-  tableDetails: Map<string, CacheEntry<SchemaTableDetails>>;
-  indexes: Map<string, CacheEntry<IndexInfo[]>>;
   constraints: Map<string, CacheEntry<ConstraintInfo[]>>;
-  tableStats: Map<string, CacheEntry<TableStats>>;
+  fullSchema?: CacheEntry<DatabaseSchema>;
+  indexes: Map<string, CacheEntry<IndexInfo[]>>;
+  tableDetails: Map<string, CacheEntry<SchemaTableDetails>>;
   tableSamples: Map<string, CacheEntry<TableSampleResult>>;
+  tableStats: Map<string, CacheEntry<TableStats>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,11 +61,11 @@ function buildTableKey(schema: string, table: string): string {
 function getOrCreateConnectionCache(connectionId: string): SchemaCache {
   if (!cache.has(connectionId)) {
     cache.set(connectionId, {
-      tableDetails: new Map(),
-      indexes: new Map(),
       constraints: new Map(),
-      tableStats: new Map(),
+      indexes: new Map(),
+      tableDetails: new Map(),
       tableSamples: new Map(),
+      tableStats: new Map(),
     });
   }
   return cache.get(connectionId)!;
@@ -68,12 +75,18 @@ function isExpired(entry: CacheEntry<unknown>): boolean {
   return Date.now() - entry.timestamp > TTL_MS;
 }
 
-function shouldInvalidate(connectionId: string, schema: string, table?: string): boolean {
+function shouldInvalidate(
+  connectionId: string,
+  schema: string,
+  table?: string
+): boolean {
   const ddlKey = table
     ? `${connectionId}:${schema}.${table}:ddl`
     : `${connectionId}:${schema}:ddl`;
   const lastDdl = recentDdlOps.get(ddlKey);
-  if (!lastDdl) return false;
+  if (!lastDdl) {
+    return false;
+  }
   // Invalidate if DDL happened in last 5 minutes
   return Date.now() - lastDdl < TTL_MS;
 }
@@ -88,7 +101,9 @@ function shouldInvalidate(connectionId: string, schema: string, table?: string):
  */
 export function getCachedSchema(connectionId: string): DatabaseSchema | null {
   const connCache = cache.get(connectionId);
-  if (!connCache?.fullSchema) return null;
+  if (!connCache?.fullSchema) {
+    return null;
+  }
   if (isExpired(connCache.fullSchema)) {
     connCache.fullSchema = undefined;
     return null;
@@ -99,12 +114,15 @@ export function getCachedSchema(connectionId: string): DatabaseSchema | null {
 /**
  * Set cached full schema for a connection.
  */
-export function setCachedSchema(connectionId: string, schema: DatabaseSchema): void {
+export function setCachedSchema(
+  connectionId: string,
+  schema: DatabaseSchema
+): void {
   const connCache = getOrCreateConnectionCache(connectionId);
   connCache.fullSchema = {
     data: schema,
-    timestamp: Date.now(),
     key: "fullSchema",
+    timestamp: Date.now(),
   };
 }
 
@@ -114,15 +132,19 @@ export function setCachedSchema(connectionId: string, schema: DatabaseSchema): v
 export function getCachedTableDetails(
   connectionId: string,
   schema: string,
-  table: string,
+  table: string
 ): SchemaTableDetails | null {
   const connCache = cache.get(connectionId);
-  if (!connCache) return null;
+  if (!connCache) {
+    return null;
+  }
 
   const key = buildTableKey(schema, table);
   const entry = connCache.tableDetails.get(key);
 
-  if (!entry) return null;
+  if (!entry) {
+    return null;
+  }
   if (isExpired(entry) || shouldInvalidate(connectionId, schema, table)) {
     connCache.tableDetails.delete(key);
     return null;
@@ -138,14 +160,14 @@ export function setCachedTableDetails(
   connectionId: string,
   schema: string,
   table: string,
-  details: SchemaTableDetails,
+  details: SchemaTableDetails
 ): void {
   const connCache = getOrCreateConnectionCache(connectionId);
   const key = buildTableKey(schema, table);
   connCache.tableDetails.set(key, {
     data: details,
-    timestamp: Date.now(),
     key,
+    timestamp: Date.now(),
   });
 }
 
@@ -155,15 +177,19 @@ export function setCachedTableDetails(
 export function getCachedIndexes(
   connectionId: string,
   schema: string,
-  table: string,
+  table: string
 ): IndexInfo[] | null {
   const connCache = cache.get(connectionId);
-  if (!connCache) return null;
+  if (!connCache) {
+    return null;
+  }
 
   const key = buildTableKey(schema, table);
   const entry = connCache.indexes.get(key);
 
-  if (!entry) return null;
+  if (!entry) {
+    return null;
+  }
   if (isExpired(entry) || shouldInvalidate(connectionId, schema, table)) {
     connCache.indexes.delete(key);
     return null;
@@ -179,14 +205,14 @@ export function setCachedIndexes(
   connectionId: string,
   schema: string,
   table: string,
-  indexes: IndexInfo[],
+  indexes: IndexInfo[]
 ): void {
   const connCache = getOrCreateConnectionCache(connectionId);
   const key = buildTableKey(schema, table);
   connCache.indexes.set(key, {
     data: indexes,
-    timestamp: Date.now(),
     key,
+    timestamp: Date.now(),
   });
 }
 
@@ -196,15 +222,19 @@ export function setCachedIndexes(
 export function getCachedConstraints(
   connectionId: string,
   schema: string,
-  table: string,
+  table: string
 ): ConstraintInfo[] | null {
   const connCache = cache.get(connectionId);
-  if (!connCache) return null;
+  if (!connCache) {
+    return null;
+  }
 
   const key = buildTableKey(schema, table);
   const entry = connCache.constraints.get(key);
 
-  if (!entry) return null;
+  if (!entry) {
+    return null;
+  }
   if (isExpired(entry) || shouldInvalidate(connectionId, schema, table)) {
     connCache.constraints.delete(key);
     return null;
@@ -220,14 +250,14 @@ export function setCachedConstraints(
   connectionId: string,
   schema: string,
   table: string,
-  constraints: ConstraintInfo[],
+  constraints: ConstraintInfo[]
 ): void {
   const connCache = getOrCreateConnectionCache(connectionId);
   const key = buildTableKey(schema, table);
   connCache.constraints.set(key, {
     data: constraints,
-    timestamp: Date.now(),
     key,
+    timestamp: Date.now(),
   });
 }
 
@@ -237,15 +267,19 @@ export function setCachedConstraints(
 export function getCachedTableStats(
   connectionId: string,
   schema: string,
-  table: string,
+  table: string
 ): TableStats | null {
   const connCache = cache.get(connectionId);
-  if (!connCache) return null;
+  if (!connCache) {
+    return null;
+  }
 
   const key = buildTableKey(schema, table);
   const entry = connCache.tableStats.get(key);
 
-  if (!entry) return null;
+  if (!entry) {
+    return null;
+  }
   if (isExpired(entry) || shouldInvalidate(connectionId, schema, table)) {
     connCache.tableStats.delete(key);
     return null;
@@ -261,14 +295,14 @@ export function setCachedTableStats(
   connectionId: string,
   schema: string,
   table: string,
-  stats: TableStats,
+  stats: TableStats
 ): void {
   const connCache = getOrCreateConnectionCache(connectionId);
   const key = buildTableKey(schema, table);
   connCache.tableStats.set(key, {
     data: stats,
-    timestamp: Date.now(),
     key,
+    timestamp: Date.now(),
   });
 }
 
@@ -278,15 +312,19 @@ export function setCachedTableStats(
 export function getCachedTableSample(
   connectionId: string,
   schema: string,
-  table: string,
+  table: string
 ): TableSampleResult | null {
   const connCache = cache.get(connectionId);
-  if (!connCache) return null;
+  if (!connCache) {
+    return null;
+  }
 
   const key = buildTableKey(schema, table);
   const entry = connCache.tableSamples.get(key);
 
-  if (!entry) return null;
+  if (!entry) {
+    return null;
+  }
   if (isExpired(entry) || shouldInvalidate(connectionId, schema, table)) {
     connCache.tableSamples.delete(key);
     return null;
@@ -302,14 +340,14 @@ export function setCachedTableSample(
   connectionId: string,
   schema: string,
   table: string,
-  sample: TableSampleResult,
+  sample: TableSampleResult
 ): void {
   const connCache = getOrCreateConnectionCache(connectionId);
   const key = buildTableKey(schema, table);
   connCache.tableSamples.set(key, {
     data: sample,
-    timestamp: Date.now(),
     key,
+    timestamp: Date.now(),
   });
 }
 
@@ -338,10 +376,12 @@ export function invalidateConnectionCache(connectionId: string): void {
 export function invalidateTableCache(
   connectionId: string,
   schema: string,
-  table: string,
+  table: string
 ): void {
   const connCache = cache.get(connectionId);
-  if (!connCache) return;
+  if (!connCache) {
+    return;
+  }
 
   const key = buildTableKey(schema, table);
   connCache.tableDetails.delete(key);
@@ -359,9 +399,14 @@ export function invalidateTableCache(
  * Invalidate schema-level cache.
  * Called when schema-level DDL is detected.
  */
-export function invalidateSchemaCache(connectionId: string, schema: string): void {
+export function invalidateSchemaCache(
+  connectionId: string,
+  schema: string
+): void {
   const connCache = cache.get(connectionId);
-  if (!connCache) return;
+  if (!connCache) {
+    return;
+  }
 
   // Invalidate full schema
   connCache.fullSchema = undefined;
@@ -389,7 +434,7 @@ export function invalidateSchemaCache(connectionId: string, schema: string): voi
 export function recordDdlOperation(
   connectionId: string,
   schema: string,
-  table?: string,
+  table?: string
 ): void {
   const ddlKey = table
     ? `${connectionId}:${schema}.${table}:ddl`

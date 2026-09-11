@@ -5,11 +5,15 @@ export type TableEditorPerfMetric =
   | "table_switch_to_first_usable_frame";
 
 function isPerfTrackerEnabled(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") {
+    return false;
+  }
   const globalFlag = (
     window as typeof window & { __TABLE_EDITOR_PERF__?: boolean }
   ).__TABLE_EDITOR_PERF__;
-  if (typeof globalFlag === "boolean") return globalFlag;
+  if (typeof globalFlag === "boolean") {
+    return globalFlag;
+  }
   try {
     return window.localStorage.getItem("table-editor-perf") === "1";
   } catch {
@@ -32,17 +36,28 @@ export function createTableEditorPerfTracker() {
 
   return {
     enabled,
-    start(metric: TableEditorPerfMetric) {
-      if (!enabled) return;
-      marks.set(metric, now());
-    },
     end(metric: TableEditorPerfMetric, metadata?: Record<string, unknown>) {
-      if (!enabled) return;
+      if (!enabled) {
+        return;
+      }
       const startedAt = marks.get(metric);
-      if (startedAt === undefined) return;
+      if (startedAt === undefined) {
+        return;
+      }
       marks.delete(metric);
       const durationMs = Math.round((now() - startedAt) * 100) / 100;
-      console.info("[TableDataEditor:perf]", metric, `${durationMs}ms`, metadata ?? {});
+      console.info(
+        "[TableDataEditor:perf]",
+        metric,
+        `${durationMs}ms`,
+        metadata ?? {}
+      );
+    },
+    start(metric: TableEditorPerfMetric) {
+      if (!enabled) {
+        return;
+      }
+      marks.set(metric, now());
     },
   };
 }

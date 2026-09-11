@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  SETTINGS_TAB_ID,
   isSettingsTab,
+  SETTINGS_TAB_ID,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 
 describe("connection tabs store", () => {
   beforeEach(() => {
     useConnectionTabsStore.setState({
-      tabs: [],
       activeTabId: null,
       recentTabIds: [],
+      tabs: [],
     });
   });
 

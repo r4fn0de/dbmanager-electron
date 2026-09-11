@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { startInlineStream, type StartedInlineStream } from "@/renderer/lib/ai-streaming-client";
+import {
+  type StartedInlineStream,
+  startInlineStream,
+} from "@/renderer/lib/ai-streaming-client";
 import type {
   AiInlineDonePayload,
   AiInlineErrorPayload,
@@ -7,13 +10,13 @@ import type {
 } from "@/shared/ai/streaming-contracts";
 
 export interface UseInlineSqlGenerationState {
-  status: "idle" | "streaming" | "done" | "error" | "aborted";
-  sql: string;
-  reasoning: string;
   error: string | null;
   finishReason: string | null;
-  usage: AiInlineDonePayload["usage"] | null;
   isStreaming: boolean;
+  reasoning: string;
+  sql: string;
+  status: "idle" | "streaming" | "done" | "error" | "aborted";
+  usage: AiInlineDonePayload["usage"] | null;
 }
 
 export interface UseInlineSqlGenerationOptions {
@@ -21,54 +24,63 @@ export interface UseInlineSqlGenerationOptions {
   onError?: (payload: AiInlineErrorPayload) => void;
 }
 
-export interface UseInlineSqlGenerationResult extends UseInlineSqlGenerationState {
-  start: (input: InlineGenerateStartInput) => Promise<AiInlineDonePayload>;
+export interface UseInlineSqlGenerationResult
+  extends UseInlineSqlGenerationState {
   abort: () => void;
   reset: () => void;
   setSql: React.Dispatch<React.SetStateAction<string>>;
+  start: (input: InlineGenerateStartInput) => Promise<AiInlineDonePayload>;
 }
 
 const initialState: UseInlineSqlGenerationState = {
-  status: "idle",
-  sql: "",
-  reasoning: "",
   error: null,
   finishReason: null,
-  usage: null,
   isStreaming: false,
+  reasoning: "",
+  sql: "",
+  status: "idle",
+  usage: null,
 };
 
 function isAbortLikeError(error: unknown): boolean {
-  if (!error) return false;
-  if (error instanceof Error && error.name === "AbortError") return true;
+  if (!error) {
+    return false;
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
   return String(error).toLowerCase().includes("abort");
 }
 
 export function useInlineSqlGeneration(
-  options: UseInlineSqlGenerationOptions = {},
+  options: UseInlineSqlGenerationOptions = {}
 ): UseInlineSqlGenerationResult {
   const streamRef = useRef<StartedInlineStream | null>(null);
   const mountedRef = useRef(true);
 
-  const [status, setStatus] = useState<UseInlineSqlGenerationState["status"]>("idle");
+  const [status, setStatus] =
+    useState<UseInlineSqlGenerationState["status"]>("idle");
   const [sql, setSql] = useState("");
   const [reasoning, setReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [finishReason, setFinishReason] = useState<string | null>(null);
   const [usage, setUsage] = useState<AiInlineDonePayload["usage"] | null>(null);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       mountedRef.current = false;
       streamRef.current?.abort();
       streamRef.current?.dispose();
       streamRef.current = null;
-    };
-  }, []);
+    },
+    []
+  );
 
   const abort = useCallback(() => {
     const current = streamRef.current;
-    if (!current) return;
+    if (!current) {
+      return;
+    }
 
     current.abort();
     current.dispose();
@@ -83,7 +95,9 @@ export function useInlineSqlGeneration(
     streamRef.current?.dispose();
     streamRef.current = null;
 
-    if (!mountedRef.current) return;
+    if (!mountedRef.current) {
+      return;
+    }
 
     setStatus(initialState.status);
     setSql(initialState.sql);
@@ -108,16 +122,10 @@ export function useInlineSqlGeneration(
 
       const stream = startInlineStream({
         input,
-        onText(_delta, fullText) {
-          if (!mountedRef.current) return;
-          setSql(fullText);
-        },
-        onReasoning(reasoningDelta) {
-          if (!mountedRef.current) return;
-          setReasoning((prev) => prev + reasoningDelta);
-        },
         onDone(payload, fullText) {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) {
+            return;
+          }
           setStatus("done");
           setSql(fullText);
           setFinishReason(payload.finishReason ?? null);
@@ -125,10 +133,24 @@ export function useInlineSqlGeneration(
           options.onDone?.(payload, fullText);
         },
         onError(payload) {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current) {
+            return;
+          }
           setStatus("error");
           setError(payload.message);
           options.onError?.(payload);
+        },
+        onReasoning(reasoningDelta) {
+          if (!mountedRef.current) {
+            return;
+          }
+          setReasoning((prev) => prev + reasoningDelta);
+        },
+        onText(_delta, fullText) {
+          if (!mountedRef.current) {
+            return;
+          }
+          setSql(fullText);
         },
       });
 
@@ -157,23 +179,23 @@ export function useInlineSqlGeneration(
         stream.dispose();
       }
     },
-    [abort, options],
+    [abort, options]
   );
 
   return useMemo(
     () => ({
-      status,
-      sql,
-      reasoning,
+      abort,
       error,
       finishReason,
-      usage,
       isStreaming: status === "streaming",
-      start,
-      abort,
+      reasoning,
       reset,
       setSql,
+      sql,
+      start,
+      status,
+      usage,
     }),
-    [status, sql, reasoning, error, finishReason, usage, start, abort, reset],
+    [status, sql, reasoning, error, finishReason, usage, start, abort, reset]
   );
 }

@@ -11,5 +11,5 @@ export async function closeWindow() {
 }
 
 export async function setUnsavedChanges(scope: string, dirty: boolean) {
-  await ipc.client.window.setUnsavedChanges({ scope, dirty });
+  await ipc.client.window.setUnsavedChanges({ dirty, scope });
 }

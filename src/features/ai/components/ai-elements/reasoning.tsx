@@ -1,11 +1,4 @@
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Icon } from "@/components/ui/Icon";
-import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
@@ -22,14 +15,21 @@ import {
   useState,
 } from "react";
 import { Streamdown } from "streamdown";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Icon } from "@/components/ui/Icon";
+import { cn } from "@/lib/utils";
 
 import { Shimmer } from "./shimmer";
 
 interface ReasoningContextValue {
-  isStreaming: boolean;
-  isOpen: boolean;
-  setIsOpen: (open: boolean) => void;
   duration: number | undefined;
+  isOpen: boolean;
+  isStreaming: boolean;
+  setIsOpen: (open: boolean) => void;
 }
 
 const ReasoningContext = createContext<ReasoningContextValue | null>(null);
@@ -181,14 +181,14 @@ export const ReasoningTrigger = memo(
       >
         {children ?? (
           <>
-            <Icon name="brain" className="size-3.5 shrink-0" />
+            <Icon className="size-3.5 shrink-0" name="brain" />
             {getThinkingMessage(isStreaming, duration)}
             <Icon
-              name="chevron-down"
               className={cn(
                 "ml-auto size-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-200 ease-out",
                 isOpen ? "rotate-180" : "rotate-0"
               )}
+              name="chevron-down"
             />
           </>
         )}
@@ -215,9 +215,9 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <div className="pl-1 py-0.5">
+      <div className="py-0.5 pl-1">
         <Streamdown
-          className="size-full leading-6 text-sm text-muted-foreground [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_li]:my-0.5 [&_p]:my-1.5"
+          className="size-full text-muted-foreground text-sm leading-6 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_li]:my-0.5 [&_p]:my-1.5"
           plugins={streamdownPlugins}
         >
           {children}

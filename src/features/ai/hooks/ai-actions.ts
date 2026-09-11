@@ -25,7 +25,11 @@ export type { AiProviderName };
 type AiDbType = "postgresql" | "mysql" | "mariadb" | "clickhouse" | "sqlite";
 
 function extractAiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message && error.message !== "Internal server error") {
+  if (
+    error instanceof Error &&
+    error.message &&
+    error.message !== "Internal server error"
+  ) {
     return error.message;
   }
   if (typeof error === "object" && error !== null) {
@@ -41,7 +45,11 @@ function extractAiErrorMessage(error: unknown, fallback: string): string {
       candidate.message,
     ];
     for (const message of possibleMessages) {
-      if (typeof message === "string" && message.trim() && message !== "Internal server error") {
+      if (
+        typeof message === "string" &&
+        message.trim() &&
+        message !== "Internal server error"
+      ) {
         return message;
       }
     }
@@ -50,9 +58,9 @@ function extractAiErrorMessage(error: unknown, fallback: string): string {
 }
 
 export interface AiCustomProviderInfo extends CustomAiProvider {
+  customModels: AiModelEntry[];
   hasApiKey: boolean;
   isLocal: boolean;
-  customModels: AiModelEntry[];
 }
 
 export interface AiProvidersInfo {
@@ -62,10 +70,10 @@ export interface AiProvidersInfo {
     openaiCompatibleBaseURL: string;
     ollamaBaseURL: string;
   };
+  customProviders: AiCustomProviderInfo[];
   encryptionAvailable: boolean;
   ollamaDetected: boolean;
   ollamaModels: string[];
-  customProviders: AiCustomProviderInfo[];
   providers: {
     name: AiProviderName;
     label: string;
@@ -80,9 +88,9 @@ export interface AiProvidersInfo {
 }
 
 export interface AiApiKeyInfo {
-  provider: AiProviderName;
-  masked: string;
   hasKey: boolean;
+  masked: string;
+  provider: AiProviderName;
 }
 
 type AiPermissionDecision = "allow" | "ask" | "deny";
@@ -153,14 +161,21 @@ export interface AiFilterResult {
 }
 
 function toAiDbType(dbType: DatabaseType): AiDbType {
-  if (dbType === "redis") return "postgresql";
+  if (dbType === "redis") {
+    return "postgresql";
+  }
   return dbType;
 }
 
 export async function getAiSettings(): Promise<AiProvidersInfo> {
   try {
     const result = await ipc.client.ai.getSettings();
-    if (!result || typeof result !== "object" || !("current" in result) || !("providers" in result)) {
+    if (
+      !result ||
+      typeof result !== "object" ||
+      !("current" in result) ||
+      !("providers" in result)
+    ) {
       throw new Error("Unexpected AI settings response shape");
     }
     return result as AiProvidersInfo;
@@ -184,17 +199,17 @@ export async function updateAiSettings(input: {
 
 export async function setAiApiKey(
   provider: AiProviderName,
-  key: string,
+  key: string
 ): Promise<{ success: boolean }> {
   try {
-    return await ipc.client.ai.setApiKey({ provider, key });
+    return await ipc.client.ai.setApiKey({ key, provider });
   } catch (err) {
     throw new Error(extractAiErrorMessage(err, "Failed to set API key"));
   }
 }
 
 export async function getAiApiKey(
-  provider: AiProviderName,
+  provider: AiProviderName
 ): Promise<AiApiKeyInfo> {
   try {
     return await ipc.client.ai.getApiKey({ provider });
@@ -215,13 +230,19 @@ export async function isAiConfigured(): Promise<boolean> {
 export async function fetchProviderModels(
   provider: AiProviderName,
   apiKey?: string,
-  baseURL?: string,
+  baseURL?: string
 ): Promise<AiModelEntry[]> {
   try {
-    const result = await ipc.client.ai.fetchModels({ provider, apiKey, baseURL });
+    const result = await ipc.client.ai.fetchModels({
+      apiKey,
+      baseURL,
+      provider,
+    });
     return result.models ?? [];
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to fetch provider models"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to fetch provider models")
+    );
   }
 }
 
@@ -233,11 +254,15 @@ export async function listAiConnections(): Promise<AiConnection[]> {
   try {
     return await ipc.client.ai.listConnections();
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to list AI connections"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to list AI connections")
+    );
   }
 }
 
-export async function getAiConnection(connectionId: string): Promise<AiConnection> {
+export async function getAiConnection(
+  connectionId: string
+): Promise<AiConnection> {
   try {
     return await ipc.client.ai.getConnection({ connectionId });
   } catch (err) {
@@ -246,23 +271,27 @@ export async function getAiConnection(connectionId: string): Promise<AiConnectio
 }
 
 export async function createAiConnection(
-  input: AiConnectionCreateInput,
+  input: AiConnectionCreateInput
 ): Promise<AiConnection> {
   try {
     return await ipc.client.ai.createConnection(input);
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to create AI connection"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to create AI connection")
+    );
   }
 }
 
 export async function updateAiConnection(
   connectionId: string,
-  patch: AiConnectionUpdateInput,
+  patch: AiConnectionUpdateInput
 ): Promise<AiConnection> {
   try {
     return await ipc.client.ai.updateConnection({ connectionId, patch });
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to update AI connection"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to update AI connection")
+    );
   }
 }
 
@@ -270,51 +299,53 @@ export async function deleteAiConnection(connectionId: string): Promise<void> {
   try {
     await ipc.client.ai.deleteConnection({ connectionId });
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to delete AI connection"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to delete AI connection")
+    );
   }
 }
 
 export async function setAiConnectionDefaultModel(
   connectionId: string,
-  modelId: string,
+  modelId: string
 ): Promise<AiConnection> {
   try {
     return await ipc.client.ai.setDefaultModel({ connectionId, modelId });
   } catch (err) {
     throw new Error(
-      extractAiErrorMessage(err, "Failed to set the default AI model"),
+      extractAiErrorMessage(err, "Failed to set the default AI model")
     );
   }
 }
 
 export async function setAiConnectionModels(
   connectionId: string,
-  models: AiModel[],
+  models: AiModel[]
 ): Promise<AiConnection> {
   try {
     return await ipc.client.ai.setConnectionModels({ connectionId, models });
   } catch (err) {
     throw new Error(
-      extractAiErrorMessage(err, "Failed to update AI connection models"),
+      extractAiErrorMessage(err, "Failed to update AI connection models")
     );
   }
 }
 
 export async function listAiConnectionModels(
-  connectionId: string,
+  connectionId: string
 ): Promise<AiModel[]> {
   try {
     const result = await ipc.client.ai.listConnectionModels({ connectionId });
     return result.models;
   } catch (err) {
     throw new Error(
-      extractAiErrorMessage(err, "Failed to list AI connection models"),
+      extractAiErrorMessage(err, "Failed to list AI connection models")
     );
   }
 }
 
 export async function testAiConnection(
-  connectionId: string,
+  connectionId: string
 ): Promise<AiConnectionTestResult> {
   try {
     return await ipc.client.ai.testConnection({ connectionId });
@@ -324,14 +355,14 @@ export async function testAiConnection(
 }
 
 export async function discoverAiConnectionModels(
-  connectionId: string,
+  connectionId: string
 ): Promise<AiModel[]> {
   try {
     const result = await ipc.client.ai.discoverModels({ connectionId });
     return result.models;
   } catch (err) {
     throw new Error(
-      extractAiErrorMessage(err, "Failed to discover AI connection models"),
+      extractAiErrorMessage(err, "Failed to discover AI connection models")
     );
   }
 }
@@ -339,10 +370,14 @@ export async function discoverAiConnectionModels(
 export async function fixSql(
   sql: string,
   error: string,
-  dbType: DatabaseType,
+  dbType: DatabaseType
 ): Promise<AiSqlResult> {
   try {
-    return await ipc.client.ai.fixSql({ sql, error, dbType: toAiDbType(dbType) });
+    return await ipc.client.ai.fixSql({
+      dbType: toAiDbType(dbType),
+      error,
+      sql,
+    });
   } catch (err) {
     throw new Error(extractAiErrorMessage(err, "Failed to fix SQL"));
   }
@@ -352,23 +387,21 @@ export async function updateSql(
   sql: string,
   prompt: string,
   dbType: DatabaseType,
-  context?: string,
+  context?: string
 ): Promise<AiSqlResult> {
   try {
     return await ipc.client.ai.updateSql({
-      sql,
-      prompt,
-      dbType: toAiDbType(dbType),
       context,
+      dbType: toAiDbType(dbType),
+      prompt,
+      sql,
     });
   } catch (err) {
     throw new Error(extractAiErrorMessage(err, "Failed to update SQL"));
   }
 }
 
-export async function enhancePrompt(
-  prompt: string,
-): Promise<AiEnhancedPrompt> {
+export async function enhancePrompt(prompt: string): Promise<AiEnhancedPrompt> {
   try {
     return await ipc.client.ai.enhancePrompt({ prompt });
   } catch (err) {
@@ -377,7 +410,7 @@ export async function enhancePrompt(
 }
 
 export async function generateTitle(
-  message: string,
+  message: string
 ): Promise<AiGeneratedTitle> {
   try {
     return await ipc.client.ai.generateTitle({ message });
@@ -388,10 +421,10 @@ export async function generateTitle(
 
 export async function getAiFilters(
   prompt: string,
-  context: string,
+  context: string
 ): Promise<AiFilterResult> {
   try {
-    return await ipc.client.ai.filters({ prompt, context });
+    return await ipc.client.ai.filters({ context, prompt });
   } catch (err) {
     throw new Error(extractAiErrorMessage(err, "Failed to generate filters"));
   }
@@ -404,23 +437,23 @@ export interface AiTableSearchResult {
 export async function getAiTableSearchMatches(
   query: string,
   tables: string[],
-  schemaContext?: string,
+  schemaContext?: string
 ): Promise<AiTableSearchResult> {
   try {
-    return await ipc.client.ai.tableSearch({ query, tables, schemaContext });
+    return await ipc.client.ai.tableSearch({ query, schemaContext, tables });
   } catch (err) {
     throw new Error(
-      extractAiErrorMessage(err, "Failed to search tables with AI"),
+      extractAiErrorMessage(err, "Failed to search tables with AI")
     );
   }
 }
 
 export async function addCustomModel(
   provider: string,
-  modelId: string,
+  modelId: string
 ): Promise<AiProvidersInfo> {
   try {
-    return await ipc.client.ai.addCustomModel({ provider, modelId });
+    return await ipc.client.ai.addCustomModel({ modelId, provider });
   } catch (err) {
     throw new Error(extractAiErrorMessage(err, "Failed to add custom model"));
   }
@@ -428,13 +461,13 @@ export async function addCustomModel(
 
 export async function removeCustomModel(
   provider: string,
-  modelId: string,
+  modelId: string
 ): Promise<AiProvidersInfo> {
   try {
-    return await ipc.client.ai.removeCustomModel({ provider, modelId });
+    return await ipc.client.ai.removeCustomModel({ modelId, provider });
   } catch (err) {
     throw new Error(
-      extractAiErrorMessage(err, "Failed to remove custom model"),
+      extractAiErrorMessage(err, "Failed to remove custom model")
     );
   }
 }
@@ -444,61 +477,83 @@ export async function removeCustomModel(
 // ---------------------------------------------------------------------------
 
 export interface AiCustomProviderInput {
-  label: string;
-  baseURL: string;
   apiKey?: string;
+  baseURL: string;
   defaultModel?: string;
+  label: string;
 }
 
 export async function addCustomProvider(
-  input: AiCustomProviderInput,
+  input: AiCustomProviderInput
 ): Promise<AiProvidersInfo> {
   try {
     return (await ipc.client.ai.addCustomProvider(input)) as AiProvidersInfo;
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to save custom provider"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to save custom provider")
+    );
   }
 }
 
 export async function updateCustomProvider(
   id: string,
-  patch: { label?: string; baseURL?: string; defaultModel?: string },
+  patch: { label?: string; baseURL?: string; defaultModel?: string }
 ): Promise<AiProvidersInfo> {
   try {
-    return (await ipc.client.ai.updateCustomProvider({ id, ...patch })) as AiProvidersInfo;
+    return (await ipc.client.ai.updateCustomProvider({
+      id,
+      ...patch,
+    })) as AiProvidersInfo;
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to update custom provider"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to update custom provider")
+    );
   }
 }
 
-export async function removeCustomProvider(id: string): Promise<AiProvidersInfo> {
+export async function removeCustomProvider(
+  id: string
+): Promise<AiProvidersInfo> {
   try {
-    return (await ipc.client.ai.removeCustomProvider({ id })) as AiProvidersInfo;
+    return (await ipc.client.ai.removeCustomProvider({
+      id,
+    })) as AiProvidersInfo;
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to remove custom provider"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to remove custom provider")
+    );
   }
 }
 
 export async function setCustomProviderApiKey(
   id: string,
-  key: string,
+  key: string
 ): Promise<AiProvidersInfo> {
   try {
-    return (await ipc.client.ai.setCustomProviderApiKey({ id, key })) as AiProvidersInfo;
+    return (await ipc.client.ai.setCustomProviderApiKey({
+      id,
+      key,
+    })) as AiProvidersInfo;
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to save custom provider key"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to save custom provider key")
+    );
   }
 }
 
 export interface AiEndpointStatus {
-  reachable: boolean;
-  models: AiModelEntry[];
   endpoint: "v1/models" | "api/tags" | null;
+  models: AiModelEntry[];
+  reachable: boolean;
 }
 
-export async function checkProviderEndpoint(baseURL: string): Promise<AiEndpointStatus> {
+export async function checkProviderEndpoint(
+  baseURL: string
+): Promise<AiEndpointStatus> {
   try {
-    return (await ipc.client.ai.checkProviderEndpoint({ baseURL })) as AiEndpointStatus;
+    return (await ipc.client.ai.checkProviderEndpoint({
+      baseURL,
+    })) as AiEndpointStatus;
   } catch (err) {
     throw new Error(extractAiErrorMessage(err, "Failed to check endpoint"));
   }
@@ -531,8 +586,13 @@ export async function getPrivacySettings(): Promise<{
     return await ipc.client.ai.getPrivacySettings();
   } catch {
     return {
-      settings: { schema: true, connectionInfo: true, connectionsList: true, memory: true },
       preset: "full",
+      settings: {
+        connectionInfo: true,
+        connectionsList: true,
+        memory: true,
+        schema: true,
+      },
     };
   }
 }
@@ -544,6 +604,8 @@ export async function updatePrivacySettings(input: {
   try {
     return await ipc.client.ai.updatePrivacySettings(input);
   } catch (err) {
-    throw new Error(extractAiErrorMessage(err, "Failed to update privacy settings"));
+    throw new Error(
+      extractAiErrorMessage(err, "Failed to update privacy settings")
+    );
   }
 }

@@ -1,8 +1,8 @@
-import { useState, useMemo, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { SchemaColumn } from "@/ipc/db/types";
 import type { RowRecord, RowUpdateDraft } from "../types";
-import { normalizeDisplay } from "../utils/valueParsers";
 import type { EffectiveRow } from "../utils/tableDataTransforms";
+import { normalizeDisplay } from "../utils/valueParsers";
 
 export function useExpandedRow(
   effectiveRows: EffectiveRow[],
@@ -11,14 +11,14 @@ export function useExpandedRow(
   applyExpandedEditToInsert: (
     insertIndex: number,
     columnName: string,
-    rawText: string,
+    rawText: string
   ) => void,
   applyExpandedEditToRow: (
     rowKey: string,
     baseRow: RowRecord,
     columnName: string,
-    rawText: string,
-  ) => void,
+    rawText: string
+  ) => void
 ) {
   const [expandedRow, setExpandedRow] = useState<{
     rowKey: string;
@@ -35,12 +35,12 @@ export function useExpandedRow(
   const openRowDetails = useCallback(
     (rowKey: string, row: RowRecord, index: number) => {
       setExpandedRow({
-        rowKey,
-        row: { ...row },
         index,
+        row: { ...row },
+        rowKey,
       });
     },
-    [],
+    []
   );
 
   const closeRowDetails = useCallback(() => {
@@ -49,7 +49,9 @@ export function useExpandedRow(
   }, []);
 
   const expandedRowFields = useMemo(() => {
-    if (!expandedRow) return [];
+    if (!expandedRow) {
+      return [];
+    }
     const sourceRow =
       effectiveRows.find((entry) => entry.rowKey === expandedRow.rowKey)?.row ??
       expandedRow.row;
@@ -58,23 +60,22 @@ export function useExpandedRow(
     return tableColumns.map((column) => {
       const value = sourceRow[column.name];
       return {
-        name: column.name,
-        type: column.data_type,
-        value,
-        textValue: normalizeDisplay(value),
         hasPendingChange: isInsertRow
           ? value !== null && value !== undefined
-          : Object.prototype.hasOwnProperty.call(
-              pendingChanges,
-              column.name,
-            ),
+          : Object.hasOwn(pendingChanges, column.name),
+        name: column.name,
+        textValue: normalizeDisplay(value),
+        type: column.data_type,
+        value,
       };
     });
   }, [draftUpdates, effectiveRows, expandedRow, tableColumns]);
 
   const handleFieldSaveInOverlay = useCallback(
     (columnName: string, rawText: string) => {
-      if (!expandedRow) return;
+      if (!expandedRow) {
+        return;
+      }
       if (expandedRow.rowKey.startsWith("insert:")) {
         const insertIndex = Number(expandedRow.rowKey.slice(7));
         if (!Number.isNaN(insertIndex)) {
@@ -84,27 +85,34 @@ export function useExpandedRow(
       }
 
       const entry = effectiveRows.find(
-        (rowEntry) => rowEntry.rowKey === expandedRow.rowKey,
+        (rowEntry) => rowEntry.rowKey === expandedRow.rowKey
       );
-      if (!entry) return;
-      applyExpandedEditToRow(expandedRow.rowKey, entry.row, columnName, rawText);
+      if (!entry) {
+        return;
+      }
+      applyExpandedEditToRow(
+        expandedRow.rowKey,
+        entry.row,
+        columnName,
+        rawText
+      );
     },
     [
       applyExpandedEditToInsert,
       applyExpandedEditToRow,
       effectiveRows,
       expandedRow,
-    ],
+    ]
   );
 
   return {
-    expandedRow,
-    setExpandedRow,
-    expandedRowOutline,
-    setExpandedRowOutline,
-    openRowDetails,
     closeRowDetails,
+    expandedRow,
     expandedRowFields,
+    expandedRowOutline,
     handleFieldSaveInOverlay,
+    openRowDetails,
+    setExpandedRow,
+    setExpandedRowOutline,
   };
 }

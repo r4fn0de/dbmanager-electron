@@ -4,11 +4,12 @@
  * Handlers resolve the correct driver via `registry.get(dbType)`.
  * New engines are registered at app startup (see `registerDrivers()`).
  */
-import type { DatabaseType } from "./types";
+
 import type { DatabaseDriver } from "./driver";
+import type { DatabaseType } from "./types";
 
 class DriverRegistry {
-  private drivers = new Map<DatabaseType, DatabaseDriver>();
+  private readonly drivers = new Map<DatabaseType, DatabaseDriver>();
 
   register(driver: DatabaseDriver): void {
     this.drivers.set(driver.type, driver);
@@ -36,12 +37,24 @@ class DriverRegistry {
     if (config.url) {
       try {
         const protocol = new URL(config.url).protocol.toLowerCase();
-        if (protocol === "mysql:") return "mysql";
-        if (protocol === "mariadb:") return "mariadb";
-        if (protocol === "clickhouse:" || protocol === "clickhouses:") return "clickhouse";
-        if (protocol === "postgres:" || protocol === "postgresql:") return "postgresql";
-        if (protocol === "sqlite:") return "sqlite";
-        if (protocol === "redis:" || protocol === "rediss:") return "redis";
+        if (protocol === "mysql:") {
+          return "mysql";
+        }
+        if (protocol === "mariadb:") {
+          return "mariadb";
+        }
+        if (protocol === "clickhouse:" || protocol === "clickhouses:") {
+          return "clickhouse";
+        }
+        if (protocol === "postgres:" || protocol === "postgresql:") {
+          return "postgresql";
+        }
+        if (protocol === "sqlite:") {
+          return "sqlite";
+        }
+        if (protocol === "redis:" || protocol === "rediss:") {
+          return "redis";
+        }
       } catch {
         // fall through
       }
@@ -62,7 +75,9 @@ export async function registerDrivers(): Promise<void> {
   const { createPostgresDriver } = await import("./pg-driver-adapter");
   driverRegistry.register(createPostgresDriver());
 
-  const { createMysqlDriver, createMariadbDriver } = await import("./mysql-client");
+  const { createMysqlDriver, createMariadbDriver } = await import(
+    "./mysql-client"
+  );
   driverRegistry.register(createMysqlDriver());
   driverRegistry.register(createMariadbDriver());
 
