@@ -15,6 +15,7 @@ import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type {
   AiModelEntry,
@@ -549,158 +550,158 @@ export function AiSettingsPanel({ compact }: AiSettingsPanelProps) {
     );
   }
 
-  const innerContent = (
-    <>
+  return (
+    <div className="flex h-full flex-col">
       {!compact && (
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/[0.12] ring-1 ring-primary/20">
-            <UiIcon className="size-5 text-primary" name="sparkles" />
+        <div className="flex items-center justify-between px-6 pt-6 pb-2">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary/[0.12] ring-1 ring-primary/20">
+              <UiIcon className="size-5 text-primary" name="sparkles" />
+            </div>
+            <div>
+              <h2 className="font-heading font-semibold text-lg tracking-tight">
+                AI Assistant
+              </h2>
+              <p className="text-muted-foreground text-xs">
+                Configure the AI provider and model for SQL assistance.
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-heading font-semibold text-lg tracking-tight">
-              AI Assistant
-            </h2>
-            <p className="text-muted-foreground text-xs">
-              Configure the AI provider and model for SQL assistance.
-            </p>
-          </div>
+          <AiSettingsStatus configured={configured} settings={settings} />
         </div>
       )}
 
-      {!compact && (
-        <AiSettingsStatus configured={configured} settings={settings} />
-      )}
+      <Tabs className="flex min-h-0 flex-1 flex-col" defaultValue="providers">
+        <TabsList className="mx-6 mt-2 w-fit">
+          <TabsTrigger value="providers">Providers</TabsTrigger>
+          <TabsTrigger value="custom">Custom Providers</TabsTrigger>
+          <TabsTrigger value="privacy">Privacy & Context</TabsTrigger>
+        </TabsList>
 
-      <div className="space-y-3">
-        <Label className="font-medium text-muted-foreground text-xs">
-          Provider
-        </Label>
-        <div className="space-y-2">
-          {settings.providers.map((provider) => {
-            const isActive = settings.current.provider === provider.name;
-            const Icon = PROVIDER_ICONS[provider.name];
-            const isSavingThis = isSavingProvider && isActive;
-            return (
-              <ProviderCard
-                currentModel={settings.current.model}
-                icon={Icon}
-                isActive={isActive}
-                isFetchingModels={savingModelsFor === provider.name}
-                isSaving={isSavingThis}
-                key={provider.name}
-                ollamaBaseURL={settings.current.ollamaBaseURL ?? ""}
-                ollamaChecking={ollamaStatus.checking}
-                ollamaDetected={ollamaStatus.detected}
-                ollamaModels={ollamaStatus.models}
-                onModelChange={(model: string) => handleModelChange(model)}
-                onProviderChange={() => handleProviderChange(provider.name)}
-                onRefreshModels={() => handleRefreshModels(provider.name)}
-                onRefreshOllama={handleRefreshOllama}
-                onRemoveApiKey={() => handleRemoveApiKey(provider.name)}
-                onSaveApiKey={(key: string) =>
-                  handleSaveApiKey(provider.name, key)
-                }
-                onSaveBaseUrl={(url: string) => handleSaveBaseUrl(url)}
-                onSaveOllamaBaseUrl={(url: string) =>
-                  handleSaveOllamaBaseUrl(url)
-                }
-                openaiCompatibleBaseURL={
-                  settings.current.openaiCompatibleBaseURL
-                }
-                provider={provider}
-                providerModels={getMergedModels(provider.name)}
-              />
-            );
-          })}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <TabsContent className="h-full" value="providers">
+            <ScrollArea className="h-full">
+              <div className="space-y-5 p-6">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {settings.providers.map((provider) => {
+                    const isActive = settings.current.provider === provider.name;
+                    const Icon = PROVIDER_ICONS[provider.name];
+                    const isSavingThis = isSavingProvider && isActive;
+                    return (
+                      <ProviderCard
+                        currentModel={settings.current.model}
+                        icon={Icon}
+                        isActive={isActive}
+                        isFetchingModels={savingModelsFor === provider.name}
+                        isSaving={isSavingThis}
+                        key={provider.name}
+                        ollamaBaseURL={settings.current.ollamaBaseURL ?? ""}
+                        ollamaChecking={ollamaStatus.checking}
+                        ollamaDetected={ollamaStatus.detected}
+                        ollamaModels={ollamaStatus.models}
+                        onModelChange={(model: string) => handleModelChange(model)}
+                        onProviderChange={() => handleProviderChange(provider.name)}
+                        onRefreshModels={() => handleRefreshModels(provider.name)}
+                        onRefreshOllama={handleRefreshOllama}
+                        onRemoveApiKey={() => handleRemoveApiKey(provider.name)}
+                        onSaveApiKey={(key: string) =>
+                          handleSaveApiKey(provider.name, key)
+                        }
+                        onSaveBaseUrl={(url: string) => handleSaveBaseUrl(url)}
+                        onSaveOllamaBaseUrl={(url: string) =>
+                          handleSaveOllamaBaseUrl(url)
+                        }
+                        openaiCompatibleBaseURL={
+                          settings.current.openaiCompatibleBaseURL
+                        }
+                        provider={provider}
+                        providerModels={getMergedModels(provider.name)}
+                      />
+                    );
+                  })}
+                </div>
+                <MissingConfigWarning
+                  ollamaDetected={ollamaStatus.detected}
+                  settings={settings}
+                />
+              </div>
+            </ScrollArea>
+          </TabsContent>
 
-          <MissingConfigWarning
-            ollamaDetected={ollamaStatus.detected}
-            settings={settings}
-          />
+          <TabsContent className="h-full" value="custom">
+            <CustomProvidersPanel
+              currentModel={settings.current.model}
+              currentProvider={settings.current.provider}
+              customs={settings.customProviders ?? []}
+              discovered={customDiscovered}
+              fetchingModelsFor={savingModelsFor}
+              isSavingProvider={isSavingProvider}
+              onAddModel={async (id, modelId) => {
+                try {
+                  setSettings(await addCustomModel(id, modelId));
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error ? err.message : "Failed to add model"
+                  );
+                }
+              }}
+              onAddNew={() => setCustomDialogOpen(true)}
+              onDelete={(id) => handleRemoveCustomProvider(id)}
+              onDiscover={(custom) => handleDiscoverCustomModels(custom)}
+              onModelChange={(model: string) => handleModelChange(model)}
+              onRefreshStatus={(custom) => checkCustomStatus(custom)}
+              onRemoveModel={async (id, modelId) => {
+                try {
+                  setSettings(await removeCustomModel(id, modelId));
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error ? err.message : "Failed to remove model"
+                  );
+                }
+              }}
+              onSaveKey={(id: string, key: string) =>
+                handleCustomKeySave(id, key)
+              }
+              onSelect={(custom) => handleCustomProviderChange(custom)}
+              onUpdate={async (id, patch) => {
+                try {
+                  setSettings(await updateCustomProvider(id, patch));
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error ? err.message : "Failed to update provider"
+                  );
+                }
+              }}
+              onUseModel={(custom, modelId) =>
+                handleCustomProviderChange(custom, modelId)
+              }
+              statuses={customStatuses}
+            />
+          </TabsContent>
+
+          <TabsContent className="h-full" value="privacy">
+            <ScrollArea className="h-full">
+              <div className="p-6">
+                <PrivacySettingsSection
+                  currentProvider={settings.current.provider}
+                  onPresetChange={handlePrivacyPreset}
+                  onToggle={handlePrivacyToggle}
+                  privacyPreset={privacyPreset}
+                  privacySettings={privacySettings}
+                  providerLabel={currentProviderLabel}
+                />
+              </div>
+            </ScrollArea>
+          </TabsContent>
         </div>
-      </div>
-
-      <div className="space-y-3">
-        <Label className="font-medium text-muted-foreground text-xs">
-          Custom providers
-        </Label>
-        <CustomProvidersPanel
-          currentModel={settings.current.model}
-          currentProvider={settings.current.provider}
-          customs={settings.customProviders ?? []}
-          discovered={customDiscovered}
-          fetchingModelsFor={savingModelsFor}
-          isSavingProvider={isSavingProvider}
-          onAddModel={async (id, modelId) => {
-            try {
-              setSettings(await addCustomModel(id, modelId));
-            } catch (err) {
-              toast.error(
-                err instanceof Error ? err.message : "Failed to add model"
-              );
-            }
-          }}
-          onAddNew={() => setCustomDialogOpen(true)}
-          onDelete={(id) => handleRemoveCustomProvider(id)}
-          onDiscover={(custom) => handleDiscoverCustomModels(custom)}
-          onModelChange={(model: string) => handleModelChange(model)}
-          onRefreshStatus={(custom) => checkCustomStatus(custom)}
-          onRemoveModel={async (id, modelId) => {
-            try {
-              setSettings(await removeCustomModel(id, modelId));
-            } catch (err) {
-              toast.error(
-                err instanceof Error ? err.message : "Failed to remove model"
-              );
-            }
-          }}
-          onSaveKey={(id: string, key: string) => handleCustomKeySave(id, key)}
-          onSelect={(custom) => handleCustomProviderChange(custom)}
-          onUpdate={async (id, patch) => {
-            try {
-              setSettings(await updateCustomProvider(id, patch));
-            } catch (err) {
-              toast.error(
-                err instanceof Error ? err.message : "Failed to update provider"
-              );
-            }
-          }}
-          onUseModel={(custom, modelId) =>
-            handleCustomProviderChange(custom, modelId)
-          }
-          statuses={customStatuses}
-        />
-      </div>
+      </Tabs>
 
       <CustomProviderDialog
         onOpenChange={setCustomDialogOpen}
         onSave={handleSaveCustomProvider}
         open={customDialogOpen}
       />
-
-      <PrivacySettingsSection
-        currentProvider={settings.current.provider}
-        onPresetChange={handlePrivacyPreset}
-        onToggle={handlePrivacyToggle}
-        privacyPreset={privacyPreset}
-        privacySettings={privacySettings}
-        providerLabel={currentProviderLabel}
-      />
-    </>
-  );
-
-  return (
-    <>
-      {compact ? (
-        <div className="max-w-xl space-y-6">{innerContent}</div>
-      ) : (
-        <ScrollArea className="h-full">
-          <div className="mx-auto max-w-xl space-y-8 px-6 py-8">
-            {innerContent}
-          </div>
-        </ScrollArea>
-      )}
-    </>
+    </div>
   );
 }
 
