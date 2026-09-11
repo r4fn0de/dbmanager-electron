@@ -1191,7 +1191,9 @@ export function createPostgresDriver(): DatabaseDriver {
       page,
       pageSize,
       sort,
-      filters
+      filters,
+      cursor,
+      exact
     ) {
       const db = getPgKysely(connectionString);
       const rawRows = await listPgRowsRaw(
@@ -1201,7 +1203,9 @@ export function createPostgresDriver(): DatabaseDriver {
         page,
         pageSize,
         sort ?? [],
-        filters ?? []
+        filters ?? [],
+        cursor,
+        exact
       );
 
       // ── PK/FK introspection — Kysely queries against information_schema ──
@@ -1256,10 +1260,16 @@ export function createPostgresDriver(): DatabaseDriver {
       return {
         columns: rawRows.columns,
         foreignKeys,
-        pageInfo: { page, pageSize },
+        pageInfo: {
+          hasNextPage: rawRows.rows.length === pageSize,
+          nextCursor: rawRows.nextCursor,
+          page,
+          pageSize,
+        },
         primaryKey,
         rows: rawRows.rows,
         totalEstimate: rawRows.totalEstimate,
+        totalIsEstimated: rawRows.totalIsEstimated,
       };
     },
 

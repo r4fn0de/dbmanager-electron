@@ -11,6 +11,8 @@ export function TableEditorGridRows({
   topSpacerHeight,
   bottomSpacerHeight,
   visibleColumns,
+  virtualColumns,
+  totalColumnWidth,
   visibleDraftInserts,
   editingCell,
   focusedCell,
@@ -46,13 +48,24 @@ export function TableEditorGridRows({
   columnMap,
   totalVirtualRows,
 }: TableEditorGridRowsProps) {
+  const leftColumnSpacer = virtualColumns[0]?.start ?? 0;
+  const lastVirtualColumn = virtualColumns.at(-1);
+  const rightColumnSpacer = lastVirtualColumn
+    ? totalColumnWidth - lastVirtualColumn.end
+    : totalColumnWidth;
+  const columnSpan =
+    virtualColumns.length +
+    1 +
+    (leftColumnSpacer > 0 ? 1 : 0) +
+    (rightColumnSpacer > 0 ? 1 : 0);
+
   return (
     <TableBody className="align-top">
       {topSpacerHeight > 0 && (
         <tr aria-hidden="true" className="border-0">
           <td
             className="border-0 p-0"
-            colSpan={visibleColumns.length + 1}
+            colSpan={columnSpan}
             style={{ height: topSpacerHeight }}
           />
         </tr>
@@ -62,10 +75,24 @@ export function TableEditorGridRows({
           className="bg-emerald-500/5 hover:bg-emerald-500/10"
           key={`insert:${insertIndex}`}
         >
-          <TableCell className="sticky left-0 z-[1] h-7 w-12 min-w-12 border-border border-r bg-background px-2 py-0.5 text-center text-muted-foreground">
+          <TableCell
+            className="sticky left-0 z-[1] h-7 w-12 min-w-12 border-border border-r bg-background px-2 py-0.5 text-center text-muted-foreground"
+            style={{ maxWidth: 48, minWidth: 48, width: 48 }}
+          >
             N
           </TableCell>
-          {visibleColumns.map((columnName) => {
+          {leftColumnSpacer > 0 ? (
+            <TableCell
+              aria-hidden="true"
+              className="border-0 bg-background p-0"
+              style={{ width: leftColumnSpacer }}
+            />
+          ) : null}
+          {virtualColumns.map((virtualColumn) => {
+            const columnName = visibleColumns[virtualColumn.index];
+            if (!columnName) {
+              return null;
+            }
             const isEditing =
               editingCell?.source === "insert" &&
               editingCell.insertIndex === insertIndex &&
@@ -175,6 +202,13 @@ export function TableEditorGridRows({
               </TableCell>
             );
           })}
+          {rightColumnSpacer > 0 ? (
+            <TableCell
+              aria-hidden="true"
+              className="border-0 bg-background p-0"
+              style={{ width: rightColumnSpacer }}
+            />
+          ) : null}
         </TableRow>
       ))}
 
@@ -208,6 +242,7 @@ export function TableEditorGridRows({
             <TableCell
               className={`sticky left-0 z-[1] w-12 min-w-12 border-border border-r px-2 ${selectionCellBackground}`}
               onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: 48, minWidth: 48, width: 48 }}
             >
               <div className="relative flex items-center justify-center">
                 <Checkbox
@@ -216,7 +251,18 @@ export function TableEditorGridRows({
                 />
               </div>
             </TableCell>
-            {visibleColumns.map((columnName) => {
+            {leftColumnSpacer > 0 ? (
+              <TableCell
+                aria-hidden="true"
+                className="border-0 bg-background p-0"
+                style={{ width: leftColumnSpacer }}
+              />
+            ) : null}
+            {virtualColumns.map((virtualColumn) => {
+              const columnName = visibleColumns[virtualColumn.index];
+              if (!columnName) {
+                return null;
+              }
               const draftValue = draftUpdates[rowKey]?.changes[columnName];
               const effectiveValue = draftValue ?? row[columnName];
               const isEditing =
@@ -409,6 +455,13 @@ export function TableEditorGridRows({
                 </TableCell>
               );
             })}
+            {rightColumnSpacer > 0 ? (
+              <TableCell
+                aria-hidden="true"
+                className="border-0 bg-background p-0"
+                style={{ width: rightColumnSpacer }}
+              />
+            ) : null}
           </TableRow>
         );
       })}
@@ -416,7 +469,7 @@ export function TableEditorGridRows({
         <tr aria-hidden="true" className="border-0">
           <td
             className="border-0 p-0"
-            colSpan={visibleColumns.length + 1}
+            colSpan={columnSpan}
             style={{ height: bottomSpacerHeight }}
           />
         </tr>
@@ -425,7 +478,7 @@ export function TableEditorGridRows({
         <TableRow className="hover:bg-transparent">
           <TableCell
             className="border-r-0 py-8 text-center text-muted-foreground/70"
-            colSpan={Math.max(visibleColumns.length + 1, 1)}
+            colSpan={Math.max(columnSpan, 1)}
           >
             No rows found on this page.
           </TableCell>

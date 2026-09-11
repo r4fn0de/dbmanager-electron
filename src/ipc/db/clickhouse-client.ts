@@ -13,6 +13,7 @@
 import { formatUptime } from "@/constants";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { closeClickhouseClient, getClickhouseClient } from "./kysely-factory";
+import { decodeTableCursor, encodeTableCursor } from "./pagination";
 import type {
   DatabaseType,
   SchemaEnum,
@@ -1124,7 +1125,10 @@ export function createClickhouseDriver(): DatabaseDriver {
                   countIf("${colName}" IS NULL) * 100.0 / count() as null_pct
                 FROM ${escId(schema)}.${escId(table)}`,
               });
-              const statsRows = (await statsResult.json()) as Record<string, unknown>[];
+              const statsRows = (await statsResult.json()) as Record<
+                string,
+                unknown
+              >[];
               const row = statsRows[0] as
                 | {
                     min_val?: unknown;
@@ -1181,7 +1185,10 @@ export function createClickhouseDriver(): DatabaseDriver {
                   countIf("${colName}" IS NULL) * 100.0 / count() as null_pct
                 FROM ${escId(schema)}.${escId(table)}`,
               });
-              const uniqueRows = (await uniqueResult.json()) as Record<string, unknown>[];
+              const uniqueRows = (await uniqueResult.json()) as Record<
+                string,
+                unknown
+              >[];
               const uniqueRow = uniqueRows[0] as
                 | { unique_count?: string; null_pct?: string }
                 | undefined;
@@ -1300,10 +1307,24 @@ export function createClickhouseDriver(): DatabaseDriver {
       table,
       page,
       pageSize,
-      sort,
-      filters
+      sort = [],
+      filters = [],
+      cursor,
+      exact = false
     ) {
       const client = await getClickhouseClient(connectionString);
+      const cursorData = decodeTableCursor(cursor);
+      const useCursor =
+        cursorData !== null &&
+        cursorData.sort.length === sort.length &&
+        cursorData.sort.every(
+          (item, index) =>
+            item.column === sort[index]?.column &&
+            item.direction === sort[index]?.direction
+        ) &&
+        cursorData.values.every(
+          (value) => value !== null && value !== undefined
+        );
 
       // Build WHERE clause
       const conditions: string[] = [];
@@ -1366,28 +1387,68 @@ export function createClickhouseDriver(): DatabaseDriver {
         }
       }
 
+      const filterWhere =
+        conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+      if (useCursor && cursorData) {
+        const cursorConditions = cursorData.sort.map((item, index) => {
+          const equalConditions = cursorData.sort
+            .slice(0, index)
+            .map(
+              (previous, previousIndex) =>
+                `${escId(previous.column)} = ${escVal(String(cursorData.values[previousIndex]))}`
+            );
+          const operator = item.direction === "asc" ? ">" : "<";
+          return `(${[
+            ...equalConditions,
+            `${escId(item.column)} ${operator} ${escVal(String(cursorData.values[index]))}`,
+          ].join(" AND ")})`;
+        });
+        conditions.push(`(${cursorConditions.join(" OR ")})`);
+      }
       const where =
         conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
       const orderBy =
         sort && sort.length > 0
-          ? ` ORDER BY ${sort.map((s) => `"${s.column}" ${s.direction.toUpperCase()}`).join(", ")}`
+          ? ` ORDER BY ${sort.map((s) => `${escId(s.column)} ${s.direction.toUpperCase()}`).join(", ")}`
           : "";
       const offset = (page - 1) * pageSize;
 
       try {
         const result = await client.query({
           format: "JSONEachRow",
-          query: `SELECT * FROM ${escId(schema)}.${escId(table)}${where}${orderBy} LIMIT ${pageSize} OFFSET ${offset}`,
+          query: useCursor
+            ? `SELECT * FROM ${escId(schema)}.${escId(table)}${where}${orderBy} LIMIT ${pageSize}`
+            : `SELECT * FROM ${escId(schema)}.${escId(table)}${where}${orderBy} LIMIT ${pageSize} OFFSET ${offset}`,
         });
         const rows = (await result.json()) as Record<string, unknown>[];
 
         // Count
-        const countResult = await client.query({
-          format: "JSONEachRow",
-          query: `SELECT count() AS cnt FROM ${escId(schema)}.${escId(table)}${where}`,
-        });
-        const countRows = (await countResult.json()) as Array<{ cnt: number }>;
-        const totalEstimate = Number(countRows[0]?.cnt ?? 0);
+        let totalEstimate: number | undefined;
+        let totalIsEstimated = false;
+        if (!exact && filters.length === 0) {
+          const estimateResult = await client.query({
+            format: "JSONEachRow",
+            query: `SELECT sum(rows) AS cnt FROM system.parts WHERE database = ${escVal(schema)} AND table = ${escVal(table)} AND active = 1`,
+          });
+          const estimateRows = (await estimateResult.json()) as Array<{
+            cnt: number;
+          }>;
+          const estimatedRows = Number(estimateRows[0]?.cnt ?? 0);
+          if (estimatedRows > 0) {
+            totalEstimate = estimatedRows;
+            totalIsEstimated = true;
+          }
+        }
+        if (totalEstimate === undefined) {
+          const countResult = await client.query({
+            format: "JSONEachRow",
+            query: `SELECT count() AS cnt FROM ${escId(schema)}.${escId(table)}${filterWhere}`,
+          });
+          const countRows = (await countResult.json()) as Array<{
+            cnt: number;
+          }>;
+          totalEstimate = Number(countRows[0]?.cnt ?? 0);
+        }
 
         // Primary key — ClickHouse uses ORDER BY as the primary key concept
         let primaryKey: string[] = [];
@@ -1413,10 +1474,16 @@ export function createClickhouseDriver(): DatabaseDriver {
         return {
           columns,
           foreignKeys: [], // ClickHouse doesn't have foreign keys
-          pageInfo: { page, pageSize },
+          pageInfo: {
+            hasNextPage: rows.length === pageSize,
+            nextCursor: encodeTableCursor(sort, rows.at(-1)),
+            page,
+            pageSize,
+          },
           primaryKey,
           rows,
           totalEstimate,
+          totalIsEstimated,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import * as XLSX from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -195,6 +202,291 @@ function CellExpandDialog({
         </ScrollArea>
       </PopoverContent>
     </Popover>
+  );
+}
+
+const QUERY_RESULT_HEADER_HEIGHT = 32;
+const QUERY_RESULT_ROW_HEIGHT = 28;
+const QUERY_RESULT_ROW_NUMBER_WIDTH = 40;
+
+function getQueryResultColumnWidth(columnType: string): number {
+  const normalizedType = columnType.toLowerCase();
+  if (normalizedType.includes("json")) {
+    return 240;
+  }
+  if (
+    normalizedType.includes("timestamp") ||
+    normalizedType.includes("date") ||
+    normalizedType.includes("time")
+  ) {
+    return 180;
+  }
+  if (normalizedType.includes("uuid")) {
+    return 220;
+  }
+  if (
+    normalizedType.includes("int") ||
+    normalizedType.includes("numeric") ||
+    normalizedType.includes("decimal") ||
+    normalizedType.includes("float") ||
+    normalizedType.includes("double")
+  ) {
+    return 120;
+  }
+  if (normalizedType.includes("bool")) {
+    return 90;
+  }
+  return 180;
+}
+
+interface QueryResultCellProps {
+  cell: unknown;
+  cellKey: string;
+  column: QueryResult["columns"][number];
+  columnIndex: number;
+  copiedCell: string | null;
+  onCopyCell: (rowIndex: number, columnIndex: number, value: unknown) => void;
+  rowIndex: number;
+  virtualColumn: { size: number; start: number };
+}
+
+function getQueryResultCellContent(cell: unknown, text: string): ReactNode {
+  if (cell === null || cell === undefined) {
+    return "NULL";
+  }
+  if (!isBooleanValue(cell)) {
+    return text;
+  }
+  return (
+    <Badge
+      className={cn(
+        "h-4 rounded px-1.5 font-mono text-[10px] leading-none",
+        cell === true
+          ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+          : "border-destructive/30 text-destructive/70"
+      )}
+      variant={cell === true ? "outline" : "secondary"}
+    >
+      {String(cell)}
+    </Badge>
+  );
+}
+
+function QueryResultCell({
+  cell,
+  cellKey,
+  column,
+  columnIndex,
+  copiedCell,
+  onCopyCell,
+  rowIndex,
+  virtualColumn,
+}: QueryResultCellProps) {
+  const isCopied = copiedCell === cellKey;
+  const isNull = cell === null || cell === undefined;
+  const isNum = isNumericValue(cell);
+  const isBool = isBooleanValue(cell);
+  const isJson = isJsonValue(cell);
+  const text = formatCellValue(cell);
+  const handleCopy = useCallback(
+    () => onCopyCell(rowIndex, columnIndex, cell),
+    [cell, columnIndex, onCopyCell, rowIndex]
+  );
+  const handleCopyKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      handleCopy();
+    },
+    [handleCopy]
+  );
+
+  return (
+    <td
+      className={cn(
+        "group/cell absolute top-0 flex h-full items-center overflow-hidden border-border/30 border-r px-3 font-mono text-xs last:border-r-0",
+        isNull && "text-muted-foreground/60 italic",
+        isNum && "justify-end text-right text-foreground/90 tabular-nums",
+        isBool && "justify-center",
+        isJson && "text-muted-foreground",
+        !(isNull || isNum || isBool || isJson) && "text-foreground/90",
+        isCopied && "bg-primary/10"
+      )}
+      key={cellKey}
+      style={{
+        left: QUERY_RESULT_ROW_NUMBER_WIDTH + virtualColumn.start,
+        width: virtualColumn.size,
+      }}
+    >
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-1">
+        <button
+          aria-label={`Copy ${column.name} value`}
+          className={cn(
+            "min-w-0 flex-1 select-text truncate border-0 bg-transparent p-0 text-left",
+            isNum && "text-right",
+            isBool && "text-center"
+          )}
+          onDoubleClick={handleCopy}
+          onKeyDown={handleCopyKeyDown}
+          title={text}
+          type="button"
+        >
+          {getQueryResultCellContent(cell, text)}
+        </button>
+        <span className="flex shrink-0 items-center">
+          {isCopied ? (
+            <span className="font-medium text-[10px] text-primary">copied</span>
+          ) : (
+            <CellExpandDialog
+              columnName={column.name}
+              columnType={column.type_name}
+              value={cell}
+            />
+          )}
+        </span>
+      </div>
+    </td>
+  );
+}
+
+function VirtualizedQueryResultsTable({
+  copiedCell,
+  onCopyCell,
+  result,
+}: {
+  copiedCell: string | null;
+  onCopyCell: (rowIdx: number, colIdx: number, value: unknown) => void;
+  result: QueryResult;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: result.rows.length,
+    estimateSize: () => QUERY_RESULT_ROW_HEIGHT,
+    getScrollElement: () => scrollRef.current,
+    overscan: 10,
+  });
+  const columnVirtualizer = useVirtualizer({
+    count: result.columns.length,
+    estimateSize: (index) =>
+      getQueryResultColumnWidth(result.columns[index]?.type_name ?? ""),
+    getScrollElement: () => scrollRef.current,
+    horizontal: true,
+    overscan: 3,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const virtualColumns = columnVirtualizer.getVirtualItems();
+  const tableWidth =
+    QUERY_RESULT_ROW_NUMBER_WIDTH + columnVirtualizer.getTotalSize();
+  const tableHeight =
+    QUERY_RESULT_HEADER_HEIGHT + rowVirtualizer.getTotalSize();
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto" ref={scrollRef}>
+      <table
+        className="relative block text-xs"
+        style={{
+          height: tableHeight,
+          minWidth: tableWidth,
+          width: tableWidth,
+        }}
+      >
+        <thead
+          className="sticky top-0 z-20 block h-8 border-border/50 border-b bg-background"
+          style={{ width: tableWidth }}
+        >
+          <tr className="relative block h-8" style={{ width: tableWidth }}>
+            <th
+              className="sticky left-0 z-30 flex h-8 items-center justify-center border-border/30 border-r bg-background px-2 font-mono text-[10px] text-muted-foreground/60"
+              scope="col"
+              style={{ width: QUERY_RESULT_ROW_NUMBER_WIDTH }}
+            >
+              #
+            </th>
+            {virtualColumns.map((virtualColumn) => {
+              const column = result.columns[virtualColumn.index];
+              if (!column) {
+                return null;
+              }
+              return (
+                <th
+                  className="absolute top-0 flex h-8 items-center gap-1.5 overflow-hidden border-border/30 border-r px-3 font-medium"
+                  key={column.name}
+                  scope="col"
+                  style={{
+                    left: QUERY_RESULT_ROW_NUMBER_WIDTH + virtualColumn.start,
+                    width: virtualColumn.size,
+                  }}
+                >
+                  <span className="truncate text-muted-foreground text-xs">
+                    {column.name}
+                  </span>
+                  <Badge
+                    className="h-4 shrink-0 select-text rounded py-0 font-mono font-normal text-[9px] leading-none"
+                    variant="secondary"
+                  >
+                    {column.type_name}
+                  </Badge>
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody
+          className="relative block"
+          style={{
+            height: rowVirtualizer.getTotalSize(),
+            width: tableWidth,
+          }}
+        >
+          {virtualRows.map((virtualRow) => {
+            const row = result.rows[virtualRow.index] ?? [];
+            return (
+              <tr
+                className={cn(
+                  "absolute left-0 block border-border/30 border-b",
+                  virtualRow.index % 2 === 1 && "bg-muted/15"
+                )}
+                key={virtualRow.key}
+                style={{
+                  height: virtualRow.size,
+                  top: virtualRow.start,
+                  width: tableWidth,
+                }}
+              >
+                <td
+                  className="sticky left-0 z-10 flex h-full items-center justify-center border-border/30 border-r bg-background px-2 font-mono text-[10px] text-muted-foreground/60"
+                  style={{ width: QUERY_RESULT_ROW_NUMBER_WIDTH }}
+                >
+                  {virtualRow.index + 1}
+                </td>
+                {virtualColumns.map((virtualColumn) => {
+                  const column = result.columns[virtualColumn.index];
+                  if (!column) {
+                    return null;
+                  }
+                  const cell = row[virtualColumn.index];
+                  return (
+                    <QueryResultCell
+                      cell={cell}
+                      cellKey={`${virtualRow.index}-${virtualColumn.index}`}
+                      column={column}
+                      columnIndex={virtualColumn.index}
+                      copiedCell={copiedCell}
+                      key={`${virtualRow.key}-${virtualColumn.key}`}
+                      onCopyCell={onCopyCell}
+                      rowIndex={virtualRow.index}
+                      virtualColumn={virtualColumn}
+                    />
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -433,133 +725,11 @@ export function QueryResults({
         </div>
       </div>
 
-      {/* ── Table container ─────────────────────────────────────── */}
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="min-w-full">
-          <table className="w-full border-collapse text-xs">
-            {/* ── Column headers ────────────────────────────────── */}
-            <thead className="sticky top-0 z-10 bg-background">
-              <tr className="border-border/50 border-b bg-background">
-                {/* Row # column */}
-                <th
-                  className="h-7 w-10 min-w-[2.5rem] border-border/30 border-r bg-background px-2 text-center font-medium font-mono text-[10px] text-muted-foreground/50"
-                  scope="col"
-                >
-                  #
-                </th>
-                {result.columns.map((col) => (
-                  <th
-                    className="h-7 whitespace-nowrap border-border/30 border-r px-3 text-left font-medium last:border-r-0"
-                    key={col.name}
-                    scope="col"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-muted-foreground text-xs">
-                        {col.name}
-                      </span>
-                      <Badge
-                        className="h-4 select-text rounded py-0 font-mono font-normal text-[9px] leading-none"
-                        variant="secondary"
-                      >
-                        {col.type_name}
-                      </Badge>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            {/* ── Data rows ──────────────────────────────────────── */}
-            <tbody>
-              {result.rows.map((row, rowIdx) => (
-                <tr
-                  className="border-border/30 border-b last:border-b-0 hover:bg-muted/40"
-                  key={rowIdx}
-                >
-                  {/* Row number */}
-                  <td className="h-6 w-10 min-w-[2.5rem] border-border/30 border-r bg-muted/10 px-2 text-center font-mono text-[10px] text-muted-foreground/60">
-                    {rowIdx + 1}
-                  </td>
-                  {row.map((cell, cellIdx) => {
-                    const cellKey = `${rowIdx}-${cellIdx}`;
-                    const isCopied = copiedCell === cellKey;
-                    const col = result.columns[cellIdx];
-                    const isNull = cell === null || cell === undefined;
-                    const isNum = isNumericValue(cell);
-                    const isBool = isBooleanValue(cell);
-                    const isJson = isJsonValue(cell);
-                    const text = formatCellValue(cell);
-
-                    return (
-                      <td
-                        className={cn(
-                          "group/cell relative h-6 max-w-[240px] truncate whitespace-nowrap border-border/30 border-r px-3 font-mono text-xs last:border-r-0",
-                          isNull && "text-muted-foreground/60 italic",
-                          isNum && "text-right text-foreground/90 tabular-nums",
-                          isBool && "text-center",
-                          isJson && "text-muted-foreground",
-                          !(isNull || isNum || isBool || isJson) &&
-                            "text-foreground/90",
-                          isCopied && "bg-primary/10"
-                        )}
-                        key={cellIdx}
-                        title={text}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="select-text truncate">
-                            {isNull ? (
-                              "NULL"
-                            ) : isBool ? (
-                              <Badge
-                                className={cn(
-                                  "h-4 rounded px-1.5 font-mono text-[10px] leading-none",
-                                  cell === true
-                                    ? "border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                                    : "border-destructive/30 text-destructive/70"
-                                )}
-                                variant={
-                                  cell === true ? "outline" : "secondary"
-                                }
-                              >
-                                {String(cell)}
-                              </Badge>
-                            ) : (
-                              text
-                            )}
-                          </span>
-                          <span className="flex shrink-0 items-center">
-                            {isCopied ? (
-                              <span className="font-medium text-[10px] text-primary">
-                                copied
-                              </span>
-                            ) : (
-                              <CellExpandDialog
-                                columnName={col.name}
-                                columnType={col.type_name}
-                                value={cell}
-                              />
-                            )}
-                          </span>
-                        </div>
-
-                        {/* Click target for copying (below expand button via z-index) */}
-                        <button
-                          className="absolute inset-0 z-[1] cursor-default select-none"
-                          onDoubleClick={() =>
-                            handleCopyCell(rowIdx, cellIdx, cell)
-                          }
-                          title="Double-click to copy value"
-                          type="button"
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </ScrollArea>
+      <VirtualizedQueryResultsTable
+        copiedCell={copiedCell}
+        onCopyCell={handleCopyCell}
+        result={result}
+      />
     </div>
   );
 }

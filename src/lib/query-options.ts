@@ -41,8 +41,9 @@ export const dbQueryKeys = {
     p: number,
     ps: number,
     sort: TableSort[],
-    f: TableFilter[]
-  ) => ["table-rows", c, s, t, p, ps, sort, f] as const,
+    f: TableFilter[],
+    exact = false
+  ) => ["table-rows", c, s, t, p, ps, sort, f, exact] as const,
   tableRowsPrefix: (c: string, s: string, t: string) =>
     ["table-rows", c, s, t] as const,
 };
@@ -125,20 +126,22 @@ export const dbQueryOptions = {
     p: number,
     ps: number,
     sort: TableSort[],
-    f: TableFilter[]
+    f: TableFilter[],
+    exact = false
   ) =>
     queryOptions({
       gcTime: 10 * 60_000,
       placeholderData: keepPreviousData,
       queryFn: () =>
         tableListRows({
+          exact,
           filters: f,
           page: p + 1,
           pageSize: ps,
           sort,
           tableRef: { connectionId: c, schema: s, table: t },
         }),
-      queryKey: dbQueryKeys.tableRows(c, s, t, p, ps, sort, f),
+      queryKey: dbQueryKeys.tableRows(c, s, t, p, ps, sort, f, exact),
       staleTime: 5 * 60_000,
     }),
 };

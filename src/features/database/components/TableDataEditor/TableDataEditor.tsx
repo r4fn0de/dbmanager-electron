@@ -1,6 +1,5 @@
 import { IconArrowsDiagonal2 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { Database, KeyRound, Link2, ShieldCheck } from "lucide-react";
 import {
   type ForwardedRef,
@@ -131,6 +130,28 @@ function getDefaultColumnWidth(column: SchemaColumn): number {
 
   return 120;
 }
+function formatTableTotal(total: number, isEstimated = false): string {
+  if (total < 0) {
+    return `≥ ${Math.abs(total).toLocaleString()}`;
+  }
+  return `${isEstimated ? "~ " : ""}${total.toLocaleString()}`;
+}
+const TABLE_FILTER_OPERATORS: Array<{
+  label: string;
+  value: TableFilter["operator"];
+}> = [
+  { label: "Contains", value: "contains" },
+  { label: "Equals", value: "eq" },
+  { label: "Not equal", value: "neq" },
+  { label: "Starts with", value: "starts_with" },
+  { label: "Ends with", value: "ends_with" },
+  { label: "Greater than", value: "gt" },
+  { label: "At least", value: "gte" },
+  { label: "Less than", value: "lt" },
+  { label: "At most", value: "lte" },
+  { label: "Is null", value: "is_null" },
+  { label: "Is not null", value: "is_not_null" },
+];
 
 function TableDataEditorInner(
   {
@@ -184,14 +205,23 @@ function TableDataEditorInner(
   );
   const defaultFilterColumn = table.columns[0]?.name ?? "";
 
+  interface FilterDraft {
+    column: string;
+    id: number;
+    operator: TableFilter["operator"];
+    value: string;
+  }
+
   interface TableViewState {
+    additionalFilters: FilterDraft[];
+    columnWidths: Record<string, number>;
+    filterColumn: string;
+    filterOperator: TableFilter["operator"];
+    filterValue: string;
     page: number;
     pageSize: number;
     sort: TableSort[];
-    filterColumn: string;
-    filterValue: string;
     visibleColumns: string[];
-    columnWidths: Record<string, number>;
   }
 
   const viewStateByTableRef = useRef<Map<string, TableViewState>>(new Map());
@@ -203,8 +233,10 @@ function TableDataEditorInner(
       return saved;
     }
     return {
+      additionalFilters: [],
       columnWidths: {},
       filterColumn: defaultFilterColumn,
+      filterOperator: "contains",
       filterValue: "",
       page: 0,
       pageSize: 50,
@@ -223,9 +255,18 @@ function TableDataEditorInner(
   const [filterColumn, setFilterColumn] = useState<string>(
     () => getInitialViewState().filterColumn
   );
+  const [filterOperator, setFilterOperator] = useState<TableFilter["operator"]>(
+    () => getInitialViewState().filterOperator
+  );
   const [filterValue, setFilterValue] = useState<string>(
     () => getInitialViewState().filterValue
   );
+  const [additionalFilters, setAdditionalFilters] = useState<FilterDraft[]>(
+    () => getInitialViewState().additionalFilters
+  );
+  const nextFilterIdRef = useRef(0);
+  const deferredFilterValue = useDeferredValue(filterValue);
+  const [exactCount, setExactCount] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
@@ -288,10 +329,11 @@ function TableDataEditorInner(
     startX: number;
     startWidth: number;
   } | null>(null);
-  const resizeRafRef = useRef<number | null>(null);
   const pendingResizeRef = useRef<{ column: string; width: number } | null>(
     null
   );
+  const resizePreviewCellRef = useRef<HTMLElement | null>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   // Keyboard navigation – focused cell
   const [focusedCell, setFocusedCell] = useState<{
@@ -325,8 +367,10 @@ function TableDataEditorInner(
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const liveViewStateRef = useRef({
+    additionalFilters,
     columnWidths,
     filterColumn,
+    filterOperator,
     filterValue,
     page,
     pageSize,
@@ -334,8 +378,10 @@ function TableDataEditorInner(
     visibleColumns,
   });
   liveViewStateRef.current = {
+    additionalFilters,
     columnWidths,
     filterColumn,
+    filterOperator,
     filterValue,
     page,
     pageSize,
@@ -374,7 +420,9 @@ function TableDataEditorInner(
       setPageSize(saved.pageSize);
       setSort(saved.sort);
       setFilterColumn(saved.filterColumn);
+      setFilterOperator(saved.filterOperator ?? "contains");
       setFilterValue(saved.filterValue);
+      setAdditionalFilters(saved.additionalFilters ?? []);
       setVisibleColumns(saved.visibleColumns);
       setColumnWidths(saved.columnWidths);
     } else {
@@ -382,10 +430,13 @@ function TableDataEditorInner(
       setPageSize(50);
       setSort([]);
       setFilterColumn(defaultFilterColumn);
+      setFilterOperator("contains");
       setFilterValue("");
+      setAdditionalFilters([]);
       setVisibleColumns(defaultVisibleColumns);
       setColumnWidths({});
     }
+    setExactCount(false);
 
     const savedDrafts = draftsByTableRef.current.get(tableKey);
     setDraftInserts(savedDrafts?.inserts ?? []);
@@ -398,41 +449,83 @@ function TableDataEditorInner(
     previousTableKeyRef.current = tableKey;
   }, [tableKey, defaultFilterColumn, defaultVisibleColumns]);
 
-  const deferredFilterValue = useDeferredValue(filterValue);
-
   const serverFilters = useMemo<TableFilter[]>(() => {
-    if (!(deferredFilterValue.trim() && filterColumn)) {
-      return [];
+    const filters: TableFilter[] = [];
+    const appendFilter = (
+      column: string,
+      operator: TableFilter["operator"],
+      rawValue: string
+    ) => {
+      const value = rawValue.trim();
+      const requiresValue =
+        operator !== "is_null" && operator !== "is_not_null";
+      if (!(column && (!requiresValue || value))) {
+        return;
+      }
+      filters.push({
+        column,
+        operator,
+        value: requiresValue ? value : undefined,
+      });
+    };
+
+    appendFilter(filterColumn, filterOperator, deferredFilterValue);
+    for (const filter of additionalFilters) {
+      appendFilter(filter.column, filter.operator, filter.value);
     }
-    return [
-      {
-        column: filterColumn,
-        operator: "contains",
-        value: deferredFilterValue.trim(),
-      },
-    ];
-  }, [filterColumn, deferredFilterValue]);
+    return filters;
+  }, [additionalFilters, deferredFilterValue, filterColumn, filterOperator]);
 
   useEffect(() => {
     perfTrackerRef.current.start("sort_to_rows_settled");
+    setExactCount(false);
     setPage((current) => (current === 0 ? current : 0));
-  }, [sort, filterColumn, deferredFilterValue]);
+  }, [
+    additionalFilters,
+    deferredFilterValue,
+    filterColumn,
+    filterOperator,
+    sort,
+  ]);
+  const querySort = useMemo<TableSort[]>(() => {
+    const primaryKeyColumns =
+      table.indexes.find((index) => index.is_primary)?.column_names ?? [];
+    const direction = sort[0]?.direction ?? "asc";
+    const effectiveSort = [...sort];
 
-  const {
-    data: rowsResponse = null,
-    isFetching: isLoading,
-    error: rowsError,
-  } = useQuery(
+    for (const primaryKeyColumn of primaryKeyColumns) {
+      if (
+        primaryKeyColumn &&
+        !effectiveSort.some((item) => item.column === primaryKeyColumn)
+      ) {
+        effectiveSort.push({
+          column: primaryKeyColumn,
+          direction,
+        });
+      }
+    }
+
+    return effectiveSort;
+  }, [sort, table.indexes]);
+
+  const rowsQuery = useQuery(
     dbQueryOptions.tableRows(
       connectionId,
       table.schema,
       table.name,
       page,
       pageSize,
-      sort,
-      serverFilters
+      querySort,
+      serverFilters,
+      exactCount
     )
   );
+  const rowsResponse = rowsQuery.data ?? null;
+  const hasNextPage = rowsResponse?.pageInfo.hasNextPage;
+  const rows = useMemo(() => rowsResponse?.rows ?? [], [rowsResponse]);
+  const isLoading = rowsQuery.isFetching;
+  const isBlockingTableLoading = rowsQuery.isPending && !rowsQuery.data;
+  const { error: rowsError } = rowsQuery;
 
   useEffect(() => {
     if (!rowsError) {
@@ -460,9 +553,6 @@ function TableDataEditorInner(
     }
     return map;
   }, [foreignKeys]);
-
-  const rows = rowsResponse?.rows ?? [];
-  const isBlockingTableLoading = isLoading && !rowsResponse;
 
   const effectiveRows = useMemo(
     () => buildEffectiveRows(rows, primaryKey, draftDeletes),
@@ -565,93 +655,20 @@ function TableDataEditorInner(
     []
   );
 
-  // ── Row virtualization ────────────────────────────────────────
   const scrollRef = useRef<HTMLDivElement>(null);
-  const ROW_HEIGHT = 28; // h-7 ≈ 28px
-  const totalVirtualRows = draftInserts.length + effectiveRows.length;
-  const rowVirtualizer = useVirtualizer({
-    count: totalVirtualRows,
-    estimateSize: () => ROW_HEIGHT,
-    getScrollElement: () => scrollRef.current,
-    overscan: 8,
-  });
-  const virtualItems = rowVirtualizer.getVirtualItems();
-
-  const visibleInsertIndices = useMemo(
+  // Pagination keeps the rendered row set bounded to the current page.
+  const visibleDraftInserts = useMemo(
     () =>
-      new Set(
-        virtualItems.reduce<number[]>((indices, virtualItem) => {
-          if (virtualItem.index < draftInserts.length) {
-            indices.push(virtualItem.index);
-          }
-          return indices;
-        }, [])
-      ),
-    [virtualItems, draftInserts.length]
+      draftInserts.map((row, insertIndex) => ({
+        insertIndex,
+        row,
+      })),
+    [draftInserts]
   );
-  const visibleEffectiveArrayIndices = useMemo(
-    () =>
-      new Set(
-        virtualItems.reduce<number[]>((indices, virtualItem) => {
-          if (virtualItem.index >= draftInserts.length) {
-            indices.push(virtualItem.index - draftInserts.length);
-          }
-          return indices;
-        }, [])
-      ),
-    [virtualItems, draftInserts.length]
-  );
-
-  // Memoized visible rows for rendering (preserves original indices)
-  const visibleDraftInserts = useMemo<
-    Array<{ row: RowRecord; insertIndex: number }>
-  >(() => {
-    const result: Array<{ row: RowRecord; insertIndex: number }> = [];
-    for (let i = 0; i < draftInserts.length; i++) {
-      if (visibleInsertIndices.has(i)) {
-        result.push({ insertIndex: i, row: draftInserts[i] });
-      }
-    }
-    return result;
-  }, [draftInserts, visibleInsertIndices]);
-  const visibleEffectiveRows = useMemo(
-    () =>
-      effectiveRows.filter((_, arrayIdx) =>
-        visibleEffectiveArrayIndices.has(arrayIdx)
-      ),
-    [effectiveRows, visibleEffectiveArrayIndices]
-  );
-
-  const topSpacerHeight = virtualItems.length > 0 ? virtualItems[0].start : 0;
-  const bottomSpacerHeight =
-    virtualItems.length > 0
-      ? rowVirtualizer.getTotalSize() -
-        virtualItems[virtualItems.length - 1].end
-      : 0;
-
-  // Scroll focused cell into view when it moves outside the virtualized range
-  useEffect(() => {
-    if (!focusedCell) {
-      return;
-    }
-    // Find the virtual index for the focused row
-    const insertPrefix = "insert:";
-    if (focusedCell.rowKey.startsWith(insertPrefix)) {
-      const insertIdx = Number(focusedCell.rowKey.slice(insertPrefix.length));
-      if (!Number.isNaN(insertIdx)) {
-        rowVirtualizer.scrollToIndex(insertIdx, { align: "auto" });
-      }
-    } else {
-      const effectiveIdx = effectiveRows.findIndex(
-        (r) => r.rowKey === focusedCell.rowKey
-      );
-      if (effectiveIdx >= 0) {
-        rowVirtualizer.scrollToIndex(draftInserts.length + effectiveIdx, {
-          align: "auto",
-        });
-      }
-    }
-  }, [focusedCell, draftInserts.length, effectiveRows, rowVirtualizer]);
+  const visibleEffectiveRows = effectiveRows;
+  const totalVirtualRows = visibleDraftInserts.length + visibleEffectiveRows.length;
+  const topSpacerHeight = 0;
+  const bottomSpacerHeight = 0;
 
   const dirtyCounts = useMemo(
     () => ({
@@ -1205,42 +1222,11 @@ function TableDataEditorInner(
     }
   };
 
-  const totalPages = useMemo(() => {
-    const total = rowsResponse?.totalEstimate ?? 0;
-    return Math.max(Math.ceil(total / pageSize), 1);
-  }, [pageSize, rowsResponse?.totalEstimate]);
-
-  useEffect(() => {
-    if (!rowsResponse) {
-      return;
-    }
-    const nextPage = page + 1;
-    if (nextPage >= totalPages) {
-      return;
-    }
-    void queryClient.prefetchQuery(
-      dbQueryOptions.tableRows(
-        connectionId,
-        table.schema,
-        table.name,
-        nextPage,
-        pageSize,
-        sort,
-        serverFilters
-      )
-    );
-  }, [
-    rowsResponse,
-    page,
-    totalPages,
-    queryClient,
-    connectionId,
-    table.schema,
-    table.name,
-    pageSize,
-    sort,
-    serverFilters,
-  ]);
+  const estimatedTotalPages =
+    rowsResponse?.totalEstimate && rowsResponse.totalEstimate > 0
+      ? Math.ceil(rowsResponse.totalEstimate / pageSize)
+      : page + (rowsResponse?.pageInfo.hasNextPage ? 2 : 1);
+  const totalPages = Math.max(page + 1, estimatedTotalPages);
 
   // ── Row selection ──────────────────────────────────────────────
   const allVisibleRowKeys = useMemo(
@@ -1500,6 +1486,7 @@ function TableDataEditorInner(
     (column: string, event: React.MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      resizeCleanupRef.current?.();
       const currentWidth =
         columnWidthsRef.current[column] ??
         defaultColumnWidthsRef.current[column] ??
@@ -1509,6 +1496,10 @@ function TableDataEditorInner(
         startWidth: currentWidth,
         startX: event.clientX,
       };
+      resizePreviewCellRef.current = (
+        event.currentTarget as HTMLElement
+      ).parentElement;
+
       const handleMouseMove = (e: MouseEvent) => {
         const resizeState = resizeRef.current;
         if (!resizeState) {
@@ -1520,15 +1511,42 @@ function TableDataEditorInner(
           column: resizeState.column,
           width: newWidth,
         };
-        if (resizeRafRef.current !== null) {
+        const previewCell = resizePreviewCellRef.current;
+        if (!previewCell) {
           return;
         }
-        resizeRafRef.current = requestAnimationFrame(() => {
-          const pending = pendingResizeRef.current;
-          resizeRafRef.current = null;
-          if (!pending) {
-            return;
-          }
+        const width = `${newWidth}px`;
+        previewCell.style.maxWidth = width;
+        previewCell.style.minWidth = width;
+        previewCell.style.width = width;
+      };
+      let isFinished = false;
+      const cleanup = (preservePreviewStyle = false) => {
+        if (isFinished) {
+          return;
+        }
+        isFinished = true;
+        const previewCell = resizePreviewCellRef.current;
+        if (!preservePreviewStyle && previewCell) {
+          previewCell.style.removeProperty("max-width");
+          previewCell.style.removeProperty("min-width");
+          previewCell.style.removeProperty("width");
+        }
+        resizeRef.current = null;
+        pendingResizeRef.current = null;
+        resizePreviewCellRef.current = null;
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("blur", handleMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        if (resizeCleanupRef.current === cleanup) {
+          resizeCleanupRef.current = null;
+        }
+      };
+      const handleMouseUp = () => {
+        const pending = pendingResizeRef.current;
+        if (pending) {
           setColumnWidths((prev) => {
             if (prev[pending.column] === pending.width) {
               return prev;
@@ -1538,22 +1556,13 @@ function TableDataEditorInner(
               [pending.column]: pending.width,
             };
           });
-        });
-      };
-      const handleMouseUp = () => {
-        resizeRef.current = null;
-        pendingResizeRef.current = null;
-        if (resizeRafRef.current !== null) {
-          cancelAnimationFrame(resizeRafRef.current);
-          resizeRafRef.current = null;
         }
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        cleanup(true);
       };
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
+      window.addEventListener("blur", handleMouseUp);
+      resizeCleanupRef.current = cleanup;
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
@@ -1562,11 +1571,7 @@ function TableDataEditorInner(
 
   useEffect(
     () => () => {
-      if (resizeRafRef.current !== null) {
-        cancelAnimationFrame(resizeRafRef.current);
-        resizeRafRef.current = null;
-      }
-      pendingResizeRef.current = null;
+      resizeCleanupRef.current?.();
     },
     []
   );
@@ -1840,14 +1845,16 @@ function TableDataEditorInner(
             </Button>
           )}
         </div>
-
-        {/* ── Right: Info + actions ──────────────────────── */}
         <div className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
           {(isLoading || isSwitchingTable) && rowsResponse && (
             <UiIcon className="h-3 w-3 animate-spin" name="loader" />
           )}
           <span>
-            {(rowsResponse?.totalEstimate ?? 0).toLocaleString()} rows
+            {formatTableTotal(
+              rowsResponse?.totalEstimate ?? 0,
+              rowsResponse?.totalIsEstimated
+            )}{" "}
+            rows
           </span>
           {hasDraftChanges && (
             <span className="flex items-center gap-1">
@@ -2141,37 +2148,180 @@ function TableDataEditorInner(
       </div>
 
       {showFilters && (
-        <div className="grid grid-cols-[220px_1fr] gap-2 border-b bg-muted/30 px-3 py-2">
-          <Select
-            onValueChange={(value) => {
-              if (value) {
-                setFilterColumn(value);
-                setPage(0);
+        <div className="space-y-2 border-b bg-muted/30 px-3 py-2">
+          <div className="grid grid-cols-[minmax(160px,220px)_minmax(140px,180px)_1fr] gap-2">
+            <Select
+              onValueChange={(value) => {
+                if (value) {
+                  setFilterColumn(value);
+                  setPage(0);
+                }
+              }}
+              value={filterColumn}
+            >
+              <SelectTrigger className="h-8 w-full bg-background text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {table.columns.map((column) => (
+                  <SelectItem key={column.name} value={column.name}>
+                    {column.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              onValueChange={(value) => {
+                const selectedOperator = TABLE_FILTER_OPERATORS.find(
+                  (option) => option.value === value
+                );
+                if (selectedOperator) {
+                  setFilterOperator(selectedOperator.value);
+                  setPage(0);
+                }
+              }}
+              value={filterOperator}
+            >
+              <SelectTrigger className="h-8 w-full bg-background text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TABLE_FILTER_OPERATORS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              className="h-8 bg-background"
+              disabled={
+                filterOperator === "is_null" || filterOperator === "is_not_null"
               }
+              onChange={(event) => {
+                perfTrackerRef.current.start("filter_to_rows_painted");
+                setFilterValue(event.target.value);
+                setPage(0);
+              }}
+              placeholder="Filter value..."
+              value={filterValue}
+            />
+          </div>
+          {additionalFilters.map((filter) => (
+            <div
+              className="grid grid-cols-[minmax(160px,220px)_minmax(140px,180px)_1fr_auto] gap-2"
+              key={filter.id}
+            >
+              <Select
+                onValueChange={(value) => {
+                  if (value) {
+                    setAdditionalFilters((current) =>
+                      current.map((item) =>
+                        item.id === filter.id
+                          ? { ...item, column: value }
+                          : item
+                      )
+                    );
+                    setPage(0);
+                  }
+                }}
+                value={filter.column}
+              >
+                <SelectTrigger className="h-8 w-full bg-background text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {table.columns.map((column) => (
+                    <SelectItem key={column.name} value={column.name}>
+                      {column.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                onValueChange={(value) => {
+                  const selectedOperator = TABLE_FILTER_OPERATORS.find(
+                    (option) => option.value === value
+                  );
+                  if (selectedOperator) {
+                    setAdditionalFilters((current) =>
+                      current.map((item) =>
+                        item.id === filter.id
+                          ? { ...item, operator: selectedOperator.value }
+                          : item
+                      )
+                    );
+                    setPage(0);
+                  }
+                }}
+                value={filter.operator}
+              >
+                <SelectTrigger className="h-8 w-full bg-background text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TABLE_FILTER_OPERATORS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                className="h-8 bg-background"
+                disabled={
+                  filter.operator === "is_null" ||
+                  filter.operator === "is_not_null"
+                }
+                onChange={(event) => {
+                  perfTrackerRef.current.start("filter_to_rows_painted");
+                  setAdditionalFilters((current) =>
+                    current.map((item) =>
+                      item.id === filter.id
+                        ? { ...item, value: event.target.value }
+                        : item
+                    )
+                  );
+                  setPage(0);
+                }}
+                placeholder="Filter value..."
+                value={filter.value}
+              />
+              <Button
+                aria-label={`Remove filter ${filter.column}`}
+                className="h-8 w-8"
+                onClick={() => {
+                  setAdditionalFilters((current) =>
+                    current.filter((item) => item.id !== filter.id)
+                  );
+                  setPage(0);
+                }}
+                size="icon-sm"
+                variant="ghost"
+              >
+                <UiIcon className="size-3.5" name="x" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            className="h-7 text-xs"
+            onClick={() => {
+              setAdditionalFilters((current) => [
+                ...current,
+                {
+                  column: defaultFilterColumn,
+                  id: Date.now() + nextFilterIdRef.current++,
+                  operator: "contains",
+                  value: "",
+                },
+              ]);
             }}
-            value={filterColumn}
+            size="sm"
+            variant="outline"
           >
-            <SelectTrigger className="h-8 w-full bg-background text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {table.columns.map((column) => (
-                <SelectItem key={column.name} value={column.name}>
-                  {column.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            className="h-8 bg-background"
-            onChange={(event) => {
-              perfTrackerRef.current.start("filter_to_rows_painted");
-              setFilterValue(event.target.value);
-              setPage(0);
-            }}
-            placeholder="Contains..."
-            value={filterValue}
-          />
+            <UiIcon className="size-3.5" name="plus" />
+            Add filter
+          </Button>
         </div>
       )}
 
@@ -2523,6 +2673,7 @@ function TableDataEditorInner(
       {viewMode === "data" ? (
         <TableEditorFooter
           hasDraftChanges={hasDraftChanges}
+          hasNextPage={hasNextPage}
           isLoading={isLoading}
           isSaving={isSaving}
           onDiscardDrafts={discardDrafts}
@@ -2532,10 +2683,13 @@ function TableDataEditorInner(
             setPage(0);
           }}
           onPrevPage={() => setPage((current) => Math.max(current - 1, 0))}
+          onRequestExactCount={() => setExactCount(true)}
           onSaveChanges={() => void saveAllChanges()}
           page={page}
           pageSize={pageSize}
           pressableClass={pressableClass}
+          totalEstimate={rowsResponse?.totalEstimate ?? 0}
+          totalIsEstimated={rowsResponse?.totalIsEstimated}
           totalPages={totalPages}
         />
       ) : null}

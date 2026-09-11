@@ -48,15 +48,28 @@ function renderBootstrapError(error: unknown): void {
     </div>
   `;
 }
+const EXPECTED_ABORT_REJECTION =
+  /AbortError|closed or aborted while waiting for pulling/i;
+function isExpectedAbortRejection(reason: unknown): boolean {
+  const message =
+    reason instanceof Error
+      ? `${reason.name}: ${reason.message}`
+      : String(reason);
+  return EXPECTED_ABORT_REJECTION.test(message);
+}
 
 window.addEventListener("error", (event) => {
   console.error("[renderer] window error:", event.error ?? event.message);
 });
 
 window.addEventListener("unhandledrejection", (event) => {
+  if (isExpectedAbortRejection(event.reason)) {
+    event.preventDefault();
+    return;
+  }
   console.error("[renderer] unhandled rejection:", event.reason);
 });
 
-void import("@/app").catch((error) => {
+import("@/app").catch((error) => {
   renderBootstrapError(error);
 });

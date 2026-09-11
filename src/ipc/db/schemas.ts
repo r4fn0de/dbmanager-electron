@@ -71,6 +71,11 @@ export const executeQuerySchema = z.object({
   requestId: z.string().optional(),
   sql: z.string(),
 });
+export const explainQuerySchema = z.object({
+  analyze: z.boolean().optional(),
+  connectionId: z.string(),
+  sql: z.string(),
+});
 
 export const tableRefSchema = z.object({
   connectionId: z.string(),
@@ -102,6 +107,8 @@ export const tableFilterSchema = z.object({
 }) as z.ZodType<TableFilter>;
 
 export const listRowsInputSchema = z.object({
+  cursor: z.string().optional(),
+  exact: z.boolean().optional(),
   filters: z.array(tableFilterSchema),
   page: z.number(),
   pageSize: z.number(),

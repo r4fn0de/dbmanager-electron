@@ -15,6 +15,7 @@ import {
   dropTable,
   executeBatchDdl,
   executeQuery,
+  explainQuery,
   exportSchemaDdl,
   exportSchemaIndexes,
   exportTableData,
@@ -76,8 +77,8 @@ export const db = {
   dropIndex,
   dropTable,
   executeBatchDdl,
-  // Queries
   executeQuery,
+  explainQuery,
   // Clone to Local
   exportSchemaDdl,
   exportSchemaIndexes,

@@ -15,6 +15,7 @@ import {
   buildDropTableSql,
 } from "./ddl-sql";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
+import { decodeTableCursor, encodeTableCursor } from "./pagination";
 import type {
   DatabaseType,
   SchemaEnum,
@@ -1252,11 +1253,24 @@ export function createSqliteDriver(): DatabaseDriver {
       table,
       page,
       pageSize,
-      sort,
-      filters
+      sort = [],
+      filters = [],
+      cursor
     ) {
       const cachedDb = getDb(connectionString);
       const db = cachedDb.db;
+      const cursorData = decodeTableCursor(cursor);
+      const useCursor =
+        cursorData !== null &&
+        cursorData.sort.length === sort.length &&
+        cursorData.sort.every(
+          (item, index) =>
+            item.column === sort[index]?.column &&
+            item.direction === sort[index]?.direction
+        ) &&
+        cursorData.values.every(
+          (value) => value !== null && value !== undefined
+        );
       const offset = (page - 1) * pageSize;
 
       // Build WHERE clause
@@ -1322,6 +1336,29 @@ export function createSqliteDriver(): DatabaseDriver {
           }
         }
       }
+      const filterParams = [...params];
+      const filterWhere =
+        whereParts.length > 0 ? ` WHERE ${whereParts.join(" AND ")}` : "";
+      if (useCursor && cursorData) {
+        const cursorConditions: string[] = [];
+        const cursorParams: unknown[] = [];
+        for (let index = 0; index < cursorData.sort.length; index++) {
+          const equalConditions = cursorData.sort
+            .slice(0, index)
+            .map((item) => `"${item.column.replace(/"/g, '""')}" = ?`);
+          const item = cursorData.sort[index];
+          const operator = item.direction === "asc" ? ">" : "<";
+          cursorConditions.push(
+            `(${[
+              ...equalConditions,
+              `"${item.column.replace(/"/g, '""')}" ${operator} ?`,
+            ].join(" AND ")})`
+          );
+          cursorParams.push(...cursorData.values.slice(0, index + 1));
+        }
+        whereParts.push(`(${cursorConditions.join(" OR ")})`);
+        params.push(...cursorParams);
+      }
       const where =
         whereParts.length > 0 ? ` WHERE ${whereParts.join(" AND ")}` : "";
 
@@ -1332,18 +1369,23 @@ export function createSqliteDriver(): DatabaseDriver {
           : "";
 
       // Rows
-      const rows = db
-        .prepare(
-          `SELECT * FROM "${table.replace(/"/g, '""')}"${where}${orderBy} LIMIT ? OFFSET ?`
-        )
-        .all(...params, pageSize, offset) as Record<string, unknown>[];
+      const rowsSql = useCursor
+        ? `SELECT * FROM "${table.replace(/"/g, '""')}"${where}${orderBy} LIMIT ?`
+        : `SELECT * FROM "${table.replace(/"/g, '""')}"${where}${orderBy} LIMIT ? OFFSET ?`;
+      const rowsParams = useCursor
+        ? [...params, pageSize]
+        : [...params, pageSize, offset];
+      const rows = db.prepare(rowsSql).all(...rowsParams) as Record<
+        string,
+        unknown
+      >[];
 
       // Count
       const countRow = db
         .prepare(
-          `SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"${where}`
+          `SELECT COUNT(*) as cnt FROM "${table.replace(/"/g, '""')}"${filterWhere}`
         )
-        .get(...params) as Record<string, number>;
+        .get(...filterParams) as Record<string, number>;
       const totalEstimate = countRow?.cnt ?? 0;
 
       // Get column types from pragma for more accurate type info
@@ -1374,7 +1416,12 @@ export function createSqliteDriver(): DatabaseDriver {
       return {
         columns: columnsWithTypes,
         foreignKeys,
-        pageInfo: { page, pageSize },
+        pageInfo: {
+          hasNextPage: rows.length === pageSize,
+          nextCursor: encodeTableCursor(sort, rows.at(-1)),
+          page,
+          pageSize,
+        },
         primaryKey,
         rows,
         totalEstimate,

@@ -351,9 +351,7 @@ async function getKeyValue(
       case "string": {
         const value = await client.get(key);
         if (value && value.length > 10_000) {
-          return (
-            `${value.substring(0, 10_000)}...[truncated: value exceeds 10KB]`
-          );
+          return `${value.substring(0, 10_000)}...[truncated: value exceeds 10KB]`;
         }
         return value;
       }
@@ -377,8 +375,7 @@ async function getKeyValue(
               count++;
             }
           } while (cursor !== "0" && count < MAX_VALUE_ITEMS);
-          partialData.__truncated__ =
-            `Showing ${count} of ${hlen} fields. Use HSCAN to iterate full hash.`;
+          partialData.__truncated__ = `Showing ${count} of ${hlen} fields. Use HSCAN to iterate full hash.`;
           return partialData;
         }
         return await client.hgetall(key);
@@ -952,10 +949,15 @@ export function createRedisDriver(): DatabaseDriver {
             { name: "value_preview", type_name: "string" },
           ],
           foreignKeys: [],
-          pageInfo: { page, pageSize },
+          pageInfo: {
+            hasNextPage: rows.length === pageSize,
+            page,
+            pageSize,
+          },
           primaryKey: ["key"],
           rows,
           totalEstimate,
+          totalIsEstimated: true,
         };
       } catch (err) {
         throw new Error(

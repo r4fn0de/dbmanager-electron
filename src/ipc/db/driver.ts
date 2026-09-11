@@ -272,7 +272,9 @@ export interface DatabaseDriver {
     page: number,
     pageSize: number,
     sort?: Array<{ column: string; direction: "asc" | "desc" }>,
-    filters?: Array<{ column: string; operator: string; value?: unknown }>
+    filters?: Array<{ column: string; operator: string; value?: unknown }>,
+    cursor?: string,
+    exact?: boolean
   ): Promise<TableRowsResponse>;
 
   /** Execute RENAME COLUMN and return the display SQL string. */

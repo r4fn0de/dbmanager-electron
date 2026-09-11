@@ -261,6 +261,8 @@ export interface TableFilter {
 }
 
 export interface ListRowsInput {
+  cursor?: string;
+  exact?: boolean;
   filters: TableFilter[];
   page: number;
   pageSize: number;
@@ -269,6 +271,8 @@ export interface ListRowsInput {
 }
 
 export interface TablePageInfo {
+  hasNextPage?: boolean;
+  nextCursor?: string;
   page: number;
   pageSize: number;
 }
@@ -290,6 +294,7 @@ export interface TableRowsResponse {
   rows: Record<string, unknown>[];
   sortAppliedOnServer?: boolean;
   totalEstimate: number;
+  totalIsEstimated?: boolean;
 }
 
 export interface TableUpdateChange {

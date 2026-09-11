@@ -1,5 +1,5 @@
-import { ORPCError, os } from "@orpc/server";
 import { randomUUID } from "node:crypto";
+import { ORPCError, os } from "@orpc/server";
 import {
   invalidateConnectionCache,
   invalidateSchemaCache,
@@ -28,6 +28,7 @@ import {
   dropTableInputSchema,
   executeBatchDdlSchema,
   executeQuerySchema,
+  explainQuerySchema,
   exportSchemaIndexesSchema,
   exportTableDataSchema,
   fkLookupInputSchema,
@@ -74,6 +75,7 @@ import type {
   IndexInfo,
   LocalDbInfo,
   MergeBranchSchemaResult,
+  QueryPlanResult,
   QueryResult,
   SaveChangesResponse,
   SchemaEnum,
@@ -461,6 +463,22 @@ export const executeQuery = os
     }
   });
 
+export const explainQuery = os
+  .input(explainQuerySchema)
+  .handler(async ({ input }): Promise<QueryPlanResult> => {
+    const { connStr, connection } = await resolveConnectionString(
+      input.connectionId
+    );
+    const driver = driverRegistry.get(resolveDbType(connection));
+
+    try {
+      return await driver.explainQuery(connStr, input.sql, input.analyze);
+    } catch (err) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: formatDriverErrorMessage(err, "Failed to explain query"),
+      });
+    }
+  });
 export const getSchema = os
   .input(idSchema)
   .handler(async ({ input }): Promise<DatabaseSchema> => {
@@ -509,7 +527,9 @@ export const tableListRows = os
       input.page,
       safePageSize,
       input.sort,
-      input.filters
+      input.filters,
+      input.cursor,
+      input.exact
     );
     return {
       ...response,

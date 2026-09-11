@@ -25,6 +25,7 @@ import {
 } from "./ddl-sql";
 import type { DatabaseDriver, DriverConnectionConfig } from "./driver";
 import { getMysqlKysely, getMysqlPool } from "./kysely-factory";
+import { decodeTableCursor, encodeTableCursor } from "./pagination";
 import type {
   ConstraintInfo,
   DatabaseType,
@@ -2021,10 +2022,24 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
       table,
       page,
       pageSize,
-      sort,
-      filters
+      sort = [],
+      filters = [],
+      cursor,
+      exact = false
     ) {
       return withConnection(connectionString, async (conn) => {
+        const cursorData = decodeTableCursor(cursor);
+        const useCursor =
+          cursorData !== null &&
+          cursorData.sort.length === sort.length &&
+          cursorData.sort.every(
+            (item, index) =>
+              item.column === sort[index]?.column &&
+              item.direction === sort[index]?.direction
+          ) &&
+          cursorData.values.every(
+            (value) => value !== null && value !== undefined
+          );
         const conditions: string[] = [];
         const params: unknown[] = [];
 
@@ -2088,7 +2103,29 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
             }
           }
         }
-
+        const filterParams = [...params];
+        const filterWhere =
+          conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+        if (useCursor && cursorData) {
+          const cursorConditions: string[] = [];
+          const cursorParams: unknown[] = [];
+          for (let index = 0; index < cursorData.sort.length; index++) {
+            const equalConditions = cursorData.sort
+              .slice(0, index)
+              .map((item) => `\`${item.column.replace(/`/g, "``")}\` = ?`);
+            const item = cursorData.sort[index];
+            const operator = item.direction === "asc" ? ">" : "<";
+            cursorConditions.push(
+              `(${[
+                ...equalConditions,
+                `\`${item.column.replace(/`/g, "``")}\` ${operator} ?`,
+              ].join(" AND ")})`
+            );
+            cursorParams.push(...cursorData.values.slice(0, index + 1));
+          }
+          conditions.push(`(${cursorConditions.join(" OR ")})`);
+          params.push(...cursorParams);
+        }
         const where =
           conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
         const orderBy =
@@ -2096,19 +2133,38 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
             ? ` ORDER BY ${sort.map((s) => `\`${s.column.replace(/`/g, "``")}\` ${s.direction.toUpperCase()}`).join(", ")}`
             : "";
         const offset = (page - 1) * pageSize;
+        const pageSql = useCursor
+          ? `SELECT * FROM \`${schema}\`.\`${table}\`${where}${orderBy} LIMIT ?`
+          : `SELECT * FROM \`${schema}\`.\`${table}\`${where}${orderBy} LIMIT ? OFFSET ?`;
+        const pageParams = useCursor
+          ? [...params, pageSize]
+          : [...params, pageSize, offset];
 
-        const [rows] = await conn.query(
-          `SELECT * FROM \`${schema}\`.\`${table}\`${where}${orderBy} LIMIT ? OFFSET ?`,
-          [...params, pageSize, offset]
-        );
-
-        const [countRows] = await conn.query(
-          `SELECT COUNT(*) AS cnt FROM \`${schema}\`.\`${table}\`${where}`,
-          params
-        );
-        const totalEstimate = Number(
-          (countRows as Array<{ cnt: bigint }>)[0]?.cnt ?? 0
-        );
+        const [rows] = await conn.query(pageSql, pageParams);
+        let totalEstimate: number | undefined;
+        let totalIsEstimated = false;
+        if (!exact && filters.length === 0) {
+          const [estimateRows] = await conn.query(
+            "SELECT TABLE_ROWS AS estimate FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+            [schema, table]
+          );
+          const estimatedRows = Number(
+            (estimateRows as Array<{ estimate: number }>)[0]?.estimate ?? 0
+          );
+          if (estimatedRows > 0) {
+            totalEstimate = estimatedRows;
+            totalIsEstimated = true;
+          }
+        }
+        if (totalEstimate === undefined) {
+          const [countRows] = await conn.query(
+            `SELECT COUNT(*) AS cnt FROM \`${schema}\`.\`${table}\`${filterWhere}`,
+            filterParams
+          );
+          totalEstimate = Number(
+            (countRows as Array<{ cnt: bigint }>)[0]?.cnt ?? 0
+          );
+        }
 
         // Primary key — Kysely query against information_schema.key_column_usage
         const db = await getMysqlKysely(connectionString);
@@ -2159,10 +2215,16 @@ function createMysqlFamilyDriver(dbType: DatabaseType): DatabaseDriver {
         return {
           columns,
           foreignKeys,
-          pageInfo: { page, pageSize },
+          pageInfo: {
+            hasNextPage: rowArr.length === pageSize,
+            nextCursor: encodeTableCursor(sort, rowArr.at(-1)),
+            page,
+            pageSize,
+          },
           primaryKey,
           rows: rowArr,
           totalEstimate,
+          totalIsEstimated,
         };
       });
     },

@@ -1,3 +1,4 @@
+import type { VirtualItem } from "@tanstack/react-virtual";
 import type { SchemaColumn, SchemaForeignKey, TableSort } from "@/ipc/db/types";
 import type { RowRecord, RowUpdateDraft } from "../types";
 
@@ -17,6 +18,8 @@ export interface TableEditorGridHeaderProps {
   resolveColumnWidth: (columnName: string) => number;
   sort: TableSort[];
   toggleSelectAll: () => void;
+  totalColumnWidth: number;
+  virtualColumns: VirtualItem[];
   visibleColumns: string[];
 }
 
@@ -86,7 +89,9 @@ export interface TableEditorGridRowsProps {
   suppressInlineEditorMouseUpRef: React.RefObject<boolean>;
   tableSchema: string;
   topSpacerHeight: number;
+  totalColumnWidth: number;
   totalVirtualRows: number;
+  virtualColumns: VirtualItem[];
   visibleColumns: string[];
   visibleDraftInserts: Array<{ row: RowRecord; insertIndex: number }>;
   visibleEffectiveRows: Array<{

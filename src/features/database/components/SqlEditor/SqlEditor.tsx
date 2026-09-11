@@ -32,7 +32,10 @@ import {
 } from "@/components/ui/tooltip";
 import { fixSql, updateSql } from "@/features/ai/hooks/ai-actions";
 import {
-  buildExplainSql,
+  cancelQuery,
+  explainQuery,
+} from "@/features/database/hooks/db-actions";
+import {
   disposeSqlCompletion,
   formatSql,
   registerSqlCompletion,
@@ -59,9 +62,9 @@ import {
 } from "../../hooks/useSqlWorkspace";
 import { LazyMonacoEditor, type OnMount } from "../LazyMonacoEditor";
 import { QueryResults } from "../QueryResults";
+import { QueryPlanPanel } from "../query-plan-panel";
 import "@/lib/monaco-loader";
-import { cancelQuery } from "@/features/database/hooks/db-actions";
-import type { QueryResult } from "@/ipc/db/types";
+import type { QueryPlanResult, QueryResult } from "@/ipc/db/types";
 import type {
   SqlDocument,
   SqlEditorProps,
@@ -291,8 +294,13 @@ export function SqlEditor({
   const [inlineAiPrompt, setInlineAiPrompt] = useState("");
   const [isGeneratingInlineAi, setIsGeneratingInlineAi] = useState(false);
   const [selectedSqlForAi, setSelectedSqlForAi] = useState("");
-  // EXPLAIN state (driven by keyboard shortcuts only, no toolbar button)
-  const [_isExplaining, setIsExplaining] = useState(false);
+  // EXPLAIN state (driven by keyboard shortcuts and toolbar actions)
+  const [explainPlan, setExplainPlan] = useState<{
+    plan: QueryPlanResult | null;
+    sql: string;
+  } | null>(null);
+  const [explainError, setExplainError] = useState<string | null>(null);
+  const [isExplaining, setIsExplaining] = useState(false);
   const explainQueryClient = useQueryClient();
 
   const setSqlContext = useAiChatGlobalStore((state) => state.setSqlContext);
@@ -982,15 +990,10 @@ export function SqlEditor({
     }
   }, [dbType]);
 
-  // ── EXPLAIN Query (cached via queryClient.fetchQuery) ────────────
-  // Repeated Ctrl+E on the same query returns cached result within 5min staleTime,
-  // avoiding redundant round-trips to the database.
+  // ── EXPLAIN Query (structured plan cached via queryClient) ───────
   const handleExplainSql = useCallback(
     async (analyze = false) => {
-      if (!(selectedConnection && doc.sql.trim())) {
-        return;
-      }
-      if (isExecuting) {
+      if (!(selectedConnection && doc.sql.trim()) || isExecuting) {
         return;
       }
 
@@ -1004,7 +1007,6 @@ export function SqlEditor({
         return;
       }
 
-      // EXPLAIN ANALYZE actually executes the query — warn for destructive SQL
       if (analyze && hasDangerousSqlKeywords(sqlToExplain)) {
         const confirmed = window.confirm(
           "EXPLAIN ANALYZE will actually execute this query, which contains potentially destructive operations (DELETE/UPDATE/DROP/etc). Continue?"
@@ -1014,59 +1016,25 @@ export function SqlEditor({
         }
       }
 
-      const explainSql = buildExplainSql(sqlToExplain, dbType, analyze);
+      setExplainPlan({ plan: null, sql: sqlToExplain });
+      setExplainError(null);
       setIsExplaining(true);
       try {
-        // Use fetchQuery to leverage cache — same EXPLAIN SQL within 5min = instant
-        const result = await explainQueryClient.fetchQuery({
-          queryFn: () => executeQuery(selectedConnection, explainSql),
-          queryKey: ["explain", selectedConnection, explainSql],
+        const plan = await explainQueryClient.fetchQuery<QueryPlanResult>({
+          queryFn: () =>
+            explainQuery(selectedConnection, sqlToExplain, analyze),
+          queryKey: ["explain-plan", selectedConnection, sqlToExplain, analyze],
           staleTime: 5 * 60_000,
         });
-        const resultId = `explain-${nowIso()}`;
-        setRunResults([
-          {
-            durationMs: 0,
-            error: null,
-            id: resultId,
-            query: explainSql,
-            result,
-            rowCount: result.row_count,
-            status: "success",
-          },
-        ]);
-        setActiveRunResultId(resultId);
-        setLastResult(result);
-        setLastError(null);
+        setExplainPlan({ plan, sql: sqlToExplain });
       } catch (err) {
-        const message = getQueryErrorMessage(err);
-        const resultId = `explain-${nowIso()}`;
-        setRunResults([
-          {
-            durationMs: 0,
-            error: message,
-            id: resultId,
-            query: explainSql,
-            result: null,
-            rowCount: 0,
-            status: "error",
-          },
-        ]);
-        setActiveRunResultId(resultId);
-        setLastError(message);
-        setLastResult(null);
+        setExplainPlan({ plan: null, sql: sqlToExplain });
+        setExplainError(getQueryErrorMessage(err));
       } finally {
         setIsExplaining(false);
       }
     },
-    [
-      selectedConnection,
-      doc.sql,
-      dbType,
-      isExecuting,
-      executeQuery,
-      explainQueryClient,
-    ]
+    [doc.sql, explainQueryClient, isExecuting, selectedConnection]
   );
 
   // AI: Fix SQL — send current SQL + last error to AI for correction
@@ -1279,6 +1247,8 @@ export function SqlEditor({
     activeRequestIdRef.current = currentRequestId;
 
     setIsExecuting(true);
+    setExplainPlan(null);
+    setExplainError(null);
     setLastError(null);
     setRunResults([]);
     setActiveRunResultId(null);
@@ -2313,6 +2283,31 @@ export function SqlEditor({
 
               {/* ── Run ────────────────────────── */}
               <div className="ml-auto flex shrink-0 items-center gap-2">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        className="gap-1.5"
+                        disabled={
+                          !selectedConnection || isExecuting || !doc.sql.trim()
+                        }
+                        onClick={() => void handleExplainSql(false)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <UiIcon className="size-3.5" name="git-branch" />
+                        Explain
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>
+                    Explain query
+                    <KbdGroup>
+                      <Kbd>⌘</Kbd>
+                      <Kbd>E</Kbd>
+                    </KbdGroup>
+                  </TooltipContent>
+                </Tooltip>
                 {isExecuting && (
                   <div className="flex items-center gap-2">
                     <span className="animate-pulse font-mono text-muted-foreground text-xs">
@@ -2658,8 +2653,19 @@ export function SqlEditor({
                       )}
                     </div>
                   )}
-                  <div className="min-h-0 overflow-auto px-3 pt-2 pb-3">
-                    {runResults.length > 1 ? (
+                  <div className="min-h-0 flex-1 overflow-auto px-3 pt-2 pb-3">
+                    {explainPlan || explainError || isExplaining ? (
+                      <QueryPlanPanel
+                        error={explainError}
+                        isAnalyzing={isExplaining}
+                        onClose={() => {
+                          setExplainPlan(null);
+                          setExplainError(null);
+                        }}
+                        plan={explainPlan?.plan ?? null}
+                        sql={explainPlan?.sql ?? doc.sql}
+                      />
+                    ) : runResults.length > 1 ? (
                       <Tabs
                         className="flex h-full min-h-0 flex-col"
                         onValueChange={setActiveRunResultId}

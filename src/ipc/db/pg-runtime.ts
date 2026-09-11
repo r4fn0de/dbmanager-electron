@@ -3,6 +3,7 @@ import Module, { createRequire } from "node:module";
 import { join } from "node:path";
 import type { DriverConnectionConfig } from "./driver";
 import { getPgPool } from "./kysely-factory";
+import { decodeTableCursor, encodeTableCursor } from "./pagination";
 import type {
   ColumnMeta,
   DatabaseInfo,
@@ -11,8 +12,8 @@ import type {
 } from "./types";
 
 interface PgField {
-    name: string;
-    dataTypeID: number 
+  dataTypeID: number;
+  name: string;
 }
 
 const runtimeRequire = createRequire(
@@ -464,37 +465,99 @@ export async function listPgRowsRaw(
   page: number,
   pageSize: number,
   sort: Array<{ column: string; direction: "asc" | "desc" }>,
-  filters: Array<{ column: string; operator: string; value?: unknown }>
+  filters: Array<{ column: string; operator: string; value?: unknown }>,
+  cursor?: string,
+  exact = false
 ): Promise<{
+  columns: ColumnMeta[];
+  nextCursor?: string;
   rows: Record<string, unknown>[];
   totalEstimate: number;
-  columns: ColumnMeta[];
+  totalIsEstimated?: boolean;
 }> {
   const pool = getPgPool(connectionString);
   const offset = (page - 1) * pageSize;
+  const cursorData = decodeTableCursor(cursor);
+  const useCursor =
+    cursorData !== null &&
+    cursorData.sort.length === sort.length &&
+    cursorData.sort.every(
+      (item, index) =>
+        item.column === sort[index]?.column &&
+        item.direction === sort[index]?.direction
+    ) &&
+    cursorData.values.every((value) => value !== null && value !== undefined);
 
-  const { conditions, params } = buildPgWhereClause(filters ?? [], 3);
+  const { conditions, params } = buildPgWhereClause(
+    filters ?? [],
+    useCursor ? 2 : 3
+  );
+  if (useCursor && cursorData) {
+    const cursorParamStart = params.length + 2;
+    const cursorConditions = cursorData.sort.map((item, index) => {
+      const equalConditions = cursorData.sort
+        .slice(0, index)
+        .map(
+          (previous, previousIndex) =>
+            `${pgEscId(previous.column)} = $${cursorParamStart + previousIndex}`
+        );
+      const operator = item.direction === "asc" ? ">" : "<";
+      return `(${[
+        ...equalConditions,
+        `${pgEscId(item.column)} ${operator} $${cursorParamStart + index}`,
+      ].join(" AND ")})`;
+    });
+    conditions.push(`(${cursorConditions.join(" OR ")})`);
+    params.push(...cursorData.values);
+  }
   const where =
     conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
   const orderBy =
     sort && sort.length > 0
       ? ` ORDER BY ${sort.map((s) => `${pgEscId(s.column)} ${s.direction.toUpperCase()}`).join(", ")}`
       : "";
+  const pageSql = useCursor
+    ? `SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}${where}${orderBy} LIMIT $1`
+    : `SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}${where}${orderBy} LIMIT $1 OFFSET $2`;
+  const pageParams = useCursor
+    ? [pageSize, ...params]
+    : [pageSize, offset, ...params];
 
-  const rowsResult = await pool.query(
-    `SELECT * FROM ${pgEscId(schema)}.${pgEscId(table)}${where}${orderBy} LIMIT $1 OFFSET $2`,
-    [pageSize, offset, ...params]
-  );
+  const rowsResult = await pool.query(pageSql, pageParams);
 
   const countClause = buildPgWhereClause(filters ?? [], 1);
   const countWhere =
     countClause.conditions.length > 0
       ? ` WHERE ${countClause.conditions.join(" AND ")}`
       : "";
-  const countResult = await pool.query(
-    `SELECT COUNT(*) FROM ${pgEscId(schema)}.${pgEscId(table)}${countWhere}`,
-    countClause.params
-  );
+  let totalEstimate: number;
+  let totalIsEstimated = false;
+  if (!exact && filters.length === 0) {
+    const estimateResult = await pool.query(
+      `SELECT COALESCE(c.reltuples, 0)::bigint AS estimate
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relname = $1 AND n.nspname = $2`,
+      [table, schema]
+    );
+    const estimatedRows = Number(estimateResult.rows[0]?.estimate ?? 0);
+    if (estimatedRows > 0) {
+      totalEstimate = estimatedRows;
+      totalIsEstimated = true;
+    } else {
+      const countResult = await pool.query(
+        `SELECT COUNT(*) FROM ${pgEscId(schema)}.${pgEscId(table)}${countWhere}`,
+        countClause.params
+      );
+      totalEstimate = Number.parseInt(countResult.rows[0].count, 10);
+    }
+  } else {
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM ${pgEscId(schema)}.${pgEscId(table)}${countWhere}`,
+      countClause.params
+    );
+    totalEstimate = Number.parseInt(countResult.rows[0].count, 10);
+  }
 
   const columns = rowsResult.fields.map((f: PgField) => ({
     name: f.name,
@@ -503,8 +566,10 @@ export async function listPgRowsRaw(
 
   return {
     columns,
+    nextCursor: encodeTableCursor(sort, rowsResult.rows.at(-1)),
     rows: rowsResult.rows,
-    totalEstimate: Number.parseInt(countResult.rows[0].count, 10),
+    totalEstimate,
+    totalIsEstimated,
   };
 }
 

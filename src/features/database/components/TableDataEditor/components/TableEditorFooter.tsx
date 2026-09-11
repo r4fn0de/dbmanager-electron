@@ -4,16 +4,20 @@ import { cn } from "@/lib/utils";
 
 interface TableEditorFooterProps {
   hasDraftChanges: boolean;
+  hasNextPage?: boolean;
   isLoading: boolean;
   isSaving: boolean;
   onDiscardDrafts: () => void;
   onNextPage: () => void;
   onPageSizeChange: (size: number) => void;
   onPrevPage: () => void;
+  onRequestExactCount?: () => void;
   onSaveChanges: () => void;
   page: number;
   pageSize: number;
   pressableClass: string;
+  totalEstimate?: number;
+  totalIsEstimated?: boolean;
   totalPages: number;
 }
 
@@ -30,7 +34,13 @@ export function TableEditorFooter({
   onPageSizeChange,
   onDiscardDrafts,
   onSaveChanges,
+  hasNextPage,
+  onRequestExactCount,
+  totalEstimate = 0,
+  totalIsEstimated = false,
 }: TableEditorFooterProps) {
+  const canGoNext = hasNextPage ?? page + 1 < totalPages;
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-background/95 px-3 py-2 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-1">
@@ -46,9 +56,22 @@ export function TableEditorFooter({
         <span className="px-1 text-muted-foreground text-xs">
           Page {page + 1} / {totalPages}
         </span>
+        {totalIsEstimated &&
+          totalEstimate >= 0 &&
+          onRequestExactCount && (
+            <Button
+              className="h-6 px-1.5 text-[11px]"
+              disabled={isLoading}
+              onClick={onRequestExactCount}
+              size="sm"
+              variant="ghost"
+            >
+              Exact count
+            </Button>
+          )}
         <Button
           className={pressableClass}
-          disabled={isLoading || page + 1 >= totalPages}
+          disabled={isLoading || !canGoNext}
           onClick={onNextPage}
           size="icon-sm"
           variant="outline"

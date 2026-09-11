@@ -35,6 +35,7 @@ import type {
   ImportTableColumnsInput,
   IndexInfo,
   ListRowsInput,
+  QueryPlanResult,
   QueryResult,
   RenameColumnInput,
   RenameTableInput,
@@ -175,6 +176,18 @@ export async function executeQuery(
     return await ipc.client.db.executeQuery({ connectionId, requestId, sql });
   } catch (err) {
     throw new Error(extractErrorMessage(err, "Query execution failed"));
+  }
+}
+
+export async function explainQuery(
+  connectionId: string,
+  sql: string,
+  analyze = false
+): Promise<QueryPlanResult> {
+  try {
+    return await ipc.client.db.explainQuery({ analyze, connectionId, sql });
+  } catch (err) {
+    throw new Error(extractErrorMessage(err, "Query explanation failed"));
   }
 }
 
