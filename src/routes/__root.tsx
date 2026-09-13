@@ -178,6 +178,41 @@ function Root() {
   const themePreset = useAppearanceStore((s) => s.themePreset);
   const appearanceHydrated = useAppearanceStore((s) => s.hasHydrated);
 
+  // Chromium keeps :focus-visible styles applied while an Electron window is
+  // blurred, which leaves tab chrome with a stray "selected" outline.
+  // Toggle a root class so global CSS can suppress those rings until focus
+  // returns. Also drop accidental text selection created while inactive.
+  useEffect(() => {
+    const root = document.documentElement;
+    const syncInactive = () => {
+      root.classList.toggle("is-window-inactive", !document.hasFocus());
+    };
+    const handleBlur = () => {
+      syncInactive();
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+        const anchorNode = selection.anchorNode;
+        const anchorElement =
+          anchorNode instanceof Element
+            ? anchorNode
+            : anchorNode?.parentElement ?? null;
+        if (anchorElement?.closest?.('[role="tablist"]')) {
+          selection.removeAllRanges();
+        }
+      }
+    };
+    syncInactive();
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", syncInactive);
+    document.addEventListener("visibilitychange", syncInactive);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", syncInactive);
+      document.removeEventListener("visibilitychange", syncInactive);
+      root.classList.remove("is-window-inactive");
+    };
+  }, []);
+
   // Apply vibrancy setting on mount and when it changes
   useEffect(() => {
     if (!appearanceHydrated) {

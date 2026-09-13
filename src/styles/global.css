@@ -371,6 +371,25 @@ code {
     width, height, max-width, max-height, min-width, min-height, flex-basis;
 }
 
+/* Window inactive: Chromium keeps :focus-visible applied while the window
+ * is blurred, which leaves tab chrome with a stray "selected" outline.
+ * Suppress focus rings and accidental text selection highlights until
+ * the window is focused again. Scoped to html.is-window-inactive so
+ * keyboard focus remains visible while the window is active. */
+html.is-window-inactive *:focus,
+html.is-window-inactive *:focus-visible,
+html.is-window-inactive *:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
+html.is-window-inactive [role="tablist"] ::selection,
+html.is-window-inactive [role="tablist"]::selection {
+  background: transparent !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .t-resize {
     transition: none !important;
