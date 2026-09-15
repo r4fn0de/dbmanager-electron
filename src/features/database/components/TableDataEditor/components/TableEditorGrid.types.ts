@@ -1,4 +1,4 @@
-import type { VirtualItem } from "@tanstack/react-virtual";
+import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import type { SchemaColumn, SchemaForeignKey, TableSort } from "@/ipc/db/types";
 import type { RowRecord, RowUpdateDraft } from "../types";
 
@@ -45,6 +45,7 @@ export interface TableEditorGridRowsProps {
   cancelEditing: () => void;
   cancelPendingHoverClear: () => void;
   columnMap: Record<string, SchemaColumn>;
+  columnVirtualizer: Virtualizer<HTMLDivElement, Element>;
   draftInsertCount: number;
   draftUpdates: Record<string, RowUpdateDraft>;
   editingCell: EditingCell | null;

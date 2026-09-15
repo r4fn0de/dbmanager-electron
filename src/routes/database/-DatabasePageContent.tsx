@@ -1997,7 +1997,12 @@ export function DatabasePageContent({
                 onPauseLocalDb={handlePauseLocalDb}
                 onStartLocalDb={handleStartLocalDb}
                 onTestConnection={handleTestConnection}
-                onViewTables={() => changeSection("tables")}
+                onViewTables={(schema) => {
+                  if (schema) {
+                    changeSchema(schema);
+                  }
+                  changeSection("tables");
+                }}
                 schemaSummary={{ schemas, tables }}
               />
             </div>

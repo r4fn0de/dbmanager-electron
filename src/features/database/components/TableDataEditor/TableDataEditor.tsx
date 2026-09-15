@@ -54,6 +54,7 @@ import { cn } from "@/lib/utils";
 import { TableEditorDialogs } from "./components/TableEditorDialogs";
 import { TableEditorFooter } from "./components/TableEditorFooter";
 import { TableEditorGrid } from "./components/TableEditorGrid";
+import { useColumnVirtualization } from "./hooks/useColumnVirtualization";
 import { useRowVirtualization } from "./hooks/useRowVirtualization";
 import { useFloatingRowButton } from "./hooks/useFloatingRowButton";
 import { TableEditorRowDetailsOverlay } from "./components/TableEditorRowDetailsOverlay";
@@ -678,6 +679,7 @@ function TableDataEditorInner(
   }, []);
 
   const {
+    rowVirtualizer,
     totalRowHeight,
     totalVirtualRows,
     virtualItems: virtualRows,
@@ -1570,6 +1572,61 @@ function TableDataEditorInner(
     return map;
   }, [effectiveRows]);
 
+  // 2D virtualization: rows above (TanStack row virtualizer) + columns here
+  // (horizontal virtualizer sharing the same scroll element). Exact per-column
+  // sizes keep cell offsets in sync with rendered widths; measurement
+  // invalidation on geometry change is handled inside the hook.
+  const focusedColumnIndex = focusedCell
+    ? visibleColumns.indexOf(focusedCell.column)
+    : -1;
+  const editingColumnIndex = editingCell
+    ? visibleColumns.indexOf(editingCell.column)
+    : -1;
+  const pinnedColumnIndex =
+    editingColumnIndex >= 0
+      ? editingColumnIndex
+      : focusedColumnIndex >= 0
+        ? focusedColumnIndex
+        : null;
+  const { columnVirtualizer, totalColumnWidth, virtualColumns } =
+    useColumnVirtualization(
+      visibleColumns,
+      resolveColumnWidth,
+      scrollRef,
+      pinnedColumnIndex
+    );
+
+  // Keyboard navigation across a 2D virtualized grid must scroll both axes:
+  // a focused row can be outside the rendered window (row virtualizer) and a
+  // focused column outside the rendered column window (column virtualizer).
+  useEffect(() => {
+    if (!focusedCell) {
+      return;
+    }
+    const isInsertRow = focusedCell.rowKey.startsWith("insert:");
+    if (isInsertRow) {
+      const insertIndex = Number(focusedCell.rowKey.slice(7));
+      if (!Number.isNaN(insertIndex)) {
+        rowVirtualizer.scrollToIndex(insertIndex);
+      }
+    } else {
+      const rowIndex = effectiveRowIndexByKey.get(focusedCell.rowKey);
+      if (rowIndex !== undefined) {
+        rowVirtualizer.scrollToIndex(draftInserts.length + rowIndex);
+      }
+    }
+    if (pinnedColumnIndex !== null && pinnedColumnIndex >= 0) {
+      columnVirtualizer.scrollToIndex(pinnedColumnIndex);
+    }
+  }, [
+    columnVirtualizer,
+    draftInserts.length,
+    effectiveRowIndexByKey,
+    focusedCell,
+    pinnedColumnIndex,
+    rowVirtualizer,
+  ]);
+
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (editingCell) {
@@ -2344,6 +2401,7 @@ function TableDataEditorInner(
             cancelEditing={cancelEditing}
             cancelPendingHoverClear={cancelPendingHoverClear}
             columnMap={columnMap}
+            columnVirtualizer={columnVirtualizer}
             draftInsertCount={draftInserts.length}
             draftUpdates={draftUpdates}
             editingCell={editingCell}
@@ -2391,8 +2449,10 @@ function TableDataEditorInner(
             suppressInlineEditorMouseUpRef={suppressInlineEditorMouseUpRef}
             tableSchema={table.schema}
             toggleSelectAll={toggleSelectAll}
+            totalColumnWidth={totalColumnWidth}
             totalRowHeight={totalRowHeight}
             totalVirtualRows={totalVirtualRows}
+            virtualColumns={virtualColumns}
             virtualRows={virtualRows}
             visibleColumns={visibleColumns}
             visibleDraftInserts={visibleDraftInserts}

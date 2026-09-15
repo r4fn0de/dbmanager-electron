@@ -116,7 +116,7 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                     beginEditInsertCell(insertIndex, columnName)
                   }
                   style={{
-                    left: 48 + virtualColumn.start,
+                    left: virtualColumn.start,
                     maxWidth: virtualColumn.size,
                     minWidth: virtualColumn.size,
                     width: virtualColumn.size,
@@ -313,7 +313,7 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                     beginEditExistingCell(rowKey, row, columnName)
                   }
                   style={{
-                    left: 48 + virtualColumn.start,
+                    left: virtualColumn.start,
                     maxWidth: virtualColumn.size,
                     minWidth: virtualColumn.size,
                     width: virtualColumn.size,

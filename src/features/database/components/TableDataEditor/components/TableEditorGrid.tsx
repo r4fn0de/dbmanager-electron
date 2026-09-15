@@ -1,8 +1,5 @@
-import type { VirtualItem } from "@tanstack/react-virtual";
-import { useMemo } from "react";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import type {
-  EditingCell,
   TableEditorGridHeaderProps,
   TableEditorGridRowsProps,
 } from "./TableEditorGrid.types";
@@ -10,12 +7,16 @@ import { TableEditorGridHeader } from "./TableEditorGridHeader";
 import { TableEditorGridRows } from "./TableEditorGridRows";
 
 interface TableEditorGridProps
-  extends Omit<
+  extends TableEditorGridRowsProps,
+    Pick<
       TableEditorGridHeaderProps,
-      "totalColumnWidth" | "virtualColumns"
-    >,
-    Omit<TableEditorGridRowsProps, "totalColumnWidth" | "virtualColumns"> {
-  editingCell: EditingCell | null;
+      | "handleResizeMouseDown"
+      | "isAllSelected"
+      | "isSomeSelected"
+      | "onSortColumn"
+      | "sort"
+      | "toggleSelectAll"
+    > {
   handleTableKeyDown: (event: React.KeyboardEvent) => void;
   isBlockingTableLoading: boolean;
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -25,43 +26,23 @@ export function TableEditorGrid({
   isBlockingTableLoading,
   scrollRef,
   handleTableKeyDown,
-  ...rest
+  totalColumnWidth,
+  // Header-only props (destructured so they are not spread into Rows).
+  handleResizeMouseDown,
+  isAllSelected,
+  isSomeSelected,
+  onSortColumn,
+  sort,
+  toggleSelectAll,
+  ...rowsProps
 }: TableEditorGridProps) {
-  const visibleColumns = useMemo(
-    () => rest.visibleColumns.filter(Boolean),
-    [rest.visibleColumns]
-  );
-  const { resolveColumnWidth } = rest;
-  // Single source of truth for column geometry: cumulative offsets derived
-  // from the same widths used for rendering. A column virtualizer was caching
-  // `size`/`start` by index and going stale on resize/hide/reorder, which
-  // desynced `left` from the rendered width and stacked cells on top of each
-  // other. Column counts are small (<100), so render all columns and keep
-  // virtualization for rows only (the actual perf bottleneck).
-  const virtualColumns: VirtualItem[] = useMemo(() => {
-    let start = 0;
-    return visibleColumns.map((columnName, index) => {
-      const size = resolveColumnWidth(columnName ?? "");
-      const item: VirtualItem = {
-        end: start + size,
-        index,
-        key: index,
-        lane: 0,
-        size,
-        start,
-      };
-      start += size;
-      return item;
-    });
-  }, [visibleColumns, resolveColumnWidth]);
-  const totalColumnWidth = useMemo(
-    () =>
-      virtualColumns.reduce((total, column) => total + column.size, 0) ||
-      (visibleColumns[0] ? resolveColumnWidth(visibleColumns[0]) : 0),
-    [virtualColumns, visibleColumns, resolveColumnWidth]
-  );
+  // Column virtualization (which columns are rendered, their exact offsets)
+  // is owned by `useColumnVirtualization` in TableDataEditor and arrives via
+  // props — the same pattern as the row virtualizer. `virtualColumn.start`
+  // already includes the 48px sticky gutter (baked in via `paddingStart`),
+  // so it is the cell's exact CSS `left` inside the table body.
   const tableWidth = totalColumnWidth + 48;
-  const tableHeight = rest.totalRowHeight + 32;
+  const tableHeight = rowsProps.totalRowHeight + 32;
 
   if (isBlockingTableLoading) {
     return (
@@ -89,16 +70,23 @@ export function TableEditorGrid({
         tabIndex={0}
       >
         <TableEditorGridHeader
-          {...rest}
+          columnMap={rowsProps.columnMap}
+          handleResizeMouseDown={handleResizeMouseDown}
+          isAllSelected={isAllSelected}
+          isSomeSelected={isSomeSelected}
+          onSortColumn={onSortColumn}
+          resolveColumnWidth={rowsProps.resolveColumnWidth}
+          sort={sort}
+          toggleSelectAll={toggleSelectAll}
           totalColumnWidth={totalColumnWidth}
-          virtualColumns={virtualColumns}
-          visibleColumns={visibleColumns}
+          virtualColumns={rowsProps.virtualColumns}
+          visibleColumns={rowsProps.visibleColumns}
         />
         <TableEditorGridRows
-          {...rest}
+          {...rowsProps}
           totalColumnWidth={totalColumnWidth}
-          virtualColumns={virtualColumns}
-          visibleColumns={visibleColumns}
+          virtualColumns={rowsProps.virtualColumns}
+          visibleColumns={rowsProps.visibleColumns}
         />
       </table>
     </div>
