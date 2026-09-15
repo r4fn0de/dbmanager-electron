@@ -43,9 +43,12 @@ import { cn } from "@/lib/utils";
 interface ConnectionListProps {
   branchesByDbId?: Record<string, BranchInfo[]>;
   connections: Connection[];
+  isFilteredEmpty?: boolean;
   isLoading: boolean;
+  lastOpenedById?: Record<string, number>;
   localDbById?: Record<string, LocalDbInfo>;
   onAdd: () => void;
+  onClearFilters?: () => void;
   onCloneToLocal?: (connection: Connection) => void;
   onCreateBranch?: (
     localDbId: string,
@@ -67,6 +70,7 @@ interface ConnectionListProps {
   onSelect: (connection: Connection) => void;
   onStartLocal?: (id: string) => Promise<void>;
   onSwitchBranch?: (localDbId: string, branchId: string) => Promise<BranchInfo>;
+  variant?: "list" | "grid";
 }
 
 type ConnectionProvider =
@@ -79,11 +83,21 @@ type ConnectionProvider =
   | "url"
   | "direct";
 
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+const MASKED_PASSWORD_PATTERN = /^\*+$/;
+const LEADING_SLASHES_PATTERN = /^\/+/;
+const NEON_POOLER_REGION_PATTERN = /\.c-\d+\.([a-z]{2}-[a-z]+-\d+)\./;
+const HOSTED_REGION_PATTERN = /\.([a-z]{2}-[a-z]+-\d+)\./;
+
 function hasMaskedPasswordInUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
     // Backends often mask secrets as "***"/"****" when returning connection strings.
-    return parsed.password.length > 0 && /^\*+$/.test(parsed.password);
+    return (
+      parsed.password.length > 0 &&
+      MASKED_PASSWORD_PATTERN.test(parsed.password)
+    );
   } catch {
     return false;
   }
@@ -98,6 +112,73 @@ function resolveProviderHost(connection: Connection): string {
     }
   }
   return connection.host.toLowerCase();
+}
+
+function connectionDisplayMeta(connection: Connection): {
+  database: string;
+  detail: string;
+  engine: string;
+  host: string;
+  region: string | null;
+} {
+  const { host: storedHost, database: storedDatabase } = connection;
+  let host = storedHost;
+  let database = storedDatabase;
+  if (connection.url) {
+    try {
+      const parsed = new URL(connection.url);
+      if (parsed.hostname) {
+        host = parsed.hostname;
+      }
+      const pathDatabase = decodeURIComponent(parsed.pathname).replace(
+        LEADING_SLASHES_PATTERN,
+        ""
+      );
+      if (pathDatabase) {
+        database = pathDatabase;
+      }
+    } catch {
+      // Keep stored host/database when the URL cannot be parsed.
+    }
+  }
+  const detail = connection.url
+    ? `${host} • ${database}`
+    : `${connection.username}@${host}:${connection.port}/${database}`;
+  const engine =
+    connection.db_type === "postgresql"
+      ? (connection.engine_version ??
+        connection.postgres_version ??
+        "PostgreSQL")
+      : connection.db_type;
+  const region = connection.url ? parseHostRegion(host) : null;
+  return { database, detail, engine, host, region };
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const delta = Date.now() - timestamp;
+  if (delta < 60_000) {
+    return "Just now";
+  }
+  if (delta < 3_600_000) {
+    const minutes = Math.floor(delta / 60_000);
+    return `${minutes}m ago`;
+  }
+  if (delta < 86_400_000) {
+    const hours = Math.floor(delta / 3_600_000);
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(delta / 86_400_000);
+  return days === 1 ? "Yesterday" : `${days}d ago`;
+}
+
+function parseHostRegion(host: string): string | null {
+  const normalized = host.toLowerCase();
+  const poolMatch = normalized.match(NEON_POOLER_REGION_PATTERN);
+  if (poolMatch?.[1]) {
+    return poolMatch[1];
+  }
+  const directMatch = normalized.match(HOSTED_REGION_PATTERN);
+  return directMatch?.[1] ?? null;
 }
 
 function detectConnectionProvider(connection: Connection): ConnectionProvider {
@@ -162,45 +243,221 @@ function buildConnectionStringFromConnection(connection: Connection): string {
   return `${protocol}://${auth}@${connection.host}:${port}/${connection.database}${queryPart}`;
 }
 
-function connectionCopyValue(connection: Connection): string {
-  return buildConnectionStringFromConnection(connection);
-}
-
-function ProviderIcon({ provider }: { provider: ConnectionProvider }) {
+function ProviderIcon({
+  provider,
+  className,
+}: {
+  provider: ConnectionProvider;
+  className?: string;
+}) {
+  const iconClassName = className ?? "size-4 shrink-0";
   switch (provider) {
     case "neon":
-      return <Neon className="size-4 shrink-0" />;
+      return <Neon className={iconClassName} />;
     case "supabase":
-      return <Supabase className="size-4 shrink-0" />;
+      return <Supabase className={iconClassName} />;
     case "mysql":
-      return <MySql className="size-4 shrink-0" />;
+      return <MySql className={iconClassName} />;
     case "mariadb":
-      return <MySql className="size-4 shrink-0" />;
+      return <MySql className={iconClassName} />;
     case "clickhouse":
-      return <ClickHouse className="size-4 shrink-0" />;
+      return <ClickHouse className={iconClassName} />;
     case "redis":
-      return <Redis className="size-4 shrink-0" />;
+      return <Redis className={iconClassName} />;
     case "url":
       return (
         <Icon
-          className="size-4 shrink-0 text-muted-foreground/50"
+          className={cn(iconClassName, "text-muted-foreground")}
           name="world"
         />
       );
     default:
       return (
         <Icon
-          className="size-4 shrink-0 text-muted-foreground/50"
+          className={cn(iconClassName, "text-muted-foreground")}
           name="plug-connected"
         />
       );
   }
 }
 
+function CardActionButtons({
+  activeBranch,
+  branches,
+  branchesOpen,
+  canCloneToLocal,
+  connection,
+  hasBranches,
+  isLocalPg,
+  isRunning,
+  isStatusKnown,
+  isTogglingState,
+  onCloneToLocal,
+  onCreateBranch,
+  copied,
+  onCopy,
+  onDelete,
+  onEdit,
+  onToggleLocalState,
+  showStartPause,
+}: {
+  activeBranch?: BranchInfo | null;
+  branches?: BranchInfo[];
+  branchesOpen: boolean;
+  canCloneToLocal: boolean;
+  connection: Connection;
+  hasBranches?: boolean;
+  isLocalPg: boolean;
+  isRunning: boolean;
+  isStatusKnown: boolean;
+  isTogglingState: boolean;
+  onCloneToLocal?: (connection: Connection) => void;
+  onCreateBranch?: (
+    localDbId: string,
+    input: {
+      name: string;
+      description?: string;
+      parentBranchId?: string;
+      dataTables?: Array<{ schema: string; table: string }>;
+    }
+  ) => Promise<BranchInfo>;
+  copied: boolean;
+  onCopy: () => void;
+  onDelete: (connection: Connection) => void;
+  onEdit: (c: Connection) => void;
+  onToggleLocalState: () => void;
+  showStartPause: boolean;
+}) {
+  return (
+    <>
+      {hasBranches ? (
+        <CollapsibleTrigger
+          render={
+            <Button
+              className={cn(branchesOpen && "text-primary")}
+              size="icon-xs"
+              variant="ghost"
+            />
+          }
+        >
+          <Icon className="size-3" name="git-branch" />
+        </CollapsibleTrigger>
+      ) : null}
+      {isLocalPg && isRunning && onCreateBranch && connection.id ? (
+        <CreateBranchDialog
+          activeBranch={activeBranch ?? null}
+          branches={branches ?? []}
+          connectionId={connection.id}
+          localDbName={connection.name}
+          onCreate={(input) => onCreateBranch(connection.id!, input)}
+          tooltipLabel="Create branch"
+        />
+      ) : null}
+      {showStartPause ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                disabled={isTogglingState || !isStatusKnown}
+                onClick={onToggleLocalState}
+                size="icon-xs"
+                variant="ghost"
+              />
+            }
+          >
+            {isTogglingState ? (
+              <Icon className="size-3 animate-spin" name="loader" />
+            ) : isRunning ? (
+              <Icon className="size-3" name="pause" />
+            ) : (
+              <Icon className="size-3" name="play" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            {isRunning ? "Pause database" : "Start database"}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      {canCloneToLocal && onCloneToLocal ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                onClick={() => onCloneToLocal(connection)}
+                size="icon-xs"
+                variant="ghost"
+              />
+            }
+          >
+            <Icon className="size-3" name="download" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            Clone to local
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              onClick={() => onEdit(connection)}
+              size="icon-xs"
+              variant="ghost"
+            />
+          }
+        >
+          <Icon className="size-3" name="pencil" />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={4}>
+          Edit connection
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              className={cn(
+                copied && "text-emerald-600 dark:text-emerald-400"
+              )}
+              onClick={onCopy}
+              size="icon-xs"
+              variant="ghost"
+            />
+          }
+        >
+          <Icon className="size-3" name={copied ? "check" : "copy"} />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={4}>
+          {copied ? "Copied!" : "Copy connection string"}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => onDelete(connection)}
+              size="icon-xs"
+              variant="ghost"
+            />
+          }
+        >
+          <Icon className="size-3" name="trash" />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={4}>
+          Delete connection
+        </TooltipContent>
+      </Tooltip>
+    </>
+  );
+}
+
 function ConnectionCard({
   connection,
   localDbInfo,
   branches,
+  lastOpenedAt,
+  variant,
   onEdit,
   onDelete,
   onSelect,
@@ -215,6 +472,8 @@ function ConnectionCard({
   connection: Connection;
   localDbInfo?: LocalDbInfo;
   branches?: BranchInfo[];
+  lastOpenedAt?: number;
+  variant?: "list" | "grid";
   onEdit: (c: Connection) => void;
   onDelete: (connection: Connection) => void;
   onSelect: (connection: Connection) => void;
@@ -237,13 +496,10 @@ function ConnectionCard({
   ) => Promise<BranchDeletePreview>;
   onDeleteBranch?: (localDbId: string, branchId: string) => Promise<void>;
 }) {
-  const isUrl = !!connection.url;
   const isLocal = connection.is_local === true;
   const canCloneToLocal = !isLocal && connection.db_type === "postgresql";
   const provider = detectConnectionProvider(connection);
-  const displayInfo = isUrl
-    ? (connection.url ?? "").replace(/:[^:]*@/, ":****@")
-    : `${connection.username}@${connection.host}:${connection.port}/${connection.database}`;
+  const displayMeta = connectionDisplayMeta(connection);
   const [copied, setCopied] = useState(false);
   const [isTogglingState, setIsTogglingState] = useState(false);
   const [branchesOpen, setBranchesOpen] = useState(false);
@@ -288,7 +544,7 @@ function ConnectionCard({
       }
 
       await navigator.clipboard.writeText(
-        connectionCopyValue(sourceConnection)
+        buildConnectionStringFromConnection(sourceConnection)
       );
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -331,202 +587,161 @@ function ConnectionCard({
   return (
     <>
       <Collapsible onOpenChange={setBranchesOpen} open={branchesOpen}>
-        <div className="group relative flex items-stretch gap-2 rounded-xl border border-transparent px-3.5 py-2.5 transition-colors duration-150 hover:border-border/30 hover:bg-muted/50">
-          {/* Click area — name, provider, info */}
-          <button
-            className="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-            onClick={() => onSelect(connection)}
-            type="button"
-          >
-            <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            "group relative transition-colors duration-150 focus-within:border-border/30 focus-within:bg-muted/50 hover:border-border/30 hover:bg-muted/50",
+            variant === "grid"
+              ? "flex h-full flex-col gap-3 rounded-xl border border-border/40 bg-card p-4 hover:bg-muted/30"
+              : "flex items-stretch gap-2 rounded-xl border border-transparent px-3.5 py-2.5"
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-start gap-2">
               {isLocal ? (
-                <LocalDbTypeIcon className="size-4 shrink-0" />
+                <LocalDbTypeIcon className="mt-0.5 size-5 shrink-0" />
               ) : (
-                <ProviderIcon provider={provider} />
+                <ProviderIcon
+                  className={cn("shrink-0", variant === "grid" ? "size-5" : "size-4")}
+                  provider={provider}
+                />
               )}
-              <span className="select-text truncate font-medium text-sm">
-                {connection.name}
-              </span>
-              {connection.color &&
-                /^#[0-9a-fA-F]{6}$/.test(connection.color) && (
-                  <span
-                    className="inline-block size-2 shrink-0 rounded-full ring-2 ring-muted-foreground/10"
-                    style={{ backgroundColor: connection.color }}
-                  />
-                )}
-              {connection.tag && (
-                <span className="inline-flex select-text items-center rounded-full border border-border/60 bg-muted/30 px-1.5 py-0 font-medium text-[10px] text-muted-foreground">
-                  {connection.tag}
-                </span>
-              )}
-              {/* Branch badge */}
-              {hasBranches && activeBranch && !activeBranch.isMain && (
-                <span className="inline-flex select-text items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-1.5 py-0 font-medium text-[10px] text-primary">
-                  <Icon className="size-2.5" name="git-branch" />
-                  {activeBranch.name}
-                </span>
-              )}
-              {isLocal && (
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-1.5 py-0 font-medium text-[10px]",
-                    isRunning
-                      ? "border border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400"
-                      : "border border-border/40 bg-muted/30 text-muted-foreground"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "inline-block size-1.5 rounded-full",
-                      isRunning ? "bg-emerald-500" : "bg-muted-foreground/40"
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <button
+                    className="min-w-0 flex-1 truncate rounded-sm text-left font-medium text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                    onClick={() => onSelect(connection)}
+                    type="button"
+                  >
+                    {connection.name}
+                  </button>
+                  {connection.color &&
+                    HEX_COLOR_PATTERN.test(connection.color) && (
+                      <span
+                        className="inline-block size-2 shrink-0 rounded-full ring-2 ring-muted-foreground/10"
+                        style={{ backgroundColor: connection.color }}
+                      />
                     )}
-                  />
-                  {isRunning ? "Running" : "Stopped"}
+                  {connection.tag ? (
+                    <span className="inline-flex min-w-0 max-w-36 items-center truncate rounded-full border border-border/60 bg-muted/30 px-1.5 py-0 font-medium text-[10px] text-muted-foreground">
+                      {connection.tag}
+                    </span>
+                  ) : null}
+                  {hasBranches && activeBranch && !activeBranch.isMain && (
+                    <span className="inline-flex min-w-0 max-w-32 items-center gap-1 truncate rounded-full border border-primary/30 bg-primary/5 px-1.5 py-0 font-medium text-[10px] text-primary">
+                      <Icon className="size-2.5 shrink-0" name="git-branch" />
+                      <span className="truncate">{activeBranch.name}</span>
+                    </span>
+                  )}
+                  {isLocal && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-1.5 py-0 font-medium text-[10px]",
+                        isRunning
+                          ? "border border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400"
+                          : "border border-border/40 bg-muted/30 text-muted-foreground"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "inline-block size-1.5 rounded-full",
+                          isRunning ? "bg-emerald-500" : "bg-muted-foreground/40"
+                        )}
+                      />
+                      {isRunning ? "Running" : "Stopped"}
+                    </span>
+                  )}
+                </div>
+                <button
+                  className="mt-1 block w-full truncate text-left font-mono text-muted-foreground text-xs outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                  onClick={() => onSelect(connection)}
+                  type="button"
+                >
+                  {displayMeta.detail}
+                </button>
+              </div>
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center rounded-md border border-border/50 bg-muted/40 px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
+                {displayMeta.engine}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-muted/40 px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
+                <Icon className="size-2.5" name="shield" />
+                {connection.ssl_mode === "disable" ? "No SSL" : "SSL"}
+              </span>
+              {displayMeta.region ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-muted/40 px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground">
+                  <Icon className="size-2.5" name="world" />
+                  {displayMeta.region}
+                </span>
+              ) : null}
+              {typeof lastOpenedAt === "number" && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
+                  <Icon className="size-2.5" name="clock" />
+                  {formatRelativeTime(lastOpenedAt)}
                 </span>
               )}
             </div>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <p
-                    className={cn(
-                      "mt-0.5 inline-block w-fit max-w-full cursor-pointer select-none truncate pl-6 font-mono text-xs transition-all duration-150",
-                      copied
-                        ? "scale-[1.02] text-emerald-600 dark:text-emerald-400"
-                        : "text-muted-foreground hover:text-foreground active:scale-[0.97]"
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCopy();
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleCopy();
-                      }
-                    }}
-                    role="button"
-                    style={{
-                      transitionTimingFunction:
-                        "cubic-bezier(0.23, 1, 0.32, 1)",
-                    }}
-                    tabIndex={0}
-                  />
-                }
-              >
-                {copied ? "Copied!" : displayInfo}
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}>
-                {copied ? "Copied!" : "Click to copy connection string"}
-              </TooltipContent>
-            </Tooltip>
-          </button>
-
-          {/* Action buttons — visible on hover */}
-          <div className="flex items-center gap-0.5 self-center opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-            {/* Branch toggle (only for local PG with branches) */}
-            {hasBranches && (
-              <CollapsibleTrigger
-                render={
-                  <Button
-                    className={cn(branchesOpen && "text-primary")}
-                    size="icon-xs"
-                    variant="ghost"
-                  />
-                }
-              >
-                <Icon className="size-3" name="git-branch" />
-              </CollapsibleTrigger>
-            )}
-            {/* Create branch button (only for running local PG) */}
-            {isLocalPg && isRunning && onCreateBranch && connection.id && (
-              <CreateBranchDialog
-                activeBranch={activeBranch ?? null}
-                branches={branches ?? []}
-                connectionId={connection.id}
-                localDbName={connection.name}
-                onCreate={(input) => onCreateBranch(connection.id!, input)}
-                tooltipLabel="Create branch"
-              />
-            )}
-            {isLocal && (onStartLocal || onPauseLocal) && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      disabled={isTogglingState || !isStatusKnown}
-                      onClick={handleToggleLocalState}
-                      size="icon-xs"
-                      variant="ghost"
-                    />
-                  }
-                >
-                  {isTogglingState ? (
-                    <Icon className="size-3 animate-spin" name="loader" />
-                  ) : isRunning ? (
-                    <Icon className="size-3" name="pause" />
-                  ) : (
-                    <Icon className="size-3" name="play" />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4}>
-                  {isRunning ? "Pause database" : "Start database"}
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {canCloneToLocal && onCloneToLocal && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      onClick={() => onCloneToLocal(connection)}
-                      size="icon-xs"
-                      variant="ghost"
-                    />
-                  }
-                >
-                  <Icon className="size-3" name="download" />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={4}>
-                  Clone to local
-                </TooltipContent>
-              </Tooltip>
-            )}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    onClick={() => onEdit(connection)}
-                    size="icon-xs"
-                    variant="ghost"
-                  />
-                }
-              >
-                <Icon className="size-3" name="pencil" />
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}>
-                Edit connection
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => onDelete(connection)}
-                    size="icon-xs"
-                    variant="ghost"
-                  />
-                }
-              >
-                <Icon className="size-3" name="trash" />
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}>
-                Delete connection
-              </TooltipContent>
-            </Tooltip>
           </div>
+          {variant === "grid" ? (
+            <div className="mt-auto flex items-center gap-2 border-border/40 border-t pt-3">
+              <Button
+                className="h-8 flex-1 text-xs"
+                onClick={() => onSelect(connection)}
+                size="sm"
+              >
+                Connect
+              </Button>
+              <div className="flex items-center">
+                <CardActionButtons
+                  activeBranch={activeBranch}
+                  branches={branches}
+                  branchesOpen={branchesOpen}
+                  canCloneToLocal={canCloneToLocal}
+                  connection={connection}
+                  copied={copied}
+                  hasBranches={hasBranches}
+                  isLocalPg={isLocalPg}
+                  isRunning={isRunning}
+                  isStatusKnown={isStatusKnown}
+                  isTogglingState={isTogglingState}
+                  onCloneToLocal={onCloneToLocal}
+                  onCopy={handleCopy}
+                  onCreateBranch={onCreateBranch}
+                  onDelete={onDelete}
+                  onEdit={onEdit}
+                  onToggleLocalState={handleToggleLocalState}
+                  showStartPause={
+                    isLocal && Boolean(onStartLocal || onPauseLocal)
+                  }
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="absolute top-1/2 right-3 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-xl border border-border/50 bg-background p-1 opacity-0 shadow-lg transition-opacity duration-150 focus-within:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 max-md:static max-md:translate-y-0 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:opacity-100 max-md:shadow-none">
+              <CardActionButtons
+                activeBranch={activeBranch}
+                branches={branches}
+                branchesOpen={branchesOpen}
+                canCloneToLocal={canCloneToLocal}
+                connection={connection}
+                copied={copied}
+                hasBranches={hasBranches}
+                isLocalPg={isLocalPg}
+                isRunning={isRunning}
+                isStatusKnown={isStatusKnown}
+                isTogglingState={isTogglingState}
+                onCloneToLocal={onCloneToLocal}
+                onCopy={handleCopy}
+                onCreateBranch={onCreateBranch}
+                onDelete={onDelete}
+                onEdit={onEdit}
+                onToggleLocalState={handleToggleLocalState}
+                showStartPause={
+                  isLocal && Boolean(onStartLocal || onPauseLocal)
+                }
+              />
+            </div>
+          )}
         </div>
 
         {/* Branch list (expandable) */}
@@ -693,6 +908,8 @@ function ConnectionGroup({
   connections,
   localDbById,
   branchesByDbId,
+  lastOpenedById,
+  variant,
   onEdit,
   onDelete,
   onSelect,
@@ -709,6 +926,8 @@ function ConnectionGroup({
   connections: Connection[];
   localDbById?: Record<string, LocalDbInfo>;
   branchesByDbId?: Record<string, BranchInfo[]>;
+  lastOpenedById?: Record<string, number>;
+  variant?: "list" | "grid";
   onEdit: (c: Connection) => void;
   onDelete: (connection: Connection) => void;
   onSelect: (c: Connection) => void;
@@ -737,7 +956,7 @@ function ConnectionGroup({
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-2 px-3 py-1.5">
-        <Icon className="size-3 text-muted-foreground/40" />
+        <Icon className="size-3 text-muted-foreground" />
         <span className="font-medium text-muted-foreground text-xs">
           {label}
         </span>
@@ -745,24 +964,34 @@ function ConnectionGroup({
           {connections.length}
         </span>
       </div>
-      {connections.map((conn) => (
-        <ConnectionCard
-          branches={conn.is_local ? branchesByDbId?.[conn.id] : undefined}
-          connection={conn}
-          key={conn.id}
-          localDbInfo={conn.is_local ? localDbById?.[conn.id] : undefined}
-          onCloneToLocal={onCloneToLocal}
-          onCreateBranch={onCreateBranch}
-          onDelete={onDelete}
-          onDeleteBranch={onDeleteBranch}
-          onEdit={onEdit}
-          onPauseLocal={onPauseLocal}
-          onPreviewDeleteBranch={onPreviewDeleteBranch}
-          onSelect={onSelect}
-          onStartLocal={onStartLocal}
-          onSwitchBranch={onSwitchBranch}
-        />
-      ))}
+      <div
+        className={cn(
+          variant === "grid"
+            ? "grid grid-cols-1 gap-2 xl:grid-cols-2"
+            : "space-y-0.5"
+        )}
+      >
+        {connections.map((conn) => (
+          <ConnectionCard
+            branches={conn.is_local ? branchesByDbId?.[conn.id] : undefined}
+            connection={conn}
+            key={conn.id}
+            lastOpenedAt={lastOpenedById?.[conn.id]}
+            localDbInfo={conn.is_local ? localDbById?.[conn.id] : undefined}
+            onCloneToLocal={onCloneToLocal}
+            onCreateBranch={onCreateBranch}
+            onDelete={onDelete}
+            onDeleteBranch={onDeleteBranch}
+            onEdit={onEdit}
+            onPauseLocal={onPauseLocal}
+            onPreviewDeleteBranch={onPreviewDeleteBranch}
+            onSelect={onSelect}
+            onStartLocal={onStartLocal}
+            onSwitchBranch={onSwitchBranch}
+            variant={variant}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -772,7 +1001,10 @@ export function ConnectionList({
   localDbById,
   branchesByDbId,
   isLoading,
+  isFilteredEmpty,
+  lastOpenedById,
   onAdd,
+  onClearFilters,
   onEdit,
   onDelete,
   onSelect,
@@ -783,6 +1015,7 @@ export function ConnectionList({
   onSwitchBranch,
   onPreviewDeleteBranch,
   onDeleteBranch,
+  variant,
 }: ConnectionListProps) {
   if (isLoading) {
     return (
@@ -795,28 +1028,57 @@ export function ConnectionList({
   }
 
   if (connections.length === 0) {
+    if (isFilteredEmpty) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="mb-4 rounded-2xl bg-muted/30 p-5">
+            <Icon className="size-10 text-muted-foreground/70" name="search" />
+          </div>
+          <p className="font-medium text-foreground text-sm">
+            No matches for these filters
+          </p>
+          <p className="mt-1 mb-5 max-w-[260px] text-muted-foreground text-xs leading-relaxed">
+            Try a different search term or clear the filters to see all
+            connections.
+          </p>
+          {onClearFilters && (
+            <Button
+              className="h-8 gap-1.5 px-4 text-xs"
+              onClick={onClearFilters}
+              size="sm"
+              variant="outline"
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <div className="mb-4 rounded-2xl bg-muted/30 p-5">
           <Icon
-            className="size-10 text-muted-foreground/30"
+            className="size-10 text-muted-foreground/70"
             name="folder-open"
           />
         </div>
         <p className="font-medium text-foreground text-sm">
           No connections yet
         </p>
-        <p className="mt-1 mb-5 max-w-[260px] text-muted-foreground/60 text-xs leading-relaxed">
-          Add a database connection or create a local instance to get started.
+        <p className="mt-1 mb-5 max-w-[300px] text-muted-foreground text-xs leading-relaxed">
+          Paste a Postgres URL to connect in seconds, or spin up a local
+          instance for isolated development.
         </p>
-        <Button
-          className="h-8 gap-1.5 px-4 text-xs shadow-sm"
-          onClick={onAdd}
-          size="sm"
-        >
-          <Icon className="size-3.5" name="plus" />
-          Add Connection
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            className="h-8 gap-1.5 px-4 text-xs shadow-sm"
+            onClick={onAdd}
+            size="sm"
+          >
+            <Icon className="size-3.5" name="plus" />
+            Add Connection
+          </Button>
+        </div>
       </div>
     );
   }
@@ -827,6 +1089,7 @@ export function ConnectionList({
 
   const sharedProps = {
     branchesByDbId,
+    lastOpenedById,
     localDbById,
     onCloneToLocal,
     onCreateBranch,
@@ -838,6 +1101,7 @@ export function ConnectionList({
     onSelect,
     onStartLocal,
     onSwitchBranch,
+    variant,
   };
 
   return (

@@ -320,6 +320,7 @@ export const useConnectionTabsStore = create<ConnectionTabsState>()(
       name: "connection-tabs",
       partialize: (state) => ({
         activeTabId: state.activeTabId,
+        recentTabIds: state.recentTabIds.slice(0, 20),
         tabs: state.tabs,
       }),
     }

@@ -4,6 +4,14 @@ export function normalizeDisplay(value: unknown): string {
   if (value === null || value === undefined) {
     return "NULL";
   }
+  // The pg driver hands back real `Date` objects for date/timestamp columns.
+  // `JSON.stringify` would render them as a *quoted* string ("2026-…Z"), which
+  // then fails `Date.parse` on the way back in — breaking the datetime picker
+  // and making an untouched cell look dirty, because `parseByType` no longer
+  // round-trips to an equal value.
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
+  }
   if (typeof value === "object") {
     return JSON.stringify(value);
   }
@@ -13,6 +21,9 @@ export function normalizeDisplay(value: unknown): string {
 export function getCellTitle(value: unknown): string | undefined {
   if (value === null || value === undefined) {
     return "NULL";
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
   }
   if (typeof value === "string") {
     return value;

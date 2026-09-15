@@ -198,7 +198,11 @@ export function EditableField({
 
         if (isJsonValid) {
           return (
-            <div className="flex flex-col gap-2">
+            // `select-text`: the app disables selection on chrome by default
+            // (`src/styles/global.css`); JSON values are content and must stay
+            // copyable. `JsonTreeViewer` is a `components/ui` primitive, so the
+            // opt-in lives on its wrapper rather than inside it.
+            <div className="flex select-text flex-col gap-2">
               <JsonTreeViewer
                 maxHeight="140px"
                 readOnly={readOnly}

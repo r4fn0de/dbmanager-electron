@@ -55,7 +55,12 @@ export function TableEditorGrid({
 
   return (
     <div
-      className="h-full overflow-auto focus-within:ring-2 focus-within:ring-ring/40 focus-within:ring-inset"
+      // `focus-within` lit the ring on every click: the `<table>` is focusable
+      // (`tabIndex={0}`) so selecting a row focused it and outlined the whole
+      // grid. Scoping to `>table:focus-visible` keeps the ring as a keyboard-only
+      // affordance — the `<table>` suppresses its own outline, so without this a
+      // Tab into the grid would have no visible focus indicator at all.
+      className="h-full overflow-auto has-[>table:focus-visible]:ring-2 has-[>table:focus-visible]:ring-ring/40 has-[>table:focus-visible]:ring-inset"
       ref={scrollRef}
     >
       <table

@@ -301,6 +301,9 @@ function TableDataEditorInner(
     insertIndex?: number;
   } | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  // Draft text as it was loaded when the edit session began. Lets us detect
+  // "user clicked away without typing" without re-parsing the value.
+  const editStartValueRef = useRef("");
 
   const [fkOptions, setFkOptions] = useState<FkLookupResponse | null>(null);
   const [isLoadingFk, setIsLoadingFk] = useState(false);
@@ -862,11 +865,13 @@ function TableDataEditorInner(
 
       const draftedValue = draftUpdates[rowKey]?.changes[columnName];
       const currentValue = draftedValue ?? row[columnName];
+      const nextDraft = normalizeDisplay(currentValue);
       suppressInlineEditorMouseUpRef.current =
         options?.selectAllOnFocus ?? true;
       setEditingCell({ column: columnName, rowKey, source: "existing" });
-      setEditingValue(normalizeDisplay(currentValue));
-      void loadFkOptions(columnName, normalizeDisplay(currentValue));
+      editStartValueRef.current = nextDraft;
+      setEditingValue(nextDraft);
+      void loadFkOptions(columnName, nextDraft);
     },
     [primaryKey, draftUpdates, loadFkOptions]
   );
@@ -877,6 +882,7 @@ function TableDataEditorInner(
     options?: { selectAllOnFocus?: boolean }
   ) => {
     const value = draftInserts[insertIndex]?.[columnName];
+    const nextDraft = normalizeDisplay(value ?? "");
     suppressInlineEditorMouseUpRef.current = options?.selectAllOnFocus ?? true;
     setEditingCell({
       column: columnName,
@@ -884,8 +890,9 @@ function TableDataEditorInner(
       rowKey: `insert:${insertIndex}`,
       source: "insert",
     });
-    setEditingValue(normalizeDisplay(value ?? ""));
-    void loadFkOptions(columnName, normalizeDisplay(value ?? ""));
+    editStartValueRef.current = nextDraft;
+    setEditingValue(nextDraft);
+    void loadFkOptions(columnName, nextDraft);
   };
 
   const cancelEditing = () => {
@@ -944,6 +951,17 @@ function TableDataEditorInner(
     if (!column) {
       return;
     }
+
+    // The user opened the cell and left without typing: the draft is still
+    // byte-identical to what was loaded, so there is nothing to persist.
+    // Bailing out here (instead of re-parsing) also keeps untouched cells from
+    // looking dirty for types that do not round-trip through
+    // `normalizeDisplay`/`parseByType` — `bytea` and `interval` today.
+    if (editingValue === editStartValueRef.current) {
+      cancelEditing();
+      return;
+    }
+
     const parsed = parseByType(editingValue, column);
 
     if (editingCell.source === "insert") {

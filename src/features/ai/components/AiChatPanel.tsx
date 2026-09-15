@@ -39,9 +39,12 @@ import {
 import { FeedbackBar } from "@/components/ui/feedback-bar";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   PromptInput,
   PromptInputActions,
@@ -522,9 +525,37 @@ function shouldShowFeedback(messageId: string): boolean {
   return Math.abs(hash) % 4 === 0; // 25% chance (1 in 4)
 }
 
+function TruncatedResponseNotice({
+  onRetry,
+  disabled,
+}: {
+  onRetry?: () => void;
+  disabled?: boolean;
+}) {
+  if (!onRetry) {
+    return null;
+  }
+  return (
+    <div className="mt-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/8 px-2.5 py-2 text-amber-700 text-xs dark:text-amber-300">
+      <UiIcon className="size-3.5 shrink-0" name="alert-triangle" />
+      <p className="min-w-0 flex-1">
+        Response was cut off by the model&apos;s output limit.
+      </p>
+      <button
+        className="shrink-0 font-medium underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled}
+        onClick={onRetry}
+        type="button"
+      >
+        Continue
+      </button>
+    </div>
+  );
+}
+
 /** Shared typography className for assistant prose content. */
 const ASSISTANT_PROSE_CLASS =
-  "w-full! max-w-none! bg-transparent! p-0 text-[14.5px] leading-7 wrap-break-word text-zinc-800 dark:text-zinc-200 [&_a]:font-medium [&_a]:text-primary [&_a]:underline-offset-4 [&_a]:hover:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_hr]:border-muted-foreground/20 [&_hr]:my-4 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-7 [&_p+p]:mt-3 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
+  "select-text w-full! max-w-none! bg-transparent! p-0 text-[14.5px] leading-7 wrap-break-word text-zinc-800 dark:text-zinc-200 [&_a]:font-medium [&_a]:text-primary [&_a]:underline-offset-4 [&_a]:hover:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_code]:rounded-md [&_code]:border [&_code]:border-zinc-300/80 [&_code]:bg-zinc-100/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.88em] [&_code]:text-zinc-900 [&_code]:dark:border-zinc-700/80 [&_code]:dark:bg-zinc-800/80 [&_code]:dark:text-zinc-100 [&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_hr]:border-muted-foreground/20 [&_hr]:my-4 [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-7 [&_p+p]:mt-3 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5";
 
 function AiMessageFeedback({
   message,
@@ -656,6 +687,8 @@ function ChatMessage({
   conversationId,
   onApproveToolCall,
   onRejectToolCall,
+  onContinue,
+  isContinuing,
 }: {
   message: AiChatMessage;
   codeTheme: string;
@@ -664,6 +697,8 @@ function ChatMessage({
   conversationId: string;
   onApproveToolCall?: (toolCallId: string) => void;
   onRejectToolCall?: (toolCallId: string) => void;
+  onContinue?: () => void;
+  isContinuing?: boolean;
 }) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -990,7 +1025,14 @@ function ChatMessage({
               </MessageAction>
             </MessageToolbar>
           )}
-
+          {!message.isStreaming &&
+            message.role === "assistant" &&
+            message.finishReason === "length" && (
+              <TruncatedResponseNotice
+                disabled={isContinuing}
+                onRetry={onContinue}
+              />
+            )}
           {/* Feedback buttons for completed assistant messages — show only ~25% of the time */}
           {!message.isStreaming && message.role === "assistant" && !isUser && (
             <AiMessageFeedback
@@ -1541,6 +1583,14 @@ export function AiChatPanel({
     sendMessage(lastSubmittedPrompt);
   }, [clearError, isLoading, lastSubmittedPrompt, sendMessage]);
 
+  const handleContinueResponse = useCallback(() => {
+    if (isLoading) {
+      return;
+    }
+    clearError();
+    sendMessage("Continue from where you stopped. Do not repeat content.");
+  }, [clearError, isLoading, sendMessage]);
+
   const handleDismissContextChip = useCallback(
     (kind: "selection" | "error" | "table") => {
       setExitingContext((prev) => ({ ...prev, [kind]: true }));
@@ -1844,9 +1894,11 @@ export function AiChatPanel({
                   codeTheme={codeTheme}
                   connectionId={connectionId}
                   conversationId={activeConversationId!}
+                  isContinuing={isLoading}
                   key={msg.id}
                   message={msg}
                   onApproveToolCall={approveToolCall}
+                  onContinue={handleContinueResponse}
                   onInsertSql={onInsertSql}
                   onRejectToolCall={rejectToolCall}
                 />
@@ -1926,7 +1978,17 @@ export function AiChatPanel({
               hasChips ? "pt-3 pb-1" : "py-1"
             )}
             isLoading={isLoading}
-            onClick={() => inputRef.current?.focus()}
+            onClick={(event) => {
+              const target = event.target as HTMLElement | null;
+              if (
+                target?.closest(
+                  "select, button, a, input, [data-slot='select-trigger'], [data-slot='select-content']"
+                )
+              ) {
+                return;
+              }
+              inputRef.current?.focus();
+            }}
             onCursorChange={handleInputChange}
             onSubmit={handleSubmit}
             onValueChange={handleInputChange}
@@ -2050,32 +2112,58 @@ export function AiChatPanel({
               />
             </div>
             <PromptInputActions className="justify-end gap-2 pt-1 pr-0.5 pb-1.5 pl-2">
-              <NativeSelect
-                aria-label="AI model"
-                className="w-36 max-w-[45%] shrink-0"
-                disabled={
-                  isLoading ||
-                  isLoadingModelSettings ||
-                  isSavingModel ||
-                  modelOptions.length === 0
-                }
-                onChange={(event) => void handleModelChange(event.target.value)}
-                size="sm"
-                title={selectedModel || "Select AI model"}
-                value={selectedModel}
-              >
-                {modelOptions.length === 0 ? (
-                  <NativeSelectOption disabled value="">
-                    Select model
-                  </NativeSelectOption>
-                ) : (
-                  modelOptions.map((modelId) => (
-                    <NativeSelectOption key={modelId} value={modelId}>
-                      {modelId}
-                    </NativeSelectOption>
-                  ))
+              <Select
+                items={Object.fromEntries(
+                  modelOptions.map((modelId) => [modelId, modelId])
                 )}
-              </NativeSelect>
+                onValueChange={(value) => {
+                  if (typeof value === "string") {
+                    void handleModelChange(value);
+                  }
+                }}
+                value={selectedModel || null}
+              >
+                <SelectTrigger
+                  aria-label="AI model"
+                  className="w-36 max-w-full shrink-0 text-xs"
+                  disabled={
+                    isLoading ||
+                    isLoadingModelSettings ||
+                    isSavingModel ||
+                    modelOptions.length === 0
+                  }
+                  onClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  size="sm"
+                  title={selectedModel || "Select AI model"}
+                >
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent
+                  align="start"
+                  alignItemWithTrigger={false}
+                  className="w-auto min-w-64 max-w-[min(22rem,calc(100vw-2rem))] [&_[data-slot='select-content']]:w-auto"
+                  side="top"
+                >
+                  {modelOptions.length === 0 ? (
+                    <SelectItem disabled value="">
+                      Select model
+                    </SelectItem>
+                  ) : (
+                    modelOptions.map((modelId) => (
+                      <SelectItem
+                        className="[&_[data-slot='select-item-text']]:min-w-0 [&_[data-slot='select-item-text']]:flex-1 [&_[data-slot='select-item-text']]:whitespace-normal [&_[data-slot='select-item-text']]:break-all"
+                        key={modelId}
+                        value={modelId}
+                      >
+                        <span className="min-w-0 flex-1 break-all whitespace-normal">
+                          {modelId}
+                        </span>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
               {isLoading ? (
                 <Button
                   className="h-7 w-7 rounded-full border border-border/30 bg-background/50 text-muted-foreground backdrop-blur-sm transition-[background,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-background/70 hover:text-foreground active:scale-[0.96] dark:border-border/20 dark:bg-background/40 dark:hover:bg-background/60"

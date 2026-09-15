@@ -84,8 +84,13 @@ function PromptInput({
   }
 
   const focusEditorFromContainer: React.MouseEventHandler<HTMLDivElement> = (e) => {
-    if (!disabled) editorRef.current?.focus()
-    onClick?.(e)
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("button, a, input, select, textarea, [role='dialog'], [data-slot='select-trigger'], [data-slot='select-content']")) {
+      onClick?.(e);
+      return;
+    }
+    if (!disabled) editorRef.current?.focus();
+    onClick?.(e);
   }
 
   return (

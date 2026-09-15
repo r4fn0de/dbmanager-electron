@@ -553,3 +553,152 @@ export function validateDraft(
       return { ok: true };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline cell helper
+//
+// The grid edits cells through a plain text input. For a handful of types that
+// is the wrong tool — typing `2026-04-16T03:48:00.335Z` by hand is not an
+// editor. These helpers drive a type-specific widget rendered next to the
+// inline input, mirroring the affordance in Neon's table view.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Kinds that get a dedicated widget next to the inline input. */
+export type InlineHelperKind =
+  | "timestamptz"
+  | "timestamp"
+  | "date"
+  | "time"
+  | "bool"
+  | "uuid";
+
+/**
+ * Returns the helper flavour for a column kind, or `null` when the plain text
+ * input already is the best editor (text, json, inet, interval, …).
+ *
+ * `json`/`array` are deliberately excluded: Monaco needs a real panel, which is
+ * what the expand popover is for.
+ */
+export function getInlineHelperKind(kind: ColumnKind): InlineHelperKind | null {
+  switch (kind) {
+    case "timestamptz":
+    case "timestamp":
+    case "date":
+    case "time":
+    case "bool":
+    case "uuid":
+      return kind;
+    default:
+      return null;
+  }
+}
+
+export type TemporalPreset = "now" | "today" | "tomorrow" | "yesterday";
+
+const TEMPORAL_PRESETS: Record<InlineHelperKind, TemporalPreset[]> = {
+  bool: [],
+  date: ["today", "tomorrow", "yesterday"],
+  time: ["now"],
+  timestamp: ["now", "today", "tomorrow", "yesterday"],
+  timestamptz: ["now", "today", "tomorrow", "yesterday"],
+  uuid: [],
+};
+
+export function getTemporalPresets(kind: InlineHelperKind): TemporalPreset[] {
+  return TEMPORAL_PRESETS[kind];
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function startOfLocalDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function addDays(date: Date, days: number): Date {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function dayForPreset(now: Date, preset: TemporalPreset): Date {
+  if (preset === "tomorrow") {
+    return addDays(now, 1);
+  }
+  if (preset === "yesterday") {
+    return addDays(now, -1);
+  }
+  return now;
+}
+
+function formatLocalDate(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function formatLocalTime(date: Date): string {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+/**
+ * Resolves a temporal preset into the canonical draft text the grid expects for
+ * that column kind — the same shape `normalizeDisplay` produces on read and
+ * `parseByType` accepts on write.
+ *
+ * `now` keeps the current wall clock; the day presets snap to local midnight,
+ * except for `date`/`time` columns which have no other component to preserve.
+ */
+export function resolveTemporalPreset(
+  kind: InlineHelperKind,
+  preset: TemporalPreset,
+  now: Date
+): string {
+  const day = dayForPreset(now, preset);
+  const target = preset === "now" ? now : startOfLocalDay(day);
+
+  if (kind === "date") {
+    return formatLocalDate(target);
+  }
+  if (kind === "time") {
+    return formatLocalTime(target);
+  }
+  if (kind === "timestamp") {
+    return `${formatLocalDate(target)} ${formatLocalTime(target)}`;
+  }
+  // timestamptz is stored as an ISO UTC string.
+  return target.toISOString();
+}
+
+/** Canonical draft text → value for the native temporal input. */
+export function draftToTemporalInput(
+  kind: InlineHelperKind,
+  draft: string
+): string {
+  if (kind === "timestamptz") {
+    return utcIsoToDatetimeLocal(draft || null);
+  }
+  if (kind === "timestamp") {
+    return timestampRawToDatetimeLocal(draft);
+  }
+  if (kind === "date") {
+    return initialDate(draft);
+  }
+  return initialTime(draft);
+}
+
+/** Native temporal input value → canonical draft text. */
+export function temporalInputToDraft(
+  kind: InlineHelperKind,
+  local: string
+): string {
+  if (kind === "timestamptz") {
+    return datetimeLocalToUtcIso(local) ?? "";
+  }
+  if (kind === "timestamp") {
+    return datetimeLocalToTimestamp(local) ?? "";
+  }
+  // `date` (`YYYY-MM-DD`) and `time` (`HH:MM:SS`) are already canonical.
+  return local;
+}

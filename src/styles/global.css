@@ -6,6 +6,33 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Desktop-app convention: the chrome (window title, tabs, toolbars, sidebars,
+ * labels, buttons) must not be selectable, while content stays copyable.
+ * Selection is therefore off by default and re-enabled for form controls, code
+ * blocks and anything opted in with Tailwind's `select-text` — which, being in
+ * `@layer utilities`, always wins over this `@layer base` rule.
+ *
+ * The 42 existing `select-text` markers around the app were the opt-in side of
+ * this contract already; they simply had nothing to opt out of until now.
+ */
+@layer base {
+  html {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable="true"],
+  pre,
+  code {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
 @theme {
   --font-sans: "Mona Sans Variable", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;

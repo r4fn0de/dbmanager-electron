@@ -1,12 +1,23 @@
+import { memo, useMemo, useRef } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon as UiIcon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/input";
 import { TableBody, TableCell, TableRow } from "@/components/ui/table";
-import { memo, useMemo } from "react";
 import { CellExpandPopover } from "../../CellExpandPopover";
 import { getGridCellIndex } from "../utils/tableDataTransforms";
 import { normalizeDisplay } from "../utils/valueParsers";
+import { INLINE_HELPER_ATTR, InlineCellHelper } from "./InlineCellHelper";
 import type { TableEditorGridRowsProps } from "./TableEditorGrid.types";
+
+/**
+ * Blur normally means "the edit is over" — unless focus moved into the helper
+ * popup, which must not commit the cell behind the user's back.
+ */
+function shouldKeepEditingOnBlur(
+  event: React.FocusEvent<HTMLInputElement>
+): boolean {
+  return Boolean(event.relatedTarget?.closest(`[${INLINE_HELPER_ATTR}]`));
+}
 
 export const TableEditorGridRows = memo(function TableEditorGridRows({
   visibleColumns,
@@ -55,6 +66,10 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
       new Map(virtualRows.map((virtualRow) => [virtualRow.index, virtualRow])),
     [virtualRows]
   );
+
+  // Only one cell is ever being edited, so a single ref is enough to anchor the
+  // type-specific helper popup to the active inline input.
+  const inlineInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
     <TableBody
@@ -129,7 +144,12 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                       </span>
                       <Input
                         className="!text-xs md:!text-xs absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono leading-4 shadow-none focus-visible:ring-0"
-                        onBlur={() => persistEditing()}
+                        onBlur={(event) => {
+                          if (shouldKeepEditingOnBlur(event)) {
+                            return;
+                          }
+                          persistEditing();
+                        }}
                         onChange={(event) => {
                           setEditingValue(event.target.value);
                           loadFkOptionsDebounced(
@@ -171,7 +191,17 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                           event.preventDefault();
                           suppressInlineEditorMouseUpRef.current = false;
                         }}
+                        ref={inlineInputRef}
                         value={editingValue}
+                      />
+                      <InlineCellHelper
+                        anchor={inlineInputRef}
+                        column={columnMap[columnName]}
+                        draft={editingValue}
+                        nullable={columnMap[columnName]?.is_nullable ?? true}
+                        onCancel={cancelEditing}
+                        onCommit={() => persistEditing()}
+                        onDraftChange={setEditingValue}
                       />
                     </div>
                   ) : (
@@ -327,7 +357,12 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                       </span>
                       <Input
                         className="!text-xs md:!text-xs absolute inset-0 h-auto min-h-0 w-full rounded-none border-0 bg-transparent px-0 py-0 font-mono leading-4 shadow-none focus-visible:ring-0"
-                        onBlur={() => persistEditing(row)}
+                        onBlur={(event) => {
+                          if (shouldKeepEditingOnBlur(event)) {
+                            return;
+                          }
+                          persistEditing(row);
+                        }}
                         onChange={(event) => {
                           setEditingValue(event.target.value);
                           loadFkOptionsDebounced(
@@ -394,6 +429,7 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                           event.preventDefault();
                           suppressInlineEditorMouseUpRef.current = false;
                         }}
+                        ref={inlineInputRef}
                         value={editingValue}
                       />
                       {fk && (
@@ -421,6 +457,15 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                             ))}
                         </div>
                       )}
+                      <InlineCellHelper
+                        anchor={inlineInputRef}
+                        column={columnMap[columnName]}
+                        draft={editingValue}
+                        nullable={columnMap[columnName]?.is_nullable ?? true}
+                        onCancel={cancelEditing}
+                        onCommit={() => persistEditing(row)}
+                        onDraftChange={setEditingValue}
+                      />
                     </div>
                   ) : (
                     <>

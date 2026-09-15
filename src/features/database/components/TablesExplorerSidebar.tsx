@@ -445,6 +445,10 @@ export function TablesExplorerSidebar({
                     name: table.name,
                     schema: table.schema,
                   };
+                  // Single click only selects the table; the editor opens on
+                  // double click, matching the usual DB-client affordance.
+                  const handleRowDoubleClick = () =>
+                    onBrowseTableData(tableTarget);
                   const tableActions = (
                     <>
                       <DropdownMenuItem
@@ -656,6 +660,7 @@ export function TablesExplorerSidebar({
                               onClick={() =>
                                 onTableSelect(`${table.schema}.${table.name}`)
                               }
+                              onDoubleClick={handleRowDoubleClick}
                               onDragStart={(e) => {
                                 const ref = `${table.schema}.${table.name}`;
                                 e.dataTransfer.setData(

@@ -35,4 +35,16 @@ describe("connection tabs store", () => {
     const tab = useConnectionTabsStore.getState().tabs[0];
     expect(tab && isSettingsTab(tab)).toBe(false);
   });
+
+  it("keeps recently opened connections first for the home recents strip", () => {
+    const store = useConnectionTabsStore.getState();
+    store.addTab({ id: "connection-1", name: "First" });
+    store.addTab({ id: "connection-2", name: "Second" });
+    store.addTab({ id: "connection-1", name: "First" });
+
+    expect(useConnectionTabsStore.getState().recentTabIds.slice(0, 2)).toEqual([
+      "connection-1",
+      "connection-2",
+    ]);
+  });
 });

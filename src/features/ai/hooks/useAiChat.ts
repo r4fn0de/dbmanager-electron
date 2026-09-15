@@ -113,6 +113,8 @@ export interface AiChatMessage {
   };
   contextTag?: AiChatContextTag;
   createdAt?: string;
+  /** Why the model stopped generating (e.g. "length" when output was cut). */
+  finishReason?: string | null;
   id: string;
   /** Whether this message is currently being streamed */
   isStreaming?: boolean;
@@ -202,7 +204,10 @@ function normalizeChatErrorMessage(message: string): string {
   return trimmed;
 }
 
-function settleStreamingMessages(messages: AiChatMessage[]): AiChatMessage[] {
+function settleStreamingMessages(
+  messages: AiChatMessage[],
+  finishReason?: string | null
+): AiChatMessage[] {
   const settled: AiChatMessage[] = [];
   for (const msg of messages) {
     const wasStreaming = Boolean(msg.isStreaming);
@@ -214,6 +219,13 @@ function settleStreamingMessages(messages: AiChatMessage[]): AiChatMessage[] {
       (normalized.parts?.length ?? 0) === 0;
 
     if (!isEmptyAssistantPlaceholder) {
+      if (
+        normalized.role === "assistant" &&
+        wasStreaming &&
+        finishReason === "length"
+      ) {
+        normalized.finishReason = "length";
+      }
       settled.push(normalized);
     }
   }
@@ -1133,7 +1145,7 @@ export function useAiChat({
       }
     });
 
-    const unsubDone = aiChat.onDone(({ chatId }) => {
+    const unsubDone = aiChat.onDone(({ chatId, finishReason }) => {
       if (chatId !== chatIdRef.current) {
         return;
       }
@@ -1142,7 +1154,10 @@ export function useAiChat({
       if (streamConversationId) {
         updateConversationById(streamConversationId, (conversation) => ({
           ...conversation,
-          messages: settleStreamingMessages(conversation.messages),
+          messages: settleStreamingMessages(
+            conversation.messages,
+            finishReason
+          ),
           updatedAt: toIsoNow(),
         }));
       }

@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -56,6 +56,7 @@ import type {
 import { ipc } from "@/ipc/manager";
 import {
   buildConnectionTab,
+  SETTINGS_TAB_ID,
   useConnectionTabsStore,
 } from "@/lib/stores/connection-tabs";
 import { cn } from "@/lib/utils";
@@ -175,6 +176,22 @@ function Home() {
     });
   }, [connections, searchQuery, activeFilter]);
 
+  const recentTabIds = useConnectionTabsStore((state) => state.recentTabIds);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [lastOpenedById, setLastOpenedById] = useState<Record<string, number>>(
+    {}
+  );
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("home:last-opened");
+      if (raw) {
+        setLastOpenedById(JSON.parse(raw) as Record<string, number>);
+      }
+    } catch {
+      // Corrupt timestamps are safe to ignore.
+    }
+  }, []);
+
   const fullyFilteredConnections = useMemo(() => {
     if (activeTagFilter === "all-tags") {
       return filteredConnections;
@@ -200,11 +217,70 @@ function Home() {
     () => connections.filter((c) => !c.is_local).length,
     [connections]
   );
+  const visibleChips = useMemo(() => {
+    const chips = [
+      { label: "All", value: "all", count: connections.length },
+      { label: "Local", value: "local", count: localCount },
+      { label: "Remote", value: "remote", count: remoteCount },
+    ];
+    return chips.filter((chip) => chip.value === "all" || chip.count > 0);
+  }, [connections.length, localCount, remoteCount]);
+  const scopeSummary = useMemo(() => {
+    if (localCount > 0 && remoteCount > 0) {
+      return `${localCount} local • ${remoteCount} remote`;
+    }
+    if (localCount > 0) {
+      return `${localCount} local`;
+    }
+    return `${remoteCount} remote`;
+  }, [localCount, remoteCount]);
+  const recentConnections = useMemo(() => {
+    const byId: Record<string, Connection> = {};
+    for (const connection of connections) {
+      byId[connection.id] = connection;
+    }
+    const seen: Record<string, boolean> = {};
+    const ordered: Connection[] = [];
+    for (const id of recentTabIds) {
+      if (id === SETTINGS_TAB_ID || seen[id]) {
+        continue;
+      }
+      seen[id] = true;
+      const connection = byId[id];
+      if (connection) {
+        ordered.push(connection);
+      }
+      if (ordered.length >= 4) {
+        break;
+      }
+    }
+    return ordered;
+  }, [connections, recentTabIds]);
+  const isFiltering =
+    searchQuery.trim().length > 0 ||
+    activeFilter !== "all" ||
+    activeTagFilter !== "all-tags";
 
+  const tagSelectItems = useMemo(() => {
+    const items: Record<string, string> = {
+      "all-tags": "All tags",
+      tagged: "With tag",
+      untagged: "Without tag",
+    };
+    for (const tag of availableTags) {
+      items[`tag:${tag}`] = tag;
+    }
+    return items;
+  }, [availableTags]);
   const handleAdd = () => {
     setEditingConnection(null);
     setIsFormOpen(true);
   };
+  const handleClearFilters = useCallback(() => {
+    setSearchQuery("");
+    setActiveFilter("all");
+    setActiveTagFilter("all-tags");
+  }, []);
 
   const handleAddLocalDb = () => {
     setIsLocalDbDialogOpen(true);
@@ -364,6 +440,16 @@ function Home() {
 
     // Add tab synchronously BEFORE navigating so it appears instantly
     useConnectionTabsStore.getState().addTab(buildConnectionTab(connection));
+    const openedAt = Date.now();
+    setLastOpenedById((previous) => {
+      const next = { ...previous, [connection.id]: openedAt };
+      try {
+        localStorage.setItem("home:last-opened", JSON.stringify(next));
+      } catch {
+        // Storage failures should not block navigation.
+      }
+      return next;
+    });
     navigate({
       to: "/database/$connectionId",
       params: { connectionId: connection.id },
@@ -462,44 +548,76 @@ function Home() {
       transition={{ duration: 0.36, ease: [0.23, 1, 0.32, 1] }}
     >
       <div className="flex flex-1 flex-col overflow-hidden rounded-md border bg-background">
-        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-5 px-5 py-5">
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-5 px-5 py-5">
           {/* Page header */}
           <div className="flex items-center justify-between">
-            <div className="flex items-baseline gap-2.5">
-              <h1 className="font-semibold text-base">Databases</h1>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-baseline gap-2.5">
+                <h1 className="font-semibold text-base">Databases</h1>
+                {connections.length > 0 && (
+                  <span className="text-[11px] text-muted-foreground/70 tabular-nums">
+                    {connections.length}
+                  </span>
+                )}
+              </div>
               {connections.length > 0 && (
-                <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-                  {connections.length}
-                </span>
+                <p className="text-[11px] text-muted-foreground/70">
+                  {scopeSummary}
+                </p>
               )}
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
+            <div className="flex items-center gap-2">
+              {connections.length > 0 && (
+                <div className="flex items-center rounded-lg border border-border/60 bg-muted/20 p-0.5">
                   <Button
-                    className="h-8 gap-1.5 px-3 text-xs shadow-sm"
-                    size="sm"
+                    className="h-7 w-7"
+                    onClick={() => setViewMode("list")}
+                    size="icon-sm"
+                    variant={viewMode === "list" ? "secondary" : "ghost"}
                   >
-                    <Icon className="size-3.5" name="plus" />
-                    Add
+                    <Icon className="size-3.5" name="list-numbers" />
                   </Button>
-                }
-              />
-              <DropdownMenuContent align="end" className="min-w-[180px]">
-                <DropdownMenuItem className="gap-2 text-xs" onClick={handleAdd}>
-                  <Icon className="size-3.5" name="database" />
-                  Remote Connection
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="gap-2 text-xs"
-                  onClick={handleAddLocalDb}
-                >
-                  <Icon className="size-3.5" name="hard-drive" />
-                  New Local Database
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <Button
+                    className="h-7 w-7"
+                    onClick={() => setViewMode("grid")}
+                    size="icon-sm"
+                    variant={viewMode === "grid" ? "secondary" : "ghost"}
+                  >
+                    <Icon className="size-3.5" name="layout-grid" />
+                  </Button>
+                </div>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      className="h-8 gap-1.5 px-3 text-xs shadow-sm"
+                      size="sm"
+                    >
+                      <Icon className="size-3.5" name="plus" />
+                      Add
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="min-w-[180px]">
+                  <DropdownMenuItem
+                    className="gap-2 text-xs"
+                    onClick={handleAdd}
+                  >
+                    <Icon className="size-3.5" name="database" />
+                    Remote Connection
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="gap-2 text-xs"
+                    onClick={handleAddLocalDb}
+                  >
+                    <Icon className="size-3.5" name="hard-drive" />
+                    New Local Database
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
 
           {/* Search + filter status */}
@@ -508,7 +626,7 @@ function Home() {
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Icon
-                    className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50"
+                    className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/70"
                     name="search"
                   />
                   <Input
@@ -519,6 +637,7 @@ function Home() {
                   />
                 </div>
                 <Select
+                  items={tagSelectItems}
                   onValueChange={(value) => {
                     if (value !== null) {
                       setActiveTagFilter(value);
@@ -545,11 +664,7 @@ function Home() {
                 </Select>
               </div>
               <div className="flex flex-wrap items-center gap-1">
-                {[
-                  { label: "All", value: "all", count: connections.length },
-                  { label: "Local", value: "local", count: localCount },
-                  { label: "Remote", value: "remote", count: remoteCount },
-                ].map((chip) => (
+                {visibleChips.map((chip) => (
                   <button
                     className={cn(
                       "flex items-center gap-1.5 rounded-full border px-3 py-1 font-medium text-[11px] transition-colors duration-150 active:scale-[0.97]",
@@ -562,7 +677,7 @@ function Home() {
                     type="button"
                   >
                     {chip.label}
-                    <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums">
                       {chip.count}
                     </span>
                   </button>
@@ -572,25 +687,69 @@ function Home() {
                 activeFilter !== "all" ||
                 activeTagFilter !== "all-tags") &&
                 connections.length !== fullyFilteredConnections.length && (
-                  <p className="text-[10px] text-muted-foreground/50 tabular-nums">
-                    Showing {fullyFilteredConnections.length} of{" "}
-                    {connections.length}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] text-muted-foreground/70 tabular-nums">
+                      Showing {fullyFilteredConnections.length} of{" "}
+                      {connections.length}
+                    </p>
+                    <button
+                      className="font-medium text-[10px] text-primary hover:underline"
+                      onClick={handleClearFilters}
+                      type="button"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
                 )}
             </div>
           )}
 
-          {/* Divider */}
-          <div className="border-border/40 border-t" />
+          {!isFiltering && recentConnections.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 px-1">
+                <Icon className="size-3 text-muted-foreground" name="clock" />
+                <span className="font-medium text-muted-foreground text-xs">
+                  Recent
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+                {recentConnections.map((connection) => (
+                  <button
+                    className="group flex min-w-0 items-center gap-2 rounded-xl border border-border/40 bg-card px-3 py-2.5 text-left transition-colors hover:border-border hover:bg-muted/40"
+                    key={connection.id}
+                    onClick={() => handleSelectConnection(connection)}
+                    type="button"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-xs">
+                        {connection.name}
+                      </span>
+                      <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                        {connection.database}
+                      </span>
+                    </span>
+                    <Icon
+                      className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                      name="arrow-right"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Connection list */}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
             <ConnectionList
               branchesByDbId={branchesByDbId}
               connections={fullyFilteredConnections}
+              isFilteredEmpty={
+                connections.length > 0 && fullyFilteredConnections.length === 0
+              }
               isLoading={isLoadingConnections}
-              localDbById={localDbById}
+              lastOpenedById={lastOpenedById}
               onAdd={handleAdd}
+              onClearFilters={handleClearFilters}
               onCloneToLocal={handleCloneToLocal}
               onCreateBranch={async (localDbId, input) => {
                 const result = await ipc.client.db.createBranch({
@@ -630,6 +789,7 @@ function Home() {
                 });
                 return result;
               }}
+              variant={viewMode}
             />
           </div>
         </div>
