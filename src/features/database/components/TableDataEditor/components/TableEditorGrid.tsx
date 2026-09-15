@@ -18,14 +18,12 @@ interface TableEditorGridProps
   editingCell: EditingCell | null;
   handleTableKeyDown: (event: React.KeyboardEvent) => void;
   isBlockingTableLoading: boolean;
-  onGridScroll: () => void;
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export function TableEditorGrid({
   isBlockingTableLoading,
   scrollRef,
-  onGridScroll,
   handleTableKeyDown,
   ...rest
 }: TableEditorGridProps) {
@@ -77,7 +75,6 @@ export function TableEditorGrid({
   return (
     <div
       className="h-full overflow-auto focus-within:ring-2 focus-within:ring-ring/40 focus-within:ring-inset"
-      onScroll={onGridScroll}
       ref={scrollRef}
     >
       <table

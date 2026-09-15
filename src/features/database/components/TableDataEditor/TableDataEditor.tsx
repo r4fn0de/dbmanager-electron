@@ -55,6 +55,7 @@ import { TableEditorDialogs } from "./components/TableEditorDialogs";
 import { TableEditorFooter } from "./components/TableEditorFooter";
 import { TableEditorGrid } from "./components/TableEditorGrid";
 import { useRowVirtualization } from "./hooks/useRowVirtualization";
+import { useFloatingRowButton } from "./hooks/useFloatingRowButton";
 import { TableEditorRowDetailsOverlay } from "./components/TableEditorRowDetailsOverlay";
 import type {
   DeleteDraft,
@@ -342,24 +343,19 @@ function TableDataEditorInner(
     rowKey: string;
     column: string;
   } | null>(null);
-  const hoveredRowAnchorRef = useRef<null | {
-    rowKey: string;
-    row: RowRecord;
-    index: number;
-    top: number;
-    left: number;
-    width: number;
-    height: number;
-  }>(null);
-  const floatingRowButtonRef = useRef<HTMLButtonElement>(null);
-  const hoverClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
   const [expandedRow, setExpandedRow] = useState<{
     rowKey: string;
     row: RowRecord;
     index: number;
   } | null>(null);
+  const {
+    cancelPendingHoverClear,
+    floatingRowButtonRef,
+    hoverClearTimeoutRef,
+    hoveredRowAnchorRef,
+    scheduleHoverClear,
+    showFloatingRowButton,
+  } = useFloatingRowButton(expandedRow);
   const [expandedRowOutline, setExpandedRowOutline] = useState<null | {
     top: number;
     left: number;
@@ -658,6 +654,29 @@ function TableDataEditorInner(
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Esconde o botão flutuante de linha durante o scroll (posição dele é
+  // calculada por getBoundingClientRect no hover; sem isso ele flutua
+  // solto no viewport enquanto as linhas virtualizadas se movem).
+  // Listener `passive` direto no elemento — não passa por setState do
+  // React, então não trava o scroll.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      return;
+    }
+    const handleScroll: EventListener = () => {
+      hoveredRowAnchorRef.current = null;
+      const button = floatingRowButtonRef.current;
+      if (button) {
+        button.style.opacity = "0";
+        button.style.pointerEvents = "none";
+      }
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const {
     totalRowHeight,
     totalVirtualRows,
@@ -1370,27 +1389,6 @@ function TableDataEditorInner(
     setExpandedRowOutline(null);
   }, []);
 
-  const cancelPendingHoverClear = useCallback(() => {
-    if (!hoverClearTimeoutRef.current) {
-      return;
-    }
-    clearTimeout(hoverClearTimeoutRef.current);
-    hoverClearTimeoutRef.current = null;
-  }, []);
-
-  const scheduleHoverClear = useCallback(() => {
-    cancelPendingHoverClear();
-    hoverClearTimeoutRef.current = setTimeout(() => {
-      hoveredRowAnchorRef.current = null;
-      const button = floatingRowButtonRef.current;
-      if (button) {
-        button.style.opacity = "0";
-        button.style.pointerEvents = "none";
-      }
-      hoverClearTimeoutRef.current = null;
-    }, 180);
-  }, [cancelPendingHoverClear]);
-
   const expandedRowFields = useMemo(() => {
     if (!expandedRow) {
       return [];
@@ -1446,29 +1444,6 @@ function TableDataEditorInner(
       effectiveRows,
       expandedRow,
     ]
-  );
-
-  const showFloatingRowButton = useCallback(
-    (payload: {
-      rowKey: string;
-      row: RowRecord;
-      index: number;
-      top: number;
-      left: number;
-      width: number;
-      height: number;
-    }) => {
-      hoveredRowAnchorRef.current = payload;
-      const button = floatingRowButtonRef.current;
-      if (!button) {
-        return;
-      }
-      button.style.top = `${payload.top}px`;
-      button.style.left = `${payload.left - 8}px`;
-      button.style.opacity = expandedRow ? "0" : "1";
-      button.style.pointerEvents = expandedRow ? "none" : "auto";
-    },
-    [expandedRow]
   );
 
   // ── Column resizing ───────────────────────────────────────────
@@ -2389,14 +2364,6 @@ function TableDataEditorInner(
               keepCaretNavigationInsideInlineInput
             }
             loadFkOptionsDebounced={loadFkOptionsDebounced}
-            onGridScroll={() => {
-              hoveredRowAnchorRef.current = null;
-              const button = floatingRowButtonRef.current;
-              if (button) {
-                button.style.opacity = "0";
-                button.style.pointerEvents = "none";
-              }
-            }}
             onOpenRelatedTable={onOpenRelatedTable}
             onSortColumn={(columnName) => {
               perfTrackerRef.current.start("sort_to_rows_settled");

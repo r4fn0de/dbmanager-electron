@@ -13,11 +13,22 @@ export function useRowVirtualization(
   const internalScrollRef = useRef<HTMLDivElement>(null);
   const scrollRef = externalScrollRef ?? internalScrollRef;
   const totalVirtualRows = draftInserts.length + effectiveRows.length;
+  // Callbacks estáveis: recriar `estimateSize`/`getScrollElement` a cada
+  // render faz o virtualizer descartar as medidas e recalcular a faixa do
+  // zero — exatamente o "pulo + branco + trava" no scroll contínuo.
+  // `scrollRef` é um objeto ref estável (useRef), então a closure direta é
+  // segura e o linter reclamaría de dep desnecessária com useMemo.
   const rowVirtualizer = useVirtualizer({
     count: totalVirtualRows,
     estimateSize: () => ROW_HEIGHT,
+    gap: 0,
     getScrollElement: () => scrollRef.current,
-    overscan: 8,
+    // Overscan enxuto: cada linha monta N células com Popover + Checkbox;
+    // overscan 12 em tabela larga (10+ colunas) = ~350 células extras por
+    // frame. 6 acima/abaixo cobre scroll normal sem explodir o custo —
+    // principal causa das "travadas".
+    isScrollingResetDelay: 150,
+    overscan: 6,
   });
   const virtualItems = rowVirtualizer.getVirtualItems();
 

@@ -5,7 +5,7 @@ import { TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { memo, useMemo } from "react";
 import { CellExpandPopover } from "../../CellExpandPopover";
 import { getGridCellIndex } from "../utils/tableDataTransforms";
-import { getCellTitle, normalizeDisplay } from "../utils/valueParsers";
+import { normalizeDisplay } from "../utils/valueParsers";
 import type { TableEditorGridRowsProps } from "./TableEditorGrid.types";
 
 export const TableEditorGridRows = memo(function TableEditorGridRows({
@@ -234,19 +234,35 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
             key={rowKey}
             onClick={(e) => handleRowClick(rowKey, index, e)}
             onMouseEnter={(event) => {
+              // Hover movido para onMouseMove com throttle de rAF abaixo;
+              // onMouseEnter com getBoundingClientRect a cada linha durante
+              // scroll = dezenas de layouts forçados por segundo (jank).
               cancelPendingHoverClear();
-              const rowRect = event.currentTarget.getBoundingClientRect();
-              showFloatingRowButton({
-                height: rowRect.height,
-                index,
-                left: rowRect.left,
-                row,
-                rowKey,
-                top: rowRect.top + rowRect.height / 2,
-                width: rowRect.width,
-              });
             }}
             onMouseLeave={scheduleHoverClear}
+            onMouseMove={(event) => {
+              const target = event.currentTarget;
+              const state = target as unknown as { __hoverRaf?: number };
+              if (state.__hoverRaf) {
+                return;
+              }
+              state.__hoverRaf = requestAnimationFrame(() => {
+                state.__hoverRaf = undefined;
+                if (!target.isConnected) {
+                  return;
+                }
+                const rowRect = target.getBoundingClientRect();
+                showFloatingRowButton({
+                  height: rowRect.height,
+                  index,
+                  left: rowRect.left,
+                  row,
+                  rowKey,
+                  top: rowRect.top + rowRect.height / 2,
+                  width: rowRect.width,
+                });
+              });
+            }}
             style={{
               contain: "layout style",
               height: virtualRow.size,
@@ -302,7 +318,7 @@ export const TableEditorGridRows = memo(function TableEditorGridRows({
                     minWidth: virtualColumn.size,
                     width: virtualColumn.size,
                   }}
-                  title={getCellTitle(effectiveValue)}
+                  title={isNull ? "NULL" : undefined}
                 >
                   {isEditing ? (
                     <div className="relative">
