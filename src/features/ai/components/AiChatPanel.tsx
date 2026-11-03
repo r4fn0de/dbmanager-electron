@@ -50,6 +50,7 @@ import {
   PromptInputActions,
   PromptInputTextarea,
 } from "@/components/ui/prompt-input";
+import { connectionToMentionProvider } from "@/components/ui/lexical/connection-mention-node";
 import { setPromptInputCursorOffset } from "@/components/ui/prompt-input-mentions";
 import {
   Tooltip,
@@ -62,7 +63,10 @@ import {
 } from "@/features/ai/lib/mention-utils";
 import { useConnectionsList } from "@/features/connection/hooks/useConnectionsList";
 import type { DatabaseType } from "@/ipc/db/types";
-import type { ConnectionProvider } from "@/lib/stores/connection-tabs";
+import {
+  detectConnectionProvider,
+  type ConnectionProvider,
+} from "@/lib/stores/connection-tabs";
 import { cn } from "@/lib/utils";
 import type { UserConnectionsContext } from "@/shared/ai/streaming-contracts";
 import { getAiSettings, updateAiSettings } from "../hooks/ai-actions";
@@ -1438,6 +1442,19 @@ export function AiChatPanel({
       })),
     [selectedMentions]
   );
+  const lexicalMentions = useMemo(
+    () =>
+      Array.from(selectedMentions.values()).map((connection) => ({
+        connectionId: connection.id,
+        id: connection.id,
+        label: connection.name,
+        provider: connectionToMentionProvider({
+          db_type: connection.db_type,
+          provider: detectConnectionProvider(connection),
+        }),
+      })),
+    [selectedMentions]
+  );
 
   const handleInputChange = useCallback(
     (value: string, cursorPos?: number) => {
@@ -1641,8 +1658,8 @@ export function AiChatPanel({
       style={{ width: "100%" }}
     >
       {/* Header — minimal, near-transparent */}
-      <div className="flex h-9 shrink-0 items-center justify-between gap-2 px-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      <div className="flex h-10 shrink-0 items-center gap-1.5 border-border/40 border-b px-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           {hasActiveConnection ? (
             (() => {
               const DbIcon = getDatabaseIcon(dbType, provider);
@@ -1671,15 +1688,15 @@ export function AiChatPanel({
             <DropdownMenuTrigger
               render={
                 <Button
-                  className="h-7 min-w-0 max-w-35 xs:max-w-45 flex-1 justify-between px-2 font-semibold text-xs tracking-tight sm:max-w-52.5"
+                  className="h-7 min-w-0 max-w-full justify-start gap-1 px-1.5 font-semibold text-[13px] tracking-tight"
                   size="sm"
                   variant="ghost"
                 >
-                  <span className="shrink truncate">
+                  <span className="min-w-0 flex-1 truncate text-left">
                     {activeConversation?.title ?? "AI Chat"}
                   </span>
                   <UiIcon
-                    className="ml-1 size-3 shrink-0 opacity-70"
+                    className="size-3 shrink-0 opacity-50"
                     name="chevron-down"
                   />
                 </Button>
@@ -1791,7 +1808,7 @@ export function AiChatPanel({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div className="flex items-center gap-px">
+        <div className="flex shrink-0 items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1825,21 +1842,24 @@ export function AiChatPanel({
             <TooltipContent>Clear chat</TooltipContent>
           </Tooltip>
           {onClose && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    className="text-muted-foreground transition-[color,transform] duration-150 ease-out hover:text-foreground active:scale-[0.97]"
-                    onClick={onClose}
-                    size="icon-xs"
-                    variant="ghost"
-                  >
-                    <UiIcon className="size-3.5" name="panel-right" />
-                  </Button>
-                }
-              />
-              <TooltipContent>Close panel</TooltipContent>
-            </Tooltip>
+            <>
+              <div className="mx-1 h-4 w-px shrink-0 bg-border/60" />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      className="text-muted-foreground transition-[color,transform] duration-150 ease-out hover:text-foreground active:scale-[0.97]"
+                      onClick={onClose}
+                      size="icon-xs"
+                      variant="ghost"
+                    >
+                      <UiIcon className="size-3.5" name="panel-right" />
+                    </Button>
+                  }
+                />
+                <TooltipContent>Close panel</TooltipContent>
+              </Tooltip>
+            </>
           )}
         </div>
       </div>
@@ -2101,6 +2121,7 @@ export function AiChatPanel({
                   "px-0"
                 )}
                 inlineMentions={inlineMentions}
+                lexicalMentions={lexicalMentions}
                 onInlineMentionRemove={(mention) => removeMention(mention.id)}
                 onKeyDown={handleTextareaKeyDown}
                 placeholder={
@@ -2109,6 +2130,7 @@ export function AiChatPanel({
                     : "Ask anything about SQL, modeling, or debugging…"
                 }
                 ref={inputRef}
+                useLexicalEditor
               />
             </div>
             <PromptInputActions className="justify-end gap-2 pt-1 pr-0.5 pb-1.5 pl-2">

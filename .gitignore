@@ -103,3 +103,5 @@ out/
 
 # Tanstack
 .tanstack/
+# CocoIndex Code (ccc)
+/.cocoindex_code/

@@ -7,7 +7,9 @@ import {
   setPromptInputCursorOffset,
   splitPromptInputMentions,
   type PromptInputMention,
-} from "@/components/ui/prompt-input-mentions"
+} from "@/components/ui/prompt-input-mentions";
+import type { LexicalMentionDescriptor } from "@/components/ui/lexical/lexical-mention-sync-plugin";
+import { LexicalPromptTextareaBridge } from "@/components/ui/lexical/lexical-textarea-bridge";
 import {
   Tooltip,
   TooltipContent,
@@ -25,15 +27,26 @@ import React, {
 } from "react"
 
 type PromptInputContextType = {
-  isLoading: boolean
-  value: string
-  setValue: (value: string) => void
-  onCursorChange?: (value: string, cursorPos: number) => void
-  maxHeight: number | string
-  onSubmit?: () => void
-  disabled?: boolean
-  editorRef: React.RefObject<HTMLDivElement | null>
-}
+  isLoading: boolean;
+  value: string;
+  setValue: (value: string) => void;
+  onCursorChange?: (value: string, cursorPos: number) => void;
+  maxHeight: number | string;
+  onSubmit?: () => void;
+  disabled?: boolean;
+  editorRef: React.RefObject<HTMLDivElement | null>;
+  lexicalApiRef?: React.MutableRefObject<{
+    focus: () => void;
+    focusAt: (offset: number) => void;
+    insertMentionAtQuery: (descriptor: {
+      connectionId?: string;
+      id: string;
+      label: string;
+      provider?: string;
+    }) => { cursorPos: number; text: string } | null;
+    setText: (next: string) => void;
+  } | null>;
+};
 
 const PromptInputContext = createContext<PromptInputContextType>({
   isLoading: false,
@@ -47,8 +60,10 @@ const PromptInputContext = createContext<PromptInputContextType>({
 })
 
 function usePromptInput() {
-  return use(PromptInputContext)
+  return use(PromptInputContext);
 }
+
+export { usePromptInput as usePromptInputInternal };
 
 export type PromptInputProps = {
   isLoading?: boolean
@@ -75,8 +90,11 @@ function PromptInput({
   onClick,
   ...props
 }: PromptInputProps) {
-  const [internalValue, setInternalValue] = useState(value || "")
-  const editorRef = useRef<HTMLDivElement>(null)
+  const [internalValue, setInternalValue] = useState(value || "");
+  const editorRef = useRef<HTMLDivElement>(null);
+  const lexicalApiRef = useRef<
+    Exclude<PromptInputContextType["lexicalApiRef"], undefined>
+  >(null);
 
   const updatePromptValue = (newValue: string) => {
     setInternalValue(newValue)
@@ -97,14 +115,14 @@ function PromptInput({
     <TooltipProvider>
       <PromptInputContext.Provider
         value={{
-          isLoading,
-          value: value ?? internalValue,
-          setValue: onValueChange ?? updatePromptValue,
-          onCursorChange,
-          maxHeight,
-          onSubmit,
-          disabled,
           editorRef,
+          isLoading,
+          lexicalApiRef: lexicalApiRef as PromptInputContextType["lexicalApiRef"],
+          maxHeight,
+          onCursorChange,
+          onSubmit,
+          setValue: onValueChange ?? updatePromptValue,
+          value: value ?? internalValue,
         }}
       >
         <div
@@ -133,16 +151,24 @@ function PromptInput({
 }
 
 export type PromptInputTextareaProps = {
-  disableAutosize?: boolean
-  inlineMentions?: readonly PromptInputMention[]
-  onInlineMentionRemove?: (mention: PromptInputMention, start: number, end: number) => void
-  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>
-  placeholder?: string
-  ref?: React.Ref<HTMLDivElement>
+  disableAutosize?: boolean;
+  inlineMentions?: readonly PromptInputMention[];
+  onInlineMentionRemove?: (
+    mention: PromptInputMention,
+    start: number,
+    end: number
+  ) => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
+  placeholder?: string;
+  ref?: React.Ref<HTMLDivElement>;
+  /** Render the Lexical decorator editor (DB logo pills) instead of contentEditable. */
+  useLexicalEditor?: boolean;
+  /** Extra per-mention metadata for Lexical pills (id → connection/provider). */
+  lexicalMentions?: readonly LexicalMentionDescriptor[];
 } & Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children" | "contentEditable" | "onInput" | "onKeyDown"
->
+>;
 
 function appendPromptInputText(
   fragment: DocumentFragment,
@@ -168,6 +194,8 @@ function PromptInputTextarea({
   onInlineMentionRemove,
   placeholder,
   ref: forwardedRef,
+  useLexicalEditor = false,
+  lexicalMentions = [],
   ...props
 }: PromptInputTextareaProps) {
   const { value, setValue, onCursorChange, maxHeight, onSubmit, disabled, editorRef } =
@@ -235,15 +263,29 @@ function PromptInputTextarea({
         continue
       }
 
-      const mentionElement = editor.ownerDocument.createElement("span")
+      const mentionElement = editor.ownerDocument.createElement("span");
       mentionElement.className =
-        "inline-flex max-w-full select-none items-center rounded bg-primary/10 px-1 font-medium text-primary align-baseline"
-      mentionElement.contentEditable = "false"
-      mentionElement.setAttribute("data-prompt-input-mention-id", segment.mention.id)
-      mentionElement.setAttribute(PROMPT_INPUT_MENTION_ATTRIBUTE, segment.token)
-      mentionElement.title = segment.mention.label
-      mentionElement.textContent = `@${segment.mention.label}`
-      fragment.append(mentionElement)
+        "prompt-input-mention inline-flex max-w-full min-w-0 select-none items-center gap-1 rounded-md border border-primary/25 bg-primary/10 py-px pr-1.5 pl-1 align-baseline text-sm font-medium text-primary";
+      mentionElement.contentEditable = "false";
+      mentionElement.setAttribute(
+        "data-prompt-input-mention-id",
+        segment.mention.id
+      );
+      mentionElement.setAttribute(
+        PROMPT_INPUT_MENTION_ATTRIBUTE,
+        segment.token
+      );
+      mentionElement.title = segment.mention.label;
+      const iconElement = editor.ownerDocument.createElement("span");
+      iconElement.className =
+        "prompt-input-mention-icon inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 align-baseline font-semibold text-[10px] text-primary leading-none";
+      iconElement.setAttribute("aria-hidden", "true");
+      iconElement.textContent = "@";
+      const labelElement = editor.ownerDocument.createElement("span");
+      labelElement.className = "min-w-0 flex-1 truncate leading-none";
+      labelElement.textContent = segment.mention.label;
+      mentionElement.append(iconElement, labelElement);
+      fragment.append(mentionElement);
     }
 
     editor.replaceChildren(fragment)
@@ -307,15 +349,29 @@ function PromptInputTextarea({
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (removeMentionAtCursor(event)) {
-      return
+      return;
     }
 
-    onKeyDown?.(event)
+    onKeyDown?.(event);
 
     if (event.key === "Enter" && !event.shiftKey && !event.defaultPrevented) {
-      event.preventDefault()
-      onSubmit?.()
+      event.preventDefault();
+      onSubmit?.();
     }
+  };
+
+  if (useLexicalEditor) {
+    return (
+      <LexicalPromptTextareaBridge
+        className={className}
+        disableAutosize={disableAutosize}
+        inlineMentions={inlineMentions}
+        lexicalMentions={lexicalMentions}
+        onInlineMentionRemove={onInlineMentionRemove}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+      />
+    );
   }
 
   return (
@@ -337,7 +393,7 @@ function PromptInputTextarea({
         {...props}
       />
     </div>
-  )
+  );
 }
 
 export type PromptInputActionsProps = React.HTMLAttributes<HTMLDivElement>

@@ -1,7 +1,7 @@
 export type PromptInputMention = {
-  id: string
-  label: string
-}
+  id: string;
+  label: string;
+};
 
 export type PromptInputMentionSegment = {
   type: "mention"
